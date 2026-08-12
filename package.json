@@ -1,0 +1,19 @@
+{
+  "name": "rockysurf",
+  "private": true,
+  "type": "module",
+  "description": "Rocky Surf — self-hosted persistent cloud dev boxes for coding agents.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "node scripts/check-core-deps.mjs && node scripts/check-iam-policy.mjs",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

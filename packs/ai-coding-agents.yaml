@@ -1,0 +1,327 @@
+# Claude Code — the flagship pack.
+#
+# This file also DEFINES the shared base toolchain every other pack references by id
+# (see docs/writing-a-pack.md: a tool is defined in exactly one file and referenced from
+# anywhere). If you are adding a pack, list these ids in your `pack.tools` rather than
+# redefining them — a duplicate `toolId` is rejected by the loader.
+version: 1
+
+pack:
+  packId: ai-coding-agents
+  name: Claude Code
+  tools:
+    - build-essential
+    - curl
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - claude-code
+  displayOrder: 1
+  enabled: true
+  requiresRepos: true
+  requiresRdp: false
+
+tools:
+  # ---------------------------------------------------------------- band 10: apt packages
+  # Every apt tool refreshes the package list ONCE via a stamp file. Nothing refreshes it for
+  # us: the runtime is only obliged to bootstrap its own JSON parser, and a stock ubuntu:24.04
+  # container has no package lists at all. The stamp survives into the CI smoke test's second
+  # run, which is what makes that run a genuine no-op.
+  - toolId: build-essential
+    name: Build Essential
+    description: C/C++ compiler and build tools
+    category: base
+    url: https://packages.ubuntu.com/noble/build-essential
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y build-essential
+      cc --version >/dev/null
+
+  - toolId: curl
+    name: curl
+    description: Command-line HTTP client
+    category: base
+    url: https://curl.se
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y curl ca-certificates
+      curl --version >/dev/null
+
+  - toolId: git
+    name: Git
+    description: Distributed version control system
+    category: base
+    url: https://git-scm.com
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y git
+      git --version >/dev/null
+
+  - toolId: pipx
+    name: pipx
+    description: Install and run Python applications in isolated environments
+    category: base
+    url: https://pipx.pypa.io
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y pipx
+      pipx --version >/dev/null
+
+  - toolId: python3-pip
+    name: pip
+    description: Python package installer
+    category: base
+    url: https://pip.pypa.io
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y python3-pip
+      python3 -m pip --version >/dev/null
+
+  - toolId: python3-venv
+    name: Python venv
+    description: Python virtual environment support
+    category: base
+    url: https://docs.python.org/3/library/venv.html
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y python3-venv
+      python3 -c 'import venv' >/dev/null
+
+  - toolId: tmux
+    name: tmux
+    description: Terminal multiplexer for managing sessions
+    category: base
+    url: https://github.com/tmux/tmux
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y tmux
+      tmux -V >/dev/null
+
+  - toolId: unzip
+    name: unzip
+    description: Archive extraction utility
+    category: base
+    url: https://infozip.sourceforge.net
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y unzip
+      unzip -v >/dev/null
+
+  # ---------------------------------------------------------------- band 20: runtimes
+  - toolId: nodejs
+    name: Node.js
+    description: JavaScript runtime (v22 LTS)
+    category: base
+    url: https://nodejs.org
+    installOrder: 20
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      # UNPINNED (deliberate): tracks the latest 22.x patch. Contract-compliant — the
+      # NodeSource script is convergent and apt resolves the right architecture itself — but
+      # not reproducible. Pinning a patch release here would strand boxes on stale security
+      # fixes; the major version IS pinned, which is the part that breaks tooling.
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      if ! command -v node >/dev/null 2>&1; then
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      fi
+      apt-get install -y nodejs
+      node --version >/dev/null
+      npm --version >/dev/null
+
+  # ---------------------------------------------------------------- band 25/30: runtime-dependent
+  # Split from the single legacy `playwright` tool, which declared runAs: rocky and then
+  # called `sudo npx playwright install-deps`. The system libraries genuinely need root and
+  # the browser download genuinely belongs to the user, so they are two steps with honest
+  # runAs values rather than one step that lies and reaches for a sudo the CI container has
+  # never had.
+  - toolId: playwright-deps
+    name: Playwright system libraries
+    description: Shared libraries Chromium needs, installed system-wide
+    category: base
+    url: https://playwright.dev
+    installOrder: 25
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      npx --yes playwright install-deps chromium
+
+  - toolId: playwright
+    name: Playwright
+    description: Headless browser testing framework
+    category: base
+    url: https://playwright.dev
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      cd "$HOME"
+      # UNPINNED (deliberate): a pinned Playwright drifts out of step with the browser build
+      # its API expects. npm install is convergent, so a re-run is a no-op.
+      npm install --no-fund --no-audit -D @playwright/test
+      npx --yes playwright install chromium
+      npx --yes playwright --version >/dev/null
+
+  - toolId: beads
+    name: Beads
+    description: Git-native task tracking CLI
+    category: base
+    url: https://github.com/steveyegge/beads
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # Both bin directories go on PATH BEFORE the installer runs, and that is not tidiness.
+      # Upstream now installs to ~/.local/bin (it used to use ~/.beads/bin) and finishes by
+      # verifying its own work with a PATH lookup — under the agent's non-interactive shell
+      # that lookup fails, the installer exits non-zero, and the whole step fails with bd
+      # sitting installed on disk. Found on real hardware in the 55fx.9 exit run.
+      export PATH="$HOME/.local/bin:$HOME/.beads/bin:$PATH"
+      # UNPINNED: installs from the project's main branch, which is the only distribution it
+      # offers. Guarded so a re-run neither re-downloads nor re-appends.
+      if ! command -v bd >/dev/null 2>&1; then
+        curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+      fi
+      # Both directories, because which one holds bd depends on the installer's version.
+      touch "$HOME/.bashrc"
+      for dir in "$HOME/.local/bin" "$HOME/.beads/bin"; do
+        grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
+      done
+      command -v bd >/dev/null 2>&1
+
+  - toolId: agent-deck
+    name: Agent Deck
+    description: Claude Code session manager
+    category: base
+    url: https://github.com/asheshgoplani/agent-deck
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # A third-party installer whose idempotency we cannot inspect gets an explicit stamp,
+      # so re-running the step is a no-op regardless of how the installer behaves.
+      # UNPINNED: main-branch installer, the only distribution offered.
+      stamp="$HOME/.rockysurf/installed-agent-deck"
+      if [ ! -f "$stamp" ]; then
+        curl -fsSL https://raw.githubusercontent.com/asheshgoplani/agent-deck/main/install.sh | bash
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+
+  - toolId: beads-viewer
+    name: Beads Viewer
+    description: Web-based viewer for Beads task boards
+    category: base
+    url: https://github.com/Dicklesworthstone/beads_viewer
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # The legacy script appended a unix-timestamp query parameter to defeat the CDN cache,
+      # which guaranteed a different payload on every run — the opposite of what the contract
+      # asks for, and it made the run-twice CI gate meaningless for this tool. Removed.
+      # UNPINNED: main-branch installer.
+      stamp="$HOME/.rockysurf/installed-beads-viewer"
+      if [ ! -f "$stamp" ]; then
+        curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh | bash
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+
+  # ---------------------------------------------------------------- band 40: agents
+  - toolId: claude-code
+    name: Claude Code
+    description: Anthropic's AI coding assistant CLI
+    category: agent
+    url: https://claude.com/claude-code
+    installOrder: 40
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # The official installer moved from ~/.claude/bin to ~/.local/bin, so the old hard-coded
+      # verification path could not find a claude it had just installed successfully. Ask PATH
+      # where claude is rather than asserting where it ought to be — the location is upstream's
+      # to change, and it has changed once already.
+      export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
+      # UNPINNED: the official installer always fetches current. Guarded so the second run
+      # neither reinstalls nor duplicates the PATH line.
+      if ! command -v claude >/dev/null 2>&1; then
+        curl -fsSL https://claude.ai/install.sh | bash
+      fi
+      touch "$HOME/.bashrc"
+      for dir in "$HOME/.local/bin" "$HOME/.claude/bin"; do
+        grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
+      done
+      claude --version >/dev/null

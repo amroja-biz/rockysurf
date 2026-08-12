@@ -1,0 +1,241 @@
+import { ProviderError } from '@rockysurf/provider-sdk'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createApp } from '../app.js'
+import { ensureLocalAdmin } from '../auth/admin.js'
+import { MemorySecretStore } from '../auth/secret-store.js'
+import { configSchema, type Config } from '../config/index.js'
+import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
+import { getServer } from '../db/repositories/servers.js'
+import { markBootstrapReady } from '../bootstrap/supervisor.js'
+import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
+import { ProviderRegistry } from '../providers/registry.js'
+import { createEventsService, type EventsService } from '../services/events.js'
+
+const PASSWORD = 'correct-horse-battery-staple'
+
+let opened: OpenedDatabase
+let fake: FakeProvider
+let app: ReturnType<typeof createApp>['app']
+let events: EventsService
+let cookie: string
+
+const config: Config = configSchema.parse({})
+
+async function login(): Promise<string> {
+  const res = await app.request('/api/v1/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: PASSWORD }),
+  })
+  expect(res.status).toBe(200)
+  return res.headers.get('set-cookie')?.split(';')[0] ?? ''
+}
+
+const get = (path: string) => app.request(path, { headers: { cookie } })
+const post = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
+  app.request(path, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json', ...headers },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+
+const CREATE = { size: 'small' as const, spotInstance: false, packId: 'ai-coding-agents' }
+
+async function build(provider: FakeProvider = makeFakeProvider()): Promise<void> {
+  fake = provider
+  opened = openTestDatabase()
+  const secrets = new MemorySecretStore()
+  await ensureLocalAdmin({ db: opened.db, secrets, password: PASSWORD })
+  events = createEventsService()
+  app = createApp({
+    db: opened.db,
+    config,
+    secrets,
+    events,
+    providers: new ProviderRegistry([provider]),
+  }).app
+  cookie = await login()
+}
+
+beforeEach(async () => {
+  await build()
+})
+
+afterEach(() => {
+  opened.close()
+})
+
+describe('the routes the SPA already calls', () => {
+  it('requires a session', async () => {
+    expect((await app.request('/api/v1/servers')).status).toBe(401)
+    expect((await app.request('/api/v1/servers', { method: 'POST' })).status).toBe(401)
+  })
+
+  it('creates a server and returns the legacy shape', async () => {
+    const res = await post('/api/v1/servers', CREATE)
+    expect(res.status).toBe(201)
+
+    const body = (await res.json()) as Record<string, unknown>
+    // `serverId`, not `id` — frontend/src/lib/api.ts reads this field.
+    expect(body['serverId']).toMatch(/^srv-/)
+    expect(body['status']).toBe('provisioning')
+    expect(body['name']).toBeTruthy()
+    expect(body['tools']).toEqual([])
+  })
+
+  it('lists only the caller\'s servers', async () => {
+    await post('/api/v1/servers', CREATE)
+    const res = await get('/api/v1/servers')
+    expect(res.status).toBe(200)
+    expect((await res.json()) as unknown[]).toHaveLength(1)
+  })
+
+  it('gets one server, and 404s an unknown id', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+    expect((await get(`/api/v1/servers/${serverId}`)).status).toBe(200)
+    expect((await get('/api/v1/servers/srv-nope')).status).toBe(404)
+  })
+
+  it('runs start, stop and terminate', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+    await get(`/api/v1/servers/${serverId}`) // syncs the address; the row stays provisioning
+    // A GET is no longer enough to make a server runnable, and stop/start refusing a
+    // provisioning row is the correct 409: until bootstrap reports ready the box is mid-install
+    // and stopping it would interrupt the install rather than pause a working machine.
+    await markBootstrapReady(opened.db, events, getServer(opened.db, serverId)!)
+
+    expect((await post(`/api/v1/servers/${serverId}/stop`)).status).toBe(200)
+    expect((await post(`/api/v1/servers/${serverId}/start`)).status).toBe(200)
+
+    const terminated = await post(`/api/v1/servers/${serverId}/terminate`)
+    expect(terminated.status).toBe(200)
+    expect(((await terminated.json()) as { status: string }).status).toBe('terminated')
+  })
+
+  it('accepts and ignores spotInstance, which the existing client still sends', async () => {
+    expect((await post('/api/v1/servers', { ...CREATE, spotInstance: true })).status).toBe(201)
+  })
+
+  it('rejects a malformed body with 400', async () => {
+    expect((await post('/api/v1/servers', { size: 'enormous' })).status).toBe(400)
+  })
+
+  it('exposes provider capabilities so the UI can gate its own buttons', async () => {
+    const res = await get('/api/v1/providers')
+    expect(res.status).toBe(200)
+    const [provider] = (await res.json()) as { id: string; capabilities: { stop: boolean } }[]
+    expect(provider?.id).toBe('fake')
+    expect(provider?.capabilities.stop).toBe(true)
+  })
+})
+
+describe('idempotency over HTTP', () => {
+  it('replays an Idempotency-Key without provisioning twice', async () => {
+    const first = await post('/api/v1/servers', CREATE, { 'idempotency-key': 'req-1' })
+    const second = await post('/api/v1/servers', CREATE, { 'idempotency-key': 'req-1' })
+
+    const a = (await first.json()) as { serverId: string }
+    const b = (await second.json()) as { serverId: string }
+    expect(b.serverId).toBe(a.serverId)
+    expect(fake.provisionCalls).toBe(1)
+  })
+})
+
+describe('error mapping', () => {
+  it('maps an unsupported operation to 501, not 400', async () => {
+    await build(makeFakeProvider({ capabilities: { stop: false } }))
+    const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+    await get(`/api/v1/servers/${serverId}`)
+
+    const res = await post(`/api/v1/servers/${serverId}/stop`)
+    expect(res.status).toBe(501)
+    const body = (await res.json()) as { error: string; code: string }
+    expect(body.code).toBe('unsupported_operation')
+    expect(body.error).toMatch(/does not support stop/)
+  })
+
+  it('maps a state conflict to 409', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+    // Still provisioning, so stopping makes no sense.
+    const res = await post(`/api/v1/servers/${serverId}/stop`)
+    expect(res.status).toBe(409)
+  })
+
+  it.each([
+    ['capacity', 503],
+    ['rate_limited', 429],
+    ['quota', 409],
+    ['auth', 500],
+    ['network', 504],
+    ['unknown', 502],
+    ['invalid_spec', 400],
+  ] as const)('maps ProviderError %s to %i', async (code, status) => {
+    fake.failNext('provision', new ProviderError(code, `simulated ${code}`, { providerCode: 'X-1' }))
+    const res = await post('/api/v1/servers', CREATE)
+    expect(res.status).toBe(status)
+
+    const body = (await res.json()) as { error: string; code: string; providerCode?: string; retryable?: boolean }
+    expect(body.code).toBe(code)
+    // The envelope keeps `error` for the SPA, and carries what the cloud actually said (F1).
+    expect(body.error).toContain(`simulated ${code}`)
+    expect(body.providerCode).toBe('X-1')
+  })
+
+  it('marks retryable codes as retryable in the body', async () => {
+    fake.failNext('provision', new ProviderError('capacity', 'no capacity'))
+    const body = (await (await post('/api/v1/servers', CREATE)).json()) as { retryable: boolean }
+    expect(body.retryable).toBe(true)
+  })
+})
+
+describe('the providers endpoint feeds the create page', () => {
+  it('returns capabilities AND offerings in one response', async () => {
+    const res = await get('/api/v1/providers')
+    expect(res.status).toBe(200)
+
+    const [provider] = (await res.json()) as {
+      id: string
+      capabilities: { stop: boolean; canInjectHostKeys: boolean }
+      offerings: { id: string; arch: string; available: boolean; hourly: { amount: number; currency: string; fetchedAt: string } | null }[]
+    }[]
+
+    expect(provider?.id).toBe('fake')
+    expect(provider?.capabilities.stop).toBe(true)
+    // The page resolves a size to a concrete offering before submit, so it needs these.
+    expect(provider?.offerings.length).toBeGreaterThan(0)
+    expect(provider?.offerings.every((o) => typeof o.arch === 'string')).toBe(true)
+  })
+
+  it('reports sold-out offerings rather than hiding them', async () => {
+    const res = await get('/api/v1/providers')
+    const [provider] = (await res.json()) as { offerings: { id: string; available: boolean }[] }[]
+    expect(provider?.offerings.some((o) => !o.available)).toBe(true)
+  })
+
+  it('carries the price with its fetchedAt stamp, so the UI can date it', async () => {
+    const res = await get('/api/v1/providers')
+    const [provider] = (await res.json()) as {
+      offerings: { id: string; hourly: { amount: number; currency: string; fetchedAt: string } | null }[]
+    }[]
+    const priced = provider?.offerings.find((o) => o.hourly !== null)
+    expect(priced?.hourly).toMatchObject({
+      amount: expect.any(Number),
+      currency: expect.any(String),
+      fetchedAt: expect.any(String),
+    })
+  })
+
+  it('does not fail the whole response when one provider cannot list', async () => {
+    const broken = makeFakeProvider()
+    broken.listOfferings = async () => {
+      throw new ProviderError('rate_limited', 'slow down')
+    }
+    await build(broken)
+
+    const res = await get('/api/v1/providers')
+    expect(res.status).toBe(200)
+    const [provider] = (await res.json()) as { offerings: unknown[]; offeringsError?: string }[]
+    expect(provider?.offerings).toEqual([])
+    expect(provider?.offeringsError).toContain('slow down')
+  })
+})

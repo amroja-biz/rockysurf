@@ -1,0 +1,51 @@
+[   0.1s] sshAllowedCidr resolved at run time and written to config: 73.69.44.87/32
+[   0.1s] === AWS milestone exit run — production stack — t4g.small (arm64) ===
+[   0.1s] binary /Users/johndamask/code/1-open-source-rocky-surf-v0-1/packages/rockysurf/dist/bin.js
+[   0.1s] config /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-rnRtpW/rockysurf.config.yaml (dataDir /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-rnRtpW/data)
+[   0.8s]   PASS  rockysurf booted from a real config file
+[   0.8s]   PASS  composition root registered the real aws provider — Amazon EC2
+[   0.8s]   PASS  t4g.small is offered — 14 offerings
+[   0.8s]   PASS  t4g.small is arm64 — arm64
+[   0.8s]   PASS  a pack is available to install — ai-coding-agents
+[   3.4s]   PASS  POST /api/v1/servers created a server — 201 
+[   3.4s] server srv-9560c52513d2
+[   5.7s]   status=provisioning step=requested ip=98.92.11.230
+[  31.6s]   status=provisioning step=installing_tools ip=98.92.11.230
+[ 180.3s]   status=running step=ready ip=98.92.11.230
+[ 180.3s]   PASS  server reached running — status=running
+[ 180.3s]   PASS  push bootstrap reported ready — step=ready
+[ 180.3s]   PASS  server has a public address — 98.92.11.230
+[ 180.4s]   PASS  private key downloadable from the API — 200
+[ 181.8s]   PASS  claude --version over SSH — 2.1.228 (Claude Code)
+[ 181.8s]   PASS  box architecture is arm64 — arm64
+[ 182.2s]   PASS  stop — status=stopped
+[ 238.8s]   PASS  instance actually reached stopped before start was attempted
+[ 239.7s]   PASS  start accepted — status=stopped
+[ 260.4s]   PASS  server came back up after start
+[ 260.5s]   address after restart: 98.82.179.5 (previous 98.92.11.230)
+[ 260.5s] terminating
+[ 260.9s]   PASS  terminate accepted — 200
+[ 260.9s] zero-orphan audit (reconciler semantics)
+[ 263.8s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 270.6s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 277.3s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 284.0s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 290.7s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 297.6s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 304.5s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 311.2s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 317.7s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 324.3s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=in-use
+[ 331.3s]   still present: i-0624fd7e2439bc686, vol-099a758369e2cb6cf=available
+[ 337.8s]   PASS  no server-owned instances remain
+[ 337.8s]   PASS  every managed resource carries a valid ownership
+[ 337.8s]   PASS  the shared SSH security group survives, as designed — security-group/sg-0df7502d1dc1847b2
+[ 337.8s]   PASS  no EBS volumes survived termination
+[ 337.8s] --- server log tail ---
+[ 337.8s]     Rocky Surf is running at  http://127.0.0.1:3358
+[ 337.8s]   
+[ 337.8s]     data      /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-rnRtpW/data
+[ 337.8s]     auth      local
+[ 337.8s]   
+[ 337.8s]     Press Ctrl-C to stop.
+[ 337.9s] RESULT: PASS — aws production lifecycle, zero orphans

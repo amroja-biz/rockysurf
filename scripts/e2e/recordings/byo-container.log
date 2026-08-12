@@ -1,0 +1,100 @@
+[   0.0s] === BYO milestone exit run — production stack against a real sshd ===
+[   0.0s] binary /Users/johndamask/code/1-open-source-rocky-surf-v0-1/packages/rockysurf/dist/bin.js
+[   0.0s] workdir /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-byo-e2e-qC5FfJ
+[   0.1s]   PASS  docker daemon reachable — 27.5.1
+[   0.1s] the container's sshd will be published on 127.0.0.1:2245
+[   0.1s] --- phase 1: a real host, with a real sshd
+[   0.1s] building the host image (ubuntu:24.04 + openssh-server)…
+[   4.1s]   PASS  the box starts with no rocky account
+[   4.3s]   PASS  the box starts with no rockysurf sudoers rule
+[   4.6s]   PASS  a real OpenSSH server is listening on 127.0.0.1:2245 — SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+[   4.7s]   host keys on the box: ECDSA SHA256:asSwMFwBYIZOWK0jspVzo7NHDile5eA9l3lbxMe1Rvc, ED25519 SHA256:V8U46oAaVWWiXdymjdsMWdXMAqQM0xQTmennsHCUctY, RSA SHA256:PvS4zOs84tsmp/LgQN61ebKJNtl7Q7Iqt7yuoK0OinM
+[   5.4s]   box facts: 12 cpu, 7.7 GiB, aarch64
+[   5.8s]   PASS  the operator's own workload is running
+[   5.8s] --- phase 2: the production stack, booted from a real config file
+[   7.0s]   PASS  rockysurf booted with providers.byo enabled
+[   7.2s]   PASS  the composition root registered the real byo provider — Bring your own hosts
+[   7.2s]   PASS  capabilities.stop is false
+[   7.2s]   PASS  capabilities.canInjectHostKeys is false
+[   7.2s]   PASS  capabilities.generatesUserData is false
+[   7.2s]   PASS  the registered host is offered as 'e2e-box'
+[   7.2s]   PASS  an unclaimed host is available
+[   7.2s]   PASS  the probe read the real cpu count — 12 vs 12
+[   7.2s]   PASS  the probe read the real architecture — arm64 vs aarch64
+[   7.2s]   PASS  the probe read the real memory size — 7.7 GiB vs 7.7 GiB
+[   7.2s]   PASS  the operator’s own hardware is priced as unknown, not free
+[   7.2s] --- phase 3: claim the host and let core push-bootstrap it
+[   7.5s]   PASS  POST /api/v1/servers claimed the host — 201 
+[   7.5s]   server srv-dcdaf1bb9db6
+[   7.5s]   status=provisioning step=requested ip=127.0.0.1
+[  25.6s]   status=running step=ready ip=127.0.0.1
+[  25.6s]   PASS  server reached running — status=running
+[  25.6s]   PASS  push bootstrap reported ready — step=ready
+[  25.6s]   PASS  byo bootstrapped in push mode — push
+[  25.6s]   PASS  the row carries the registered address — 127.0.0.1
+[  25.6s]   PASS  core connects as the account the provider created — rocky
+[  25.6s]   PASS  the API reports the port the host was registered on (22 is reported as absent) — sshPort=2245 port=2245
+[  25.6s]   PASS  a claimed host is reported unavailable, not hidden
+[  25.6s] --- phase 4: the box itself
+[  25.7s]   PASS  a real useradd created the rocky account
+[  25.9s]   PASS  the account has a real home directory — /home/rocky
+[  26.1s]   PASS  ~/.ssh is 700
+[  26.2s]   PASS  authorized_keys is 600
+[  26.4s]   PASS  authorized_keys is owned by the account
+[  26.5s]   PASS  the sudoers drop-in says what the provider wrote — rocky ALL=(ALL) NOPASSWD:ALL
+[  26.7s]   PASS  the sudoers drop-in is 440
+[  26.9s]   PASS  sudo -n really works for the account, per sudo itself — root
+[  26.9s]   PASS  private key downloadable from the API — 200
+[  27.0s]   PASS  core's minted public key is in the account's authorized_keys
+[  27.0s]   PASS  exactly one key was installed — 1 line(s)
+[  27.2s]   PASS  the root pack step ran as root
+[  27.3s]   PASS  the unprivileged pack step ran as rocky
+[  27.5s]   PASS  a pack step can sudo without a password
+[  27.6s]   PASS  the branding step named THIS server on the box
+[  27.8s]   PASS  the agent's own journal says the plan completed — "status":"done"
+[  28.1s]   PASS  on a box with no systemd the agent was launched with the nohup fallback and outlived the session — systemd=no, agent.log=yes
+[  28.1s] --- phase 5: a real login with the key the API hands out
+[  28.2s]   PASS  ssh rocky@host succeeds with the key core minted — rocky
+[  28.2s]   PASS  that session can sudo without a password — root
+[  28.2s]   PASS  OpenSSH pinned the box's own host key — SHA256:V8U46oAaVWWiXdymjdsMWdXMAqQM0xQTmennsHCUctY
+[  28.2s]   PASS  GET /ssh-host-key answers for a box core did not key — HTTP 200
+[  28.2s]   PASS  and says the key was OBSERVED by the provider, not minted by core — observed
+[  28.2s]   PASS  the fingerprint it returns is the box's own, the one core pinned — SHA256:V8U46oAaVWWiXdymjdsMWdXMAqQM0xQTmennsHCUctY
+[  28.2s]   PASS  and the KEY it returns is the one OpenSSH independently pinned for this box — ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAut
+[  28.2s] --- phase 6: terminate releases the claim and leaves the machine alone
+[  29.5s]   PASS  terminate accepted — 200
+[  30.8s]   PASS  the account still exists, unchanged — rocky:x:1001:1001::/home/rocky:/bin/bash
+[  30.8s]   PASS  the sudoers drop-in is untouched
+[  30.8s]   PASS  authorized_keys is untouched
+[  30.8s]   PASS  the home directory is untouched
+[  30.8s]   PASS  the agent's state directory is untouched
+[  30.8s]   PASS  every process that was running is still running
+[  30.9s]   PASS  the operator's workload survived
+[  30.9s]   PASS  terminate opened NO connection to the box — 6 before, 6 after
+[  30.9s]   PASS  and therefore authenticated nothing
+[  30.9s]   PASS  the host is available again once the claim is released
+[  30.9s] --- phase 7: a second claim on the same box changes nothing it should not
+[  31.8s]   PASS  an unclaimed registered host is not reported as managed
+[  31.8s]   PASS  TOFU recorded the fingerprint the box actually presents — SHA256:V8U46oAaVWWiXdymjdsMWdXMAqQM0xQTmennsHCUctY
+[  32.0s]   PASS  a new key is APPENDED, never written over the existing one — 1 → 2
+[  32.0s]   PASS  a claim is reported as one server-owned host, attributed to its server — [{"kind":"host","providerNativeId":"e2e-box","ownership":"server-owned","serverId":"srv-reclaim-a"}]
+[  32.0s]   PASS  releasing the claim removes it from the managed list
+[  32.2s]   PASS  re-running the claim with the same key adds no duplicate line — 2 → 2
+[  32.3s]   PASS  the account was not recreated — uid 1001
+[  32.5s]   PASS  the home directory kept its ownership and mode
+[  32.7s]   PASS  the sudoers rule is written once, not appended to
+[  32.8s]   PASS  the sudoers drop-in is still a single line
+[  32.8s] --- phase 8: the box changes its identity, and every path refuses it
+[  34.9s]   PASS  the box now presents entirely different host keys — SHA256:nF7ZWDtaQQPEPsnVvvOs4gi7NcoGDDNZ18LWySZo5FE
+[  34.9s]   PASS  a TOFU-learned pin refuses the changed key — auth/host_key_mismatch
+[  34.9s]   PASS  a configured pin refuses the changed key — auth/host_key_mismatch
+[  35.0s]   PASS  neither refusal authenticated — no credential reached the wrong host — 8 accepted logins, unchanged
+[  35.4s]   PASS  both refusals reached sshd and stopped inside the handshake — 10 → 12 connections
+[  35.4s] --- server log tail ---
+[  35.4s]     Rocky Surf is running at  http://127.0.0.1:3473
+[  35.4s]   
+[  35.4s]     data      /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-byo-e2e-qC5FfJ/data
+[  35.4s]     auth      local
+[  35.4s]   
+[  35.4s]     Press Ctrl-C to stop.
+[  36.4s] RESULT: PASS — byo against a real sshd

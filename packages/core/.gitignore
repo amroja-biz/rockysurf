@@ -1,0 +1,4 @@
+dist/
+node_modules/
+# The SPA build, copied in from @rockysurf/web at release time. Generated, never committed.
+public/

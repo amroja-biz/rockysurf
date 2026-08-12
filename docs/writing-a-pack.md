@@ -1,0 +1,711 @@
+# Writing a pack
+
+A **pack** is a curated bundle of tools that gets installed on a fresh cloud box. It is a
+single YAML file. You can read it, diff it, fork it, and send it as a pull request — which is
+the whole point: packs are data, not code, and adding one should never mean touching the
+application.
+
+This page is the contract. If your pack follows it, it will work on every provider and every
+architecture we support, and it will survive a bootstrap that gets interrupted halfway through.
+If it doesn't, CI will tell you before a user ever sees it.
+
+The file format is **frozen at v0.1**. A pack written today keeps working.
+
+---
+
+## Contents
+
+- [How a pack runs](#how-a-pack-runs)
+- [The four rules](#the-four-rules)
+  1. [Idempotent](#rule-1-idempotent)
+  2. [`$ARCH`-aware](#rule-2-arch-aware)
+  3. [Non-interactive](#rule-3-non-interactive)
+  4. [`runAs`-honest](#rule-4-runas-honest)
+- [What you may not assume](#what-you-may-not-assume)
+- [The file format](#the-file-format)
+- [A complete pack](#a-complete-pack)
+- [The CI smoke test](#the-ci-smoke-test)
+- [Checklist before you open a pull request](#checklist-before-you-open-a-pull-request)
+- [Where these rules come from](#where-these-rules-come-from)
+
+---
+
+## How a pack runs
+
+Understanding this takes two minutes and explains all four rules.
+
+When someone creates a server with your pack, the control plane resolves the pack into an
+ordered **install plan** and snapshots it. The box boots with a tiny, inert pre-boot config —
+it creates the unprivileged user `rocky` and authorizes an SSH key, and that is all. Nothing
+from your pack has run yet.
+
+The control plane then connects over SSH, copies a small **bootstrap agent** onto the box, and
+launches it. The agent walks your plan in order. For each step it:
+
+1. reads its journal at `/var/lib/rockysurf/state.json` and **skips any step already marked
+   done**;
+2. runs the step's script as the user the step declared (`root`, or `rocky` via
+   `sudo -u rocky -H env …`);
+3. records the outcome back into the journal.
+
+That journal is what makes an interrupted install recoverable. If the network drops, the
+control plane restarts, or the agent is killed outright, the next attempt re-reads the journal
+and picks up where it left off instead of starting over.
+
+Two consequences fall directly out of this design, and they are the reason rules 1 and 4 exist:
+
+- **A step can run more than once.** A journal entry is written when a step *finishes*. A step
+  interrupted in the middle is not marked done, so it runs again from the top on the next
+  attempt. Your script must be able to survive that.
+- **A step runs as exactly the user it declared.** The agent decides privilege from your
+  `runAs` field before your script has any say in the matter.
+
+---
+
+## The four rules
+
+Every `installScript` and every `setupScript` in your pack must be idempotent, `$ARCH`-aware,
+non-interactive, and `runAs`-honest. CI enforces all four.
+
+### Rule 1: Idempotent
+
+**Running your script twice must be safe, and the second run must change nothing.**
+
+#### Why
+
+The resume path above re-runs any step that didn't finish. This isn't a theoretical concern —
+resume after a mid-plan kill is part of the bootstrap test suite, and re-running a completed
+install is expected to skip every step with timestamps untouched. A script that appends to a
+file, or that fails when its target already exists, turns a recoverable interruption into a
+corrupted box. The failure is also nasty to diagnose, because the box looks installed.
+
+The most common real-world break is the shell profile append. Run it three times and the user
+gets three copies of the same `PATH` line.
+
+#### Do this
+
+Guard anything that mutates existing state. Prefer commands that are already convergent
+(`apt-get install`, `npm install -g`, `install -m`, `mkdir -p`) over ones that aren't
+(`>>`, `mv`, `useradd`).
+
+```bash
+# Package installs are convergent already — but the package list is not, so refresh it once
+# and leave a stamp so a re-run is a genuine no-op.
+apt_update_once() {
+  local stamp=/var/lib/rockysurf/apt-updated
+  [ -f "$stamp" ] && return 0
+  apt-get update -qq
+  mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+}
+apt_update_once
+apt-get install -y ripgrep
+
+# Appending to a profile is NOT convergent. Guard it.
+if ! grep -q '.cargo/bin' "$HOME/.bashrc"; then
+  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.bashrc"
+fi
+
+# Writing a whole file is fine: it converges on the same content every time.
+install -D -m 0644 /dev/stdin "$HOME/.config/mytool/config.toml" <<'EOF'
+theme = "dark"
+EOF
+```
+
+#### Not this
+
+```bash
+# Duplicates the line on every run. After a resume, PATH contains it twice.
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+
+# Fails on the second run: the installer refuses to overwrite an existing install
+# unless you tell it to update.
+curl -fsSL https://example.com/tool.zip -o /tmp/tool.zip
+unzip -q /tmp/tool.zip -d /tmp
+/tmp/tool/install            # second run: "found preexisting installation" → exit 1
+
+# Fails on the second run: the directory already exists, the clone aborts.
+git clone https://github.com/example/thing ~/thing
+```
+
+The fixes are small: pass the installer's `--update` flag, and use
+`git clone … || git -C ~/thing pull --ff-only`.
+
+---
+
+### Rule 2: `$ARCH`-aware
+
+**Never hardcode a CPU architecture. Read `$ARCH` and branch.**
+
+#### Why
+
+We run on both `amd64` and `arm64`, and which one a user gets depends on the provider and the
+size they picked. This is not an edge case: our own reference install produced an identical
+result on both architectures from one plan, with exactly one arch-aware line in it. The whole
+portability story rests on pack authors writing that one line.
+
+The agent exports `ARCH` for you, normalized to Debian's spelling — `amd64` or `arm64`, never
+`x86_64` or `aarch64` — so you don't have to care whether it came from `dpkg
+--print-architecture` or `uname -m`. It is set for root steps and for unprivileged steps alike.
+
+Most of the time you need nothing: `apt-get install`, `npm install -g` and `pip install` all
+resolve the right build themselves. You need `$ARCH` when you download a binary or a tarball
+by URL.
+
+#### Do this
+
+```bash
+case "$ARCH" in
+  amd64) NODE_ARCH=x64 ;;
+  arm64) NODE_ARCH=arm64 ;;
+  *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+esac
+
+curl -fsSL "https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-${NODE_ARCH}.tar.xz" \
+  -o /tmp/node.tar.xz
+```
+
+Note the explicit failure on an unknown value. If a third architecture ever appears, you want a
+clear error, not a silent download of the wrong binary.
+
+#### Not this
+
+```bash
+# Works on amd64. On arm64 it downloads an x86 binary that cannot execute,
+# and the failure surfaces much later as "cannot execute binary file".
+curl -s https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+unzip -qo /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+```
+
+```bash
+# Also wrong, for the same reason, and harder to spot:
+GOARCH=amd64 go build ./...
+docker pull --platform linux/amd64 someimage
+```
+
+---
+
+### Rule 3: Non-interactive
+
+**Nothing may prompt. There is no terminal and nobody is watching.**
+
+#### Why
+
+Your script runs under a systemd unit with no TTY attached. A prompt does not pause for input —
+it reads EOF, and what happens next is unpredictable. `apt-get` will abort; `debconf` may hang
+until the step's timeout expires, which looks to the user like a box that never finishes
+booting. Packages such as `tzdata`, `keyboard-configuration` and `xrdp` are prompt-happy and
+will do this to you.
+
+The agent already exports `DEBIAN_FRONTEND=noninteractive` for both root and unprivileged
+steps, so you inherit it. Set it explicitly anyway if you invoke a sub-shell or a nested
+installer that might reset the environment — it costs one line and it documents the intent.
+
+#### Do this
+
+```bash
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y xfce4 xrdp
+
+# Keep an existing config file rather than asking which one to keep.
+apt-get install -y -o Dpkg::Options::="--force-confold" some-package
+
+npx --yes playwright install-deps chromium
+ssh-keygen -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519" -q   # -N '' = no passphrase prompt
+```
+
+#### Not this
+
+```bash
+apt-get install nodejs                 # no -y: prompts, reads EOF, aborts
+npx playwright install-deps chromium   # prompts to install the package first
+read -p "Which version? " version      # there is no one there to answer
+ssh-keygen -t ed25519                  # prompts for a path and a passphrase
+```
+
+Also avoid anything that *waits* without prompting: no `systemctl start … && sleep 60`, no
+polling loops without a bounded retry count. Give long installs a real completion check
+instead.
+
+---
+
+### Rule 4: `runAs`-honest
+
+**Declare the user your step actually needs. Don't declare `rocky` and then reach for `sudo`.**
+
+#### Why
+
+`runAs` is not documentation, it is dispatch. The agent reads it and runs your script as
+`root`, or as `rocky` through `sudo -u rocky -H env …`. Getting it wrong breaks in three
+different ways:
+
+- **`sudo` may not exist.** The CI smoke-test container is a stock `ubuntu:24.04` image, which
+  ships without `sudo`. A `rocky` step that shells out to `sudo` fails there immediately, even
+  though it happens to work on a cloud image.
+- **A root step that writes into `/home/rocky` leaves root-owned files** in the user's home,
+  and the user then can't edit their own config. If you must do this, `chown` afterwards.
+- **The environment differs.** Unprivileged steps run with `-H`, so `$HOME` is `/home/rocky`.
+  A root step's `$HOME` is `/root`, and `~/.bashrc` means something different.
+
+If a single tool genuinely needs both — install system packages as root, then configure them
+for the user — that is two steps: an `installScript` running as `root` and a `setupScript`
+running as `rocky`. That split is exactly what `setupScript` is for.
+
+#### Do this
+
+```yaml
+# Two tools, because the work genuinely needs two privilege levels.
+- toolId: docker-engine
+  runAs: root                    # apt needs root, and says so
+  installScript: |
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y docker.io
+
+- toolId: docker-for-rocky
+  runAs: root                    # adding a user to a group is also root's job
+  installOrder: 40               # after docker-engine, which sits at 30
+  installScript: |
+    usermod -aG docker rocky     # convergent: re-running changes nothing
+```
+
+```yaml
+- toolId: claude-code
+  runAs: rocky                   # a per-user install, in the user's own home
+  installScript: |
+    curl -fsSL https://claude.ai/install.sh | bash
+    if ! grep -q '.claude/bin' "$HOME/.bashrc"; then
+      echo 'export PATH="$HOME/.claude/bin:$PATH"' >> "$HOME/.bashrc"
+    fi
+```
+
+#### Not this
+
+```yaml
+- toolId: gas-town
+  runAs: rocky
+  installScript: |
+    sudo apt-get install -y golang-go     # declared rocky, needs root
+    go install github.com/example/gt@latest
+```
+
+```yaml
+- toolId: open-claw
+  runAs: rocky
+  installScript: |
+    sudo npm install -g openclaw@latest   # global npm install is a root operation
+```
+
+Both should declare `runAs: root` for the privileged half and move the user-level half into a
+`setupScript`, or split into two tools.
+
+---
+
+## What you may not assume
+
+The single most expensive lesson from building this: **"Ubuntu 24.04" is not a contract about
+installed packages.** Two clouds both advertising Ubuntu 24.04 shipped materially different
+images — one had `jq` preinstalled and the other did not, so a code path that depended on it
+fired on exactly one provider and looked fine everywhere we tested.
+
+So: if your pack needs it, your pack installs it. Specifically, do not assume any of the
+following exist or are reachable.
+
+| Don't assume | Why not | What to do |
+|---|---|---|
+| `jq`, `curl`, `wget`, `unzip`, `git`, `python3` | Not guaranteed by the base image, and absent from a stock `ubuntu:24.04` container | `apt-get install -y` what you use, after refreshing the package list once |
+| Fresh apt package lists | A stock container has none, so the first `apt-get install` fails with "Unable to locate package". Nothing refreshes them on your behalf: the runtime is only required to bootstrap its own JSON parser, not to update your package lists | Call an `apt_update_once` helper like the one above |
+| The AWS CLI, or any cloud SDK | Nothing on the box is cloud-specific by design, and the box may not be on AWS at all | Bundle what you need, or don't need it |
+| Cloud credentials, instance roles, or `s3://` access | The box holds no cloud credentials. A pack that reaches for one is broken on every other provider | Fetch assets over plain HTTPS from a public URL |
+| The instance metadata service (`169.254.169.254`) | The bootstrap design has zero metadata coupling, and user-supplied boxes have no metadata service at all | Read `$ARCH` and the documented environment instead |
+| That the box can reach the control plane | The default topology is outbound-only: the control plane connects to the box, never the reverse, and it may sit behind NAT with no public address | Never phone home. Write to stdout; the agent captures it |
+| A desktop, an X server, or a display | Only packs that declare `desktop: xfce` get one | Declare it, or stay headless |
+| A particular Node, Python, Go or Rust version | Only what you install | Install and pin what you need |
+| That another tool has already run | Ordering comes from `installOrder` and nothing else; equal values fall back to `toolId` order, which is a determinism guarantee and not a dependency mechanism | Give the dependent tool a higher `installOrder` |
+| A network mirror, proxy, or registry beyond what your own script fetches | The box has ordinary outbound internet and nothing more | Fetch from stable public URLs |
+
+Two more, worth calling out separately:
+
+- **Pin what you download.** `@latest` and a `main`-branch install script mean the thing CI
+  tested is not the thing your users get. Prefer a version tag or a checksum. Cache-busting a
+  download URL (appending `?$(date +%s)`) guarantees this problem rather than avoiding it.
+- **Secrets come from the environment, and only yours.** If a user supplies an API key for your
+  tool, it arrives as an environment variable in your step. Control-plane credentials are never
+  exported to install steps. Don't go looking for them, and never write a secret into a
+  world-readable file or pass one on a command line where `ps` can read it.
+
+### The environment your script gets
+
+| Variable | Set for | Value |
+|---|---|---|
+| `ARCH` | every step | `amd64` or `arm64` |
+| `DEBIAN_FRONTEND` | every step | `noninteractive` |
+| `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
+| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose |
+| your tool's secrets | steps of the tool they belong to | whatever the user supplied |
+
+Standard output and standard error are captured per step. Log freely; it is the only debugging
+signal a user gets when something fails on their box.
+
+---
+
+## The file format
+
+One pack per file, in `packs/`, named after the pack id: `packs/rust-dev.yaml`.
+
+A file has three top-level keys:
+
+```yaml
+version: 1        # required; the frozen v0.1 format
+pack:  { … }      # required; exactly one SurgePack
+tools: [ … ]      # required; the Tool records this file introduces
+```
+
+`pack.tools` is a list of tool **ids**. It may name tools defined in this file or tools defined
+in any other pack file in the repository — that is how several packs share one `claude-code`
+definition. Defining the same `toolId` in two files is an error and CI will reject it.
+
+### Tool
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `toolId` | string | yes | Unique across the whole repository. Lowercase, hyphens, no spaces. This is the identity other packs reference |
+| `name` | string | yes | Human-readable name shown in the UI |
+| `description` | string | yes | One line. Shown next to the name |
+| `category` | `'agent'` \| `'base'` | yes | `agent` for the AI coding agents a pack exists to deliver; `base` for supporting software |
+| `url` | string | yes | The tool's home page, so a user can see what they're installing |
+| `installScript` | string | yes | Shell. Installs the software. Must satisfy all four rules |
+| `setupScript` | string | no | Shell. Per-server configuration, run after the software is installed. Same `runAs`, same four rules |
+| `enabled` | boolean | yes | `false` hides the tool from the UI without deleting it. CI smoke-tests it either way |
+| `installOrder` | number | yes | Ascending. See the convention below |
+| `bootstrap` | boolean | yes | Set `false`. Reserved for the handful of tools the runtime guarantees before any plan runs |
+| `runAs` | `'root'` \| `'rocky'` | yes | The user the step runs as. See rule 4 |
+
+#### `installOrder`, and the gaps-of-10 convention
+
+Steps run in ascending `installOrder`. **Leave gaps of 10** so someone can insert a step later
+without renumbering every pack in the repository. The bands in use:
+
+| Order | For |
+|---|---|
+| `0` | Runtime-guaranteed base tools. Not for community packs |
+| `10` | System packages from apt with no dependencies of their own |
+| `20` | Language runtimes — Node, Python, Go, Rust |
+| `30` | Anything that needs a runtime from band 20 |
+| `40` | The agents themselves |
+| `50` | Anything that needs an agent to already be installed |
+
+A tool that has to land between two bands takes the gap: the desktop environment sits at `35`,
+after the runtime-dependent tools and before the agents. That is the convention working as
+intended.
+
+**If B needs A, give B a higher `installOrder`.** That is the only way to express a dependency.
+Never rely on the order tools happen to appear in the file, and don't reach for the tie-break
+rule below either.
+
+Tools with the same `installOrder` do execute in a defined order — `toolId` ascending — but that
+exists for the executor's benefit, not yours: a snapshotted plan has to render identically every
+time, or an interrupted install resumes against a different order and skips the wrong work. It
+is a determinism guarantee, not a scheduling tool, and a pack that leans on it is one rename
+away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-ordering).
+
+### SurgePack
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `packId` | string | yes | Unique across the repository. Matches the filename |
+| `name` | string | yes | Display name |
+| `tools` | string[] | yes | Tool ids, in any order — `installOrder` decides execution |
+| `displayOrder` | number | yes | Position in the UI's pack list, ascending |
+| `enabled` | boolean | yes | `false` hides it from the UI. CI still smoke-tests it |
+| `imageUrl` | string | no | Card image. Relative path or absolute URL |
+| `theme` | string | no | A named UI theme for the pack's card |
+| `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The user must choose at least one Git repository before creating the server, and `$REPOS` is set for setup scripts |
+| `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
+| `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
+
+These last three exist so that pack behaviour is described by the pack. If you find yourself
+wanting the application to special-case your `packId`, that is a bug in this format — please
+open an issue instead of working around it.
+
+---
+
+## A complete pack
+
+`packs/rust-dev.yaml` — a headless Rust environment with Claude Code, requiring a repository.
+
+```yaml
+version: 1
+
+pack:
+  packId: rust-dev
+  name: Rust + Claude Code
+  tools:
+    - build-tools
+    - rustup
+    - claude-code
+  displayOrder: 20
+  enabled: true
+  imageUrl: /images/surge-packs/rust-dev.png
+  theme: theme-orange
+  requiresRepos: true
+  requiresRdp: false
+
+tools:
+  - toolId: build-tools
+    name: Build tools
+    description: C toolchain and pkg-config, needed to compile most Rust crates
+    category: base
+    url: https://packages.ubuntu.com/noble/build-essential
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      stamp=/var/lib/rockysurf/apt-updated
+      if [ ! -f "$stamp" ]; then
+        apt-get update -qq
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+
+      apt-get install -y build-essential pkg-config libssl-dev curl
+
+  - toolId: rustup
+    name: Rust
+    description: The Rust toolchain, installed per-user via rustup
+    category: base
+    url: https://rustup.rs
+    installOrder: 20
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+
+      # rustup ships one installer for both architectures, but pin the host triple
+      # explicitly so a wrong-arch toolchain can never be selected silently.
+      case "$ARCH" in
+        amd64) TRIPLE=x86_64-unknown-linux-gnu ;;
+        arm64) TRIPLE=aarch64-unknown-linux-gnu ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      if ! command -v rustup >/dev/null 2>&1; then
+        curl -fsSL https://sh.rustup.rs \
+          | sh -s -- -y --no-modify-path --default-host "$TRIPLE" --default-toolchain 1.85.0
+      fi
+
+      if ! grep -q '.cargo/bin' "$HOME/.bashrc"; then
+        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.bashrc"
+      fi
+
+      "$HOME/.cargo/bin/rustc" --version
+    setupScript: |
+      set -euo pipefail
+      export PATH="$HOME/.cargo/bin:$PATH"
+
+      # Warm the build cache for each repository the user selected. Safe to repeat:
+      # cargo fetch is a no-op once the lockfile's crates are present.
+      for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
+        [ -n "$repo" ] || continue
+        dir="$HOME/$(basename "$repo" .git)"
+        [ -f "$dir/Cargo.toml" ] || continue
+        (cd "$dir" && cargo fetch)
+      done
+
+  - toolId: claude-code
+    name: Claude Code
+    description: Anthropic's AI coding assistant CLI
+    category: agent
+    url: https://claude.com/claude-code
+    installOrder: 40
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+
+      curl -fsSL https://claude.ai/install.sh | bash
+
+      if ! grep -q '.claude/bin' "$HOME/.bashrc"; then
+        echo 'export PATH="$HOME/.claude/bin:$PATH"' >> "$HOME/.bashrc"
+      fi
+
+      "$HOME/.claude/bin/claude" --version
+```
+
+Three things in there are worth copying into your own pack:
+
+- **Every script ends by verifying itself.** `rustc --version` and `claude --version` are how
+  you find out that an installer exited `0` after only half-working. This has bitten us.
+- **`set -euo pipefail` at the top of each script.** The agent isolates and records a failed
+  step, but only if the step actually reports failure.
+- **Each script's idempotency is visible in one glance** — a `command -v` guard, a `grep -q`
+  guard, and a stamp file. A reviewer should not have to guess.
+
+---
+
+## The CI smoke test
+
+**Normative.** Every pack in the repository is smoke-tested on every pull request, and the test
+gates merge. It is deliberately harsher than a real cloud image, because a pack that only works
+on one provider's idea of Ubuntu is exactly the failure this project is trying to avoid.
+
+For each pack file, for each of **`amd64` and `arm64`**, CI:
+
+1. starts one **stock `ubuntu:24.04` container** for that architecture — no preinstalled
+   convenience packages, empty apt lists, and no `sudo`;
+2. creates the unprivileged `rocky` user, and nothing else. The harness drops privilege with
+   `runuser`, not `sudo`, so `sudo` really is absent from your script's world;
+3. resolves the pack into a plan and runs every `installScript`, then every `setupScript`, in
+   `installOrder`;
+4. **discards the resume journal** and runs the whole thing a **second time in the same
+   container**.
+
+Step 4 is the point of the exercise. Clearing the journal is what forces your scripts to
+execute again — if CI simply re-ran the agent, it would skip every completed step and prove
+nothing.
+
+### What the second run must satisfy
+
+- Every script exits `0`, both runs.
+- Every verification command still passes after the second run.
+- Files that scripts append to are **byte-identical before and after** the second run. CI
+  snapshots `/home/rocky/.bashrc`, `/root/.bashrc` and `/etc/apt/sources.list.d/` and requires
+  them unchanged. This is the check that catches the duplicated-`PATH`-line bug.
+- No step takes materially longer on the second run than a no-op should. A second run that
+  re-downloads and re-compiles everything is a warning sign even when it exits `0`.
+
+A pack that fails on one architecture and passes on the other fails the whole check. There is
+no "amd64 only" pack.
+
+### Running it yourself
+
+The harness itself is one command, and it is the same code CI runs — same container, same two
+runs, same journal discard, same three files compared byte for byte:
+
+```bash
+node scripts/pack-smoke.mjs --pack my-pack --arch arm64   # then again with --arch amd64
+```
+
+It needs Docker and a built `@rockysurf/core` (`pnpm --filter @rockysurf/core build`), because it
+resolves your pack with core's own resolver rather than a re-implementation of it. Add `--keep`
+to leave the container up when something fails.
+
+For a single script, mid-edit, you don't need any of that. This finds nearly everything in about
+a minute:
+
+```bash
+# arm64 on an Apple Silicon machine; use --platform linux/amd64 for the other half.
+docker run --rm -it --platform linux/arm64 -v "$PWD:/work" ubuntu:24.04 bash
+
+# inside the container:
+useradd -m -s /bin/bash rocky
+export ARCH=arm64 DEBIAN_FRONTEND=noninteractive HOME=/root
+
+bash /work/my-install-script.sh   # run 1
+bash /work/my-install-script.sh   # run 2 — must be quiet, quick, and exit 0
+```
+
+For a `runAs: rocky` script, run it as that user, without `sudo` available:
+
+```bash
+su - rocky -c 'ARCH=arm64 DEBIAN_FRONTEND=noninteractive bash /work/my-install-script.sh'
+```
+
+If that command needs `sudo`, your `runAs` is wrong. See rule 4.
+
+---
+
+## Checklist before you open a pull request
+
+- [ ] One pack per file in `packs/`, filename matches `packId`, `version: 1` at the top.
+- [ ] Every `toolId` is unique across the repository.
+- [ ] Every script runs cleanly **twice in a row** in a stock `ubuntu:24.04` container.
+- [ ] Every script runs cleanly on **both** `amd64` and `arm64`.
+- [ ] No hardcoded `x86_64`, `amd64`, `aarch64` or `arm64` in a download URL — branch on `$ARCH`.
+- [ ] No prompts. Every `apt-get install` has `-y`; every `npx` has `--yes`.
+- [ ] No `sudo` anywhere in a `runAs: rocky` script.
+- [ ] No root-owned files left in `/home/rocky`.
+- [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
+- [ ] Downloads are pinned to a version or a checksum, not `latest` or `main`.
+- [ ] Each script ends with a command that verifies the install actually worked.
+- [ ] `installOrder` uses the bands above and leaves gaps of 10.
+- [ ] `requiresRepos`, `requiresRdp` and `desktop` describe what your pack actually needs.
+
+---
+
+## Where these rules come from
+
+Every rule here is the result of something that broke, or nearly broke, on real infrastructure
+during the project's de-risking work. If you want the evidence:
+
+- `docs/spike/findings.md` — the full findings memo. The bootstrap and base-image sections are
+  the ones that produced rules 1–3, including the two clouds whose "Ubuntu 24.04" images
+  differed, and the one identical install plan that produced a working setup on both
+  architectures with a single arch-aware line.
+- `docs/adr/0002-push-bootstrap-default-callback-fallback.md` — the bootstrap design, the
+  outbound-only topology, and the resume semantics that make idempotency mandatory rather than
+  polite.
+- `docs/adr/0004-packs-as-pr-able-yaml.md` — why packs are files, why the format is frozen at
+  v0.1, and why CI runs every pack twice on two architectures.
+
+Found something this page gets wrong, or a rule that fights a legitimate pack? Open an issue.
+The format is frozen; the documentation isn't.
+
+<!-- APPENDED by rockysurf-55fx.14 (spike-hetzner). This is spike-scaffold's document; the
+     section below is an append rather than an edit, so nothing above it moved. If it belongs
+     somewhere earlier in the flow, move it in the morning — the content is the decision, the
+     placement is not. -->
+
+## The environment your scripts get
+
+Every `installScript` and `setupScript` runs with these variables set. Read them; do not
+hardcode what they carry.
+
+| variable | set for | what it is |
+|---|---|---|
+| `$ARCH` | every step | `amd64` or `arm64`. See [Rule 2](#rule-2-arch-aware). |
+| `DEBIAN_FRONTEND` | every step | `noninteractive`. See [Rule 3](#rule-3-non-interactive). |
+| `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
+| `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
+| `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. |
+| `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
+
+### The two secrets, and how to use them safely
+
+`$GITHUB_TOKEN` and `$RDP_PASSWORD` arrive through `secrets.env`, a `0600` file written at the
+moment it is created. They are the only credential names Rocky Surf promises a pack, and that
+list is closed on purpose: every name here is a commitment to keep working, and a per-tool
+namespace would let packs depend on names nothing ever agreed to.
+
+**Both may be absent.** A key with no secret behind it is omitted entirely rather than set
+empty, so guard before you use one:
+
+```bash
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  gh auth setup-git          # gh reads GITHUB_TOKEN with no further configuration
+fi
+```
+
+An empty value would be worse than a missing one — `RDP_PASSWORD=` would pass a naive check and
+then set an empty desktop password.
+
+**Never put either in a command line.** Everything in `argv` is readable through `ps` by every
+other unprivileged step running on the same box:
+
+```bash
+# Do this — the secret goes in on stdin.
+printf 'rocky:%s\n' "$RDP_PASSWORD" | chpasswd
+
+# Not this — visible in `ps` to anything else running.
+echo "rocky:$RDP_PASSWORD" | tee /tmp/pw && chpasswd < /tmp/pw
+```
+
+**You usually do not need `$GITHUB_TOKEN` for cloning.** Repository clones in the resolved plan
+already authenticate with it when it is set, via a per-invocation credential helper that keeps
+the token out of `argv` and out of the checkout's `.git/config`. Reach for it only when your
+own script talks to a forge API.
+

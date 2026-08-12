@@ -1,0 +1,526 @@
+#!/usr/bin/env node
+/**
+ * Milestone exit check: the PRODUCTION stack against a real cloud.
+ *
+ *   node scripts/e2e/lifecycle.mjs hetzner
+ *   node scripts/e2e/lifecycle.mjs aws
+ *
+ * THIS SPENDS MONEY. It creates one real server per run and destroys it again, and the
+ * teardown is in a `finally` so a failure anywhere still cleans up. Exits non-zero if anything
+ * is left behind.
+ *
+ * WHAT MAKES THIS DIFFERENT FROM THE SPIKE CAPSTONE. The spike drove its own harness against
+ * provider code directly. This drives the shipped article: the `rockysurf` binary — the
+ * composition root that wires real providers into core — booted from a real config file, and
+ * then everything through core's own HTTP API, exactly as the SPA would. Create, bootstrap,
+ * SSH, stop/start, terminate, and the zero-orphan audit all go through the production path.
+ *
+ * SECURITY CONTRACT ON DISPLAY: `sshAllowedCidr` is looked up at RUN time and written into the
+ * config FILE. The provider refuses to discover it at runtime, which is the point — a firewall
+ * rule is a reviewable decision, not an inference. This script is the caller, so this script
+ * owns that decision and records it.
+ */
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
+import {
+  AuditCredentialError,
+  assertDistinctPrincipals,
+  resolveAuditCredentials,
+  resolveRunCredentials,
+} from './aws-audit-credentials.mjs'
+
+/**
+ * The offerings this exit run uses, and THE ARCHITECTURE EACH ONE IS EXPECTED TO BE.
+ *
+ * Written down here rather than read back from `/api/v1/providers`, because the run has to be
+ * able to catch a provider that reports the wrong architecture for a machine type — and a
+ * check that takes its expectation from the thing it is checking cannot fail. AWS carries two
+ * because arch-correct AMI selection is only proven by running both: a Graviton box and an
+ * x86_64 one, from the same code path with nothing but the offering id different.
+ *
+ * Cheapest type per cloud that runs the pack. Budget discipline is not optional here.
+ */
+const RUNS = {
+  hetzner: { cpx12: 'amd64' },
+  aws: { 't4g.small': 'arm64', 't3.small': 'amd64' },
+}
+
+const CLOUD = process.argv[2]
+if (CLOUD !== 'hetzner' && CLOUD !== 'aws') {
+  console.error('usage: node scripts/e2e/lifecycle.mjs <hetzner|aws> [offeringId]')
+  process.exit(2)
+}
+
+const OFFERING = process.argv[3] ?? Object.keys(RUNS[CLOUD])[0]
+const ARCH = RUNS[CLOUD][OFFERING]
+if (!ARCH) {
+  console.error(`unknown offering '${OFFERING}' for ${CLOUD}; known: ${Object.keys(RUNS[CLOUD]).join(', ')}`)
+  process.exit(2)
+}
+
+const REPO = fileURLToPath(new URL('../..', import.meta.url))
+const BIN = join(REPO, 'packages/rockysurf/dist/bin.js')
+/** One region for the config, the direct provider build and the raw volume audit alike. */
+const AWS_REGION = process.env.AWS_REGION ?? 'us-east-1'
+const PORT = 3200 + Math.floor(Math.random() * 300)
+const ADMIN_PASSWORD = 'e2e-admin-password'
+
+const READY_TIMEOUT_MS = 12 * 60_000
+const GONE_TIMEOUT_MS = 8 * 60_000
+const POLL_MS = 5_000
+
+const t0 = Date.now()
+const log = (...args) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1).padStart(6)}s]`, ...args)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+let failures = 0
+const check = (ok, what, detail = '') => {
+  if (ok) log(`  PASS  ${what}${detail ? ` — ${detail}` : ''}`)
+  else {
+    failures++
+    log(`  FAIL  ${what}${detail ? ` — ${detail}` : ''}`)
+  }
+}
+
+/* ------------------------------------------------------------------ run configuration */
+
+const workDir = mkdtempSync(join(tmpdir(), `rockysurf-e2e-${CLOUD}-`))
+const dataDir = join(workDir, 'data')
+const configPath = join(workDir, 'rockysurf.config.yaml')
+
+/** The operator's current public address, resolved ONCE, here, and written to the config. */
+async function currentPublicIp() {
+  const res = await fetch('https://checkip.amazonaws.com', { signal: AbortSignal.timeout(10_000) })
+  const ip = (await res.text()).trim()
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) throw new Error(`unexpected address from checkip: ${ip}`)
+  return ip
+}
+
+/** Hetzner's token, from the same file the spike used. Never printed. */
+function hetznerToken() {
+  const path = join(process.env.HOME ?? '', '.config/rockysurf/spike.env')
+  const out = spawnSync('bash', ['-c', `set -a; . ${JSON.stringify(path)}; set +a; printf %s "$HETZNER_TOKEN"`], {
+    encoding: 'utf8',
+  })
+  const token = out.stdout?.trim()
+  if (!token) throw new Error(`no HETZNER_TOKEN in ${path}`)
+  return token
+}
+
+async function writeConfig() {
+  const lines = [`server:`, `  port: ${PORT}`, `  dataDir: ${dataDir}`, `providers:`]
+
+  if (CLOUD === 'hetzner') {
+    lines.push(`  hetzner:`, `    enabled: true`, `    token: ${hetznerToken()}`, `    location: fsn1`)
+  } else {
+    const cidr = `${await currentPublicIp()}/32`
+    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
+    lines.push(`  aws:`, `    enabled: true`, `    region: ${AWS_REGION}`)
+    // A named profile locally, the default credential chain in CI — where there is no
+    // ~/.aws/config to name and the credentials arrive as environment variables. Set
+    // ROCKYSURF_E2E_AWS_PROFILE to '' to force the chain.
+    const { profile } = resolveRunCredentials(process.env)
+    if (profile) lines.push(`    profile: ${profile}`)
+    lines.push(`    sshAllowedCidr: ${cidr}`)
+  }
+
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 })
+  writeFileSync(configPath, `${lines.join('\n')}\n`, { mode: 0o600 })
+}
+
+/* ------------------------------------------------------------------ the server under test */
+
+let child
+let serverStderr = ''
+
+async function startCore() {
+  child = spawn(process.execPath, [BIN, '--config', configPath], {
+    cwd: REPO, // so packs/ is found by the checkout branch of the pack sync
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ROCKYSURF_ADMIN_PASSWORD: ADMIN_PASSWORD },
+  })
+  child.stderr.on('data', (c) => {
+    serverStderr += c.toString('utf8')
+  })
+  child.stdout.on('data', () => {})
+
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`rockysurf exited early (${child.exitCode}):\n${serverStderr}`)
+    try {
+      const res = await fetch(`http://127.0.0.1:${PORT}/health`)
+      if (res.ok) return
+    } catch {
+      /* not listening yet */
+    }
+    await sleep(300)
+  }
+  throw new Error(`rockysurf never became healthy:\n${serverStderr}`)
+}
+
+async function stopCore() {
+  if (!child || child.exitCode !== null) return
+  const exited = new Promise((r) => child.once('exit', r))
+  child.kill('SIGTERM')
+  await Promise.race([exited, sleep(15_000)])
+}
+
+/* ------------------------------------------------------------------ the API, as the SPA sees it */
+
+let cookie = ''
+const api = async (path, init = {}) => {
+  const res = await fetch(`http://127.0.0.1:${PORT}${path}`, {
+    ...init,
+    headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...(init.headers ?? {}) },
+  })
+  return res
+}
+
+/**
+ * Poll the same GET the SPA polls until the row settles on a status, or give up.
+ *
+ * The GET syncs from the provider, so this is asking the cloud, not the database. The row may
+ * legitimately bounce on the way — a provider reporting `stopping` maps to `running`, because a
+ * machine that is still shutting down is still billing — which is exactly why this waits for
+ * the status it wants rather than for "anything but the one I had".
+ */
+async function waitForStatus(id, want, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const row = await (await api(`/api/v1/servers/${id}`)).json()
+    if (row.status === want) return true
+    await sleep(POLL_MS)
+  }
+  return false
+}
+
+async function login() {
+  const res = await api('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ password: ADMIN_PASSWORD }) })
+  if (!res.ok) throw new Error(`login failed: ${res.status}`)
+  cookie = res.headers.get('set-cookie')?.split(';')[0] ?? ''
+}
+
+/* ------------------------------------------------------------------ the run */
+
+async function main() {
+  // FIRST, because it is the one check that can fail for free. Everything below this line either
+  // creates a real server or is a step towards creating one.
+  if (CLOUD === 'aws') await preflightAuditCredentials()
+
+  await writeConfig()
+  log(`=== ${CLOUD.toUpperCase()} milestone exit run — production stack — ${OFFERING} (${ARCH}) ===`)
+  log(`binary ${BIN}`)
+  log(`config ${configPath} (dataDir ${dataDir})`)
+
+  await startCore()
+  check(true, 'rockysurf booted from a real config file')
+  await login()
+
+  const providers = await (await api('/api/v1/providers')).json()
+  const provider = providers.find((p) => p.id === CLOUD)
+  check(!!provider, `composition root registered the real ${CLOUD} provider`, provider?.displayName)
+  check(
+    provider?.offerings?.some((o) => o.id === OFFERING),
+    `${OFFERING} is offered`,
+    `${provider?.offerings?.length ?? 0} offerings`,
+  )
+  const offering = provider?.offerings?.find((o) => o.id === OFFERING)
+  check(offering?.arch === ARCH, `${OFFERING} is ${ARCH}`, offering?.arch)
+
+  const packs = await (await api('/api/v1/surge-packs')).json()
+  const pack = packs.find((p) => p.packId === 'ai-coding-agents') ?? packs[0]
+  check(!!pack, 'a pack is available to install', pack?.packId)
+
+  let serverId
+  try {
+    /* ---- create, through the real API ---- */
+    const created = await api('/api/v1/servers', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `e2e-${CLOUD}-${Date.now().toString(36)}`,
+        size: 'small',
+        provider: CLOUD,
+        offeringId: OFFERING,
+        arch: ARCH,
+        packId: pack.packId,
+        ...(pack.requiresRepos ? { repositories: ['https://github.com/octocat/Hello-World.git'] } : {}),
+        ...(pack.requiresRdp ? { rdpPassword: 'e2e-desktop-password' } : {}),
+      }),
+    })
+    const body = await created.json()
+    check(created.status === 201, 'POST /api/v1/servers created a server', `${created.status} ${body.error ?? ''}`)
+    if (created.status !== 201) throw new Error(`create failed: ${JSON.stringify(body)}`)
+    serverId = body.serverId
+    log(`server ${serverId}`)
+
+    /* ---- bootstrap to ready ---- */
+    const deadline = Date.now() + READY_TIMEOUT_MS
+    let server = body
+    let lastStep
+    while (Date.now() < deadline) {
+      server = await (await api(`/api/v1/servers/${serverId}`)).json()
+      if (server.provisioningStep !== lastStep) {
+        lastStep = server.provisioningStep
+        log(`  status=${server.status} step=${server.provisioningStep ?? '-'} ip=${server.publicIp ?? '-'}`)
+      }
+      if (server.status === 'running' && server.provisioningStep === 'ready') break
+      if (server.status === 'failed') throw new Error(`provisioning failed: ${server.errorMessage}`)
+      // A row that goes `terminated` while provisioning is the WORST outcome this run can
+      // find, not a reason to keep waiting: core has stopped tracking a machine that may still
+      // be running and billing, and `terminate()` on a terminated row is a no-op, so the
+      // script's own cleanup will not save it either. Stop immediately and say so — this is
+      // exactly what the eventual-consistency bug in the AWS provider did (gyp1.4).
+      if (server.status === 'terminated') {
+        throw new Error(
+          `server went TERMINATED while provisioning — check the cloud for a live instance ` +
+            `tagged server-id=${serverId} before trusting this cleanup`,
+        )
+      }
+      await sleep(POLL_MS)
+    }
+    check(server.status === 'running', 'server reached running', `status=${server.status}`)
+    check(server.provisioningStep === 'ready', 'push bootstrap reported ready', `step=${server.provisioningStep}`)
+    check(!!server.publicIp, 'server has a public address', server.publicIp)
+
+    /* ---- claude --version over SSH, using the key the API hands out ---- */
+    const keyRes = await api(`/api/v1/servers/${serverId}/ssh-key`)
+    check(keyRes.status === 200, 'private key downloadable from the API', String(keyRes.status))
+    const keyPath = join(workDir, 'id_ed25519')
+    writeFileSync(keyPath, await keyRes.text(), { mode: 0o600 })
+    chmodSync(keyPath, 0o600)
+
+    const ssh = spawnSync(
+      'ssh',
+      [
+        '-i', keyPath,
+        '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', `UserKnownHostsFile=${join(workDir, 'known_hosts')}`,
+        '-o', 'ConnectTimeout=20',
+        `${server.sshUser ?? 'rocky'}@${server.publicIp}`,
+        // `-ic`, an INTERACTIVE shell, because that is what a human who SSHes in gets, and it
+        // is the only kind that reads ~/.bashrc to the end. Ubuntu's stock ~/.bashrc returns
+        // early for non-interactive shells, so `bash -lc` never sees the PATH lines the pack
+        // appends — it would report "claude: command not found" for a box that is perfectly
+        // set up for the person who will actually use it.
+        'bash -ic "claude --version && node --version && dpkg --print-architecture"',
+      ],
+      { encoding: 'utf8', timeout: 120_000 },
+    )
+    // Assertions read STDOUT only. An interactive shell with no tty writes "no job control in
+    // this shell" to stderr, which is noise, not a result — reporting it beside a PASS makes a
+    // healthy run look broken to whoever reads the nightly log.
+    const out = (ssh.stdout ?? '').trim().split('\n').filter(Boolean)
+    const detail = (line) => line ?? (ssh.stderr ?? '').trim().split('\n').filter(Boolean).slice(-1)[0] ?? ''
+    check(/\d+\.\d+\.\d+/.test(ssh.stdout ?? ''), 'claude --version over SSH', detail(out[0]))
+    check((ssh.stdout ?? '').includes(ARCH), `box architecture is ${ARCH}`, detail(out.at(-1)))
+
+    /* ---- stop / start, both clouds support it ---- */
+    if (provider.capabilities.stop) {
+      // `stop` answers with what the PROVIDER has reached, not with the request being accepted
+      // (rockysurf-55fx.15). On Hetzner that is `stopped` in this very response; on EC2 it is
+      // still `running`, because an instance in `stopping` is up and billing. Both are correct,
+      // so the assertion is the one thing true of both clouds: the row did not lie.
+      const stopped = await (await api(`/api/v1/servers/${serverId}/stop`, { method: 'POST' })).json()
+      check(
+        stopped.status === 'stopped' || stopped.status === 'running',
+        'stop accepted, status is provider-confirmed',
+        `status=${stopped.status}`,
+      )
+
+      // WAIT FOR THE STOP TO BE REAL BEFORE STARTING. This is what any client does, and it is
+      // now what the API rewards: a start attempted mid-`stopping` is refused with a 409 saying
+      // so, rather than surfacing EC2's IncorrectInstanceState.
+      const settled = await waitForStatus(serverId, 'stopped', 3 * 60_000)
+      check(settled, 'instance actually reached stopped before start was attempted')
+
+      const started = await (await api(`/api/v1/servers/${serverId}/start`, { method: 'POST' })).json()
+      // Symmetrically, this can legitimately still say `stopped`: EC2 keeps answering `stopped`
+      // for a beat after it accepts StartInstances, and core no longer papers over that with an
+      // optimistic `running` it has to retract. The assertion is that the server COMES BACK.
+      check(started.status !== undefined, 'start accepted', `status=${started.status}`)
+      check(await waitForStatus(serverId, 'running', 3 * 60_000), 'server came back up after start')
+      if (!provider.capabilities.ipStableAcrossStop) {
+        const after = await (await api(`/api/v1/servers/${serverId}`)).json()
+        log(`  address after restart: ${after.publicIp} (previous ${after.previousIp ?? '-'})`)
+      }
+    }
+  } finally {
+    /* ---- terminate, always ---- */
+    if (serverId) {
+      log('terminating')
+      try {
+        const res = await api(`/api/v1/servers/${serverId}/terminate`, { method: 'POST' })
+        check(res.ok, 'terminate accepted', String(res.status))
+      } catch (err) {
+        check(false, 'TERMINATE FAILED — RESOURCE MAY BE LEAKED', String(err))
+      }
+    }
+  }
+
+  /* ---- reconciler-grade zero-orphan audit ---- */
+  log('zero-orphan audit (reconciler semantics)')
+  const audit = await auditManagedResources()
+  check(audit.instances.length === 0, 'no server-owned instances remain', audit.instances.join(', '))
+  check(audit.ownershipValid, 'every managed resource carries a valid ownership', audit.ownershipNote)
+  if (CLOUD === 'hetzner') {
+    check(audit.sshKeys.length === 0, 'owned ssh-key objects were reaped with the server', audit.sshKeys.join(', '))
+  } else {
+    check(audit.shared.length >= 1, 'the shared SSH security group survives, as designed', audit.shared.join(', '))
+    check(audit.volumes.length === 0, 'no EBS volumes survived termination', audit.volumes.join(', '))
+  }
+
+  log('--- server log tail ---')
+  for (const line of serverStderr.trim().split('\n').slice(-6)) log(`  ${line}`)
+}
+
+/**
+ * Ask the provider what it still owns, the way the reconciler does.
+ *
+ * Imported directly here rather than driven through core, because the reconciler's input IS
+ * `listManaged()` and this run has to check the shape of what it returns — specifically that
+ * `ownership` is populated, since a reconciler that trusts a missing field would either orphan
+ * Hetzner's owned keys or delete AWS's shared group out from under running servers.
+ */
+async function auditManagedResources() {
+  const result = { instances: [], sshKeys: [], shared: [], volumes: [], ownershipValid: true, ownershipNote: '' }
+  const deadline = Date.now() + GONE_TIMEOUT_MS
+
+  for (;;) {
+    const provider = await buildProviderDirectly()
+    const managed = await provider.listManaged()
+
+    const bad = managed.filter((r) => r.ownership !== 'server-owned' && r.ownership !== 'shared')
+    if (bad.length > 0) {
+      result.ownershipValid = false
+      result.ownershipNote = bad.map((r) => `${r.kind}/${r.providerNativeId}=${r.ownership}`).join(', ')
+    }
+
+    result.instances = managed
+      .filter((r) => (r.kind === 'instance' || r.kind === 'server') && r.ownership === 'server-owned')
+      .map((r) => r.providerNativeId)
+    result.sshKeys = managed.filter((r) => r.kind === 'ssh-key').map((r) => r.providerNativeId)
+    result.shared = managed.filter((r) => r.ownership === 'shared').map((r) => `${r.kind}/${r.providerNativeId}`)
+
+    if (CLOUD === 'aws') result.volumes = await rawAwsVolumes()
+
+    const settled = result.instances.length === 0 && result.sshKeys.length === 0 && result.volumes.length === 0
+    if (settled || Date.now() >= deadline) return result
+    log(`  still present: ${[...result.instances, ...result.sshKeys, ...result.volumes].join(', ')}`)
+    await sleep(POLL_MS)
+  }
+}
+
+async function buildProviderDirectly() {
+  if (CLOUD === 'hetzner') {
+    const { hetznerProviderFactory } = await import(`${REPO}/packages/provider-hetzner/dist/index.js`)
+    return hetznerProviderFactory.createProvider(
+      hetznerProviderFactory.configSchema.parse({ token: hetznerToken(), location: 'fsn1' }),
+    )
+  }
+  const { awsProviderFactory } = await import(`${REPO}/packages/provider-aws/dist/index.js`)
+  const { profile } = resolveRunCredentials(process.env)
+  return awsProviderFactory.createProvider(
+    awsProviderFactory.configSchema.parse({
+      region: AWS_REGION,
+      ...(profile ? { profile } : {}),
+      // The audit only reads. A CIDR is required by the schema — deliberately, so nobody
+      // creates a server without deciding who may reach it — and this one authorizes nothing.
+      sshAllowedCidr: '127.0.0.1/32',
+    }),
+  )
+}
+
+/**
+ * The AWS SDK, resolved FROM the provider package rather than guessed at.
+ *
+ * Under pnpm the real path is a content-addressed store directory, so a hand-built
+ * `node_modules/...` path is a guess that happens to be wrong, and the bare-specifier fallback
+ * cannot work either because the repo root does not depend on the AWS SDK. This asks node the same
+ * question the provider asks.
+ */
+async function ec2Sdk() {
+  const require = createRequire(join(REPO, 'packages/provider-aws/package.json'))
+  return import(pathToFileURL(require.resolve('@aws-sdk/client-ec2')).href)
+}
+
+/**
+ * WHOSE CREDENTIALS THE VOLUME AUDIT USES — decided ONCE, before the run spends anything.
+ *
+ * THE CREDENTIALS ARE NOT OPTIONAL. This machine's default AWS identity is a read-only user in an
+ * entirely different account, so a client built without any is one that silently audits the wrong
+ * account and reports "no volumes" about somebody else's — worse than failing.
+ *
+ * AND THEY ARE NOT THE RUN'S (rockysurf-gyp1.5, rockysurf-ufwn). `ec2:DescribeVolumes` is not a
+ * call the provider makes, so it is deliberately absent from the published IAM policy; the run
+ * under test cannot make it, and should not — an orphan the credentials under test cannot SEE
+ * would otherwise be an orphan this audit calls clean. See ./aws-audit-credentials.mjs for the two
+ * ways the operator's credentials arrive and what strict mode demands of them.
+ *
+ * Called from main() before the first server exists, on purpose: the failure this guards against
+ * used to surface as an UnauthorizedOperation twelve minutes into a clean lifecycle, reported as
+ * `RESULT: FAIL — unhandled error` and blaming the wrong thing entirely.
+ */
+let auditCredentials
+async function preflightAuditCredentials() {
+  try {
+    auditCredentials = resolveAuditCredentials(process.env)
+    log(`orphan volume audit reads with ${auditCredentials.describe}`)
+    if (!auditCredentials.strict) return
+
+    const { EC2Client } = await ec2Sdk()
+    // Resolved, compared to each other, and never logged.
+    const accessKeyId = async (clientConfig, whose) => {
+      const client = new EC2Client({ region: AWS_REGION, ...clientConfig })
+      try {
+        return (await client.config.credentials()).accessKeyId
+      } catch (err) {
+        throw new AuditCredentialError(`could not resolve the ${whose} AWS credentials: ${err.message}`)
+      } finally {
+        client.destroy()
+      }
+    }
+    assertDistinctPrincipals(
+      await accessKeyId(auditCredentials.clientConfig, 'orphan audit'),
+      await accessKeyId(resolveRunCredentials(process.env).clientConfig, "run's own"),
+    )
+    log('orphan audit credentials confirmed distinct from the identity under test')
+  } catch (err) {
+    if (!(err instanceof AuditCredentialError)) throw err
+    log('ORPHAN AUDIT CREDENTIALS ARE MISCONFIGURED — refusing to start:')
+    log(`  ${err.message}`)
+    for (const line of err.remediation ?? []) log(`  ${line}`)
+    throw err
+  }
+}
+
+/**
+ * Behind the interface, because listManaged() does not walk volumes.
+ *
+ * The credentials were decided and vetted by the preflight, which main() runs before anything
+ * exists to audit — so this reads that decision rather than making it again per poll.
+ */
+async function rawAwsVolumes() {
+  const { DescribeVolumesCommand, EC2Client } = await ec2Sdk()
+  const ec2 = new EC2Client({ region: AWS_REGION, ...auditCredentials.clientConfig })
+  const res = await ec2.send(
+    new DescribeVolumesCommand({ Filters: [{ Name: 'tag:managed-by', Values: ['rockysurf'] }] }),
+  )
+  return (res.Volumes ?? []).map((v) => `${v.VolumeId}=${v.State}`)
+}
+
+main()
+  .then(async () => {
+    await stopCore()
+    log(failures === 0 ? `RESULT: PASS — ${CLOUD} production lifecycle, zero orphans` : `RESULT: FAIL — ${failures} check(s)`)
+    process.exit(failures === 0 ? 0 : 1)
+  })
+  .catch(async (err) => {
+    await stopCore()
+    log('RESULT: FAIL — unhandled error')
+    console.error(err)
+    process.exit(1)
+  })

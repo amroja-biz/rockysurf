@@ -1,0 +1,111 @@
+# Rocky Surf configuration — copy to `rockysurf.config.yaml` and edit.
+#
+#   cp rockysurf.config.example.yaml rockysurf.config.yaml
+#
+# Every value shown below is the default unless the comment says otherwise, so you can delete
+# any section you do not care about and get the same behaviour. Point somewhere else with
+# `--config <path>` if you keep your config outside the working directory.
+#
+# ${VAR} is replaced from the environment before the file is parsed. Nothing secret needs to
+# live in this file — see `.env.example` for the variables referenced here. A missing variable
+# is an error at startup that names the variable, not a mysterious empty value.
+# Write `$${VAR}` if you want a literal `${VAR}` in a value.
+
+server:
+  # Port for the web UI and API.
+  port: 3000
+
+  # Which interface to listen on. Loopback by default: this process holds your cloud
+  # credentials and the SSH key for every server it manages, and the UI has one password in
+  # front of it and no TLS of its own, so it should not be on your network unless you say so.
+  #
+  # Set "0.0.0.0" to accept connections from anywhere the machine is reachable — do that only
+  # behind a firewall or a reverse proxy that terminates TLS. Inside a container it must be
+  # "0.0.0.0" (the container's loopback is not the host's); the shipped compose file handles
+  # that and still publishes the port on the host's loopback only.
+  # host: "127.0.0.1"
+
+  # Public URL of THIS control plane. Only needed for callback-mode bootstrap, which requires
+  # a core the box can reach. Push mode — the default — needs no inbound connectivity at all,
+  # so leave this unset unless you are running a hosted, publicly reachable control plane.
+  # publicUrl: "https://rockysurf.example.com"
+
+  # Database, generated keys and encrypted secrets live here. `~` is expanded, and a relative
+  # path resolves against the working directory. Back this directory up.
+  dataDir: "~/.rockysurf"
+
+auth:
+  # local        — single admin, zero config. The default.
+  # github-device — sign in with GitHub via device flow.
+  mode: local
+
+github:
+  # Personal access token used to clone private repositories onto your boxes.
+  # Needs `repo` scope. Leave unset if you only clone public repos.
+  # pat: "${GITHUB_PAT}"
+
+providers:
+  # Bring your own cloud. Every provider is disabled until you turn it on, so a fresh install
+  # cannot spend money by accident. Enable at least one before creating a server.
+
+  hetzner:
+    # The quickest start: create a project at console.hetzner.cloud, make a read/write API
+    # token, and export it as HETZNER_TOKEN.
+    enabled: true
+    token: "${HETZNER_TOKEN}"
+    # fsn1/nbg1/hel1 (Germany, Finland), ash/hil (US), sin (Singapore).
+    # NOTE: arm64 (CAX) types are only sold in fsn1, nbg1 and hel1, and stock varies — check
+    # availability before promising yourself an ARM box.
+    location: fsn1
+
+  aws:
+    # Credentials come from the standard AWS chain (AWS_PROFILE, environment, instance role),
+    # never from this file.
+    enabled: false
+    region: us-east-1
+    # Optional allowlist of instance types offered in the UI. Omit to offer everything the
+    # region sells. t4g.* are ARM (Graviton) and are the cheap, fast default.
+    # sizes: [t4g.small, t4g.medium, t4g.large]
+
+  byo:
+    # Machines you already have, managed over SSH. No cloud API, no provisioning — Rocky Surf
+    # installs onto them and manages them from there.
+    #
+    # Claiming a host creates a `rocky` account on it with passwordless sudo, and appends Rocky
+    # Surf's key to that account's authorized_keys. Releasing a host does NOT undo any of that:
+    # terminate gives the host back to the pool and never runs anything on your machine.
+    enabled: false
+    hosts: []
+
+    # Default private key used to log in to every host below. Omit it to use your SSH agent
+    # (SSH_AUTH_SOCK) — if you can already `ssh` to these boxes, that is usually enough.
+    # identityFile: ~/.ssh/id_ed25519
+
+    # hosts:
+    #   - name: workshop          # what you will call it in the UI; also picks the host
+    #     host: 10.0.0.9          # hostname or IP
+    #     user: root              # the ADMIN login Rocky Surf claims with (default: root).
+    #                             # Needs root or passwordless sudo. This is NOT the account
+    #                             # Rocky Surf later connects as — that one is `rocky`, and it
+    #                             # is created for you.
+    #     port: 22                # SSH port (default: 22)
+    #     fingerprint: "SHA256:…" # optional; omit to trust the key on first connect. Supplying
+    #                             # it (`ssh-keyscan` + `ssh-keygen -lf`) means even the first
+    #                             # connection is verified.
+    #     identityFile: ~/.ssh/workshop_ed25519   # optional; overrides the default above
+
+limits:
+  # Guardrails. These are enforced server-side, which is what makes it safe to let an agent
+  # create its own boxes through the MCP server.
+
+  # Most servers that may exist at once.
+  maxServers: 5
+
+  # Stop creating servers once the running estimate passes this. Omit for no cap.
+  # Currency is an ISO 4217 code — providers do not all quote in USD.
+  # spendCap:
+  #   amount: 50
+  #   currency: USD
+
+  # Most servers that may be created per hour. Blunts terminate-and-recreate loops.
+  createRatePerHour: 4

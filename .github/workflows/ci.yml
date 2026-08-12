@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  # Pinned by version AND by checksum. A supply-chain compromise of a release asset is exactly
+  # the class of problem a secret scanner is supposed to protect against, so the scanner itself
+  # is not fetched on trust. Update both together; the checksums file for a release is at
+  # https://github.com/gitleaks/gitleaks/releases/download/vX.Y.Z/gitleaks_X.Y.Z_checksums.txt
+  GITLEAKS_VERSION: '8.30.1'
+  GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+
+jobs:
+  # The three structural checks, in one job because they are three seconds each and a
+  # contributor wants one red X, not three. Each guards a boundary that nothing else can see:
+  #
+  #   check-core-deps    core imports @rockysurf/provider-sdk and nothing else in the workspace
+  #   check-iam-policy   deploy/aws/iam-role.yaml and docs/providers/aws.md have not drifted
+  #   check-npx-closure  the AWS SDK has not arrived in core's production dependency closure
+  lint:
+    name: Lint (structure)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      # The closure check reads the RESOLVED dependency tree (`pnpm list --prod`), not the
+      # manifests, so it needs an install. It does not need a build.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+
+      # The orphan audit's credential seam (rockysurf-ufwn). It belongs in this job because it is
+      # three seconds and no build: it resolves fixtures, reads the nightly workflow's step order,
+      # and spawns the lifecycle twice to watch it refuse. The property it defends — the audit
+      # reads with STRONGER credentials than the run under test — otherwise has no check until a
+      # real nightly, and its failure mode is a green run that saw nothing.
+      - name: Audit-credential seam self-test
+        run: node scripts/e2e/audit-credentials-selftest.mjs
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # DO NOT REMOVE (rockysurf-7mdh). Workspace packages resolve each other through dist/,
+      # which is gitignored — without a build, typecheck fails on TS2307 for every internal
+      # import. This is the fresh-clone property no developer machine ever witnesses, because
+      # every developer machine has a dist/ left over from the last build.
+      - run: pnpm -r build
+      - run: pnpm -r typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Same fresh-clone requirement as typecheck, and worse here: without dist/ the suites do
+      # not merely fail, they do not LOAD. `Test Files 3 failed (3) / Tests no tests` reads like
+      # a package that has no tests yet (rockysurf-7mdh).
+      - run: pnpm -r build
+      - run: pnpm -r test
+
+  # Secret scanning. The repository is public and its history is being restarted because the old
+  # one was saturated with account ids and live identifiers — this job is what keeps that from
+  # happening again. The rules are in .gitleaks.toml; read its header before changing anything.
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the scan walks history, not just the diff
+      # No pnpm install anywhere in this job: the self-test takes no dependencies, which is why
+      # it can run before anything else has been resolved or built.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # A pinned binary rather than gitleaks/gitleaks-action: the action requires a
+      # GITLEAKS_LICENSE for repositories owned by an organization, which this one is, and a
+      # scan that silently stops running when a licence lapses is worse than no scan. gitleaks
+      # itself is MIT and is one static binary.
+      - name: Install gitleaks ${{ env.GITLEAKS_VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o /tmp/gitleaks.tar.gz "$url"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          # Into the runner's own bin directory rather than /usr/local/bin: no sudo, and no
+          # assumption about who owns a system path on whichever image this lands on.
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/gitleaks.tar.gz -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/gitleaks" version
+
+      # BEFORE the scan, deliberately. A scan whose rules have quietly stopped matching passes,
+      # and a passing scan is indistinguishable from a clean tree. This proves each rule still
+      # fires on a fixture of the values it was written for, that none of them fires on the
+      # near-misses that exist in the live tree, and that the allowlist has not outlived the
+      # files it excuses.
+      - name: Self-test the rules
+        run: node scripts/gitleaks-selftest.mjs
+
+      # `git`, not `dir`: it covers every file's content as of every commit, which is both the
+      # working tree and the history in one pass, and it takes under a second on this repository.
+      - name: Scan
+        run: gitleaks git . --config .gitleaks.toml --no-banner --redact --report-format sarif --report-path gitleaks.sarif
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+
+  # What a published install UNPACKS, as opposed to what it downloads (which is the closure
+  # check in the lint job). Packs every workspace package exactly as `pnpm publish -r` would,
+  # then installs the packed CLI into an empty directory from those tarballs alone — no registry
+  # — and runs its binary. ~30s. Deliberately NOT part of `pnpm run lint`, which must stay fast.
+  #
+  # This is the check that would have caught rockysurf-3hz9: four of the CLI's five workspace
+  # dependencies were `private: true`, so the published tarball named versions that did not
+  # exist. Nothing that inspects manifests can see that; only an install can.
+  tarballs:
+    name: Release tarballs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+      - run: node scripts/verify-tarballs.mjs
+
+  # The BYO provider against a REAL OpenSSH server, in a container (rockysurf-ftl9.10). 70
+  # checks, well under two minutes, and — uniquely among this project's real-infrastructure
+  # runs — no cloud credentials, no secrets and no spend, which is what makes it the one that
+  # can gate a pull request instead of waiting for the nightly.
+  #
+  # It also exercises the push bootstrap's NOHUP launcher fallback, because a container has no
+  # /run/systemd/system. The nightly's cloud runs never reach that path: they both boot systemd.
+  # The two are complementary, not redundant.
+  #
+  # It needs 127.0.0.1:22 free, because core dials port 22 unconditionally in push mode; the
+  # script preflights that and fails with a message rather than mysteriously. GitHub-hosted
+  # ubuntu runners do not serve SSH, so this holds — on a self-hosted runner it would not.
+  byo-host:
+    name: BYO lifecycle (real sshd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # It drives the built binary, not the sources: the shipped article is the subject.
+      - run: pnpm -r build
+      - run: node scripts/e2e/byo-host.mjs

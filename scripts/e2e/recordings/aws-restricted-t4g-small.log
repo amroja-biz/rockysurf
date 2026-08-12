@@ -1,0 +1,63 @@
+[   0.2s] sshAllowedCidr resolved at run time and written to config: 73.69.44.87/32
+[   0.2s] === AWS milestone exit run — production stack — t4g.small (arm64) ===
+[   0.2s] binary /Users/johndamask/code/1-open-source-rocky-surf-v0-1/packages/rockysurf/dist/bin.js
+[   0.2s] config /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-raCDgf/rockysurf.config.yaml (dataDir /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-raCDgf/data)
+[   1.1s]   PASS  rockysurf booted from a real config file
+[   1.1s]   PASS  composition root registered the real aws provider — Amazon EC2
+[   1.1s]   PASS  t4g.small is offered — 14 offerings
+[   1.1s]   PASS  t4g.small is arm64 — arm64
+[   1.1s]   PASS  a pack is available to install — ai-coding-agents
+[   3.1s]   PASS  POST /api/v1/servers created a server — 201 
+[   3.1s] server srv-f69c9b50f607
+[   5.5s]   status=provisioning step=requested ip=52.201.243.1
+[  26.0s]   status=provisioning step=installing_tools ip=52.201.243.1
+[ 184.7s]   status=running step=ready ip=52.201.243.1
+[ 184.7s]   PASS  server reached running — status=running
+[ 184.7s]   PASS  push bootstrap reported ready — step=ready
+[ 184.7s]   PASS  server has a public address — 52.201.243.1
+[ 184.7s]   PASS  private key downloadable from the API — 200
+[ 186.0s]   PASS  claude --version over SSH — 2.1.228 (Claude Code)
+[ 186.0s]   PASS  box architecture is arm64 — arm64
+[ 186.7s]   PASS  stop accepted, status is provider-confirmed — status=running
+[ 238.3s]   PASS  instance actually reached stopped before start was attempted
+[ 239.4s]   PASS  start accepted — status=stopped
+[ 244.7s]   PASS  server came back up after start
+[ 244.9s]   address after restart: 23.20.117.138 (previous 52.201.243.1)
+[ 244.9s] terminating
+[ 245.4s]   PASS  terminate accepted — 200
+[ 245.4s] zero-orphan audit (reconciler semantics)
+@aws-sdk/credential-provider-node - defaultProvider::fromEnv WARNING:
+    Multiple credential sources detected: 
+    Both AWS_PROFILE and the pair AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY static credentials are set.
+    This SDK will proceed with the AWS_PROFILE value.
+    
+    However, a future version may change this behavior to prefer the ENV static credentials.
+    Please ensure that your environment only sets either the AWS_PROFILE or the
+    AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY pair.
+
+[ 247.4s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 253.5s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 259.6s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 265.9s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 271.9s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 278.3s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 284.4s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 290.5s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 296.6s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 302.6s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 308.8s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 314.7s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 320.8s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=in-use
+[ 327.2s]   still present: i-067669a9d10f7dbff, vol-0171c9b248d2515db=available
+[ 333.2s]   PASS  no server-owned instances remain
+[ 333.2s]   PASS  every managed resource carries a valid ownership
+[ 333.2s]   PASS  the shared SSH security group survives, as designed — security-group/sg-0df7502d1dc1847b2
+[ 333.2s]   PASS  no EBS volumes survived termination
+[ 333.2s] --- server log tail ---
+[ 333.2s]     Rocky Surf is running at  http://127.0.0.1:3369
+[ 333.2s]   
+[ 333.2s]     data      /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-raCDgf/data
+[ 333.2s]     auth      local
+[ 333.2s]   
+[ 333.2s]     Press Ctrl-C to stop.
+[ 333.3s] RESULT: PASS — aws production lifecycle, zero orphans

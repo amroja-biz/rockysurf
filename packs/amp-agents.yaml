@@ -1,0 +1,47 @@
+# Amp — Sourcegraph's coding agent, on the shared base toolchain.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+version: 1
+
+pack:
+  packId: amp-agents
+  name: Amp
+  tools:
+    - build-essential
+    - curl
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - amp
+  displayOrder: 2
+  enabled: true
+  requiresRepos: true
+  requiresRdp: false
+
+tools:
+  - toolId: amp
+    name: Amp
+    description: Sourcegraph's AI coding agent
+    category: agent
+    url: https://sourcegraph.com/amp
+    installOrder: 40
+    # A global npm install writes into /usr/lib/node_modules, which is root's. The legacy
+    # definition claimed `rocky` and called `sudo` — honest privilege instead.
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # UNPINNED (deliberate): an agent CLI pinned to a stale version is worse for the user
+      # than one that tracks its own releases. npm install -g is convergent.
+      npm install -g --no-fund --no-audit @sourcegraph/amp
+      amp --version >/dev/null

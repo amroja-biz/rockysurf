@@ -1,0 +1,44 @@
+# Codex CLI — OpenAI's coding agent, on the shared base toolchain.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+version: 1
+
+pack:
+  packId: codex-cli
+  name: Codex CLI
+  tools:
+    - build-essential
+    - curl
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - codex
+  displayOrder: 3
+  enabled: true
+  requiresRepos: true
+  requiresRdp: false
+
+tools:
+  - toolId: codex
+    name: Codex
+    description: OpenAI's CLI coding agent
+    category: agent
+    url: https://github.com/openai/codex
+    installOrder: 40
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # UNPINNED (deliberate): tracks its own releases, as an agent CLI should.
+      npm install -g --no-fund --no-audit @openai/codex
+      codex --version >/dev/null

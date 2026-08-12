@@ -1,0 +1,60 @@
+name: Feature request
+description: Suggest something Rocky Surf should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth checking first: the **Non-goals** section of the
+        [README](../blob/main/README.md) and the
+        [ADRs](../blob/main/docs/adr/llms.txt). Several obvious-looking features are absent on
+        purpose, and the ADR usually says why.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: >
+        Describe the situation you are in, not the feature. The best requests make the
+        maintainers recognise a problem they have had.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >
+        Workarounds you are using today, and why they are not enough. This is often the part
+        that decides whether something gets built.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part?
+      options:
+        - Control plane / web UI
+        - CLI
+        - MCP server (agent-facing tools)
+        - A provider (AWS, Hetzner, BYO)
+        - A new provider
+        - Packs
+        - Packaging, self-hosting or docs
+        - Something else
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Would you be up for building it?
+      description: Entirely optional. Not a condition of the request being considered.
+      options:
+        - label: I would be willing to open a pull request for this.

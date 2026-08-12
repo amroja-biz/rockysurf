@@ -1,0 +1,168 @@
+# OpenClaw — a graphical box reached over RDP rather than a headless one.
+#
+# This is the pack that used to need four hardcoded `packId === 'open-claw'` checks in the
+# UI. It needs none now: `requiresRdp`, `requiresRepos` and `desktop` say what it is, and the
+# application reads those fields instead of recognising the name.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml.
+version: 1
+
+pack:
+  packId: open-claw
+  name: OpenClaw
+  tools:
+    - build-essential
+    - curl
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - desktop-environment
+    - open-claw
+    - open-claw-onboard
+  displayOrder: 5
+  enabled: true
+  # No repository selection: this pack is a desktop, not a checkout.
+  requiresRepos: false
+  # The user is asked for a remote-desktop password at create time.
+  requiresRdp: true
+  desktop: xfce
+
+tools:
+  - toolId: desktop-environment
+    name: Desktop Environment
+    description: XFCE desktop with XRDP remote access and Firefox
+    category: base
+    url: https://xfce.org
+    installOrder: 35
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y xfce4 xfce4-goodies xrdp
+
+      # Mozilla's apt repository. Adding it is convergent; the `apt-get update` it requires
+      # runs only when the source list actually changed, so a re-run costs nothing.
+      install -d -m 0755 /etc/apt/keyrings
+      if [ ! -f /etc/apt/keyrings/packages.mozilla.org.asc ]; then
+        curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg -o /etc/apt/keyrings/packages.mozilla.org.asc
+      fi
+      list=/etc/apt/sources.list.d/mozilla.list
+      want='deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main'
+      if [ "$(cat "$list" 2>/dev/null)" != "$want" ]; then
+        echo "$want" > "$list"
+        printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' > /etc/apt/preferences.d/mozilla
+        apt-get update -qq
+      fi
+      apt-get install -y firefox
+
+      # Session wiring. Every write below replaces a whole file, so it converges — but we
+      # track whether anything actually changed, because restarting xrdp unconditionally
+      # would drop every live desktop session on a re-run. That is precisely the kind of
+      # visible side effect the second CI run exists to catch.
+      changed=0
+      for f in /home/rocky/.xsession /etc/skel/.xsession; do
+        if [ "$(cat "$f" 2>/dev/null)" != 'xfce4-session' ]; then
+          echo xfce4-session > "$f"
+          changed=1
+        fi
+      done
+      chown rocky:rocky /home/rocky/.xsession
+
+      want_wm='#!/bin/sh
+      xfce4-session'
+      if [ "$(cat /etc/xrdp/startwm.sh 2>/dev/null)" != "$want_wm" ]; then
+        printf '%s\n' "$want_wm" > /etc/xrdp/startwm.sh
+        chmod +x /etc/xrdp/startwm.sh
+        changed=1
+      fi
+
+      install -d -o rocky -g rocky /home/rocky/Desktop
+      if [ -f /usr/share/applications/firefox.desktop ] && [ ! -f /home/rocky/Desktop/firefox.desktop ]; then
+        install -m 0755 -o rocky -g rocky /usr/share/applications/firefox.desktop /home/rocky/Desktop/firefox.desktop
+      fi
+
+      # Guarded on systemd actually running: the CI smoke test container has no init, and an
+      # unguarded systemctl would fail the step there while working fine on a real box.
+      if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+        systemctl enable xrdp
+        [ "$changed" = 0 ] || systemctl restart xrdp
+      fi
+
+  - toolId: open-claw
+    name: OpenClaw
+    description: Personal AI assistant with multi-channel messaging support
+    category: agent
+    url: https://openclaw.ai
+    installOrder: 50
+    # Global npm install — root's job. The legacy definition said `rocky` and used sudo.
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # UNPINNED (deliberate): tracks its own releases.
+      npm install -g --no-fund --no-audit openclaw
+      openclaw --version >/dev/null
+
+  # The user-facing half of OpenClaw, split out because `setupScript` runs as the tool's
+  # declared user and the onboarding daemon belongs to `rocky`, not to root.
+  #
+  # The legacy version of this step also fetched a wallpaper from a private S3 bucket with the
+  # AWS CLI and pinned Firefox's homepage to a vendor page. Both are gone: a self-hosted box
+  # has no AWS credentials, no AWS CLI, and no reason to carry someone's branding.
+  - toolId: open-claw-onboard
+    name: OpenClaw onboarding
+    description: Per-user OpenClaw daemon and desktop shortcut
+    category: base
+    url: https://docs.openclaw.ai/start/getting-started
+    installOrder: 55
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      mkdir -p "$HOME/Desktop"
+      # Whole-file write: converges, and cannot accumulate duplicate lines on a re-run. It says
+      # what the install could not do for the user, because the two things it leaves undone are
+      # both things only they can do from a desktop session.
+      printf '%s\n' \
+        'OpenClaw — getting started: https://docs.openclaw.ai/start/getting-started' \
+        '' \
+        'This box was onboarded without an AI provider: it holds no credentials of yours.' \
+        'Open a terminal here and run  openclaw onboard  to connect one,' \
+        'then  openclaw gateway run  to start the assistant.' \
+        > "$HOME/Desktop/OpenClaw-Getting-Started.txt"
+
+      stamp="$HOME/.rockysurf/openclaw-onboarded"
+      if [ ! -f "$stamp" ]; then
+        # `openclaw onboard` is a guided wizard. With no TTY it prints its security briefing,
+        # stops at a "Continue?" prompt, reads EOF and exits non-zero — rule 3, and it took the
+        # rest of the plan with it. --non-interactive is the tool's own answer, and it requires
+        # --accept-risk. --auth-choice skip is the only value that can work at bootstrap: no
+        # provider credential reaches this box, so the user connects one themselves.
+        #
+        # The gateway is a systemd USER service. The agent's privilege drop gives this step no
+        # login session, so there is no user bus to install it into, and the smoke container has
+        # no systemd at all — the same reason the xrdp step above guards its systemctl calls.
+        # Where a user instance is genuinely reachable, install it; otherwise finish onboarding
+        # and skip the health probe, which by design only passes against a running gateway.
+        if [ -d /run/systemd/system ] && [ -S "/run/user/$(id -u)/bus" ]; then
+          openclaw onboard --non-interactive --accept-risk --auth-choice skip --install-daemon
+        else
+          openclaw onboard --non-interactive --accept-risk --auth-choice skip \
+            --no-install-daemon --skip-health
+        fi
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi

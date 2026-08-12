@@ -1,0 +1,85 @@
+name: Bug report
+description: Something behaves differently from how it is documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security problems here.** Use private vulnerability reporting instead
+        (Security → Report a vulnerability). See [SECURITY.md](../blob/main/SECURITY.md).
+
+        Please redact tokens, key material, account ids and your `sshAllowedCidr` from anything
+        you paste.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest sequence that shows it. Exact commands are better than a summary.
+      placeholder: |
+        1. docker compose up --build
+        2. …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - Docker Compose
+        - npx rockysurf
+        - From a checkout (pnpm)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Which provider?
+      options:
+        - Hetzner
+        - AWS
+        - BYO (your own hosts)
+        - None / the in-memory provider
+        - Not provider-specific
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`rockysurf --version`, or the commit you are on."
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "`node --version`. Rocky Surf needs 24 or newer. Skip this for Docker Compose."
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: >
+        The parts of `rockysurf.config.yaml` that matter, with credentials and CIDRs removed.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Redact first — the boot log names paths, and errors can quote configuration.
+      render: shell

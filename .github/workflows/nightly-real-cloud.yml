@@ -1,0 +1,315 @@
+name: Nightly real-cloud lifecycle
+
+# THIS WORKFLOW SPENDS MONEY. Every run creates real servers on real clouds and destroys them
+# again. It is deliberately NOT on pull_request: a fork must never be able to bill this account
+# by opening a PR, and a per-commit real-cloud test would be both slow and expensive.
+#
+# What it protects is the thing unit tests structurally cannot see — that the SHIPPED article
+# works. The milestone exit runs (rockysurf-55fx.9, rockysurf-gyp1.4) found four separate
+# integration gaps between modules whose own tests were green, plus two pack steps broken by
+# upstream installers moving their binaries. Nothing short of a real box catches that class.
+#
+# ─── WHAT THE REPOSITORY OWNER MUST SET before this does anything (rockysurf-ftl9.5) ─────────
+#
+#   secrets.HETZNER_TOKEN            a Hetzner Cloud API token with read/write on one project.
+#   secrets.AWS_NIGHTLY_ROLE_ARN     the role GitHub's OIDC provider may assume in the CI
+#                                    account. Needs sts:AssumeRole on the provider role below,
+#                                    and nothing else.
+#   vars.AWS_PROVIDER_ROLE_ARN       (rockysurf-evo1) the role deployed from
+#                                    deploy/aws/iam-role.yaml — i.e. the policy this project
+#                                    PUBLISHES to self-hosters. See "the published policy" below.
+#   vars.AWS_PROVIDER_ROLE_NAME      optional; defaults to the template's `rocky-surf-provider`.
+#
+# Until they exist, each job skips with a notice instead of failing red every morning: a
+# perpetually red scheduled workflow trains everyone to ignore it, and the one morning it is red
+# for a real reason nobody looks.
+#
+# ─── THE PUBLISHED POLICY (rockysurf-evo1) ───────────────────────────────────────────────────
+#
+# rockysurf-gyp1.5 proved deploy/aws/iam-role.yaml sufficient once, by hand, on 2026-08-12.
+# Nothing kept it true. scripts/check-iam-policy.mjs stops the template and docs/providers/aws.md
+# drifting from each other, but neither is checked against the PROVIDER: add an API call to
+# packages/provider-aws and the published policy silently becomes wrong, every self-hoster's next
+# launch fails with UnauthorizedOperation, and CI stays green — because the nightly ran under a
+# role whose permissions have nothing to do with what is published.
+#
+# The fix costs nothing at runtime: make the nightly's identity BE the published policy. The
+# OIDC entry role assumes the provider role deployed from the template, and everything after
+# that point runs under exactly the permissions a self-hoster gets. A provider call the document
+# does not cover then fails the nightly the first time it runs.
+#
+# To wire it in the CI account — two stacks, in this order:
+#
+#   aws cloudformation deploy --template-file deploy/aws/nightly-ci.yaml \
+#     --stack-name rocky-surf-nightly-ci --capabilities CAPABILITY_NAMED_IAM
+#
+#   aws cloudformation deploy --template-file deploy/aws/iam-role.yaml \
+#     --stack-name rocky-surf-nightly-provider --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides TrustedPrincipalArn=<the first stack's NightlyRoleArn> ProviderRegion=us-east-1
+#
+# then set secrets.AWS_NIGHTLY_ROLE_ARN to the first stack's NightlyRoleArn output and
+# vars.AWS_PROVIDER_ROLE_ARN to the second's RoleArn. The provider template is deployed UNMODIFIED
+# and keeps trusting an IAM principal rather than a federated one, which is the whole point: what
+# runs here is the shipped artifact, not a CI-flavoured variant of it. deploy/aws/nightly-ci.yaml
+# is the CI-side half that is NOT shipped, and it exists so a fork can reproduce this without
+# reverse-engineering it from these comments.
+#
+# ONE CONSEQUENCE OF THAT SPLIT: the entry role can do essentially nothing on its own — assume the
+# provider role, and read volumes for the orphan audit. So while the preflight below treats
+# vars.AWS_PROVIDER_ROLE_ARN as optional, an entry role deployed from nightly-ci.yaml makes it
+# mandatory in practice: without the second hop the lifecycle has no permission to launch
+# anything. Set both, or neither.
+
+on:
+  schedule:
+    # 07:00 UTC — late enough that a night's merges are in, early enough that a failure is
+    # waiting when someone starts work.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  # Never two real-cloud runs at once: they would race on the shared security group and on any
+  # tag-based sweep, and a sweep from one run would tear down the other's server mid-install.
+  group: real-cloud
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+  AWS_REGION: us-east-1
+
+jobs:
+  # `secrets` is not available in a job-level `if:`, so the presence check has to be a job whose
+  # outputs the others depend on. It never prints a secret — only whether one is non-empty.
+  preflight:
+    name: Credentials preflight
+    if: github.repository == 'amroja-biz/rockysurf'
+    runs-on: ubuntu-latest
+    outputs:
+      hetzner: ${{ steps.probe.outputs.hetzner }}
+      aws: ${{ steps.probe.outputs.aws }}
+    steps:
+      - id: probe
+        env:
+          HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
+          AWS_NIGHTLY_ROLE_ARN: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
+          AWS_PROVIDER_ROLE_ARN: ${{ vars.AWS_PROVIDER_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          note() { echo "$1" >> "$GITHUB_STEP_SUMMARY"; echo "::notice::$1"; }
+
+          if [ -n "${HETZNER_TOKEN:-}" ]; then
+            echo 'hetzner=yes' >> "$GITHUB_OUTPUT"
+          else
+            echo 'hetzner=no' >> "$GITHUB_OUTPUT"
+            note 'SKIPPED Hetzner: repository secret HETZNER_TOKEN is not set. Add a Hetzner Cloud API token with read/write on one project.'
+          fi
+
+          if [ -n "${AWS_NIGHTLY_ROLE_ARN:-}" ]; then
+            echo 'aws=yes' >> "$GITHUB_OUTPUT"
+          else
+            echo 'aws=no' >> "$GITHUB_OUTPUT"
+            note 'SKIPPED AWS: repository secret AWS_NIGHTLY_ROLE_ARN is not set. Create a role trusting the GitHub OIDC provider for this repository.'
+          fi
+
+          # Not a skip condition — the AWS run is still worth having without it. But it is worth
+          # saying out loud every single morning, because the failure it warns about is silent
+          # by construction: the run passes, and the policy this project publishes is unproven.
+          if [ -z "${AWS_PROVIDER_ROLE_ARN:-}" ]; then
+            note 'AWS ran WITHOUT the published policy (rockysurf-evo1): repository variable AWS_PROVIDER_ROLE_ARN is not set, so deploy/aws/iam-role.yaml is not being continuously verified. See this workflow header for the one command that fixes it.'
+          fi
+
+  hetzner:
+    name: Hetzner (cpx12, amd64)
+    needs: preflight
+    if: needs.preflight.outputs.hetzner == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The script drives the built binary, not the sources: it is the shipped article under
+      # test, so it has to be built first.
+      - run: pnpm -r build
+
+      - name: Provide the Hetzner token where the script looks for it
+        env:
+          HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/rockysurf
+          # 0600, and written with printf rather than echoed into the log.
+          umask 077
+          printf 'HETZNER_TOKEN=%s\n' "$HETZNER_TOKEN" > ~/.config/rockysurf/spike.env
+
+      - name: Lifecycle
+        run: node scripts/e2e/lifecycle.mjs hetzner cpx12 | tee hetzner.log
+
+      # MANDATORY SWEEP. The script terminates in a `finally`, so this is the second line of
+      # defence, not the first: it catches the cases a `finally` cannot — the runner being
+      # cancelled, the job hitting its timeout, the process being killed outright. It runs on
+      # every path, including success, where it is a no-op that proves the run left nothing.
+      - name: Terminate sweep
+        if: always()
+        env:
+          HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
+        run: |
+          set -euo pipefail
+          left=$(curl -sS -H "Authorization: Bearer $HETZNER_TOKEN" \
+            'https://api.hetzner.cloud/v1/servers?label_selector=managed-by%3Drockysurf' | jq -r '.servers[].id')
+          for id in $left; do
+            echo "::warning::sweeping leaked Hetzner server $id"
+            curl -sS -X DELETE -H "Authorization: Bearer $HETZNER_TOKEN" "https://api.hetzner.cloud/v1/servers/$id"
+          done
+          [ -z "$left" ] || { echo '::error::servers were left behind; the sweep cleaned up'; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hetzner-lifecycle-log
+          path: hetzner.log
+
+  aws:
+    name: AWS (${{ matrix.offering }}, ${{ matrix.arch }})
+    needs: preflight
+    if: needs.preflight.outputs.aws == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Sequential, not parallel: both runs share one security group, and the arm64 result is
+      # more interesting than the amd64 one — running them in order means a Graviton failure is
+      # not buried under a second job's noise.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          # BOTH architectures, because arch-correct AMI selection is only proven by running
+          # both. The same code path, with nothing different but the offering id.
+          - offering: t4g.small
+            arch: arm64
+          - offering: t3.small
+            arch: amd64
+    permissions:
+      # OIDC: the workflow assumes a role rather than holding long-lived access keys. There is
+      # no AWS secret in this repository, which is the point.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
+
+      - name: Assume the OIDC entry role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # THE ORPHAN AUDIT CANNOT RUN UNDER THE POLICY BEING TESTED (rockysurf-gyp1.5, and the
+      # reason deploy/aws/nightly-ci.yaml grants ec2:DescribeVolumes to the entry role). The
+      # volume half of lifecycle.mjs's audit calls ec2:DescribeVolumes, which the provider never
+      # makes and the published policy therefore does not grant — deliberately, because an orphan
+      # the credentials under test cannot SEE would be an orphan the audit reports as clean. The
+      # entry role is the operator identity here, so its session is captured HERE, in the one
+      # window where it exists: after the web-identity exchange and before the chaining hop
+      # overwrites AWS_* with the identity under test. Without this the audit throws
+      # UnauthorizedOperation and the run fails after a clean lifecycle, blaming the wrong thing.
+      #
+      # ENVIRONMENT RATHER THAN AN ~/.aws PROFILE (rockysurf-ufwn): CI has no ~/.aws to name, and a
+      # profile written from these same values is a second copy of the credentials on the runner's
+      # disk for no gain. The variables go to $GITHUB_ENV so the Lifecycle step inherits them; the
+      # values are the action's own outputs, which it has already registered as masked, and nothing
+      # here echoes one to the log. STEP ORDER IS THE WHOLE MECHANISM — moved below the next step,
+      # this captures the restricted role instead, and lifecycle.mjs's preflight fails the run for
+      # exactly that reason rather than auditing with the wrong identity.
+      - name: Capture the entry role's session for the orphan audit
+        if: vars.AWS_PROVIDER_ROLE_ARN != ''
+        run: |
+          set -euo pipefail
+          : "${AWS_ACCESS_KEY_ID:?the entry-role step exported no credentials}"
+          {
+            echo "ROCKYSURF_E2E_AWS_AUDIT_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}"
+            echo "ROCKYSURF_E2E_AWS_AUDIT_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+            echo "ROCKYSURF_E2E_AWS_AUDIT_SESSION_TOKEN=${AWS_SESSION_TOKEN}"
+          } >> "$GITHUB_ENV"
+
+      # rockysurf-evo1. From here on the run holds EXACTLY the permissions
+      # deploy/aws/iam-role.yaml grants — the ones this project tells self-hosters are enough.
+      # `role-chaining` is what makes the second hop use the credentials from the first rather
+      # than starting another web-identity exchange.
+      - name: Assume the published provider role
+        if: vars.AWS_PROVIDER_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PROVIDER_ROLE_ARN }}
+          role-chaining: true
+          aws-region: ${{ env.AWS_REGION }}
+
+      # sts:GetCallerIdentity needs no permission at all, which is what makes it usable here:
+      # the published policy grants nothing on IAM, so the role cannot read its own policy back.
+      # What this CAN prove is that the identity actually in force is the role deployed from the
+      # template, so a wide administrator role cannot be quietly substituted and leave the
+      # nightly passing while proving nothing about what is published.
+      - name: Confirm the identity is the published role
+        if: vars.AWS_PROVIDER_ROLE_ARN != ''
+        env:
+          EXPECTED: ${{ vars.AWS_PROVIDER_ROLE_NAME || 'rocky-surf-provider' }}
+        run: |
+          set -euo pipefail
+          arn=$(aws sts get-caller-identity --query Arn --output text)
+          echo "running as: $arn"
+          case "$arn" in
+            *":assumed-role/${EXPECTED}/"*) echo "identity is the published provider role" ;;
+            *)
+              echo "::error::the nightly is running as '$arn', not the role deployed from deploy/aws/iam-role.yaml."
+              echo "::error::Point vars.AWS_PROVIDER_ROLE_ARN at that stack's RoleArn output, or set vars.AWS_PROVIDER_ROLE_NAME if you renamed it."
+              exit 1
+              ;;
+          esac
+
+      - name: Lifecycle
+        env:
+          # Empty forces the default credential chain, which is where configure-aws-credentials
+          # just put the identity under test — the chained provider role.
+          ROCKYSURF_E2E_AWS_PROFILE: ''
+          # The audit reads as the operator, from the session the step above captured. Demanded
+          # rather than hoped for, and only where it is true: without the chaining hop the run IS
+          # the entry role, which may read volumes itself, and there is no second principal to
+          # demand. With the hop, lifecycle.mjs proves the two are different sessions before it
+          # creates anything — a run that would audit itself is a run that cannot fail (ufwn).
+          ROCKYSURF_E2E_AWS_AUDIT_REQUIRED: ${{ vars.AWS_PROVIDER_ROLE_ARN != '' && '1' || '' }}
+        run: node scripts/e2e/lifecycle.mjs aws ${{ matrix.offering }} | tee aws-${{ matrix.arch }}.log
+
+      # Same second line of defence as Hetzner. Instances first, because they are what bills.
+      # Both calls are inside the published policy (DescribeInstances everywhere,
+      # TerminateInstances on managed-by=rockysurf), so the sweep still works under evo1's
+      # chained identity — if it ever stops working, that is a finding about the policy.
+      - name: Terminate sweep
+        if: always()
+        run: |
+          set -euo pipefail
+          left=$(aws ec2 describe-instances \
+            --filters 'Name=tag:managed-by,Values=rockysurf' \
+                      'Name=instance-state-name,Values=pending,running,stopping,stopped' \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          if [ -n "$left" ] && [ "$left" != 'None' ]; then
+            echo "::warning::sweeping leaked instances: $left"
+            aws ec2 terminate-instances --instance-ids $left >/dev/null
+            echo '::error::instances were left behind; the sweep cleaned up'
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aws-lifecycle-log-${{ matrix.arch }}
+          path: aws-${{ matrix.arch }}.log

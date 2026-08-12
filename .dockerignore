@@ -1,0 +1,42 @@
+# What must never reach the build context (rockysurf-ftl9.4).
+#
+# Two jobs. The obvious one is size — `node_modules` and the legacy AWS trees are most of the
+# checkout and none of them are wanted in the image. The one worth stating is SECRETS: a
+# developer's `.env`, `rockysurf.config.yaml` or `~/.rockysurf` copy sitting in the working
+# tree would otherwise be baked into a layer and shipped to whoever pulls the image. The
+# container gets its config from the entrypoint instead (see docker/entrypoint.sh).
+
+# Installed and generated
+**/node_modules
+**/dist
+packages/core/public
+.pnpm-store
+
+# Local secrets and state — never in an image
+.env
+.env.*
+!.env.example
+rockysurf.config.yaml
+*.db
+*.db-wal
+*.db-shm
+**/secret.key
+
+# The legacy AWS-serverless implementation, kept as a port source only
+backend
+frontend
+infrastructure
+
+# The throwaway spike: its own workspace, its own lockfile, not a member
+spike
+
+# Repo tooling and history that the runtime has no use for
+.git
+.github
+.beads
+.claude
+.codex
+.agents
+.plan
+*.log
+rockysurf-graph.html

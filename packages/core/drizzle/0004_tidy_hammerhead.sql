@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `host_public_key` text;

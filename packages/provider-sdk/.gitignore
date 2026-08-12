@@ -1,0 +1,4 @@
+dist/
+node_modules/
+# `pnpm pack` output — a build artifact, never a committed one.
+*.tgz

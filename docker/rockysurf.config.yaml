@@ -1,0 +1,52 @@
+# The config a container starts with, when the data volume has none (rockysurf-ftl9.4).
+#
+# `docker/entrypoint.sh` copies this file to `/data/rockysurf.config.yaml` on first start and
+# never touches it again — so it is a SEED, not the live file. Edit the copy in the volume:
+#
+#   docker compose exec rockysurf vi /data/rockysurf.config.yaml   # or edit it on the host
+#   docker compose restart
+#
+# Three differences from `rockysurf.config.example.yaml`, all forced by the container:
+#
+#  1. `dataDir: /data` — the mounted volume, so the database, the master key and the packs
+#     survive `docker compose down`. The default `~/.rockysurf` would live inside the
+#     container's writable layer and vanish with it.
+#  2. `host: 0.0.0.0` — the default is loopback, and inside a container that is the
+#     CONTAINER's loopback: the published port would connect to nothing. See below.
+#  3. NO `${VAR}` REFERENCES. A missing variable is a hard startup error that names the
+#     variable (by design — see config/load.ts), which for a first `docker compose up` would
+#     mean a container that exits before anyone has seen the UI. The wizard is the way in
+#     instead: start, sign in, paste a token.
+
+server:
+  port: 3000
+  # All interfaces, on purpose (rockysurf-pii7). This is not the wide-open default it looks
+  # like: the container's network namespace is the boundary, and `docker-compose.yaml`
+  # publishes the port as `127.0.0.1:…`, so the only way in is still the host's loopback.
+  # Reaching it from elsewhere means editing the compose file's `ports:` line — one place,
+  # deliberately. Do NOT "harden" this to 127.0.0.1; that breaks the published port instead.
+  host: 0.0.0.0
+  dataDir: /data
+
+auth:
+  mode: local
+
+providers:
+  # Every provider off, so a fresh container cannot spend money by accident. Turn one on here
+  # after the wizard has stored its credential, then restart — the wizard's "Almost there"
+  # step says the same thing.
+  hetzner:
+    enabled: false
+    location: fsn1
+
+  aws:
+    enabled: false
+    region: us-east-1
+
+  byo:
+    enabled: false
+    hosts: []
+
+limits:
+  maxServers: 5
+  createRatePerHour: 4
