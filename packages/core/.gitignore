@@ -1,0 +1,8 @@
+dist/
+node_modules/
+# The SPA build, copied in by @rockysurf/web's build (scripts/sync-web-bundle.mjs). Generated,
+# never committed. The two siblings are that script's swap scratch, left behind only if it is
+# interrupted mid-copy.
+public/
+public.build/
+public.prev/

@@ -1,0 +1,566 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { execFile, spawnSync } from 'node:child_process'
+import { createServer, type Server as HttpServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { openTestDatabase } from '../db/client.js'
+import { getServer, insertServer, setInstallPlan } from '../db/repositories/servers.js'
+import { upsertUserByGithubId } from '../db/repositories/users.js'
+import type { ToolRow } from '../db/schema.js'
+import { installPlanSchema, parseInstallPlan, serializeInstallPlan } from './plan.js'
+import {
+  GIT_CREDENTIAL_HELPER,
+  NO_MATCHING_TOKEN_PREFIX,
+  repoDirName,
+  resolveInstallPlan,
+  type ResolveInstallPlanInput,
+} from './resolver.js'
+
+/**
+ * Plan rendering, against `docs/bootstrap-contract.md` § Step ordering and its conformance
+ * checklist. The two properties worth more than the rest: the phase order, and determinism —
+ * a snapshotted plan that renders differently the second time makes resume skip the wrong
+ * work, which is the failure the run id and the journal exist to prevent.
+ */
+
+const NOW = '2026-08-12T00:00:00.000Z'
+
+const tool = (over: Partial<ToolRow> & { id: string }): ToolRow => ({
+  name: over.id,
+  description: 'a tool',
+  category: 'base',
+  url: 'https://example.com',
+  installScript: `install ${over.id}\n`,
+  setupScript: null,
+  enabled: true,
+  installOrder: 10,
+  bootstrap: false,
+  runAs: 'root',
+  sourceFile: null,
+  createdAt: NOW,
+  updatedAt: NOW,
+  ...over,
+})
+
+const base = (over: Partial<ResolveInstallPlanInput> = {}): ResolveInstallPlanInput => ({
+  serverId: 'srv-abc123',
+  runId: 'run-1',
+  mode: 'push',
+  pack: { id: 'p', tools: ['claude-code'], requiresRdp: false },
+  tools: [tool({ id: 'claude-code', installOrder: 40, runAs: 'rocky' })],
+  ...over,
+})
+
+const ids = (input: ResolveInstallPlanInput) => resolveInstallPlan(input).steps.map((s) => s.id)
+
+describe('phase ordering', () => {
+  it('renders the six phases in the documented order with namespaced ids', () => {
+    const plan = resolveInstallPlan(
+      base({
+        pack: { id: 'p', tools: ['node', 'claude-code'], requiresRdp: true, desktop: 'xfce' },
+        tools: [
+          tool({ id: 'guaranteed', bootstrap: true, installOrder: 0 }),
+          tool({ id: 'node', installOrder: 20 }),
+          tool({ id: 'claude-code', installOrder: 40, runAs: 'rocky', setupScript: 'setup claude\n' }),
+        ],
+        repositories: ['https://github.com/example/thing.git'],
+      }),
+    )
+
+    expect(plan.steps.map((s) => s.id)).toEqual([
+      'tool:guaranteed', // 1 runtime-guaranteed, even though the pack never listed it
+      'tool:node', // 2 pack tools by installOrder
+      'tool:claude-code',
+      'repo:thing', // 3 clones
+      'tool-setup:claude-code', // 4 setup, after clones so it can read $REPOS
+      'branding', // 5
+      'rdp', // 6 only because requiresRdp
+    ])
+  })
+
+  it('breaks installOrder ties on toolId ascending', () => {
+    // The rule the pack contract and the bootstrap contract agree on: a determinism guarantee
+    // for the renderer, never a dependency mechanism for authors.
+    const tools = ['zebra', 'apple', 'mango'].map((id) => tool({ id, installOrder: 30 }))
+    expect(ids(base({ pack: { id: 'p', tools: ['zebra', 'apple', 'mango'], requiresRdp: false }, tools }))).toEqual([
+      'tool:apple',
+      'tool:mango',
+      'tool:zebra',
+      'branding',
+    ])
+  })
+
+  it('orders by installOrder before toolId', () => {
+    const tools = [tool({ id: 'zzz', installOrder: 10 }), tool({ id: 'aaa', installOrder: 20 })]
+    expect(ids(base({ pack: { id: 'p', tools: ['aaa', 'zzz'], requiresRdp: false }, tools }))).toEqual([
+      'tool:zzz',
+      'tool:aaa',
+      'branding',
+    ])
+  })
+
+  it('skips a disabled tool rather than failing the render', () => {
+    const tools = [tool({ id: 'on' }), tool({ id: 'off', enabled: false })]
+    expect(ids(base({ pack: { id: 'p', tools: ['on', 'off'], requiresRdp: false }, tools }))).toEqual([
+      'tool:on',
+      'branding',
+    ])
+  })
+
+  it('ignores a pack reference to a tool that does not exist', () => {
+    expect(ids(base({ pack: { id: 'p', tools: ['claude-code', 'ghost'], requiresRdp: false } }))).toEqual([
+      'tool:claude-code',
+      'branding',
+    ])
+  })
+
+  it('omits rdp unless the pack asks for it, and branding when told to', () => {
+    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code'])
+    expect(ids(base({ pack: { id: 'p', tools: ['claude-code'], requiresRdp: true }, branding: false }))).toEqual([
+      'tool:claude-code',
+      'rdp',
+    ])
+  })
+
+  it('renders setup scripts in the same order as their install steps', () => {
+    const tools = [
+      tool({ id: 'b', installOrder: 20, setupScript: 'setup b\n' }),
+      tool({ id: 'a', installOrder: 30, setupScript: 'setup a\n' }),
+    ]
+    expect(ids(base({ pack: { id: 'p', tools: ['a', 'b'], requiresRdp: false }, tools, branding: false }))).toEqual([
+      'tool:b',
+      'tool:a',
+      'tool-setup:b',
+      'tool-setup:a',
+    ])
+  })
+})
+
+describe('step content', () => {
+  it('gives setup scripts $REPOS, which is where the contract says it comes from', () => {
+    const plan = resolveInstallPlan(
+      base({
+        tools: [tool({ id: 'claude-code', runAs: 'rocky', setupScript: 'echo "$REPOS"\n' })],
+        repositories: ['https://github.com/example/one.git', 'https://github.com/example/two'],
+      }),
+    )
+    const setup = plan.steps.find((s) => s.id === 'tool-setup:claude-code')!
+    expect(setup.run).toBe("export REPOS='https://github.com/example/one.git,https://github.com/example/two'\necho \"$REPOS\"\n")
+    expect(setup.runAs).toBe('rocky')
+  })
+
+  it('clones idempotently, because an interrupted step re-runs from the top', () => {
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    const clone = plan.steps.find((s) => s.id === 'repo:thing')!
+    expect(clone.run).toContain('if [ -d "$dir/.git" ]; then')
+    // The clone now carries an optional auth array, so match the command rather than a literal.
+    expect(clone.run).toMatch(/git .*clone "\$url" "\$dir"/)
+    expect(clone.runAs).toBe('rocky')
+  })
+
+  it('authenticates a clone with GITHUB_TOKEN when one is present, and anonymously when not', () => {
+    // rockysurf-55fx.14: delivering a token nothing consumes would have left private-repo
+    // cloning just as broken, only with a credential now sitting on the box.
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    const clone = plan.steps.find((s) => s.id === 'repo:thing')!
+
+    expect(clone.run).toContain('if [ -n "${GITHUB_TOKEN:-}" ]')
+    expect(clone.run).toContain('credential.helper=')
+    // The token is read at run time inside the helper — never an argv value, which `ps` would
+    // expose to every unprivileged step this agent runs next.
+    expect(clone.run).not.toMatch(/clone .*\$GITHUB_TOKEN/)
+    // And never written into the checkout's own config, where it would outlive the box.
+    expect(clone.run).not.toMatch(/remote set-url .*GITHUB_TOKEN/)
+  })
+
+  it('wires the helper for a scoped token set even with no instance-wide token (ta7g)', () => {
+    // A self-hoster who configures only `github.tokens` has no GITHUB_TOKEN at all. Guarding
+    // on that variable alone would leave the helper unwired and every private clone anonymous
+    // while `secrets.env` sat on the box full of usable tokens.
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    const clone = plan.steps.find((s) => s.id === 'repo:thing')!
+    expect(clone.run).toContain('[ "${ROCKYSURF_GITHUB_TOKEN_COUNT:-0}" -gt 0 ]')
+  })
+
+  it('sets credential.useHttpPath, without which per-repo selection cannot work at all', () => {
+    // git omits `path=` from the helper's stdin unless this is set, so every request would
+    // look like "something on github.com" and only the fallback could ever be chosen. Asserted
+    // because nothing else in the system would fail if the line were dropped — the clone would
+    // still succeed, using the wrong token.
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    const clone = plan.steps.find((s) => s.id === 'repo:thing')!
+    expect(clone.run).toContain('-c credential.useHttpPath=true')
+  })
+
+  it('embeds the helper with no single quote in it, because it lives inside a quoted word', () => {
+    // The helper is interpolated into `credential.helper='…'` in the generated bash. One `'`
+    // in its body ends that word, and the rest of the program becomes separate arguments to
+    // git — a broken clone at best. Cheap to assert, invisible until it breaks.
+    expect(GIT_CREDENTIAL_HELPER).not.toContain("'")
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    expect(plan.steps.find((s) => s.id === 'repo:thing')!.run).toContain(
+      `credential.helper='${GIT_CREDENTIAL_HELPER}'`,
+    )
+  })
+
+  it('lets REAL git select per repository, running the generated script (ta7g)', () => {
+    // The one test in this file that runs git. Everything above asserts on the TEXT of the
+    // clone step, and text assertions cannot see the two things most likely to break here:
+    // whether git accepts a multi-line `-c credential.helper` value at all, and whether it
+    // hands the helper a `path=` to match on. Dropping `credential.useHttpPath` breaks neither
+    // the clone nor any string assertion — it just silently makes every repository resolve to
+    // the instance-wide token. This fails when that happens.
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    const clone = plan.steps.find((s) => s.id === 'repo:thing')!
+
+    // The real script, up to the point where it would start cloning — its `git_auth` array is
+    // built by the code under test, quoting and all, and then used verbatim.
+    const setup = clone.run.split('\nif [ -d ')[0]!
+    const home = mkdtempSync(join(tmpdir(), 'rockysurf-git-'))
+    const ask = (url: string): string | undefined => {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${setup}\nprintf 'url=%s\\n\\n' "$1" | git "\${git_auth[@]}" credential fill`, 'bash', url],
+        {
+          encoding: 'utf8',
+          env: {
+            PATH: process.env['PATH'] ?? '/usr/bin:/bin',
+            HOME: home,
+            // No developer's own gitconfig, and no osxkeychain: the only credential helper in
+            // play must be the one this file generates.
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_SYSTEM: '/dev/null',
+            GIT_TERMINAL_PROMPT: '0',
+            GITHUB_TOKEN: 'ghp_fallback',
+            ROCKYSURF_GITHUB_TOKEN_COUNT: '2',
+            ROCKYSURF_GITHUB_TOKEN_1: 'ghp_acme',
+            ROCKYSURF_GITHUB_TOKEN_1_SCOPE: 'github.com/acme/*',
+            ROCKYSURF_GITHUB_TOKEN_2: 'ghp_widgets',
+            ROCKYSURF_GITHUB_TOKEN_2_SCOPE: 'github.com/acme/widgets',
+          },
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      return /^password=(.*)$/m.exec(result.stdout)?.[1]
+    }
+
+    expect(ask('https://github.com/acme/widgets.git')).toBe('ghp_widgets')
+    expect(ask('https://github.com/acme/other.git')).toBe('ghp_acme')
+    expect(ask('https://github.com/stranger/thing.git')).toBe('ghp_fallback')
+  })
+
+  it('quotes a repository url that tries to escape the script', () => {
+    const nasty = "https://example.com/x'; rm -rf /; echo '.git"
+    const plan = resolveInstallPlan(base({ repositories: [nasty] }))
+    const clone = plan.steps.find((s) => s.id.startsWith('repo:'))!
+    // Single-quoted with embedded quotes escaped: the payload is data, not another command.
+    expect(clone.run).toContain(`url='https://example.com/x'\\''; rm -rf /; echo '\\''.git'`)
+    expect(clone.run).not.toMatch(/^rm -rf/m)
+  })
+
+  it('never puts the rdp password in argv', () => {
+    const plan = resolveInstallPlan(base({ pack: { id: 'p', tools: [], requiresRdp: true } }))
+    const rdp = plan.steps.find((s) => s.id === 'rdp')!
+    // Everything in argv is readable through `ps` by the unprivileged steps this same agent
+    // runs, so the password goes to chpasswd on stdin and comes from the environment.
+    expect(rdp.run).toContain('| chpasswd')
+    expect(rdp.run).toContain('"$RDP_PASSWORD"')
+    expect(rdp.run).not.toMatch(/chpasswd\s+\S/)
+    expect(rdp.runAs).toBe('root')
+  })
+
+  it('marks branding optional — a plain MOTD is not a failed bootstrap', () => {
+    expect(resolveInstallPlan(base()).steps.find((s) => s.id === 'branding')?.optional).toBe(true)
+  })
+
+  it.each([
+    ['https://github.com/a/b.git', 'b'],
+    ['https://github.com/a/b', 'b'],
+    ['https://github.com/a/b/', 'b'],
+    ['git@github.com:a/b.git', 'b'],
+  ])('derives the clone directory %s → %s', (url, expected) => {
+    expect(repoDirName(url)).toBe(expected)
+  })
+})
+
+describe('the plan document', () => {
+  it('validates against the frozen schema', () => {
+    expect(installPlanSchema.safeParse(resolveInstallPlan(base())).success).toBe(true)
+  })
+
+  it('renders identically for identical inputs', () => {
+    // The conformance requirement: a snapshot that re-renders differently makes resume skip
+    // the wrong work.
+    const input = base({
+      pack: { id: 'p', tools: ['claude-code', 'node'], requiresRdp: true },
+      tools: [tool({ id: 'node', installOrder: 20 }), tool({ id: 'claude-code', installOrder: 40, runAs: 'rocky' })],
+      repositories: ['https://github.com/example/thing.git'],
+    })
+    expect(serializeInstallPlan(resolveInstallPlan(input))).toBe(serializeInstallPlan(resolveInstallPlan(input)))
+  })
+
+  it('round-trips through serialize and parse', () => {
+    const plan = resolveInstallPlan(base())
+    expect(parseInstallPlan(serializeInstallPlan(plan))).toEqual(plan)
+  })
+
+  it('rejects a version other than 1', () => {
+    expect(() => parseInstallPlan({ ...resolveInstallPlan(base()), version: 2 })).toThrow()
+  })
+
+  it('rejects duplicate step ids, which are the journal keys', () => {
+    const plan = resolveInstallPlan(base())
+    const dupe = { ...plan, steps: [...plan.steps, plan.steps[0]!] }
+    expect(installPlanSchema.safeParse(dupe).success).toBe(false)
+  })
+
+  it('requires a callbackUrl in callback mode and allows its absence in push', () => {
+    expect(installPlanSchema.safeParse(resolveInstallPlan(base({ mode: 'callback' }))).success).toBe(false)
+    const withUrl = resolveInstallPlan(base({ mode: 'callback', callbackUrl: 'https://core.example/x' }))
+    expect(installPlanSchema.safeParse(withUrl).success).toBe(true)
+  })
+
+  it('rejects a step id that is not namespaced', () => {
+    const plan = resolveInstallPlan(base())
+    const bad = { ...plan, steps: [{ ...plan.steps[0]!, id: 'claude-code' }] }
+    expect(installPlanSchema.safeParse(bad).success).toBe(false)
+  })
+})
+
+describe('snapshotting onto the server row', () => {
+  it('survives the round trip through the database unchanged', () => {
+    const opened = openTestDatabase()
+    try {
+      const user = upsertUserByGithubId(opened.db, { githubId: 'gh:1', githubUsername: 'someone' })
+      const server = insertServer(opened.db, {
+        userId: user.id,
+        name: 'dev-box',
+        provider: 'fake',
+        offeringId: 'small',
+        arch: 'arm64',
+        size: 'small',
+        region: 'x',
+        idempotencyKey: 'k1',
+      })
+
+      const plan = resolveInstallPlan(base({ serverId: server.id }))
+      setInstallPlan(opened.db, server.id, plan)
+
+      const stored = getServer(opened.db, server.id)!.installPlan
+      expect(parseInstallPlan(stored)).toEqual(plan)
+
+      // The snapshot is what a re-push executes: rendering again from changed pack data must
+      // not silently replace it.
+      const drifted = resolveInstallPlan(base({ serverId: server.id, branding: false }))
+      expect(parseInstallPlan(getServer(opened.db, server.id)!.installPlan)).not.toEqual(drifted)
+    } finally {
+      opened.close()
+    }
+  })
+})
+
+/**
+ * The no-matching-token clone failure becomes a human sentence (rockysurf-ldo1).
+ *
+ * These tests run the WHOLE generated clone script under bash against a local forge that models
+ * GitHub's real behaviour — a private repository answers 401 to an unauthenticated request, and
+ * that 401 is what used to surface as `could not read Username for …: No such device or
+ * address`, which the owner could diagnose only because they built the feature. The claim under
+ * test has two halves and both matter:
+ *
+ *  1. when git failed auth-shaped AND no delivered token matched the URL, the LAST non-empty
+ *     line the step prints is the honest sentence — last because `mark_failed` journals the log
+ *     tail and the supervisor's `lastLineOf` takes the final non-empty line as the row's
+ *     `errorMessage`;
+ *  2. every OTHER clone failure — a token that matched and was rejected, a repository that is
+ *     not there, a host that is not answering — keeps git's own last line, because translating
+ *     those into "no token matched" would be a new lie replacing the old one.
+ *
+ * ASYNC SPAWN, DELIBERATELY: `spawnSync` would block the event loop the forge answers from,
+ * and git would sit waiting on a response this same process can never send.
+ */
+describe('translating the no-matching-token clone failure (rockysurf-ldo1)', () => {
+  const RIGHT_TOKEN = 'ghp_right'
+  let forge: HttpServer
+  let forgePort: number
+
+  beforeAll(async () => {
+    forge = createServer((req, res) => {
+      // A repository that genuinely does not exist, on a forge that says so honestly.
+      if (req.url?.startsWith('/gone/')) return void res.writeHead(404).end('not here')
+      // Everything else is a PRIVATE repository: 401 without the right credential — to the
+      // anonymous request AND to a wrong token, exactly as github.com answers both.
+      const authorized =
+        req.headers.authorization ===
+        `Basic ${Buffer.from(`x-access-token:${RIGHT_TOKEN}`).toString('base64')}`
+      if (!authorized) return void res.writeHead(401, { 'WWW-Authenticate': 'Basic realm=forge' }).end()
+      // Authorized. Not a real git server, so the clone still fails — but not auth-shaped.
+      res.writeHead(404).end()
+    })
+    await new Promise<void>((resolve) => forge.listen(0, '127.0.0.1', resolve))
+    forgePort = (forge.address() as AddressInfo).port
+  })
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => {
+      forge.closeAllConnections?.()
+      forge.close(() => resolve())
+    })
+  })
+
+  const repoUrl = (path: string) => `http://127.0.0.1:${forgePort}/${path}`
+
+  /** The rendered clone step for one repository — the exact text a box would execute. */
+  const cloneStepFor = (url: string): string => {
+    const plan = resolveInstallPlan(base({ repositories: [url] }))
+    return plan.steps.find((s) => s.id.startsWith('repo:'))!.run
+  }
+
+  /**
+   * Run the generated script the way `agent.sh` does — `bash -c`, output merged — in a hermetic
+   * environment: no developer gitconfig, no osxkeychain, only the variables `secrets.env` would
+   * have delivered. Returns what the step log would hold, split the way `lastLineOf` reads it.
+   */
+  const runCloneScript = (
+    url: string,
+    env: Record<string, string>,
+  ): Promise<{ status: number; lastLine: string; transcript: string }> =>
+    new Promise((resolve) => {
+      const home = mkdtempSync(join(tmpdir(), 'rockysurf-ldo1-'))
+      execFile(
+        'bash',
+        ['-c', cloneStepFor(url)],
+        {
+          encoding: 'utf8',
+          timeout: 60_000,
+          env: {
+            PATH: process.env['PATH'] ?? '/usr/bin:/bin',
+            HOME: home,
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_SYSTEM: '/dev/null',
+            ...env,
+          },
+        },
+        (error, stdout, stderr) => {
+          const transcript = `${stdout}${stderr}`
+          const lines = stdout
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+          resolve({
+            status: error ? ((error as { code?: number }).code ?? 1) : 0,
+            lastLine: lines.at(-1) ?? '',
+            transcript,
+          })
+        },
+      )
+    })
+
+  it('prints the honest sentence LAST when the delivered tokens cover other scopes', async () => {
+    // The owner's live failure, post-narrowing: scoped tokens exist, none covers this URL, no
+    // fallback. The helper offers nothing, git gets a 401, and the old last line was git's
+    // baffling username error.
+    const { status, lastLine } = await runCloneScript(repoUrl('acme/private-thing'), {
+      ROCKYSURF_GITHUB_TOKEN_COUNT: '1',
+      ROCKYSURF_GITHUB_TOKEN_1: 'ghp_other',
+      ROCKYSURF_GITHUB_TOKEN_1_SCOPE: `127.0.0.1:${forgePort}/someone-else/*`,
+    })
+
+    expect(status).not.toBe(0)
+    expect(lastLine.startsWith(NO_MATCHING_TOKEN_PREFIX)).toBe(true)
+    // Names the repository and what the box actually carries — scope identities, never values.
+    expect(lastLine).toContain(`127.0.0.1:${forgePort}/acme/private-thing`)
+    expect(lastLine).toContain(`127.0.0.1:${forgePort}/someone-else/*`)
+    // `lastLineOf` truncates at 200 characters; a sentence that overflows arrives maimed.
+    expect(lastLine.length).toBeLessThanOrEqual(200)
+  })
+
+  it('says the box carries no tokens at all when none were delivered', async () => {
+    const { status, lastLine } = await runCloneScript(repoUrl('acme/private-thing'), {})
+
+    expect(status).not.toBe(0)
+    expect(lastLine.startsWith(NO_MATCHING_TOKEN_PREFIX)).toBe(true)
+    expect(lastLine).toContain('no GitHub tokens')
+  })
+
+  it('never prints a token value while diagnosing — the custody hazard, pinned', async () => {
+    // The obvious implementation asks the helper and lets `password=<PAT>` hit stdout, whose
+    // tail becomes the row's errorMessage and is broadcast to the SPA. This asserts the whole
+    // transcript — everything the step log would hold — is clean of the secret.
+    const { transcript } = await runCloneScript(repoUrl('acme/private-thing'), {
+      ROCKYSURF_GITHUB_TOKEN_COUNT: '1',
+      ROCKYSURF_GITHUB_TOKEN_1: 'ghp_must_never_surface',
+      ROCKYSURF_GITHUB_TOKEN_1_SCOPE: `127.0.0.1:${forgePort}/someone-else/*`,
+    })
+
+    expect(transcript).not.toContain('ghp_must_never_surface')
+  })
+
+  it('does NOT translate a token that matched and was rejected — that is revocation', async () => {
+    // A token WAS offered; the forge refused it. Saying "no token matched" here would be
+    // false, and would send the user to add a token they already have.
+    const { status, lastLine, transcript } = await runCloneScript(repoUrl('acme/private-thing'), {
+      ROCKYSURF_GITHUB_TOKEN_COUNT: '1',
+      ROCKYSURF_GITHUB_TOKEN_1: 'ghp_revoked',
+      ROCKYSURF_GITHUB_TOKEN_1_SCOPE: `127.0.0.1:${forgePort}/acme/*`,
+    })
+
+    expect(status).not.toBe(0)
+    expect(lastLine).toContain('Authentication failed')
+    expect(transcript).not.toContain(NO_MATCHING_TOKEN_PREFIX)
+  })
+
+  it('does NOT translate a repository that is simply not there', async () => {
+    const { status, lastLine, transcript } = await runCloneScript(repoUrl('gone/repo'), {})
+
+    expect(status).not.toBe(0)
+    expect(lastLine).toContain('not found')
+    expect(transcript).not.toContain(NO_MATCHING_TOKEN_PREFIX)
+  })
+
+  it('does NOT translate a host that is not answering', async () => {
+    // A port this suite just proved nothing is listening on: bind, read, release.
+    const probe = createServer()
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
+    const deadPort = (probe.address() as AddressInfo).port
+    await new Promise<void>((resolve) => probe.close(() => resolve()))
+
+    const { status, transcript } = await runCloneScript(`http://127.0.0.1:${deadPort}/a/b`, {})
+
+    expect(status).not.toBe(0)
+    expect(transcript).not.toContain(NO_MATCHING_TOKEN_PREFIX)
+  })
+
+  it('still clones and re-fetches a URL that needs no credential, exiting 0', async () => {
+    // The refactor wrapped the git calls to survive `set -e` long enough to diagnose them; the
+    // happy path and the resume path must be exactly as boring as before.
+    const src = mkdtempSync(join(tmpdir(), 'rockysurf-ldo1-src-'))
+    const init = spawnSync(
+      'bash',
+      ['-c', 'git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m x'],
+      { cwd: src, encoding: 'utf8', env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', HOME: src } },
+    )
+    expect(init.status, init.stderr).toBe(0)
+
+    const url = `file://${src}`
+    const home = mkdtempSync(join(tmpdir(), 'rockysurf-ldo1-dst-'))
+    const runTwice = (): Promise<number> =>
+      new Promise((resolve) => {
+        execFile(
+          'bash',
+          ['-c', cloneStepFor(url)],
+          {
+            encoding: 'utf8',
+            timeout: 60_000,
+            env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', HOME: home, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+          },
+          (error) => resolve(error ? ((error as { code?: number }).code ?? 1) : 0),
+        )
+      })
+
+    expect(await runTwice()).toBe(0) // the clone
+    expect(await runTwice()).toBe(0) // the resume, through the fetch branch
+  })
+})

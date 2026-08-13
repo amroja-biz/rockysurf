@@ -1,0 +1,1744 @@
+/*
+ * The SPA's stylesheet, ported from `frontend/src/App.css` (rockysurf-a29w).
+ *
+ * WHAT THIS IS. The 4d port carried the markup across field-for-field and left the styles
+ * behind, so the app rendered and worked and looked like an unstyled document. This file is
+ * the missing half. Every colour, radius, spacing step and transition below is lifted from
+ * the legacy stylesheet — the GitHub-dark palette the SaaS shipped with — rather than
+ * invented here. `CostsPage` and `SpendCapBanner` already hardcode `#f85149`/`#d29922`/
+ * `#3fb950` inline, which is the same palette arriving by a different route.
+ *
+ * WHY IT IS NOT A LITERAL COPY. The port restructured the markup: the legacy per-page shells
+ * (`.dashboard-page` + `.dashboard-header`, `.detail-header`, `.create-content`) collapsed
+ * into one `AppShell` (`.app-shell` + `.app-header`), status colours moved from inline
+ * `style={{ backgroundColor }}` onto `data-status` attributes, and several pages — Costs,
+ * pack admin — carry almost no class names at all and lean on semantic elements. So the
+ * selectors are the port's and the values are the legacy file's. Rules for pages that no
+ * longer exist (billing, Stripe, the OAuth callback, limit requests, spot interruption) are
+ * not carried over: there is no markup left to match them.
+ *
+ * The tokens exist so the palette is stated once instead of two hundred times. They are not
+ * a new design system — each value appears verbatim in the legacy file, and the comment on
+ * each line names what it was used for there.
+ */
+
+:root {
+  /* Surfaces, dark to light. */
+  --rs-bg: #0d1117; /* page background, and the inset background of form inputs */
+  --rs-surface: #161b22; /* cards, modals, the header bar */
+  --rs-raised: #21262d; /* secondary buttons, inline code, hairlines inside a card */
+  --rs-border: #30363d;
+  --rs-border-subtle: #21262d; /* the divider *within* a card, one step quieter than a border */
+
+  /* Text. */
+  --rs-text: #c9d1d9;
+  --rs-heading: #f0f6fc;
+  --rs-muted: #8b949e;
+  --rs-dim: #484f58; /* timestamps, drag handles — present but not read */
+  --rs-placeholder: #6e7681;
+
+  /* Accents. */
+  --rs-link: #58a6ff;
+  --rs-green: #238636; /* primary action */
+  --rs-green-hover: #2ea043;
+  --rs-green-bright: #3fb950; /* "this is fine" text, as opposed to a button */
+  --rs-yellow: #d29922; /* in progress, or a warning that is not yet a failure */
+  --rs-red: #f85149;
+  --rs-red-strong: #da3633; /* destructive button face; #f85149 is its hover */
+  --rs-purple: #a371f7;
+
+  --rs-radius: 6px;
+  --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--rs-bg);
+  color: var(--rs-text);
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--rs-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  color: var(--rs-heading);
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.75rem;
+}
+
+h2 {
+  font-size: 1.125rem;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+code,
+kbd,
+samp {
+  font-family: var(--rs-mono);
+  font-size: 0.85em;
+  background: var(--rs-raised);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+
+pre {
+  font-family: var(--rs-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--rs-border);
+  margin: 1.5rem 0;
+}
+
+/* ── The shell ─────────────────────────────────────────────────────────────────────────
+   `AppShell` replaced the legacy `.dashboard-header` / `.detail-header` pair, so this is
+   their treatment (surface bar, one hairline under it) applied to the one header there is
+   now. */
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.875rem 2rem;
+  background: var(--rs-surface);
+  border-bottom: 1px solid var(--rs-border);
+}
+
+.app-header nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.app-header nav a {
+  color: var(--rs-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--rs-radius);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.app-header nav a:hover {
+  color: var(--rs-text);
+  background: var(--rs-raised);
+  text-decoration: none;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--rs-muted);
+}
+
+/* The stream indicator. Legacy coloured a `.connection-dot`; the port prints the status as
+   text, so the same three states colour the text instead. */
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--rs-muted);
+}
+
+.connection-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--rs-muted);
+}
+
+.connection-status[data-status='connected']::before {
+  background-color: var(--rs-green-bright);
+}
+
+.connection-status[data-status='connecting']::before {
+  background-color: var(--rs-yellow);
+  animation: rs-pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status[data-status='disconnected']::before {
+  background-color: var(--rs-red);
+}
+
+@keyframes rs-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ── Page bodies ───────────────────────────────────────────────────────────────────────
+   Legacy set the measure per page (`.dashboard-content` 1200px, `.detail-content` 1000px,
+   `.create-content` 700px). The port has one `main` per page plus `.page`/`.wizard`, so the
+   widths hang off those. */
+
+main {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+main > h1 {
+  margin-bottom: 1.5rem;
+}
+
+main section {
+  margin-bottom: 1.5rem;
+}
+
+main section > h2 {
+  margin-bottom: 0.75rem;
+}
+
+main p {
+  margin-bottom: 0.75rem;
+}
+
+main > footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rs-border);
+  color: var(--rs-muted);
+}
+
+/* CreateServerPage: the legacy create form was the narrow one, and still is. */
+.page {
+  max-width: 760px;
+}
+
+.wizard {
+  max-width: 680px;
+}
+
+.wizard > header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--rs-border);
+}
+
+.wizard > header ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+}
+
+.wizard > header li {
+  font-size: 0.8125rem;
+  color: var(--rs-muted);
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--rs-border);
+  border-radius: 9999px;
+}
+
+.wizard > header li[data-done] {
+  color: var(--rs-green-bright);
+  border-color: var(--rs-green);
+}
+
+.wizard > header li[aria-current='step'] {
+  color: var(--rs-heading);
+  border-color: var(--rs-link);
+}
+
+.wizard section {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.5rem;
+}
+
+.login-page {
+  max-width: 400px;
+  padding-top: 12vh;
+  text-align: center;
+}
+
+.login-page h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.login-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 2rem;
+  text-align: left;
+}
+
+.login-page [role='alert'] {
+  color: var(--rs-red);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.login-page .hint {
+  margin-top: 1.5rem;
+}
+
+/* ── Forms ─────────────────────────────────────────────────────────────────────────────
+   `.form-input` / `.form-textarea` became bare elements in the port, so the legacy input
+   treatment moves onto the element selectors. */
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+fieldset {
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+legend,
+.form-label {
+  color: var(--rs-heading);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0;
+  margin-bottom: 0.375rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+label {
+  font-size: 0.875rem;
+}
+
+/* Matched by exclusion rather than by listing the text-ish types: `<input>` with no `type` at
+   all is a text field and is what half this app writes (the Name field on the create form was
+   a white box on a dark page for exactly that reason). The excluded types are the ones that
+   are controls rather than fields. */
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']):not([type='submit']):not([type='button']),
+select,
+textarea {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.625rem 0.75rem;
+  color: var(--rs-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+  width: 100%;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--rs-link);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--rs-placeholder);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  accent-color: var(--rs-green);
+}
+
+/* Legacy `.file-input`: the control itself cannot be restyled, but its button can, and left
+   alone it is a white rectangle on a dark page. */
+input[type='file'] {
+  font-size: 0.85rem;
+  color: var(--rs-text);
+}
+
+input[type='file']::file-selector-button {
+  background: var(--rs-raised);
+  color: var(--rs-text);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.25rem 0.75rem;
+  margin-right: 0.75rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+
+input[type='file']::file-selector-button:hover {
+  background: var(--rs-border);
+}
+
+/* The radio card. Ported wholesale — the port kept the class name and the `.selected`
+   modifier, so this is the legacy rule with the port's flatter content. */
+.radio-option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.875rem;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.radio-option:hover {
+  border-color: var(--rs-muted);
+}
+
+.radio-option.selected {
+  border-color: var(--rs-link);
+}
+
+.radio-option input {
+  margin: 0;
+}
+
+.size-name {
+  color: var(--rs-heading);
+  font-weight: 600;
+}
+
+.size-detail {
+  color: var(--rs-muted);
+  font-size: 0.75rem;
+}
+
+/* The resolved offering: the one number the create form exists to show. */
+.resolved-offering {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1rem 1.25rem;
+}
+
+.arch-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  background: #1f6feb33;
+  color: var(--rs-link);
+}
+
+.price {
+  color: var(--rs-green-bright);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+}
+
+.price-note {
+  color: var(--rs-muted);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────────────────
+   Legacy had `.button` with `.primary`/`.secondary`/`.destructive`; the port uses that pair
+   in modals and admin, plus bare `<button>` on the wizard and Costs, plus `.btn-primary` /
+   `.btn-secondary` on the create form. All three spellings resolve to the same three looks. */
+
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: var(--rs-radius);
+  border: 1px solid var(--rs-border);
+  background-color: var(--rs-raised);
+  color: var(--rs-text);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover:not(:disabled),
+.button:hover:not(:disabled) {
+  background-color: var(--rs-border);
+  text-decoration: none;
+}
+
+button:disabled,
+.button:disabled,
+.button[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.primary,
+.button.primary,
+.btn-primary,
+button[type='submit'] {
+  background-color: var(--rs-green);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+button.primary:hover:not(:disabled),
+.button.primary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled),
+button[type='submit']:hover:not(:disabled) {
+  background-color: var(--rs-green-hover);
+}
+
+button.secondary,
+.button.secondary,
+.btn-secondary {
+  background-color: var(--rs-raised);
+  color: var(--rs-text);
+  border: 1px solid var(--rs-border);
+}
+
+button.secondary:hover:not(:disabled),
+.button.secondary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--rs-border);
+}
+
+button.destructive,
+.button.destructive {
+  background-color: var(--rs-red-strong);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+button.destructive:hover:not(:disabled),
+.button.destructive:hover:not(:disabled) {
+  background-color: var(--rs-red);
+}
+
+.dashboard-actions,
+.admin-actions,
+.server-actions,
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-actions,
+.admin-actions {
+  margin-bottom: 1.5rem;
+}
+
+.modal-actions {
+  justify-content: flex-end;
+}
+
+/* ── Server cards ──────────────────────────────────────────────────────────────────────
+   Ported from the legacy grid and card, which the port kept by name. */
+
+.server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.server-card {
+  display: block;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1rem;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.server-card:hover {
+  border-color: var(--rs-link);
+}
+
+.server-card h2,
+.server-card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.server-card h2 a,
+.server-card h3 a {
+  color: var(--rs-link);
+}
+
+.server-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rs-border-subtle);
+}
+
+/* `.server-meta` is a `<dl>` in the port; legacy's `.server-info-row` was a flex row of
+   label/value. Same look, expressed as a two-column grid. */
+.server-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.375rem 0.75rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+}
+
+.server-meta dt {
+  color: var(--rs-muted);
+}
+
+.server-meta dd {
+  color: var(--rs-text);
+  margin: 0;
+  text-align: right;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.provisioning-step {
+  margin: 0.75rem 0 0;
+  padding: 0.375rem 0.5rem;
+  background: rgba(210, 153, 34, 0.1);
+  border-left: 2px solid var(--rs-yellow);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  color: var(--rs-yellow);
+}
+
+/* Status. Legacy set the background inline from `STATUS_COLORS`; the port puts the status on
+   a `data-status` attribute, so the same five colours live here. */
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #ffffff;
+  background: var(--rs-muted);
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  text-transform: capitalize;
+}
+
+.status-badge[data-status='requested'],
+.status-badge[data-status='provisioning'] {
+  background: var(--rs-yellow);
+}
+
+.status-badge[data-status='running'] {
+  background: var(--rs-green);
+}
+
+.status-badge[data-status='stopped'] {
+  background: var(--rs-muted);
+}
+
+.status-badge[data-status='terminated'],
+.status-badge[data-status='failed'] {
+  background: var(--rs-red);
+}
+
+/* A stop or start the provider has accepted and not yet finished (rockysurf-4t8y). The row's
+   own status stays on `data-status` and keeps its colour underneath; this is presentation over
+   the top of it, never a claim about the machine. Yellow and `rs-pulse` are the timeline's
+   `.step-active`, which says the same thing: this is the bit that is happening now. */
+.status-badge[data-transition] {
+  background: var(--rs-yellow);
+  animation: rs-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Server detail ─────────────────────────────────────────────────────────────────────
+   Legacy `.detail-section` was the card every block on this page sat in. The port names the
+   blocks after what they hold, so they each get that card. */
+
+.server-summary,
+.connection,
+.repositories,
+.tools,
+.install-preview,
+.provisioning-feed {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.25rem;
+}
+
+.server-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.connection dl,
+.server-summary dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  font-size: 0.875rem;
+  width: 100%;
+}
+
+.connection dt {
+  color: var(--rs-muted);
+}
+
+.connection dd {
+  margin: 0;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  word-break: break-all;
+}
+
+.rdp-instructions {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.repositories ul,
+.tools ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+/* The install log: a terminal in a box, as it was. */
+.install-log,
+.log pre {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: 4px;
+  padding: 0.75rem;
+  max-height: 320px;
+  overflow: auto;
+  color: var(--rs-text);
+}
+
+.log {
+  margin-top: 1rem;
+}
+
+/* ── The pack guide ────────────────────────────────────────────────────────────────────
+   A pack's own post-boot instructions (rockysurf-7ckx), shown once the server is running.
+   It sits beside Connect and gets the same card, and the text itself is monospaced and
+   preformatted — the guide is a list of commands to copy, and its own line breaks and
+   indentation are the only structure it has. Nothing renders it as markup. */
+
+.pack-guide {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.25rem;
+}
+
+.pack-guide-text {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--rs-text);
+}
+
+/* The pack's card image, in the create form's chooser and the admin table. Fixed box so a
+   pack whose PNG is a different shape cannot reflow the row, and so a pack with no image at
+   all (every third-party pack until its author adds one) simply leaves the space unused. */
+.pack-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+.log summary,
+details > summary {
+  cursor: pointer;
+  color: var(--rs-muted);
+  font-size: 0.875rem;
+}
+
+details > summary:hover {
+  color: var(--rs-text);
+}
+
+/* ── Provisioning feed ─────────────────────────────────────────────────────────────────
+   The port replaced the legacy `.timeline-step` list with `.step-list` + `.step-<state>`.
+   Same vertical rail, same four colours. */
+
+.step-list,
+.provisioning-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.step {
+  position: relative;
+  padding: 0.5rem 0 0.5rem 1.75rem;
+  font-size: 0.875rem;
+  color: var(--rs-muted);
+}
+
+.step::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.8125rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--rs-border);
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 1.75rem;
+  bottom: -0.25rem;
+  width: 2px;
+  background: var(--rs-border);
+}
+
+.step-done {
+  color: var(--rs-green-bright);
+}
+
+.step-done::before {
+  background: var(--rs-green);
+}
+
+.step-done:not(:last-child)::after {
+  background: var(--rs-green);
+}
+
+.step-active {
+  color: var(--rs-yellow);
+  font-weight: 600;
+}
+
+.step-active::before {
+  background: var(--rs-yellow);
+  animation: rs-pulse 1.5s ease-in-out infinite;
+}
+
+.step-failed {
+  color: var(--rs-red);
+}
+
+.step-failed::before {
+  background: var(--rs-red);
+}
+
+/* ── Activity feed ─────────────────────────────────────────────────────────────────────
+   Ported from the legacy feed, whose class names the port kept. */
+
+.activity-feed {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.activity-feed ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.activity-feed li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0;
+  font-size: 0.8125rem;
+  border-top: 1px solid var(--rs-border-subtle);
+}
+
+.activity-feed li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.activity-icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.875rem;
+}
+
+.activity-label {
+  color: var(--rs-muted);
+}
+
+.activity-server {
+  color: var(--rs-link);
+  font-weight: 500;
+}
+
+.activity-feed time {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--rs-dim);
+  font-size: 0.75rem;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────────────────────
+   Legacy `.admin-table`. Costs and the pack admin use a bare `<table>`, the tools admin uses
+   `.tools-table`, and both want the same thing. */
+
+table,
+.tools-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+/* A `<caption>` centres itself by default, which reads as a stray heading floating over the
+   column headers rather than as the table's label. */
+caption {
+  text-align: left;
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  padding-bottom: 0.5rem;
+}
+
+th {
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  color: var(--rs-muted);
+  border-bottom: 1px solid var(--rs-border);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--rs-border-subtle);
+  color: var(--rs-text);
+  vertical-align: middle;
+}
+
+tbody tr:hover td {
+  background: var(--rs-surface);
+}
+
+.tool-name {
+  color: var(--rs-heading);
+  font-weight: 600;
+}
+
+/* ── Modals ────────────────────────────────────────────────────────────────────────────
+   Ported unchanged; `.modal-wide` is the port's name for what legacy spelled
+   `.admin-form-modal` / `.install-preview-modal`. */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+}
+
+.modal {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.5rem;
+  max-width: 440px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal-wide {
+  max-width: 700px;
+}
+
+.modal h3 {
+  margin-bottom: 0.75rem;
+}
+
+.modal p {
+  color: var(--rs-muted);
+  font-size: 0.875rem;
+}
+
+/* ── Install preview ───────────────────────────────────────────────────────────────────
+   Legacy `.preview-tool` / `.preview-runas`; the port flattened it to a list. */
+
+.preview-section {
+  margin-bottom: 1.25rem;
+}
+
+.preview-section h4 {
+  color: var(--rs-muted);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.625rem;
+}
+
+.install-preview ol,
+.install-preview ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.install-preview li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: var(--rs-radius);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.order {
+  font-family: var(--rs-mono);
+  font-size: 0.75rem;
+  color: var(--rs-dim);
+  min-width: 1.5rem;
+}
+
+.run-as {
+  color: var(--rs-muted);
+  font-size: 0.75rem;
+  margin-left: auto;
+}
+
+/* ── Badges, notices, odds and ends ────────────────────────────────────────────────────
+   Legacy `.tag`, `.error-banner`, `.warning-banner`, `.empty-state`, `.muted`, `.form-hint`. */
+
+.badge {
+  display: inline-block;
+  background: var(--rs-border);
+  color: var(--rs-text);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.badge.tie {
+  background: #a371f733;
+  color: var(--rs-purple);
+}
+
+.hint,
+.muted {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+}
+
+p.hint {
+  margin: 0;
+}
+
+.hint code {
+  font-size: 0.9em;
+}
+
+.error,
+.warning,
+.success {
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  border: 1px solid;
+}
+
+.error {
+  background: #f8514933;
+  border-color: var(--rs-red);
+  color: var(--rs-red);
+}
+
+.warning {
+  background: #d2992233;
+  border-color: var(--rs-yellow);
+  color: var(--rs-yellow);
+}
+
+/*
+ * Per-URL preflight refusals, under the repositories field (rockysurf-k6xp). Attached to the
+ * field rather than banner-styled, because the next action is editing one of these lines.
+ */
+.repo-errors {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--rs-red);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.repo-errors code {
+  background: var(--rs-raised);
+  word-break: break-all;
+}
+
+/*
+ * The configured-repository picker on the create form (rockysurf-mh8f).
+ *
+ * Chips, not a select: there are as many of these as the operator has fine-grained PATs — a
+ * handful — and a chip both names the entry and is the click that adds it, where a select would
+ * need a second control to commit. Built from tokens already in use elsewhere on the page; a
+ * picked chip goes flat and disabled rather than disappearing, so the list stays the same shape
+ * as the operator works down it.
+ */
+.repo-picker {
+  margin: 0.25rem 0 0.6rem;
+}
+
+.repo-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.6rem;
+}
+
+.repo-chip {
+  background: var(--rs-raised);
+  border: 1px solid var(--rs-border);
+  border-radius: 999px;
+  color: var(--rs-text);
+  padding: 0.22rem 0.7rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.repo-chip:hover:not(:disabled) {
+  border-color: var(--rs-green);
+  color: var(--rs-green-bright);
+}
+
+.repo-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.repo-chip-added,
+.repo-chip-pending {
+  color: var(--rs-muted);
+}
+
+.repo-chip-pending {
+  color: var(--rs-yellow);
+}
+
+/* Accounts, forges and the fallback: stated, because none of them names a URL to insert. */
+.repo-picker-context {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--rs-muted);
+}
+
+.repo-picker-context code {
+  background: var(--rs-raised);
+}
+
+/*
+ * Live per-repository token resolution on the create form (rockysurf-18lq).
+ *
+ * Colour carries the same meanings it does everywhere else on this page: green is "this is
+ * fine", red is a refusal, yellow is a warning that is not yet a failure — which is exactly what
+ * a token the file holds and the running process does not amounts to.
+ */
+.repo-resolutions {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--rs-muted);
+}
+
+.repo-resolutions code {
+  background: var(--rs-raised);
+  word-break: break-all;
+}
+
+.repo-ok {
+  color: var(--rs-green-bright);
+}
+
+.repo-refused {
+  color: var(--rs-red);
+}
+
+.repo-pending {
+  color: var(--rs-yellow);
+  margin-top: 0.15rem;
+}
+
+/* The "create anyway" override. Deliberately plain: it is a decision, not a call to action. */
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.success {
+  background: #23863633;
+  border-color: var(--rs-green);
+  color: var(--rs-green-bright);
+}
+
+.empty {
+  color: var(--rs-muted);
+  padding: 3rem 2rem;
+  text-align: center;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+
+.read-only {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  border-left: 2px solid var(--rs-border);
+  padding-left: 0.75rem;
+}
+
+/* IP change alert — ported verbatim; the port kept every class name in it. */
+.ip-change-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #d2992233;
+  border: 1px solid var(--rs-yellow);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--rs-yellow);
+  font-size: 0.875rem;
+}
+
+/*
+ * "Still running, still billing" (rockysurf-4byx). Red rather than the IP notice's yellow: a
+ * yellow advisory is something to read once, and this is money leaving an account until
+ * somebody acts. No dismiss button, so no room made for one.
+ */
+.still-billing-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: #f8514933;
+  border: 1px solid var(--rs-red);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.still-billing-icon {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.still-billing-notice .hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
+.ip-change-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ip-change-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.ip-change-alert code {
+  background: var(--rs-raised);
+}
+
+.ip-change-alert .ip-old {
+  color: var(--rs-red);
+  text-decoration: line-through;
+}
+
+.ip-change-alert .ip-new {
+  color: #56d364;
+  font-weight: 600;
+}
+
+.dismiss-button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.dismiss-button:hover:not(:disabled) {
+  background: transparent;
+  opacity: 1;
+}
+
+/* Loading — ported verbatim. */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 1rem;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--rs-border);
+  border-top-color: var(--rs-link);
+  border-radius: 50%;
+  animation: rs-spin 1s linear infinite;
+}
+
+@keyframes rs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* CodeMirror sits inside this; the border is ours, the theme is one-dark's. */
+.code-editor {
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  overflow: hidden;
+}
+
+.code-editor .cm-editor {
+  max-height: 420px;
+}
+
+.code-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.code-editor[data-readonly] {
+  opacity: 0.85;
+}
+
+/* ── Settings ──────────────────────────────────────────────────────────────────────────
+   The config editor (rockysurf-m29b). Sections are cards, the same treatment `.wizard
+   section` gives them, because both pages are a long form read top to bottom. Nothing new
+   is invented here: every colour is a token, and the controls are the form rules above. */
+
+.settings section {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* One entry of a list — a per-repository token, a BYO host. Inset a step from its section so
+   the boundary between two entries is visible without a second border colour. */
+.settings-entry {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: var(--rs-radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings-entry > h3 {
+  font-size: 0.875rem;
+  color: var(--rs-heading);
+  font-family: var(--rs-mono);
+}
+
+/* A read-only field's value: shown as text, and legible as a value rather than as prose. */
+.settings-value {
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  color: var(--rs-text);
+  margin: 0;
+}
+
+/* What a setting is FOR, under its label and above its control (rockysurf-5qzg).
+   Always visible, never a tooltip: a `title` is invisible on a touch screen and to a keyboard,
+   which on a page that exists to explain a config file is the wrong half of the audience to
+   drop. Muted and one step down in size, so a form skimmed by someone who already knows the
+   file still reads as a form. */
+.field-help {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 62ch;
+}
+
+.settings-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-section-header > h2 {
+  margin-bottom: 0;
+}
+
+/* The per-entry buttons of the token list: each entry is saved and removed on its own. */
+.settings-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* A footgun named next to its control — the yellow of a warning that is not yet a failure. */
+.settings-warning {
+  color: var(--rs-yellow);
+}
+
+/* A field-level message from a rejected save. Sits under the control it is about, so the
+   banner at the top of the page is a summary rather than the only place to read it. */
+.settings-field-error {
+  padding: 0.5rem 0.75rem;
+}
+
+/*
+ * The saved-but-not-startable state (rockysurf-1z5q). The same banner treatment as an error,
+ * in the yellow of a warning, because the save SUCCEEDED — a red box next to a field that was
+ * written would tell the operator to undo the very thing they were asked to do. It is boxed
+ * rather than styled like `.settings-warning`, which is advice printed whether or not anything
+ * is wrong; this one is about the file as it stands right now.
+ */
+.settings-field-warning {
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0;
+}
+
+.settings-clear {
+  align-self: flex-start;
+}
+
+.settings-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--rs-mono);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Screen-reader-only, for the header cell that labels a column of buttons. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 768px) {
+  main {
+    padding: 1.25rem;
+  }
+
+  .app-header {
+    padding: 0.75rem 1.25rem;
+  }
+
+  .server-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Brand, Home and Help (rockysurf-n0zr, issue #16) ──────────────────────────────────
+   Two reading pages and the header brand, in the existing vocabulary — same tokens, same
+   radii, no new colours. The one deliberate accent: the agents callout wears the purple
+   the palette has been carrying since the port, so "for your agents" reads as its own
+   register without shouting. */
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--rs-heading);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.375rem 0.75rem 0.375rem 0;
+  margin-right: 0.5rem;
+}
+
+.app-brand img {
+  display: block;
+  border-radius: 4px;
+}
+
+.app-brand:hover {
+  text-decoration: none;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--rs-muted);
+  transition: color 0.15s ease;
+}
+
+.github-link:hover {
+  color: var(--rs-text);
+}
+
+/* Home: one narrow measure, generous line height, no cards. The illustration is the only
+   large element on the page — everything after it is quiet. */
+main.home {
+  max-width: 680px;
+}
+
+.home-hero {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  margin-bottom: 2rem;
+}
+
+main.home h1 {
+  margin-bottom: 0.75rem;
+}
+
+.home-lede {
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.home-claims {
+  list-style: none;
+  display: grid;
+  gap: 0.875rem;
+  margin-bottom: 2rem;
+}
+
+.home-claims li {
+  line-height: 1.6;
+}
+
+.home-claims strong {
+  color: var(--rs-heading);
+}
+
+.home-audience p {
+  line-height: 1.6;
+}
+
+.home-links {
+  display: flex;
+  gap: 1.5rem;
+  border-top: 1px solid var(--rs-border-subtle);
+  padding-top: 1.5rem;
+  margin-top: 2rem;
+}
+
+/* Help: the same reading measure, an inline table of contents, and sections that breathe. */
+main.help {
+  max-width: 760px;
+}
+
+.help-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  font-size: 0.875rem;
+  margin-bottom: 2rem;
+}
+
+.help-toc a {
+  color: var(--rs-muted);
+}
+
+.help-toc a:hover {
+  color: var(--rs-link);
+}
+
+main.help section {
+  margin-bottom: 2rem;
+  scroll-margin-top: 1rem;
+}
+
+main.help section p {
+  line-height: 1.6;
+}
+
+/* The agents callout: the page's one raised surface, keyed purple. */
+.agents-callout {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-left: 3px solid var(--rs-purple);
+  border-radius: var(--rs-radius);
+  padding: 1.25rem 1.5rem;
+}
+
+.agents-callout > h2 {
+  color: var(--rs-heading);
+}
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.75rem;
+  margin-top: 1rem;
+}
+
+.agents-grid h3 {
+  margin-bottom: 0.5rem;
+}
+
+.agents-grid p {
+  margin-bottom: 0.75rem;
+}
+
+.agents-grid pre {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .agents-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.agents-footnote {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rs-border-subtle);
+  line-height: 1.6;
+}

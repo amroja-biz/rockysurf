@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // Same reason as provider-sdk (rockysurf-92nv): `files` ships `dist` only, so a map's
+    // `sources: ["../src/*.ts"]` dangles in a consumer's node_modules. It is not cosmetic here
+    // — this package's whole job is to throw, and a dogfood run had every ConformanceError
+    // stack point at `provider-conformance/src/index.ts`, a path that does not exist on disk.
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,253 @@
+#!/usr/bin/env node
+/**
+ * The container smoke test (rockysurf-ftl9.4).
+ *
+ * Answers the two questions the packaging acceptance criteria ask, by doing them rather than
+ * by inspecting the Dockerfile:
+ *
+ *   1. does `docker compose up` from a clean checkout reach the first-run wizard?
+ *   2. does the data survive a container restart?
+ *
+ * Neither is provable by reading YAML. The first depends on a config file existing at all (the
+ * entrypoint seeds one), on the SPA having been copied where core looks for it, and on a
+ * non-root process being able to write the volume. The second depends on the volume actually
+ * holding the database AND the master key — a restart that silently regenerated `secret.key`
+ * would still serve a login page, and every stored credential would be quietly unreadable.
+ * So the test stores a credential through the wizard's own endpoint and reads it back after a
+ * restart, which is the narrowest thing that can only pass if both files survived.
+ *
+ * ISOLATION. Runs under its own compose project name and its own host port, and tears down
+ * with `down -v` on every exit path. It must never be able to delete the volume of a Rocky
+ * Surf someone is actually using.
+ *
+ * Usage: node scripts/docker-smoke.mjs [--keep]
+ *   --keep   leave the stack up after a successful run, for poking at by hand
+ */
+import { execFileSync, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+
+const repoRoot = fileURLToPath(new URL('..', import.meta.url))
+const PROJECT = 'rockysurf-smoke'
+const HOST_PORT = Number(process.env['ROCKYSURF_SMOKE_PORT'] ?? 3999)
+const BASE = `http://127.0.0.1:${HOST_PORT}`
+const KEEP = process.argv.includes('--keep')
+
+const steps = []
+let stackUp = false
+
+function step(name, detail) {
+  steps.push({ name, detail })
+  console.log(`  ✓ ${name}${detail ? ` — ${detail}` : ''}`)
+}
+
+function compose(args, options = {}) {
+  const result = spawnSync('docker', ['compose', '-p', PROJECT, ...args], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ROCKYSURF_HOST_PORT: String(HOST_PORT) },
+    ...options,
+  })
+  if (result.status !== 0 && !options.allowFailure) {
+    throw new Error(`docker compose ${args.join(' ')} failed (${result.status})\n${result.stderr ?? ''}`)
+  }
+  return result
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Poll `/health` from the HOST, not from inside the container.
+ *
+ * Deliberate: it proves the published port works and that core is listening on an interface
+ * reachable from outside the container, which an in-container check would not.
+ */
+async function waitForHealth(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastError = 'no attempt made'
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${BASE}/health`)
+      if (response.ok) return await response.json()
+      lastError = `HTTP ${response.status}`
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+    }
+    await sleep(1000)
+  }
+  const logs = compose(['logs', '--no-color', '--tail', '40'], { allowFailure: true })
+  throw new Error(`${BASE}/health never came up (${lastError})\n\n${logs.stdout ?? ''}${logs.stderr ?? ''}`)
+}
+
+/** The generated admin password, from the once-only banner on stderr. */
+function adminPasswordFromLogs() {
+  const logs = compose(['logs', '--no-color']).stdout
+  const lines = logs.split('\n')
+  const marker = lines.findIndex((line) => line.includes('your admin password is'))
+  if (marker === -1) throw new Error(`no first-boot password banner in the logs:\n${logs}`)
+  // Banner shape: marker, blank line, the indented password. Take the next non-empty line and
+  // strip the compose log prefix ("rockysurf-1  | ") the container name adds.
+  for (const line of lines.slice(marker + 1)) {
+    const value = line.replace(/^\S+\s*\|\s*/, '').trim()
+    if (value) return value
+  }
+  throw new Error(`the password banner had no password after it:\n${logs}`)
+}
+
+function countFirstBootBanners() {
+  return compose(['logs', '--no-color']).stdout.split('\n').filter((l) => l.includes('your admin password is')).length
+}
+
+async function api(path, { token, method = 'GET', body } = {}) {
+  const response = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const text = await response.text()
+  let json
+  try {
+    json = JSON.parse(text)
+  } catch {
+    json = undefined
+  }
+  return { status: response.status, json, text }
+}
+
+async function login(password) {
+  const result = await api('/api/v1/auth/login', { method: 'POST', body: { password } })
+  if (result.status !== 200) throw new Error(`login failed: HTTP ${result.status} ${result.text}`)
+  const token = result.json?.data?.token ?? result.json?.token
+  if (!token) throw new Error(`login returned no token: ${result.text}`)
+  return token
+}
+
+/** Unwrap the success envelope, whatever shape it has. */
+function payload(result) {
+  return result.json?.data ?? result.json
+}
+
+function teardown() {
+  if (!stackUp) return
+  compose(['down', '-v', '--remove-orphans'], { allowFailure: true, stdio: 'ignore' })
+}
+
+async function main() {
+  console.log(`docker smoke test — project ${PROJECT}, host port ${HOST_PORT}\n`)
+
+  // A leftover volume from an interrupted run would make "first boot" a lie.
+  compose(['down', '-v', '--remove-orphans'], { allowFailure: true, stdio: 'ignore' })
+
+  console.log('building and starting…')
+  compose(['up', '-d', '--build'], { stdio: 'inherit' })
+  stackUp = true
+
+  /* ------------------------------------------------- AC: reaches the first-run wizard */
+
+  const health = await waitForHealth()
+  step('the published port answers /health', `authMode ${(health?.data ?? health)?.authMode}`)
+
+  const uid = execFileSync('docker', ['compose', '-p', PROJECT, 'exec', '-T', 'rockysurf', 'id', '-u'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ROCKYSURF_HOST_PORT: String(HOST_PORT) },
+  }).trim()
+  const user = execFileSync('docker', ['compose', '-p', PROJECT, 'exec', '-T', 'rockysurf', 'id', '-un'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, ROCKYSURF_HOST_PORT: String(HOST_PORT) },
+  }).trim()
+  if (uid === '0') throw new Error('the container is running as root')
+  step('runs as a non-root user', `uid ${uid} (${user})`)
+
+  const index = await fetch(BASE)
+  const html = await index.text()
+  if (!index.ok || !html.includes('id="root"')) {
+    throw new Error(`the SPA was not served at / (HTTP ${index.status}):\n${html.slice(0, 400)}`)
+  }
+  step('the SPA is served from the container', `${html.length} bytes of index.html`)
+
+  const password = adminPasswordFromLogs()
+  const token = await login(password)
+  step('the generated admin password logs in', 'session issued')
+
+  const setup = payload(await api('/api/v1/setup', { token }))
+  if (setup?.complete !== false || setup?.needsProvider !== true) {
+    throw new Error(`expected the first-run wizard state, got ${JSON.stringify(setup)}`)
+  }
+  step(
+    'the first-run wizard is what a new install lands on',
+    `complete=false, needsProvider=true, ${setup.providers.length} providers offered`,
+  )
+
+  /* --------------------------------------------------- AC: data survives a restart */
+
+  // A credential is the strongest thing to round-trip: reading it back needs the database AND
+  // the master key, so a volume that lost either one fails here rather than looking fine.
+  const marker = `docker-smoke-${Date.now()}`
+  const stored = await api('/api/v1/setup/providers/hetzner', {
+    token,
+    method: 'POST',
+    body: { token: marker },
+  })
+  if (stored.status !== 200) throw new Error(`storing a credential failed: HTTP ${stored.status} ${stored.text}`)
+  step('a credential is stored through the wizard endpoint', 'encrypted into the volume')
+
+  /** The credential is readable again, which needs both the database and the master key. */
+  async function assertDataIntact(what) {
+    const freshToken = await login(password)
+    const state = payload(await api('/api/v1/setup', { token: freshToken }))
+    const hetzner = state?.providers?.find((p) => p.id === 'hetzner')
+    if (hetzner?.source !== 'stored' || hetzner?.configured !== true) {
+      throw new Error(`the stored credential did not survive ${what}: ${JSON.stringify(hetzner)}`)
+    }
+  }
+
+  compose(['restart'], { stdio: 'ignore' })
+  await waitForHealth()
+  if (countFirstBootBanners() !== 1) {
+    throw new Error('the restart announced a first boot again — the data directory did not survive')
+  }
+  await assertDataIntact('a restart')
+  step('a restart keeps the data', 'same password, credential still readable, no second first-boot banner')
+
+  /**
+   * NOW THE ONE THAT PROVES THE VOLUME.
+   *
+   * `restart` keeps the container's writable layer, so everything above would pass just as
+   * happily if `dataDir` pointed at some path that is not mounted at all — which is exactly the
+   * mistake this test is supposed to catch. `--force-recreate` throws the container away and
+   * builds a new one from the image, so the only thing carried across is the volume.
+   *
+   * The log assertion inverts here for a good reason: a recreated container starts with an
+   * empty log, and a fresh data directory would make it print the first-boot password banner
+   * again. Zero banners plus a successful login with the ORIGINAL password is the pair that
+   * can only happen if `/data` came back.
+   */
+  compose(['up', '-d', '--force-recreate'], { stdio: 'ignore' })
+  await waitForHealth()
+  if (countFirstBootBanners() !== 0) {
+    throw new Error('the recreated container announced a first boot — it did not find the volume')
+  }
+  await assertDataIntact('the container being recreated')
+  step('a recreated container finds its data', 'new container, empty writable layer, same volume')
+
+  console.log(`\n${steps.length} checks passed.`)
+  if (KEEP) {
+    console.log(`\nStack left running: ${BASE}  (docker compose -p ${PROJECT} down -v to clean up)`)
+    stackUp = false
+  }
+}
+
+main()
+  .then(() => {
+    teardown()
+    process.exit(0)
+  })
+  .catch((err) => {
+    console.error(`\n✗ ${err instanceof Error ? err.message : String(err)}`)
+    teardown()
+    process.exit(1)
+  })

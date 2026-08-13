@@ -1,0 +1,57 @@
+[   0.1s] sshAllowedCidr resolved at run time and written to config: 73.69.44.87/32
+[   0.1s] === AWS milestone exit run — production stack — t3.small (amd64) ===
+[   0.1s] binary /Users/johndamask/code/1-open-source-rocky-surf-v0-1/packages/rockysurf/dist/bin.js
+[   0.1s] config /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-IUXrnM/rockysurf.config.yaml (dataDir /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-IUXrnM/data)
+[   0.8s]   PASS  rockysurf booted from a real config file
+[   0.8s]   PASS  composition root registered the real aws provider — Amazon EC2
+[   0.8s]   PASS  t3.small is offered — 14 offerings
+[   0.8s]   PASS  t3.small is amd64 — amd64
+[   0.8s]   PASS  a pack is available to install — ai-coding-agents
+[   2.9s]   PASS  POST /api/v1/servers created a server — 201 
+[   2.9s] server srv-bf176767efca
+[   5.2s]   status=provisioning step=requested ip=54.210.199.139
+[  36.1s]   status=provisioning step=installing_tools ip=54.210.199.139
+[ 179.5s]   status=running step=ready ip=54.210.199.139
+[ 179.5s]   PASS  server reached running — status=running
+[ 179.5s]   PASS  push bootstrap reported ready — step=ready
+[ 179.5s]   PASS  server has a public address — 54.210.199.139
+[ 179.5s]   PASS  private key downloadable from the API — 200
+[ 180.9s]   PASS  claude --version over SSH — 2.1.228 (Claude Code)
+[ 180.9s]   PASS  box architecture is amd64 — amd64
+[ 181.6s]   PASS  stop accepted, status is provider-confirmed — status=running
+[ 197.2s]   PASS  instance actually reached stopped before start was attempted
+[ 198.4s]   PASS  start accepted — status=stopped
+[ 203.7s]   PASS  server came back up after start
+[ 203.9s]   address after restart: 100.54.247.163 (previous 54.210.199.139)
+[ 203.9s] terminating
+[ 204.3s]   PASS  terminate accepted — 200
+[ 204.3s] zero-orphan audit (reconciler semantics)
+@aws-sdk/credential-provider-node - defaultProvider::fromEnv WARNING:
+    Multiple credential sources detected: 
+    Both AWS_PROFILE and the pair AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY static credentials are set.
+    This SDK will proceed with the AWS_PROFILE value.
+    
+    However, a future version may change this behavior to prefer the ENV static credentials.
+    Please ensure that your environment only sets either the AWS_PROFILE or the
+    AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY pair.
+
+[ 206.1s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 212.0s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 218.1s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 224.1s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 230.1s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 236.4s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 242.6s]   still present: i-0853a581bf5ae0e24, vol-001580d41236ebcc8=in-use
+[ 248.8s]   still present: i-0853a581bf5ae0e24
+[ 254.9s]   PASS  no server-owned instances remain
+[ 254.9s]   PASS  every managed resource carries a valid ownership
+[ 254.9s]   PASS  the shared SSH security group survives, as designed — security-group/sg-0df7502d1dc1847b2
+[ 254.9s]   PASS  no EBS volumes survived termination
+[ 254.9s] --- server log tail ---
+[ 254.9s]     Rocky Surf is running at  http://127.0.0.1:3298
+[ 254.9s]   
+[ 254.9s]     data      /var/folders/vm/4gvfm53d6dgb2gccx5wh6tcr0000gn/T/rockysurf-e2e-aws-IUXrnM/data
+[ 254.9s]     auth      local
+[ 254.9s]   
+[ 254.9s]     Press Ctrl-C to stop.
+[ 254.9s] RESULT: PASS — aws production lifecycle, zero orphans

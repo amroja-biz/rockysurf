@@ -1,0 +1,1219 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import toast from 'react-hot-toast'
+import { AppShell } from '../components/AppShell'
+import { ConfirmModal } from '../components/ConfirmModal'
+import {
+  ApiError,
+  getSettings,
+  saveSettings,
+  type SecretView,
+  type SettingsChange,
+  type SettingsField,
+  type SettingsView,
+} from '../lib/api'
+import { ENV_VAR_ONLY, envVarDisplay, envVarReference } from '../lib/envRef'
+import {
+  describeScope,
+  newScopedEntry,
+  refuseNewEntry,
+  scopeChanges,
+  tokenKey,
+  tokenSpecPath,
+  unifiedTokens,
+  type RawTokenEntry,
+  type TokenEntry,
+} from '../lib/githubTokens'
+
+/**
+ * Settings — a GUI over `rockysurf.config.yaml` (rockysurf-m29b, streamlined by rockysurf-5qzg).
+ *
+ * IT EDITS THE FILE. Not a copy of it in the database, not a settings table that shadows it:
+ * the same YAML an operator would open in an editor, edited in place with its comments intact.
+ * Config is configuration and never becomes data, so there is one place these values live and
+ * no second copy to disagree with it.
+ *
+ * THREE THINGS THIS PAGE HAS TO BE HONEST ABOUT, and they are the whole design:
+ *
+ *  1. **It cannot show you a secret, and it will not take one.** A token box holds the NAME of an
+ *     environment variable (rockysurf-4o3o): the file gets `${GITHUB_PAT}`, the box shows
+ *     `GITHUB_PAT`, and anything that is not a variable name is refused here with the reason. A
+ *     literal already in the file still loads and is still never displayed — it reads as a stored
+ *     token, with the way out of it stated under the box. See `lib/envRef.ts`.
+ *  2. **A blank secret box means "leave it alone".** Every other field here saves what is in it.
+ *     A secret field saves only what you type into it, because the alternative — blank meaning
+ *     "delete the token" — would wipe a credential every time somebody changed the port.
+ *     Removing one is a separate, labelled button with a confirmation.
+ *  3. **Nothing takes effect until a restart.** Rocky Surf reads this file once, at startup. The
+ *     banner saying so is not a toast a page reload can lose: the server compares the file
+ *     against the values it booted with, so the notice survives until the process is restarted.
+ *
+ * The field inventory — field labels aside — comes from the server: which fields are writable,
+ * why the read-only ones are not, which carry a warning, what each one is FOR, and which do not
+ * render at all. One source of truth, so a field that becomes editable does not also need an
+ * edit here to stop claiming it is not.
+ *
+ * ── WHAT rockysurf-5qzg CHANGED, and why each ─────────────────────────────────────────
+ * **Nothing renders a control it cannot honour.** A read-only field whose only message is "you
+ * cannot use this" is not honesty, it is an invitation followed by a refusal — so the server
+ * marks it `hidden` and the page draws nothing. `server.dataDir` and `providers.aws.sizes` are
+ * NOT that: they are settings that work, whose values an operator wants to read and whose
+ * reasons name where the edit is actually made. `auth.mode` is, because the mode its one
+ * available edit would select has not been built.
+ *
+ * **One list of access tokens.** `github.pat` and `github.tokens[]` were two sections for one
+ * subject. They are now one list in which the entry with no scope IS the instance-wide
+ * fallback; `lib/githubTokens.ts` holds that mapping, and every change it emits still names a
+ * path the config file already had.
+ *
+ * **Every field says what it is for**, in a line under its label rather than a `title` nobody
+ * can hover on a phone. The words come from the server, which took them from the example config
+ * and the self-hosting guide, so the file, the docs and this page cannot disagree.
+ * ──────────────────────────────────────────────────────────────────────────────────────
+ *
+ * ── WHY THE CONTROLS ARE FUNCTIONS AND NOT COMPONENTS ─────────────────────────────────
+ * `textField(...)` is called; it is not `<TextField/>`. A component DECLARED inside this
+ * function is a new component type on every render, so React unmounts and remounts its subtree
+ * each time state changes — and an input that remounts loses focus after every keystroke. The
+ * alternative is hoisting them out with `edits`, `setEdit`, `specs` and `fieldErrors` threaded
+ * through every call. Calling them keeps the reconciler seeing one stable tree.
+ * ──────────────────────────────────────────────────────────────────────────────────────
+ */
+
+type Edits = Record<string, SettingsChange>
+
+/** `['github','tokens',0,'pat']` → `'github.tokens.0.pat'`, the key edits and issues are held by. */
+const keyOf = (path: (string | number)[]) => path.join('.')
+
+/** The same path with list indices generalised, which is how the server names a field spec. */
+const patternOf = (path: (string | number)[]) => path.map((s) => (typeof s === 'number' ? '*' : s)).join('.')
+
+/** The sections this page draws, in order. Titles and help come from the server's inventory. */
+const SECTION_ORDER = [
+  'server',
+  'github',
+  'providers.hetzner',
+  'providers.aws',
+  'providers.azure',
+  'providers.byo',
+  'providers.byo.hosts',
+  'limits',
+  'mcp',
+] as const
+
+/** An edit key belonging to the unified token list, which saves per entry rather than in bulk. */
+const isTokenKey = (key: string) => key === 'github.pat' || key.startsWith('github.tokens.')
+
+function valueAt(tree: unknown, path: (string | number)[]): unknown {
+  let node: unknown = tree
+  for (const segment of path) {
+    if (node === null || node === undefined || typeof node !== 'object') return undefined
+    node = (node as Record<string | number, unknown>)[segment]
+  }
+  return node
+}
+
+/** A secret field's state, tolerating a file where the key is simply absent. */
+function secretAt(tree: unknown, path: (string | number)[]): SecretView {
+  const found = valueAt(tree, path)
+  if (found && typeof found === 'object' && 'secret' in found) return found as SecretView
+  return { secret: true, state: 'unset' }
+}
+
+interface ListField {
+  name: string
+  label: string
+  secret?: boolean
+  /** The variable name shown as a placeholder in a credential box — see `lib/envRef.ts`. */
+  example?: string
+}
+
+/** A blank entry being filled in before it is added — held here, never written half-formed. */
+interface TokenDraft {
+  scope: string
+  host: string
+  pat: string
+}
+
+export function SettingsPage() {
+  const [view, setView] = useState<SettingsView | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [edits, setEdits] = useState<Edits>({})
+  /** Field path → message, from the last rejected save. Cleared when that field is edited. */
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    label: string
+    message?: string
+    change: SettingsChange
+  } | null>(null)
+  const [draft, setDraft] = useState<TokenDraft | null>(null)
+  const [draftError, setDraftError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setView(await getSettings())
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.detail : 'Could not read the configuration file')
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const specs = useMemo(() => {
+    const map = new Map<string, SettingsField>()
+    for (const field of view?.fields ?? []) map.set(field.path, field)
+    return map
+  }, [view])
+
+  const sections = useMemo(() => {
+    const map = new Map<string, { title: string; help: string }>()
+    for (const section of view?.sections ?? []) map.set(section.id, section)
+    return map
+  }, [view])
+
+  /** Edits the bulk Save carries — the token list keeps its own, per entry. */
+  const formEdits = Object.entries(edits).filter(([key]) => !isTokenKey(key))
+  const tokenEdits = Object.entries(edits).filter(([key]) => isTokenKey(key))
+  const dirty = formEdits.length > 0
+  const anyDirty = Object.keys(edits).length > 0
+
+  function setEdit(path: (string | number)[], change: SettingsChange | null): void {
+    const key = keyOf(path)
+    setFieldErrors((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+    setEdits((prev) => {
+      const next = { ...prev }
+      if (change === null) delete next[key]
+      else next[key] = change
+      return next
+    })
+  }
+
+  /**
+   * Every credential change, with the box's text turned into the file's reference — or the keys
+   * that cannot be, because what is in them is not a variable name (rockysurf-4o3o).
+   *
+   * ONE SEAM, so no caller can bypass it: the bulk Save, a token card's own Save, a removal and a
+   * confirmation all reach the file through `submit`, and this runs on whatever they hand it.
+   * `specs` decides what is a credential — the same server inventory that decides everything else
+   * about a field — rather than the page guessing from the path.
+   *
+   * IT DESCENDS INTO A CHANGE'S VALUE, because two of them are whole blocks rather than scalars: a
+   * new token entry is written as one `github.tokens.<n>` change carrying `{ repo, pat }`, and a
+   * spend cap as `{ amount, currency }`. Checking only the change's own path would leave the
+   * credential inside the first of those unexamined — which is exactly the shape a new entry
+   * arrives in, so it would be the common case rather than an edge one.
+   */
+  function asReferences(changes: SettingsChange[]): { sent: SettingsChange[]; refused: string[] } {
+    const refused: string[] = []
+
+    const convert = (path: (string | number)[], value: unknown): unknown => {
+      if (specs.get(patternOf(path))?.kind === 'secret') {
+        const reference = envVarReference(String(value ?? ''))
+        if (reference !== null) return reference
+        refused.push(keyOf(path))
+        return value
+      }
+      // Objects only: a list arriving as a whole value is a shape nothing on this page writes,
+      // and walking one would invent index paths that no spec could answer for.
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.fromEntries(
+          Object.entries(value).map(([key, item]) => [key, convert([...path, key], item)]),
+        )
+      }
+      return value
+    }
+
+    const sent = changes.map((change) =>
+      change.unset ? change : { ...change, value: convert(change.path, change.value) },
+    )
+    return { sent, refused }
+  }
+
+  /**
+   * Send a set of changes, and report whether the file took them.
+   *
+   * `only` carries a save that must travel alone: a structural change to a list, or one entry of
+   * the token list. An index is how a list entry is named, and a removal renumbers every entry
+   * after it, so combining "remove entry 1" with "change entry 2's owner" would apply the second
+   * edit to whichever entry moved into that slot. Rather than blocking the whole page while
+   * anything is unsaved (which is what m29b did), each list refuses only its OWN combinations:
+   * Add and Remove are disabled while that list has pending edits, and everything else on the
+   * page carries on independently.
+   */
+  async function submit(only?: SettingsChange[], onlyKeys?: string[]): Promise<boolean> {
+    if (!view) return false
+    const changes = only ?? formEdits.map(([, change]) => change)
+    // A save clears the edits it CARRIED and no others. Clearing the whole map — which is what
+    // one bulk form could get away with — would throw away a half-typed token in the list below
+    // every time somebody saved the port.
+    const clear = new Set(onlyKeys ?? formEdits.map(([key]) => key))
+    if (changes.length === 0) return false
+
+    // Nothing is sent when a token box holds something other than a variable name. The box itself
+    // is already showing the policy and the reason, so this says which box and stops.
+    const { sent, refused } = asReferences(changes)
+    if (refused.length > 0) {
+      setFormError(
+        `Nothing was saved: ${refused.join(', ')} must name an environment variable rather than hold a token.`,
+      )
+      return false
+    }
+
+    setSaving(true)
+    setFormError(null)
+    setFieldErrors({})
+    try {
+      setView(await saveSettings(view.file.mtimeMs, sent))
+      setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !clear.has(key))))
+      toast.success('Saved to the configuration file')
+      return true
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const body = err.data as { issues?: { path: string; message: string }[] } | undefined
+        setFieldErrors(Object.fromEntries((body?.issues ?? []).map((i) => [i.path, i.message])))
+        setFormError(err.detail)
+        // A 409 means the file moved underneath and nothing was written. Show it as it is now,
+        // with the pending edits still in the form so nothing typed here is thrown away.
+        if (err.status === 409) await load()
+      } else {
+        setFormError('Could not save the configuration file')
+      }
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loadError) {
+    return (
+      <AppShell title="Settings" className="page settings">
+        <p className="error">{loadError}</p>
+      </AppShell>
+    )
+  }
+
+  if (!view) {
+    return (
+      <AppShell title="Settings" className="page settings">
+        <p className="hint">Reading the configuration file…</p>
+      </AppShell>
+    )
+  }
+
+  const { values, defaults } = view
+
+  /**
+   * The server's warnings, by the same dotted key the errors use (rockysurf-1z5q).
+   *
+   * They render like an error and mean something different: the save WENT THROUGH, and the file
+   * now names a variable the running core cannot see. Keyed rather than listed so the sentence
+   * lands on the control that caused it, the same way a save error does — and because they come
+   * from the view rather than from the last response, they are still there after a reload, which
+   * an error from a rejected save is not.
+   */
+  const warnings = Object.fromEntries((view.warnings ?? []).map((w) => [w.path, w.message]))
+  /** The distinct variables, for the one sentence at the top of the form. */
+  const unsetVars = [...new Set((view.warnings ?? []).map((w) => w.variable))]
+
+  /* ------------------------------------------------------------------ field renderers */
+
+  /**
+   * The help line, under the label and above the control (rockysurf-5qzg, directive 3).
+   *
+   * ONE MECHANISM, EVERYWHERE, and it is deliberately not a tooltip. A `title` attribute is
+   * invisible on a touch screen, invisible to a keyboard, and not reliably announced by a screen
+   * reader — so on a page whose whole job is explaining a config file to somebody who has not
+   * read it, the explanation would be missing for exactly the readers most in need of it. A `?`
+   * popover is worse value again: JS state, focus handling and a second interaction pattern, for
+   * one sentence. An always-visible line is what this page already does for warnings, secret
+   * state and read-only reasons, so it is the house style rather than a new one, and
+   * `aria-describedby` ties it to the control it belongs to.
+   */
+  function helpFor(specPath: string, id: string): ReactNode {
+    const help = specs.get(specPath)?.help
+    return help ? (
+      <p className="field-help" id={`${id}-help`}>
+        {help}
+      </p>
+    ) : null
+  }
+
+  const helpId = (specPath: string, id: string) => (specs.get(specPath)?.help ? `${id}-help` : undefined)
+
+  /** Label, help, control, the server's warning for the field, and any error from a save. */
+  function wrap(path: (string | number)[], label: string, control: ReactNode): ReactNode {
+    const pattern = patternOf(path)
+    const spec = specs.get(pattern)
+    // A hidden field is not drawn even when a call site asks for it: the inventory decides.
+    if (spec?.hidden) return null
+    const key = keyOf(path)
+    const error = fieldErrors[key]
+    return (
+      <div className="form-group" data-field={key} key={key}>
+        <label htmlFor={key}>{label}</label>
+        {helpFor(pattern, key)}
+        {control}
+        {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        {warnings[key] && <p className="warning settings-field-warning">{warnings[key]}</p>}
+        {error && <p className="error settings-field-error">{error}</p>}
+      </div>
+    )
+  }
+
+  /** A field the editor shows and will not write, with the server's reason for that. */
+  function readOnlyField(path: (string | number)[], label: string): ReactNode {
+    const pattern = patternOf(path)
+    const spec = specs.get(pattern)
+    if (spec?.hidden) return null
+    const key = keyOf(path)
+    const current = valueAt(values, path) ?? valueAt(defaults, path)
+    const shown = current === undefined ? 'not set' : Array.isArray(current) ? current.join(', ') : String(current)
+    return (
+      <div className="form-group" data-field={key} key={key}>
+        <label>{label}</label>
+        {helpFor(pattern, key)}
+        <p className="settings-value">{shown}</p>
+        <p className="read-only">{spec?.reason}</p>
+      </div>
+    )
+  }
+
+  function textField(path: (string | number)[], label: string, type: 'text' | 'number' = 'text'): ReactNode {
+    const key = keyOf(path)
+    const edit = edits[key]
+    const current = valueAt(values, path)
+    const fallback = valueAt(defaults, path)
+    const shown = edit ? (edit.unset ? '' : String(edit.value ?? '')) : current === undefined || current === null ? '' : String(current)
+
+    return wrap(
+      path,
+      label,
+      <input
+        id={key}
+        type={type}
+        value={shown}
+        aria-describedby={helpId(patternOf(path), key)}
+        placeholder={fallback === undefined ? '' : `default: ${String(fallback)}`}
+        onChange={(e) => {
+          const raw = e.target.value
+          // An emptied box says nothing about the field, which is how the file gets back to the
+          // default rather than to an empty string.
+          if (raw === '') return setEdit(path, { path, unset: true })
+          const asNumber = Number(raw)
+          setEdit(path, {
+            path,
+            value: type === 'number' && Number.isFinite(asNumber) ? asNumber : raw,
+          })
+        }}
+      />,
+    )
+  }
+
+  function boolField(path: (string | number)[], label: string): ReactNode {
+    const key = keyOf(path)
+    const edit = edits[key]
+    const current = valueAt(values, path) ?? valueAt(defaults, path) ?? false
+    return wrap(
+      path,
+      label,
+      <input
+        id={key}
+        type="checkbox"
+        aria-describedby={helpId(patternOf(path), key)}
+        checked={edit ? Boolean(edit.value) : Boolean(current)}
+        onChange={(e) => setEdit(path, { path, value: e.target.checked })}
+      />,
+    )
+  }
+
+  /**
+   * A credential box — which, since rockysurf-4o3o, is a box for the NAME of an environment
+   * variable.
+   *
+   * PLAIN TEXT, DELIBERATELY. `type=password` over a variable name is theatre: the content is not
+   * key material, masking it stops the operator proof-reading the one thing they have to get
+   * right, and hiding it would suggest that pasting a token here is what the box is for. The
+   * policy is enforced instead of implied — `envVarReference` refuses anything that is not a
+   * name, in words, before anything is sent.
+   *
+   * THE THREE STATES ARE THREE SITUATIONS. A reference shows as its bare name and is text to
+   * edit; an unset field is an empty box with an example in it; a literal the file already holds
+   * shows as a STATE and never as a value, with the way out of it — move it to a variable, name
+   * the variable here — said under the box. What they share is that typing nothing changes
+   * nothing.
+   */
+  function secretInput(
+    path: (string | number)[],
+    specPath: string,
+    example: string,
+  ): { input: ReactNode; state: SecretView; cleared: boolean; refusal: string | null } {
+    const key = keyOf(path)
+    const state = secretAt(values, path)
+    const edit = edits[key]
+    const cleared = edit?.unset === true
+
+    const typed = edit && !cleared ? String(edit.value ?? '') : undefined
+    const fromFile = !cleared && typed === undefined && state.state === 'reference' ? envVarDisplay(state.reference) : ''
+    const shown = cleared ? '' : (typed ?? fromFile)
+    // Live, because a refusal that waited for the Save button would let an operator type a whole
+    // token before being told the box never wanted one. An empty box is not a refusal: blank
+    // means keep.
+    const refusal = typed !== undefined && typed.trim() !== '' && envVarReference(typed) === null ? ENV_VAR_ONLY : null
+
+    const input = (
+      <input
+        id={key}
+        type="text"
+        spellCheck={false}
+        autoComplete="off"
+        disabled={cleared}
+        value={shown}
+        aria-describedby={helpId(specPath, key)}
+        placeholder={
+          cleared
+            ? 'Will be removed when you save'
+            : state.state === 'set'
+              ? 'A token is stored in the file — name a variable to replace it'
+              : example
+        }
+        onChange={(e) => {
+          // Blank means KEEP — the one kind of field on this page where it does. Removing a
+          // credential is a labelled button, so a half-finished edit can never delete one.
+          const raw = e.target.value
+          setEdit(path, raw === '' ? null : { path, value: raw })
+        }}
+      />
+    )
+    return { input, state, cleared, refusal }
+  }
+
+  /** What the file currently says about a credential, in a sentence. */
+  function secretStateHint(state: SecretView): string {
+    if (state.state === 'set') {
+      return (
+        'A literal token is stored in the configuration file, and cannot be displayed here. Move it ' +
+        'into an environment variable and name that variable here; the file will then hold only the ' +
+        'reference. '
+      )
+    }
+    if (state.state === 'reference') {
+      return 'Read from this environment variable at startup. The file holds the reference — never what it expands to. '
+    }
+    return 'Not set in the configuration file. '
+  }
+
+  /** The live refusal under a token box, when what is in it is not a variable name. */
+  function refusalLine(key: string, refusal: string | null): ReactNode {
+    return refusal ? (
+      <p className="error settings-field-error" data-refusal={key}>
+        {refusal}
+      </p>
+    ) : null
+  }
+
+  function secretField(path: (string | number)[], label: string, example: string): ReactNode {
+    const key = keyOf(path)
+    const pattern = patternOf(path)
+    const spec = specs.get(pattern)
+    if (spec?.hidden) return null
+    const { input, state, cleared, refusal } = secretInput(path, pattern, example)
+
+    return (
+      <div className="form-group" data-field={key} key={key}>
+        <label htmlFor={key}>{label}</label>
+        {helpFor(pattern, key)}
+        {input}
+        {refusalLine(key, refusal)}
+        <p className="hint">
+          {secretStateHint(state)}
+          Leave this blank to keep it as it is.
+        </p>
+        {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        {fieldErrors[key] && <p className="error settings-field-error">{fieldErrors[key]}</p>}
+        {(state.state !== 'unset' || cleared) && (
+          <button
+            type="button"
+            className="btn-secondary settings-clear"
+            onClick={() => setEdit(path, cleared ? null : { path, unset: true })}
+          >
+            {cleared ? 'Keep it after all' : 'Remove this credential'}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  /** One half of a spend cap that does not exist in the file yet — see the note at its use. */
+  function newCapField(name: 'amount' | 'currency', label: string, type: 'text' | 'number'): ReactNode {
+    const id = `limits.spendCap.${name}`
+    const pending = (edits['limits.spendCap']?.value ?? {}) as { amount?: number; currency?: string }
+    return (
+      <div className="form-group" data-field={id} key={id}>
+        <label htmlFor={id}>{label}</label>
+        {helpFor(id, id)}
+        <input
+          id={id}
+          type={type}
+          aria-describedby={helpId(id, id)}
+          value={String(pending[name] ?? '')}
+          onChange={(e) => {
+            const raw = e.target.value
+            const value = name === 'amount' ? (raw === '' ? '' : Number(raw)) : raw
+            setEdit(['limits', 'spendCap'], {
+              path: ['limits', 'spendCap'],
+              value: { ...pending, [name]: value },
+            })
+          }}
+        />
+        {fieldErrors[id] && <p className="error settings-field-error">{fieldErrors[id]}</p>}
+      </div>
+    )
+  }
+
+  /* -------------------------------------------------------------- the unified token list */
+
+  const rawTokens = (valueAt(values, ['github', 'tokens']) as RawTokenEntry[] | undefined) ?? []
+  const tokenEntries = unifiedTokens(values)
+  const fallbackIsSet = tokenEntries[0]!.secret.state !== 'unset'
+  /** Add and Remove renumber or clear; they wait for this list's own edits to settle. */
+  const tokenListBusy = tokenEdits.length > 0 ? 'Save or discard your changes to these tokens first' : undefined
+
+  /** Everything keyed at or inside one entry — including keys the card has no box for. */
+  function entryMessages(source: Record<string, string>, prefix: string): { key: string; message: string }[] {
+    return Object.entries(source)
+      .filter(([key]) => key === prefix || key.startsWith(`${prefix}.`))
+      .map(([key, message]) => ({ key, message }))
+  }
+
+  /** Every save error whose path falls inside one entry. */
+  const entryErrors = (prefix: string) => entryMessages(fieldErrors, prefix)
+  /** Every unset-variable warning inside one entry — the saved-but-not-startable state. */
+  const entryWarnings = (prefix: string) => entryMessages(warnings, prefix)
+
+  /** The changes one entry's pending edits amount to, in the file's own paths. */
+  function entryChanges(entry: TokenEntry): SettingsChange[] {
+    const patKey = tokenKey(entry.target, 'pat')
+    const patEdit = edits[patKey]
+
+    if (entry.target.kind === 'fallback') {
+      return patEdit ? [{ path: ['github', 'pat'], value: patEdit.value }] : []
+    }
+
+    const { index } = entry.target
+    const scopeEdit = edits[tokenKey(entry.target, 'scope')]
+    const hostEdit = edits[tokenKey(entry.target, 'host')]
+    const out: SettingsChange[] = []
+    if (scopeEdit) out.push(...scopeChanges(index, String(scopeEdit.value ?? ''), rawTokens[index] ?? {}))
+    if (hostEdit) {
+      const typed = String(hostEdit.value ?? '').trim()
+      out.push(
+        typed === ''
+          ? { path: ['github', 'tokens', index, 'host'], unset: true }
+          : { path: ['github', 'tokens', index, 'host'], value: typed },
+      )
+    }
+    if (patEdit) out.push({ path: ['github', 'tokens', index, 'pat'], value: patEdit.value })
+    return out
+  }
+
+  /**
+   * A scope or host box.
+   *
+   * Recorded only when what is typed DIFFERS from what the file says, so an entry whose text was
+   * typed back to where it started is not dirty and its Save button says so. It also means an
+   * entry nobody touched is never rewritten — which matters for a `repo:` the schema rejects,
+   * where re-writing it as an `owner:` would change what the operator meant rather than fix it.
+   */
+  function scopeBox(
+    entry: TokenEntry,
+    field: 'scope' | 'host',
+    label: string,
+    placeholder: string,
+  ): ReactNode {
+    const key = tokenKey(entry.target, field)
+    const specPath = tokenSpecPath(entry.target, field)
+    const current = entry[field]
+    const edit = edits[key]
+    const shown = edit ? String(edit.value ?? '') : current
+
+    return (
+      <div className="form-group" data-field={key} key={key}>
+        <label htmlFor={key}>{label}</label>
+        {helpFor(specPath, key)}
+        <input
+          id={key}
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          value={shown}
+          placeholder={placeholder}
+          aria-describedby={helpId(specPath, key)}
+          onChange={(e) => {
+            const raw = e.target.value
+            setEdit(key.split('.'), raw === current ? null : { path: key.split('.'), value: raw })
+          }}
+        />
+      </div>
+    )
+  }
+
+  function tokenCard(entry: TokenEntry): ReactNode {
+    const isFallback = entry.target.kind === 'fallback'
+    const cardId = isFallback ? 'fallback' : String((entry.target as { index: number }).index)
+    const patKey = tokenKey(entry.target, 'pat')
+    const patSpec = tokenSpecPath(entry.target, 'pat')
+    const patPath = patKey.split('.')
+    const { input, state, refusal } = secretInput(patPath, patSpec, isFallback ? 'GITHUB_PAT' : 'ACME_WIDGETS_PAT')
+    const scopeEdit = edits[tokenKey(entry.target, 'scope')]
+    const hostEdit = edits[tokenKey(entry.target, 'host')]
+    const heading = describeScope(
+      scopeEdit ? String(scopeEdit.value ?? '') : entry.scope,
+      hostEdit ? String(hostEdit.value ?? '') : entry.host,
+      entry.target,
+    )
+    const changes = entryChanges(entry)
+    const entryPrefix = isFallback ? 'github.pat' : `github.tokens.${cardId}`
+    const errors = entryErrors(entryPrefix)
+    const unset = entryWarnings(entryPrefix)
+    // A removal renumbers the entries after it, so it waits for the list's other edits. The
+    // fallback renumbers nothing and waits only for its own.
+    const removeBlocked = isFallback
+      ? changes.length > 0
+        ? 'Save or discard the change to this token first'
+        : undefined
+      : tokenListBusy
+
+    return (
+      <div className="settings-entry" data-token={cardId} key={cardId}>
+        <h3>{heading}</h3>
+        {isFallback ? (
+          <p className="field-help">
+            The entry with no scope. Every clone that no entry below matches uses this token.
+          </p>
+        ) : (
+          <>
+            {scopeBox(entry, 'scope', 'Repository or account', 'acme/widgets')}
+            {scopeBox(entry, 'host', 'Host', 'github.com')}
+          </>
+        )}
+
+        <div className="form-group" data-field={patKey}>
+          <label htmlFor={patKey}>Token Environment Variable</label>
+          {helpFor(patSpec, patKey)}
+          {input}
+          {refusalLine(patKey, refusal)}
+          <p className="hint">
+            {secretStateHint(state)}
+            Leave this blank to keep it as it is.
+          </p>
+        </div>
+
+        {/* No `role="status"`: the banner at the top is the live region, and one announcement
+            of the same news is enough. This is the copy that sits where the fix happens. */}
+        {unset.map((warning) => (
+          <p className="warning settings-field-warning" key={warning.key}>
+            {warning.message}
+          </p>
+        ))}
+
+        {errors.map((error) => (
+          <p className="error settings-field-error" key={error.key}>
+            {error.key}: {error.message}
+          </p>
+        ))}
+
+        <div className="settings-entry-actions">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={changes.length === 0 || saving}
+            onClick={() =>
+              void submit(
+                changes,
+                (['scope', 'host', 'pat'] as const).map((field) => tokenKey(entry.target, field)),
+              )
+            }
+          >
+            Save this token
+          </button>
+          {(state.state !== 'unset' || !isFallback) && (
+            <button
+              type="button"
+              className="destructive"
+              disabled={Boolean(removeBlocked) || saving}
+              title={removeBlocked}
+              onClick={() =>
+                setPendingRemoval({
+                  label: heading,
+                  change: isFallback
+                    ? { path: ['github', 'pat'], unset: true }
+                    : { path: ['github', 'tokens', (entry.target as { index: number }).index], unset: true },
+                  message: isFallback
+                    ? 'The instance-wide token will be removed from the configuration file. Clones that no ' +
+                      'scoped entry matches will then be attempted with no token at all, which is fine for ' +
+                      'public repositories and fails for private ones.'
+                    : undefined,
+                })
+              }
+            >
+              {isFallback ? 'Remove this token' : 'Remove this entry'}
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function draftCard(): ReactNode {
+    if (!draft) return null
+    const set = (patch: Partial<TokenDraft>) => {
+      setDraftError(null)
+      setDraft({ ...draft, ...patch })
+    }
+    /**
+     * WHERE A REJECTED ADD LANDS (rockysurf-1z5q, third finding).
+     *
+     * The draft is not an entry yet, so it has no index of its own — the Add button writes it at
+     * the end of the list, and the server answers about `github.tokens.<length>`. Nothing here
+     * used to read that, so a 400 about the entry being added rendered nowhere near it: the
+     * summary went to the form-level line at the TOP of a long page, and the card the operator
+     * was looking at said nothing at all. Same lookup the saved cards use, same prefix the Add
+     * button will send.
+     */
+    const draftPrefix = draft.scope.trim() === '' && draft.host.trim() === '' ? 'github.pat' : `github.tokens.${rawTokens.length}`
+    const draftErrors = entryErrors(draftPrefix)
+    // The same live refusal the existing cards give, so the policy does not arrive only after the
+    // Add button has been pressed on a token that was never going to be written.
+    const draftRefusal =
+      draft.pat.trim() !== '' && envVarReference(draft.pat) === null ? ENV_VAR_ONLY : null
+    const box = (field: 'scope' | 'host', label: string, placeholder: string, specPath: string) => {
+      const id = `github.tokens.new.${field === 'scope' ? 'repo' : 'host'}`
+      return (
+        <div className="form-group" data-field={id}>
+          <label htmlFor={id}>{label}</label>
+          {helpFor(specPath, id)}
+          <input
+            id={id}
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            value={draft[field]}
+            placeholder={placeholder}
+            aria-describedby={helpId(specPath, id)}
+            onChange={(e) => set({ [field]: e.target.value } as Partial<TokenDraft>)}
+          />
+        </div>
+      )
+    }
+
+    return (
+      <div className="settings-entry" data-token="new">
+        <h3>{describeScope(draft.scope, draft.host, { kind: 'scoped', index: -1 })}</h3>
+        {box('scope', 'Repository or account', 'acme/widgets', 'github.tokens.*.repo')}
+        {box('host', 'Host', 'github.com', 'github.tokens.*.host')}
+        <div className="form-group" data-field="github.tokens.new.pat">
+          <label htmlFor="github.tokens.new.pat">Token Environment Variable</label>
+          {helpFor('github.tokens.*.pat', 'github.tokens.new.pat')}
+          <input
+            id="github.tokens.new.pat"
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            value={draft.pat}
+            placeholder="ACME_WIDGETS_PAT"
+            aria-describedby={helpId('github.tokens.*.pat', 'github.tokens.new.pat')}
+            onChange={(e) => set({ pat: e.target.value })}
+          />
+          {refusalLine('github.tokens.new.pat', draftRefusal)}
+        </div>
+        {draftError && <p className="error settings-field-error">{draftError}</p>}
+        {draftErrors.map((error) => (
+          <p className="error settings-field-error" key={error.key}>
+            {error.key}: {error.message}
+          </p>
+        ))}
+        <div className="settings-entry-actions">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={saving}
+            onClick={() => {
+              // The two refusals a draft has of its own. What is IN the token box is not one of
+              // them: `asReferences` normalises it and refuses a literal on the way out, the same
+              // as for every other credential box, and the box is already showing why.
+              const refusal = refuseNewEntry(draft.scope, draft.host, draft.pat, fallbackIsSet)
+              if (refusal) return setDraftError(refusal)
+              // No scope and no host is the fallback, which is one key rather than a list entry.
+              const unscoped = draft.scope.trim() === '' && draft.host.trim() === ''
+              const change: SettingsChange = unscoped
+                ? { path: ['github', 'pat'], value: draft.pat }
+                : {
+                    path: ['github', 'tokens', rawTokens.length],
+                    value: newScopedEntry(draft.scope, draft.host, draft.pat),
+                  }
+              // Nothing pending is cleared: a draft carries its own state and borrows no edits.
+              void submit([change], []).then((ok) => {
+                if (ok) setDraft(null)
+              })
+            }}
+          >
+            Add this token
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              setDraft(null)
+              setDraftError(null)
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  /* -------------------------------------------------------------------------- the lists */
+
+  function listSection(
+    path: string[],
+    fields: ListField[],
+    itemLabel: (entry: Record<string, unknown>, index: number) => string,
+    blank: Record<string, unknown>,
+    empty: string,
+  ): ReactNode {
+    const entries = (valueAt(values, path) as Record<string, unknown>[] | undefined) ?? []
+    const prefix = `${path.join('.')}.`
+    // Only THIS list's pending edits block a structural change to it — an unsaved port has no
+    // bearing on which entry index 2 refers to.
+    const blocked = Object.keys(edits).some((key) => key.startsWith(prefix))
+      ? 'Save or discard your other changes to this list first'
+      : undefined
+
+    return (
+      <section>
+        {sectionHeader(path.join('.'))}
+        {entries.length === 0 && <p className="hint">{empty}</p>}
+        {entries.map((entry, index) => (
+          <div className="settings-entry" key={index}>
+            <h3>{itemLabel(entry, index)}</h3>
+            {fields.map((f) =>
+              f.secret
+                ? secretField([...path, index, f.name], f.label, f.example ?? 'A_VARIABLE_NAME')
+                : textField([...path, index, f.name], f.label, f.name === 'port' ? 'number' : 'text'),
+            )}
+            <button
+              type="button"
+              className="destructive"
+              disabled={Boolean(blocked) || saving}
+              title={blocked}
+              onClick={() =>
+                setPendingRemoval({
+                  label: itemLabel(entry, index),
+                  change: { path: [...path, index], unset: true },
+                })
+              }
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={Boolean(blocked) || saving}
+          title={blocked}
+          onClick={() => void submit([{ path: [...path, entries.length], value: blank }], [])}
+        >
+          Add
+        </button>
+      </section>
+    )
+  }
+
+  /* ---------------------------------------------------------------------------- render */
+
+  /** A section's title and what the whole section is for, both from the server's inventory. */
+  function sectionHeader(id: string): ReactNode {
+    const section = sections.get(id) ?? { title: id, help: '' }
+    return (
+      <header className="settings-section-header" data-section={id}>
+        <h2>{section.title}</h2>
+        {section.help && <p className="field-help">{section.help}</p>}
+      </header>
+    )
+  }
+
+  const scopes = ((valueAt(values, ['mcp', 'scopes']) ?? valueAt(defaults, ['mcp', 'scopes'])) as string[]) ?? []
+  const pendingScopes = (edits['mcp.scopes']?.value as string[] | undefined) ?? scopes
+  const spendCap = valueAt(values, ['limits', 'spendCap']) as { amount?: number; currency?: string } | undefined
+  const capEdit = edits['limits.spendCap']
+  const capOn = capEdit ? capEdit.unset !== true : spendCap !== undefined
+
+  /** Issues about the file that no rendered field claims — the page still has to report them. */
+  const unplacedIssues = (view.issues ?? []).filter((i) => !specs.has(patternOf(i.path.split('.'))))
+
+  return (
+    <AppShell title="Settings" className="page settings">
+      <p className="hint">
+        These are the contents of <code>{view.file.path}</code>
+        {view.file.exists ? '.' : ', which does not exist yet — saving creates it.'}
+      </p>
+
+      {/* Server-derived, so a reload does not lose it. */}
+      {view.drifted && (
+        <p className="warning" role="status">
+          This file has changed since Rocky Surf started, so the running process is still using the
+          old settings. {view.restartHint}
+        </p>
+      )}
+
+      {/*
+        THE RESTART BANNER, SHARPENED (rockysurf-1z5q). Above it says a restart is PENDING; this
+        says the restart will FAIL. Saving a reference before the variable exists is the order
+        this page asks for — the token boxes take a variable name, and nobody can export one into
+        a running process — so the save went through and this is the other half of that bargain:
+        the exact variable, and what has to happen before the next start. Server-derived like the
+        drift banner, so it survives a reload and stays until the variable is exported.
+      */}
+      {unsetVars.length > 0 && (
+        <p className="warning" data-unset-vars role="status">
+          Saved. {unsetVars.join(', ')} {unsetVars.length === 1 ? 'is' : 'are'} not set in the
+          environment this Rocky Surf was started from, so the configuration file is now ahead of
+          it. Export {unsetVars.length === 1 ? 'it' : 'them'} before restarting — otherwise the
+          next start will refuse, naming {unsetVars.length === 1 ? 'the same variable' : 'the same variables'}.
+        </p>
+      )}
+
+      {view.issues && view.issues.length > 0 && (
+        <p className="error">
+          The configuration file on disk is not valid, and Rocky Surf will not start on it until
+          that is fixed — here, or in the file itself.
+        </p>
+      )}
+      {unplacedIssues.map((issue) => (
+        <p className="error" key={issue.path}>
+          {issue.path}: {issue.message}
+        </p>
+      ))}
+
+      {formError && <p className="error">{formError}</p>}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          void submit()
+        }}
+      >
+        <section>
+          {sectionHeader('server')}
+          {textField(['server', 'port'], 'Port', 'number')}
+          {textField(['server', 'host'], 'Listen address')}
+          {textField(['server', 'publicUrl'], 'Public URL')}
+          {readOnlyField(['server', 'dataDir'], 'Data directory')}
+        </section>
+
+        {/*
+          ONE LIST, TWO SHAPES IN THE FILE. Each entry saves on its own — every card's button is
+          its own PUT — because a list where one Save button covers additions, removals and edits
+          has to guess what an index meant by the time it is applied. See `lib/githubTokens.ts`.
+        */}
+        <section>
+          {sectionHeader('github')}
+          {tokenEntries.map(tokenCard)}
+          {draftCard()}
+          {!draft && (
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={Boolean(tokenListBusy) || saving}
+              title={tokenListBusy}
+              onClick={() => {
+                setDraftError(null)
+                setDraft({ scope: '', host: '', pat: '' })
+              }}
+            >
+              Add a token
+            </button>
+          )}
+        </section>
+
+        <section>
+          {sectionHeader('providers.hetzner')}
+          {boolField(['providers', 'hetzner', 'enabled'], 'Enabled')}
+          {/*
+            THE SAME POLICY AS THE TOKEN LIST, and the same label. It is the same kind of thing —
+            a provider credential in a file that gets backed up — so a second rule here would be a
+            second rule for no reason. (rockysurf-4o3o, directive 3.)
+          */}
+          {secretField(['providers', 'hetzner', 'token'], 'Token Environment Variable', 'HETZNER_TOKEN')}
+          {textField(['providers', 'hetzner', 'location'], 'Location')}
+          {textField(['providers', 'hetzner', 'consoleProjectId'], 'Console project id', 'number')}
+        </section>
+
+        <section>
+          {sectionHeader('providers.aws')}
+          {boolField(['providers', 'aws', 'enabled'], 'Enabled')}
+          {textField(['providers', 'aws', 'region'], 'Region')}
+          {textField(['providers', 'aws', 'profile'], 'Profile')}
+          {textField(['providers', 'aws', 'sshAllowedCidr'], 'SSH allowed from')}
+          {readOnlyField(['providers', 'aws', 'sizes'], 'Offered instance types')}
+        </section>
+
+        <section>
+          {sectionHeader('providers.azure')}
+          {boolField(['providers', 'azure', 'enabled'], 'Enabled')}
+          {/*
+            No credential field, and that is the point. Azure credentials come from the
+            environment, a managed identity or `az login` — there is nowhere in the config file
+            to put a client secret, so there is no box here inviting someone to paste one.
+          */}
+          {textField(['providers', 'azure', 'subscriptionId'], 'Subscription id')}
+          {textField(['providers', 'azure', 'resourceGroup'], 'Resource group')}
+          {textField(['providers', 'azure', 'location'], 'Location')}
+          {textField(['providers', 'azure', 'sshAllowedCidr'], 'SSH allowed from')}
+          {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
+        </section>
+
+        <section>
+          {sectionHeader('providers.byo')}
+          {boolField(['providers', 'byo', 'enabled'], 'Enabled')}
+          {textField(['providers', 'byo', 'identityFile'], 'Default private key path')}
+        </section>
+
+        {listSection(
+          ['providers', 'byo', 'hosts'],
+          [
+            { name: 'name', label: 'Name' },
+            { name: 'host', label: 'Address' },
+            { name: 'user', label: 'Admin login' },
+            { name: 'port', label: 'SSH port' },
+            { name: 'fingerprint', label: 'Host key fingerprint' },
+            { name: 'identityFile', label: 'Private key path' },
+          ],
+          (entry, i) => String(entry['name'] ?? `host ${i + 1}`),
+          { name: 'change-me', host: '10.0.0.1' },
+          'None yet. Enabling this provider requires at least one host.',
+        )}
+
+        <section>
+          {sectionHeader('limits')}
+          {textField(['limits', 'maxServers'], 'Most servers at once', 'number')}
+          {textField(['limits', 'createRatePerHour'], 'Most created per hour', 'number')}
+
+          <div className="form-group" data-field="limits.spendCap">
+            <label htmlFor="limits.spendCap">Stop creating servers over a spend cap</label>
+            {helpFor('limits.spendCap', 'limits.spendCap')}
+            <input
+              id="limits.spendCap"
+              type="checkbox"
+              aria-describedby={helpId('limits.spendCap', 'limits.spendCap')}
+              checked={capOn}
+              onChange={(e) =>
+                setEdit(
+                  ['limits', 'spendCap'],
+                  e.target.checked
+                    ? {
+                        path: ['limits', 'spendCap'],
+                        // Written whole: half a cap is not a smaller cap, it is a file that
+                        // will not load.
+                        value: { amount: spendCap?.amount ?? 50, currency: spendCap?.currency ?? 'USD' },
+                      }
+                    : { path: ['limits', 'spendCap'], unset: true },
+                )
+              }
+            />
+            {fieldErrors['limits.spendCap'] && <p className="error">{fieldErrors['limits.spendCap']}</p>}
+          </div>
+          {/*
+            Two ways to edit the same two numbers, because there are two situations. A cap the
+            file already has is edited field by field, like everything else. A cap being turned
+            on does not exist yet, so its fields edit the pending block — otherwise enabling a
+            cap would take two saves, the first of which writes a figure nobody chose.
+          */}
+          {capOn && spendCap !== undefined && (
+            <>
+              {textField(['limits', 'spendCap', 'amount'], 'Cap', 'number')}
+              {textField(['limits', 'spendCap', 'currency'], 'Currency')}
+            </>
+          )}
+          {capOn && spendCap === undefined && capEdit?.value !== undefined && (
+            <>
+              {newCapField('amount', 'Cap', 'number')}
+              {newCapField('currency', 'Currency', 'text')}
+            </>
+          )}
+        </section>
+
+        <section>
+          {sectionHeader('mcp')}
+          <div className="form-group" data-field="mcp.scopes">
+            <fieldset aria-describedby={helpId('mcp.scopes', 'mcp.scopes')}>
+              <legend>What an MCP client may do</legend>
+              {helpFor('mcp.scopes', 'mcp.scopes')}
+              {(['read', 'stop', 'create', 'terminate'] as const).map((scope) => (
+                <label key={scope} className="settings-scope">
+                  <input
+                    type="checkbox"
+                    checked={pendingScopes.includes(scope)}
+                    onChange={(e) =>
+                      setEdit(['mcp', 'scopes'], {
+                        path: ['mcp', 'scopes'],
+                        value: e.target.checked
+                          ? [...pendingScopes, scope]
+                          : pendingScopes.filter((s) => s !== scope),
+                      })
+                    }
+                  />
+                  {scope}
+                </label>
+              ))}
+            </fieldset>
+            {specs.get('mcp.scopes')?.warning && (
+              <p className="hint settings-warning">{specs.get('mcp.scopes')!.warning}</p>
+            )}
+            {fieldErrors['mcp.scopes'] && <p className="error">{fieldErrors['mcp.scopes']}</p>}
+          </div>
+        </section>
+
+        <footer className="settings-actions">
+          <button type="submit" className="btn-primary" disabled={!dirty || saving}>
+            {saving ? 'Saving…' : 'Save to the file'}
+          </button>
+          <button type="button" className="btn-secondary" disabled={!anyDirty || saving} onClick={() => setEdits({})}>
+            Discard changes
+          </button>
+          <p className="hint">{view.restartHint}</p>
+        </footer>
+      </form>
+
+      {pendingRemoval && (
+        <ConfirmModal
+          title="Remove this entry?"
+          message={
+            pendingRemoval.message ??
+            `${pendingRemoval.label} will be removed from the configuration file, along with any comment written above it. Everything else in the file is left alone.`
+          }
+          confirmLabel="Remove"
+          isDestructive
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => {
+            const { change } = pendingRemoval
+            setPendingRemoval(null)
+            void submit([change], [])
+          }}
+        />
+      )}
+    </AppShell>
+  )
+}

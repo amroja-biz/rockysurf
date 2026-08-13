@@ -1,0 +1,42 @@
+# Node / pnpm workspace
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Test and build output
+coverage/
+*.tgz
+
+# Runtime state of a control plane run from a checkout. `rockysurf.config.yaml` is YOUR
+# config — the committed file is `rockysurf.config.example.yaml`, and the one without
+# `.example` is the one that holds real settings. Anchored to the root on purpose:
+# `docker/rockysurf.config.yaml` is the committed seed for the container's volume.
+/rockysurf.config.yaml
+secret.key
+*.db
+*.db-wal
+*.db-shm
+
+# Stray logs at the root only. `scripts/e2e/recordings/*.log` is committed evidence of
+# real-cloud runs and must stay tracked.
+/*.log
+
+# Local environment. `.env.example` is committed; nothing else here is.
+.env
+.env.*
+!.env.example
+
+# bv (beads viewer) local config, caches and exported graphs
+.bv/
+rockysurf-graph.html
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads-credential-key
+.beads/proxieddb/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/

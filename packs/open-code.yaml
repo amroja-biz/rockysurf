@@ -1,0 +1,85 @@
+# opencode — the open-source, provider-agnostic coding agent, on the shared base toolchain.
+#
+# Imported from the legacy SaaS admin tables (rockysurf-gogh). The legacy row installed the
+# agent with `curl -fsSL https://opencode.ai/install | bash` under `runAs: rocky`; that is a
+# per-user install into $HOME with an unguarded PATH append, and it fails this repo's
+# byte-identical-.bashrc check on the second run. The npm route below is what amp and codex
+# already use, so all three agents now install the same way.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+version: 1
+
+pack:
+  packId: open-code
+  name: opencode
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - opencode
+  displayOrder: 6
+  enabled: true
+  imageUrl: /images/surge-packs/open-code.png
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    opencode
+      opencode auth login     pick a provider, then paste its API key
+      opencode auth list      shows which providers are already configured
+      opencode                starts the terminal UI in the current directory
+
+      opencode is provider-agnostic and ships with NO credentials — it talks to
+      Anthropic, OpenAI, Google or a local model, whichever you give it a key for.
+      Keys you add are written to ~/.local/share/opencode/auth.json on this box.
+      opencode models         lists what the configured providers offer
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  - toolId: opencode
+    name: opencode
+    description: Open-source terminal coding agent that runs on Claude, OpenAI, Google or a local model
+    category: agent
+    url: https://github.com/anomalyco/opencode
+    installOrder: 40
+    # A global npm install writes into /usr/lib/node_modules, which is root's. The legacy
+    # definition claimed `rocky` and piped a curl installer into bash — honest privilege
+    # instead, matching amp and codex.
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # UNPINNED (deliberate): an agent CLI pinned to a stale version is worse for the user
+      # than one that tracks its own releases. npm install -g is convergent.
+      #
+      # No $ARCH branch is needed: the package ships per-platform binaries as optional
+      # dependencies (opencode-linux-x64 / opencode-linux-arm64) and npm picks the right
+      # one. The version check at the end is what proves it picked an executable build.
+      npm install -g --no-fund --no-audit opencode-ai
+      opencode --version >/dev/null

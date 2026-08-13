@@ -1,0 +1,513 @@
+import { readFileSync } from 'node:fs'
+import { createServer, type Server as HttpServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { fileURLToPath } from 'node:url'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AuthProvider } from '../contexts/AuthContext'
+import { EventsProvider } from '../contexts/EventsContext'
+import { TRANSITION_STALLED_HINT, TRANSITION_WINDOW_MS } from '../hooks/useServerTransition'
+import { setAuthToken } from '../lib/api'
+import { STATUS_LABELS, STEP_ORDER } from '../lib/format'
+import { ServerDetailPage } from './ServerDetailPage'
+
+/**
+ * The step timeline, driven the way core drives it (rockysurf-xinr).
+ *
+ * WHY THIS IS NOT A MOCK-FED COMPONENT TEST. The bug this file exists for was invisible to
+ * every test in the suite: core emitted `bootstrap-progress` with a PLAN STEP ID in `step`
+ * (`tool:beads`) where this page expects a PROVISIONING step (`installing_tools`), so on a
+ * real AWS create the install log streamed to completion while the timeline sat at
+ * "Requested". A test that pushed its own idea of an event into a component's props agreed
+ * with the page, because both sides of the disagreement were on the same side of the mock.
+ *
+ * So nothing between the socket and the DOM is faked here: a real HTTP server, a real
+ * `EventSource` (see `test-setup.ts`), the real `EventsProvider`, and the page itself. What is
+ * pushed down the stream is the frame core builds — and the last test in this file is what
+ * keeps that claim true, by checking this page's vocabulary against core's own source.
+ */
+
+const USER = { id: 'u1', username: 'admin', email: null, avatarUrl: null, isAdmin: true }
+const SERVER_ID = 'srv-abc123'
+
+/** Provisioning, at the first step — the state a browser lands on right after a create. */
+const SERVER = {
+  serverId: SERVER_ID,
+  name: 'dev-box',
+  provider: 'fake',
+  packId: 'a-pack',
+  status: 'provisioning',
+  provisioningStep: 'requested',
+  size: 'small',
+  offeringId: 'fake-small',
+  arch: 'arm64',
+  sshUser: 'rocky',
+  estimatedTotalCost: 0,
+  tools: [],
+  repositories: [],
+  totalUptimeSeconds: 0,
+  createdAt: '2026-08-12T00:00:00.000Z',
+}
+
+/**
+ * The pack the server was built from, as the public list serves it. `guide` is the pack's own
+ * post-boot instructions (rockysurf-7ckx); the `<script>` in it is not decoration — see the
+ * escaping test below.
+ */
+const PACK = {
+  packId: 'a-pack',
+  name: 'A Pack',
+  displayOrder: 1,
+  enabled: true,
+  tools: [],
+  requiresRepos: false,
+  requiresRdp: false,
+  guide: 'Claude Code\n  claude setup-token\n<script>alert(1)</script>\n',
+}
+
+const CAPABILITIES = {
+  stop: true,
+  ipStableAcrossStop: true,
+  canInjectHostKeys: true,
+  userDataMaxBytes: 32768,
+  generatesUserData: true,
+}
+
+/** Matches `environmentOptions.jsdom.url` in vitest.config.ts — see the note there. */
+const STUB_PORT = 34567
+
+let server: HttpServer
+let streams: Array<(chunk: string) => void> = []
+
+/**
+ * The row the stub serves, mutable so a test can start the page from the state it needs — a
+ * stopped box, for the stop/start tests below. Everything else reads it as it always did.
+ */
+let row: Record<string, unknown>
+/** Every stop/start core accepted, and every read of the row, in order. */
+let accepted: string[]
+let reads: number
+
+beforeEach(async () => {
+  streams = []
+  row = { ...SERVER }
+  accepted = []
+  reads = 0
+  server = createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+
+    if (url.pathname === '/api/v1/auth/me') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ user: USER }))
+      return
+    }
+
+    /**
+     * Start and stop, answered the way core answers them (rockysurf-55fx.15): 200, and the row
+     * UNCHANGED. A cloud that takes its time has accepted the request and reached nothing yet,
+     * so the only fact in this response is that it was accepted — which is exactly the fact the
+     * page had been throwing away.
+     */
+    if (req.method === 'POST' && /\/(start|stop)$/.test(url.pathname)) {
+      accepted.push(url.pathname.split('/').pop()!)
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(row))
+      return
+    }
+
+    if (url.pathname === `/api/v1/servers/${SERVER_ID}`) {
+      reads++
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(row))
+      return
+    }
+
+    if (url.pathname === '/api/v1/providers') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify([{ id: 'fake', displayName: 'Fake', capabilities: CAPABILITIES }]))
+      return
+    }
+
+    if (url.pathname === '/api/v1/surge-packs') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify([PACK]))
+      return
+    }
+
+    if (url.pathname === '/api/v1/events') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+      res.write(`event: connected\ndata: ${JSON.stringify({ userId: USER.id })}\n\n`)
+      streams.push((chunk) => res.write(chunk))
+      return
+    }
+
+    res.writeHead(404).end()
+  })
+
+  await new Promise<void>((resolve) => server.listen(STUB_PORT, '127.0.0.1', resolve))
+  expect((server.address() as AddressInfo).port).toBe(STUB_PORT)
+})
+
+afterEach(async () => {
+  setAuthToken(null)
+  streams = []
+  await new Promise<void>((resolve) => {
+    server.closeAllConnections?.()
+    server.close(() => resolve())
+  })
+})
+
+function renderPage() {
+  return render(
+    <MemoryRouter initialEntries={[`/servers/${SERVER_ID}`]}>
+      <AuthProvider>
+        <EventsProvider>
+          <Routes>
+            <Route path="/servers/:serverId" element={<ServerDetailPage />} />
+          </Routes>
+        </EventsProvider>
+      </AuthProvider>
+    </MemoryRouter>,
+  )
+}
+
+/** Push one message down every open stream, the way core's broadcast does. */
+function broadcast(payload: object): void {
+  const frame = `event: message\ndata: ${JSON.stringify(payload)}\n\n`
+  streams.forEach((write) => write(frame))
+}
+
+/**
+ * Push an event until the page reacts. The stream opens before the page has finished
+ * subscribing, so a single push can land in that gap — the same as a real server emitting
+ * while a tab is still loading. The assertion still has to pass on a real re-render.
+ */
+async function broadcastUntil(payload: object, assertion: () => void): Promise<void> {
+  await waitFor(() => {
+    broadcast(payload)
+    assertion()
+  })
+}
+
+/** The rendered state of one step, read off the DOM the way a user reads the colour. */
+const stateOf = (label: string) => screen.getByText(label).getAttribute('data-state')
+
+/** The status pill, which is the thing the owner was staring at when they filed this. */
+const pill = (container: HTMLElement) => container.querySelector('.status-badge')!
+
+describe('the step timeline, fed by the live stream', () => {
+  it('advances when core reports a step, with no refetch and no reload', async () => {
+    renderPage()
+
+    // The starting picture: the first step is where the row says it is.
+    await waitFor(() => expect(stateOf('Requested')).toBe('active'))
+    expect(stateOf('Installing tools')).toBe('pending')
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+
+    // The frame core emits from BOTH bootstrap topologies: the row's vocabulary in `step`,
+    // the plan's own step id alongside it.
+    await broadcastUntil(
+      { type: 'bootstrap-progress', serverId: SERVER_ID, step: 'installing_tools', stepId: 'tool:beads', status: 'provisioning' },
+      () => expect(stateOf('Installing tools')).toBe('active'),
+    )
+
+    // Everything before it is behind us, everything after is still to come.
+    expect(stateOf('Requested')).toBe('done')
+    expect(stateOf('Launching server')).toBe('done')
+    expect(stateOf('Ready')).toBe('pending')
+  })
+
+  it('leaves the timeline alone when a step it cannot place arrives', async () => {
+    renderPage()
+
+    await waitFor(() => expect(stateOf('Requested')).toBe('active'))
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil({ type: 'bootstrap-progress', serverId: SERVER_ID, step: 'installing_tools' }, () =>
+      expect(stateOf('Installing tools')).toBe('active'),
+    )
+
+    // A plan step id in the `step` field is what core used to send from push mode. It must
+    // never move the timeline BACKWARDS to nothing, which is what an unguarded cast did:
+    // `indexOf` answers -1 and every step goes pending.
+    broadcast({ type: 'bootstrap-progress', serverId: SERVER_ID, step: 'tool:claude-code' })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(stateOf('Installing tools')).toBe('active')
+  })
+
+  it('gives way to the connection details when the server reaches running', async () => {
+    renderPage()
+
+    await waitFor(() => expect(stateOf('Requested')).toBe('active'))
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+
+    // Core announces the promotion as `server-status`, which is the only event type this page
+    // reads a status from — a bootstrap report that promoted the row and said nothing here is
+    // how a finished box kept showing "Setting up" until the user reloaded.
+    await broadcastUntil(
+      { type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' },
+      () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
+    )
+
+    expect(screen.queryByText('Installing tools')).toBeNull()
+    expect(screen.getByText('203.0.113.7')).toBeTruthy()
+  })
+})
+
+describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
+  it('is hidden while the box is still building and appears when it is running', async () => {
+    renderPage()
+
+    // Nothing to act on yet: the tools it talks about are still being installed.
+    await waitFor(() => expect(stateOf('Requested')).toBe('active'))
+    expect(screen.queryByText(/claude setup-token/)).toBeNull()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+
+    await broadcastUntil({ type: 'server-status', serverId: SERVER_ID, status: 'running' }, () =>
+      expect(screen.getByRole('heading', { name: 'Getting started with A Pack' })).toBeTruthy(),
+    )
+    expect(screen.getByText(/claude setup-token/)).toBeTruthy()
+  })
+
+  it('renders the guide as text, so a pack cannot inject markup into this page', async () => {
+    // A pack file arrives by pull request or by import-from-URL, which makes its prose
+    // untrusted input. React escaping is the whole defence, and the way it stops being the
+    // defence is somebody reaching for dangerouslySetInnerHTML to get bold text.
+    const { container } = renderPage()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil({ type: 'server-status', serverId: SERVER_ID, status: 'running' }, () =>
+      expect(screen.getByRole('heading', { name: 'Getting started with A Pack' })).toBeTruthy(),
+    )
+
+    expect(container.querySelector('script')).toBeNull()
+    // Present as literal characters the user can read, not as an element.
+    expect(screen.getByText(/<script>alert\(1\)<\/script>/)).toBeTruthy()
+  })
+})
+
+/**
+ * The stop/start affordance (rockysurf-4t8y).
+ *
+ * The report was the owner clicking Start on a stopped t4g.medium, watching the AWS console
+ * show it starting, and watching this page say "Stopped" and nothing else for a minute and a
+ * half. Same reason the timeline bug above was invisible: core is behaving correctly and every
+ * unit test agrees with it, because the missing thing is not a fact core has.
+ *
+ * These drive the real request and the real stream. The stub answers start the way a slow cloud
+ * does — 200, row unchanged — because a stub that returned `running` would test a Hetzner and
+ * leave the EC2 case exactly as unobserved as it was.
+ */
+describe('a stop or start the provider has not finished', () => {
+  /** Land on the page with the box stopped, and click Start. */
+  async function clickStart() {
+    row['status'] = 'stopped'
+    const rendered = renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(accepted).toEqual(['start']))
+    return rendered
+  }
+
+  it('says so from the accepted response, without claiming a status core never reported', async () => {
+    const { container } = await clickStart()
+
+    await waitFor(() => expect(pill(container).textContent).toBe('Starting…'))
+
+    // The load-bearing half of this bead's design: the ROW is still stopped, and says so where
+    // anything downstream would read it. The transition is presentation beside it, not a status.
+    expect(pill(container).getAttribute('data-status')).toBe('stopped')
+    expect(pill(container).getAttribute('data-transition')).toBe('start')
+
+    // And nothing offers an action that core would refuse with a 409 while it is in flight.
+    expect(screen.getByRole('button', { name: 'Starting…' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Terminate' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('resolves on the frame core broadcasts when the provider confirms, with no refresh', async () => {
+    const { container } = await clickStart()
+    await waitFor(() => expect(pill(container).textContent).toBe('Starting…'))
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+
+    // What core emits from `transition()` when a sync sees the box up — the same event type the
+    // bootstrap promotion uses, through the same constructor.
+    await broadcastUntil({ type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' }, () =>
+      expect(pill(container).textContent).toBe('Running'),
+    )
+
+    expect(pill(container).getAttribute('data-transition')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy()
+  })
+
+  it('nudges core while it waits, which is what makes that frame arrive at all', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { container } = await clickStart()
+      await waitFor(() => expect(pill(container).textContent).toBe('Starting…'))
+
+      // Nothing in core sweeps a stopped row: the provision ticker walks `requested` and
+      // `provisioning` only. This GET is what makes core ask the provider — and core's own
+      // broadcast on the answer is what tells every other tab.
+      const before = reads
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_000)
+      })
+      // `waitFor` rather than a bare assertion: advancing the clock ISSUES the requests, and
+      // the round trip to the stub is real I/O that a fake clock does not wait for.
+      await waitFor(() => expect(reads).toBeGreaterThan(before))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('decays to the truth rather than spinning forever when nothing ever confirms', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { container } = await clickStart()
+      await waitFor(() => expect(pill(container).textContent).toBe('Starting…'))
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TRANSITION_WINDOW_MS.start + 1_000)
+      })
+
+      // Back to what the row actually says, plus the reason it is saying it.
+      await waitFor(() => expect(pill(container).textContent).toBe('Stopped'))
+      expect(pill(container).getAttribute('data-transition')).toBeNull()
+      expect(screen.getByText(TRANSITION_STALLED_HINT)).toBeTruthy()
+      // Offerable again: the user's next move is to try again, and this is the button for it.
+      expect(screen.getByRole('button', { name: 'Start' }).hasAttribute('disabled')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+/**
+ * The link out to the provider's own console (rockysurf-imj1, ADR-0003 E16).
+ *
+ * Rendered from what core SENT and from nothing else. The page has no idea what an EC2 or a
+ * Hetzner console URL looks like, and the two tests below are the pair that keeps it that way:
+ * a row core linked gets an anchor, and a row core did not gets no anchor at all — not a
+ * disabled one, not a guess assembled from `server.provider`.
+ */
+describe('the provider console link', () => {
+  const CONSOLE_URL = 'https://console.example.test/projects/1234567/servers/42/overview'
+  const link = () => screen.queryByRole('link', { name: /console/i })
+
+  it('renders nothing when core reported no console URL', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('dev-box')).toBeTruthy())
+    expect(link()).toBeNull()
+  })
+
+  it('opens the provider console in a new tab, named after the provider core named', async () => {
+    row = { ...SERVER, consoleUrl: CONSOLE_URL }
+    renderPage()
+
+    await waitFor(() => expect(link()).toBeTruthy())
+    const anchor = link()!
+    expect(anchor.getAttribute('href')).toBe(CONSOLE_URL)
+    expect(anchor.getAttribute('target')).toBe('_blank')
+    // Both halves: `noopener` keeps the opened tab off `window.opener`, `noreferrer` keeps this
+    // installation's address out of the provider's referer log.
+    expect(anchor.getAttribute('rel')).toBe('noopener noreferrer')
+    // `Fake` is the displayName from GET /providers — the same source the create page uses, so
+    // a provider this build has never heard of still gets a real name in the label.
+    expect(anchor.textContent).toContain('Fake')
+  })
+})
+
+describe('the vocabulary this timeline draws', () => {
+  /**
+   * The seam the bug crossed, checked directly.
+   *
+   * The two halves of this system are tested in two packages and meet at a contract neither
+   * of them owns. Reading core's list rather than restating it means a step added, renamed or
+   * reordered on the server fails HERE, in the package that would otherwise render an empty
+   * timeline for it and say nothing.
+   */
+  /**
+   * Through a variable, not a literal: Vite statically rewrites `new URL('./literal',
+   * import.meta.url)` into an asset URL, which is an http one under jsdom and not a file to
+   * read. The same dodge is in `navbar.test.tsx` and `CreateServerPage.test.tsx`.
+   */
+  function coreVocabulary(name: string): string[] {
+    const relative = '../../../core/src/db/schema.ts'
+    const schema = readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
+    const declaration = new RegExp(`export const ${name} = \\[([^\\]]*)\\]`).exec(schema)
+    expect(declaration).toBeTruthy()
+    const values = [...declaration![1]!.matchAll(/'([^']+)'/g)].map((match) => match[1]!)
+    expect(values.length).toBeGreaterThan(0)
+    return values
+  }
+
+  it('is exactly the list core promotes rows through', () => {
+    // Reading core's list rather than restating it means a step added, renamed or reordered on
+    // the server fails HERE, in the package that would otherwise render an empty timeline for
+    // it and say nothing.
+    expect(STEP_ORDER).toEqual(coreVocabulary('PROVISIONING_STEPS'))
+  })
+
+  /**
+   * The other half of the same hand-mirroring, guarded for the first time (rockysurf-xinr's
+   * note on rockysurf-4t8y).
+   *
+   * `STATUS_LABELS` is a `Record<Server['status'], string>`, so this checks the union in
+   * `lib/api.ts` as much as the labels: a status core adds and web does not is a pill with
+   * `undefined` in it, and a status web keeps after core drops it is dead code that reads as
+   * supported. Order is not asserted — a Record is not a sequence, unlike the timeline above.
+   *
+   * Note what this does NOT guard, deliberately: `stopping`/`starting` are not in either list
+   * and must not be. rockysurf-55fx.15 ruled that out — EC2 reports `pending` for a restart
+   * identically to a first boot, so core would be asserting a status from its own request
+   * having been accepted. The in-flight affordance is client-side presentation instead, and
+   * `useServerTransition` is where it lives.
+   */
+  it('and the status labels are exactly the statuses core can put on a row', () => {
+    expect(Object.keys(STATUS_LABELS).sort()).toEqual(coreVocabulary('SERVER_STATUSES').sort())
+  })
+})
+
+/**
+ * WHICH GIT TOKENS THIS BOX CARRIES (rockysurf-18lq).
+ *
+ * Narrowing made this a real question with a per-box answer, and made its cost worth stating in
+ * the same place: there is no way to push a token to a running machine, so a repository nobody
+ * declared at create is one this box may simply not be able to clone. A user who learns that
+ * from a failed clone on the box has already paid for the boot.
+ */
+describe('the git tokens a box was built with', () => {
+  it('names the scopes it carries, and the fallback alongside them', async () => {
+    row = {
+      ...SERVER,
+      repositories: ['https://github.com/acme/widgets'],
+      githubTokenScopes: ['github.com/acme/widgets'],
+      carriesFallbackToken: true,
+    }
+    renderPage()
+
+    const block = await screen.findByTestId('github-token-scopes')
+    expect(block.textContent).toContain('github.com/acme/widgets')
+    expect(block.textContent).toContain('github.pat')
+    // The trade, in the same breath as the fact.
+    expect(block.textContent).toContain('no way to add one to a running box')
+  })
+
+  it('says so plainly when narrowing left it with only the fallback', async () => {
+    row = { ...SERVER, repositories: ['https://github.com/public/thing'], githubTokenScopes: [], carriesFallbackToken: true }
+    renderPage()
+
+    const block = await screen.findByTestId('github-token-scopes')
+    expect(block.textContent).toContain('only the instance-wide')
+  })
+
+  it('says nothing at all when core has no git configuration to answer from', async () => {
+    // Absent is not `[]`. "This installation configures no tokens" and "this box was given none
+    // of them" are different claims, and a page that rendered them identically would be
+    // inventing one of them.
+    row = { ...SERVER, repositories: ['https://github.com/acme/widgets'] }
+    renderPage()
+
+    await screen.findByRole('heading', { name: /repositories/i })
+    expect(screen.queryByTestId('github-token-scopes')).toBeNull()
+  })
+})

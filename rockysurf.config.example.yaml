@@ -1,0 +1,263 @@
+# Rocky Surf configuration — copy it to one of the two places it is looked for, and edit.
+#
+#   cp rockysurf.config.example.yaml rockysurf.config.yaml            # this directory
+#   cp rockysurf.config.example.yaml ~/.rockysurf/config.yaml         # or your home
+#
+# WHICH FILE IS READ, first match wins:
+#
+#   1. `--config <path>`             — anywhere; a path with nothing at it is an error
+#   2. `./rockysurf.config.yaml`     — the working directory the command was run in
+#   3. `~/.rockysurf/config.yaml`    — the durable home, beside the data directory
+#
+# With none of them, Rocky Surf starts on the defaults below and says so. The settings page
+# writes whichever file was loaded, and creates the home one when there was none.
+#
+# Every value shown below is the default unless the comment says otherwise, so you can delete
+# any section you do not care about and get the same behaviour.
+#
+# ${VAR} is replaced from the environment before the file is parsed. Nothing secret needs to
+# live in this file — see `.env.example` for the variables referenced here. A missing variable
+# is an error at startup that names the variable, not a mysterious empty value.
+# Write `$${VAR}` if you want a literal `${VAR}` in a value.
+#
+# WRITE THE REFERENCE, NOT THE TOKEN. This file gets backed up, copied to a second machine and
+# pasted into bug reports; `${HETZNER_TOKEN}` survives all of that carrying nothing. The parser
+# accepts a literal if you hand-edit one in, and the settings page will not write one: its token
+# boxes take the NAME of an environment variable and refuse anything else.
+
+server:
+  # Port for the web UI and API.
+  port: 3000
+
+  # Which interface to listen on. Loopback by default: this process holds your cloud
+  # credentials and the SSH key for every server it manages, and the UI has one password in
+  # front of it and no TLS of its own, so it should not be on your network unless you say so.
+  #
+  # Set "0.0.0.0" to accept connections from anywhere the machine is reachable — do that only
+  # behind a firewall or a reverse proxy that terminates TLS. Inside a container it must be
+  # "0.0.0.0" (the container's loopback is not the host's); the shipped compose file handles
+  # that and still publishes the port on the host's loopback only.
+  # host: "127.0.0.1"
+
+  # Public URL of THIS control plane. Only needed for callback-mode bootstrap, which requires
+  # a core the box can reach. Push mode — the default — needs no inbound connectivity at all,
+  # so leave this unset unless you are running a hosted, publicly reachable control plane.
+  # publicUrl: "https://rockysurf.example.com"
+
+  # Database, generated keys and encrypted secrets live here. `~` is expanded, and a relative
+  # path resolves against the working directory. Back this directory up.
+  dataDir: "~/.rockysurf"
+
+auth:
+  # local        — single admin, zero config. The default.
+  # github-device — sign in with GitHub via device flow.
+  mode: local
+
+github:
+  # Personal access token used to clone private repositories onto your boxes.
+  # Needs `repo` scope. Leave unset if you only clone public repos.
+  #
+  # Instance-wide: every box created here receives it, whoever created it. It is never stored
+  # in the database, so rotating it is an edit here (or of $GITHUB_PAT) plus a restart.
+  # pat: "${GITHUB_PAT}"
+
+  # One token per repository, for fine-grained PATs — which GitHub issues per repository, so
+  # a single `pat` above cannot express them. Most specific match wins: repo, then owner, then
+  # host, then `pat` as the fallback for everything unmatched. `host` defaults to github.com.
+  # Never stored, exactly like `pat`. Each entry reaches only the servers whose declared
+  # repositories select it, so a box built for acme/widgets does not carry a self-hosted forge's
+  # token — one entry per repository is worth writing. `pat` is the exception and goes to every
+  # box, because it is the general-purpose credential packs read as $GITHUB_TOKEN. There is no
+  # way to add a token to a running box: a repository cloned by hand later has only what `pat`
+  # covers.
+  #
+  # The settings page shows `pat` and `tokens` as ONE list of access tokens, in which the entry
+  # naming no repository, account or host is `pat`. Written here they stay two keys, because an
+  # unscoped entry in the list below would be `pat` spelled longer and is refused at startup.
+  # Its token boxes are labelled "Token Environment Variable" and hold the bare name — you type
+  # ACME_WIDGETS_PAT there and the line below is what gets written.
+  # tokens:
+  #   - repo: "acme/widgets"
+  #     pat: "${ACME_WIDGETS_PAT}"
+  #   # `owner: acme` with `repo: widgets` on its own line means the same thing; write a bare
+  #   # `owner:` (no `repo:`) for every repository under an account, or a bare `host:` for a
+  #   # self-hosted forge.
+  #   - owner: acme
+  #     pat: "${ACME_PAT}"
+
+providers:
+  # Bring your own cloud. Every provider is disabled until you turn it on, so a fresh install
+  # cannot spend money by accident. Enable at least one before creating a server.
+
+  hetzner:
+    # The quickest start: create a project at console.hetzner.com, make a read/write API
+    # token, and export it as HETZNER_TOKEN — the token belongs in your environment, and this
+    # line is the reference to it.
+    enabled: true
+    token: "${HETZNER_TOKEN}"
+    # fsn1/nbg1/hel1 (Germany, Finland), ash/hil (US), sin (Singapore).
+    # NOTE: arm64 (CAX) types are only sold in fsn1, nbg1 and hel1, and stock varies — check
+    # availability before promising yourself an ARM box.
+    location: fsn1
+
+    # OPTIONAL, and only used to put a "View in Hetzner Console" link on a server's page.
+    #
+    # The Cloud API never tells anyone the numeric project id — your token is scoped to the
+    # project without ever naming it — so it has to come from here. Open the project in the
+    # console and take the number out of the address bar:
+    #
+    #   https://console.hetzner.com/projects/1234567/servers   ->   1234567
+    #
+    # Leave it out and servers simply have no console link. Rocky Surf will not guess a value
+    # that would deep-link into somebody else's project.
+    # consoleProjectId: 1234567
+
+  aws:
+    # Credentials come from the standard AWS chain (AWS_PROFILE, environment, instance role),
+    # never from this file.
+    enabled: false
+    region: us-east-1
+
+    # REQUIRED whenever aws is enabled — which network may reach SSH on your boxes.
+    #
+    # There is no default on purpose: a firewall rule is a security decision, and Rocky Surf
+    # will not infer one from whatever address you happen to have today. Enabling aws without
+    # it means the provider refuses its own section and is dropped at startup — the app comes
+    # up without it, says why on the New Server page, and names it in the boot log.
+    #
+    # Your own address, from `curl -s https://checkip.amazonaws.com`, as a /32:
+    # sshAllowedCidr: "203.0.113.7/32"
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately:
+    # sshAllowedCidr: "0.0.0.0/0"
+    # allowAllCidr: true
+
+    # Optional allowlist of instance types offered in the UI. Omit to offer everything the
+    # region sells. t4g.* are ARM (Graviton) and are the cheap, fast default.
+    # sizes: [t4g.small, t4g.medium, t4g.large]
+
+  azure:
+    # Credentials come from your environment (AZURE_TENANT_ID, AZURE_CLIENT_ID,
+    # AZURE_CLIENT_SECRET), from a managed identity if you run Rocky Surf on an Azure VM, or
+    # from `az login` — never from this file. There is nowhere here to put a client secret.
+    enabled: false
+
+    # Your subscription, and the ONE resource group Rocky Surf owns. Create the group first:
+    #
+    #   az group create --name rocky-surf-rg --location eastus
+    #
+    # Rocky Surf does not create it, on purpose: a role cannot be scoped to a resource group
+    # that does not exist yet, and the published Azure role is granted at exactly this group.
+    # Everything Rocky Surf makes lives in it, and nothing outside it is reachable.
+    # subscriptionId: "00000000-0000-0000-0000-000000000000"
+    # resourceGroup: rocky-surf-rg
+    location: eastus
+
+    # REQUIRED whenever azure is enabled — which network may reach SSH on your boxes.
+    #
+    # Same rule, and the same reasoning, as the aws section above. It matters slightly
+    # more here: an Azure Standard-SKU public IP is closed to inbound traffic by default,
+    # so without this rule SSH does not work at all.
+    #
+    # sshAllowedCidr: "203.0.113.7/32"
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately:
+    # sshAllowedCidr: "0.0.0.0/0"
+    # allowAllCidr: true
+
+    # Optional allowlist of VM sizes offered in the UI. Omit to offer everything the region
+    # sells. A `p` in the name (B2ps_v2, D2ps_v5) means ARM (Ampere) — the cheap, fast default.
+    # sizes: [Standard_B2ps_v2, Standard_B4ps_v2]
+
+  gcp:
+    # Google Compute Engine. Credentials come from Application Default Credentials — the same
+    # chain `gcloud` uses — and never from this file.
+    #
+    #   gcloud auth application-default login       # a user session, for running it yourself
+    #   export GOOGLE_APPLICATION_CREDENTIALS=...   # a service-account key, for a server
+    #
+    # See docs/providers/gcp.md for the least-privilege service account and the one command
+    # that creates it.
+    enabled: false
+
+    # REQUIRED whenever gcp is enabled. There is no default and none is inferred: a Google
+    # credential can be valid for many projects and names none of them, so a guess here would
+    # create billable machines in a project you did not pick.
+    # projectId: my-project-123456
+
+    # One zone per provider. The default is us-central1-a rather than -c, deliberately —
+    # arm64 (Tau T2A) exists in only eight zones, and us-central1-c is not one of them, while
+    # us-central1-a, -b and -f are.
+    zone: us-central1-a
+
+    # REQUIRED whenever gcp is enabled — which network may reach SSH on your boxes.
+    #
+    # Same rule, and same reason, as the aws section above. Note that a default VPC also ships
+    # with Google's own `default-allow-ssh` rule opening port 22 to the whole internet for every
+    # instance in the network; Rocky Surf never touches that rule, but it is worth a look.
+    #
+    # sshAllowedCidr: "203.0.113.7/32"
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately:
+    # sshAllowedCidr: "0.0.0.0/0"
+    # allowAllCidr: true
+
+    # Path to a service-account key file, if you are not using the ambient credential chain.
+    # A PATH, never the key itself — there is nowhere in this file to paste key material.
+    # keyFile: ~/keys/rockysurf-sa.json
+
+    # The rest have working defaults and are here so you know they exist.
+    # managedBy: rockysurf              # the managed-by label, and the instance-name prefix
+    # firewallRuleName: rockysurf-ssh   # the shared SSH rule, and the network tag it matches
+    # network: default                  # the VPC the instances join
+    # bootDiskGb: 20                    # billed separately from the instance
+    # bootDiskType: pd-balanced         # pd-balanced | pd-standard | pd-ssd
+    # imageProject: ubuntu-os-cloud
+    # imageFamilyPrefix: ubuntu-2404-lts  # the architecture is appended: -amd64 / -arm64
+
+    # Optional allowlist of machine types offered in the UI. Omit to offer everything.
+    # t2a-* are ARM and are the cheap, fast default where they are available.
+    # sizes: [t2a-standard-2, t2a-standard-4, e2-standard-2]
+
+  byo:
+    # Machines you already have, managed over SSH. No cloud API, no provisioning — Rocky Surf
+    # installs onto them and manages them from there.
+    #
+    # Claiming a host creates a `rocky` account on it with passwordless sudo, and appends Rocky
+    # Surf's key to that account's authorized_keys. Releasing a host does NOT undo any of that:
+    # terminate gives the host back to the pool and never runs anything on your machine.
+    enabled: false
+    hosts: []
+
+    # Default private key used to log in to every host below. Omit it to use your SSH agent
+    # (SSH_AUTH_SOCK) — if you can already `ssh` to these boxes, that is usually enough.
+    # identityFile: ~/.ssh/id_ed25519
+
+    # hosts:
+    #   - name: workshop          # what you will call it in the UI; also picks the host
+    #     host: 10.0.0.9          # hostname or IP
+    #     user: root              # the ADMIN login Rocky Surf claims with (default: root).
+    #                             # Needs root or passwordless sudo. This is NOT the account
+    #                             # Rocky Surf later connects as — that one is `rocky`, and it
+    #                             # is created for you.
+    #     port: 22                # SSH port (default: 22)
+    #     fingerprint: "SHA256:…" # optional; omit to trust the key on first connect. Supplying
+    #                             # it (`ssh-keyscan` + `ssh-keygen -lf`) means even the first
+    #                             # connection is verified.
+    #     identityFile: ~/.ssh/workshop_ed25519   # optional; overrides the default above
+
+limits:
+  # Guardrails. These are enforced server-side, which is what makes it safe to let an agent
+  # create its own boxes through the MCP server.
+
+  # Most servers that may exist at once.
+  maxServers: 5
+
+  # Stop creating servers once the running estimate passes this. Omit for no cap.
+  # Currency is an ISO 4217 code — providers do not all quote in USD.
+  # spendCap:
+  #   amount: 50
+  #   currency: USD
+
+  # Most servers that may be created per hour. Blunts terminate-and-recreate loops.
+  createRatePerHour: 4

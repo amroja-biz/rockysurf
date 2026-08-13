@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // The base config turns both maps on, which is right for local development — every
+    // workspace package has its `src/` next to its `dist/`, so go-to-definition works.
+    // It is wrong for the PUBLISHED artifact: `files` ships `dist` only, so every map's
+    // `sources: ["../src/*.ts"]` would dangle in a consumer's node_modules, and the maps
+    // were half the tarball. The doc comments survive regardless — tsc copies them into
+    // the `.d.ts`, which is what an editor shows on hover.
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,72 @@
+# `.claude/skills/`
+
+Agent Skills for working with Rocky Surf. Each directory here teaches a Claude Code session one of
+this project's contracts — what a file must satisfy, how it is verified, and how it gets shipped —
+so it can do the job correctly the first time instead of rediscovering the rules from the source.
+
+They are written for **users of Rocky Surf**, not only for contributors to it. Extensibility is the
+point of this project: a pack and a provider are both things an outsider is meant to be able to
+add, and a skill is how their own agent learns to do it properly.
+
+| Skill | Use it when |
+|---|---|
+| [`creating-surge-packs`](creating-surge-packs/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
+| [`adding-providers`](adding-providers/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet |
+
+## Using them
+
+**In a checkout, there is nothing to install.** Claude Code discovers
+`.claude/skills/<name>/SKILL.md` automatically, so if you cloned this repository and started a
+session in it, the skills are already live. Just describe what you want — "make me a Rocky Surf
+pack with Rust, Neovim and Claude Code on it" — and the right one loads itself. You never invoke a
+skill by name.
+
+**Outside a checkout**, copy the one you want into your own skills directory:
+
+```bash
+cp -r .claude/skills/creating-surge-packs ~/.claude/skills/        # just you, every project
+cp -r .claude/skills/creating-surge-packs <your-project>/.claude/skills/   # a team, checked in
+```
+
+Restart the session afterwards so it is picked up.
+
+That second path is worth knowing about for `creating-surge-packs` in particular, because of a
+chicken-and-egg problem: the skill's first instruction is to get a checkout, and it cannot give you
+that instruction if it only exists inside the checkout you do not have yet. If you expect to write
+packs from your own projects, install it personally once.
+
+## What they need to do their job
+
+Both skills verify their work with this repository's real harnesses rather than a weaker
+substitute of their own, so both will ask for a checkout with `pnpm install && pnpm -r build` run
+once. `creating-surge-packs` also needs Docker, for the run-twice smoke test. Either can write the
+file without those; neither can honestly tell you it works, and both are written to say so rather
+than guess.
+
+## Adding a skill here
+
+Keep the shape consistent so the set reads as one thing:
+
+- `SKILL.md` with `name` + `description` frontmatter and nothing else. The description is the only
+  triggering mechanism, so write it in trigger-phrase style: what it does, then the phrasings a
+  real user would type.
+- `SKILL.md` is a router plus the workflow. Depth goes in `references/*.md`, linked by relative
+  path and loaded on demand, each with a stated "read this when".
+- `assets/` for files the agent copies rather than reads — templates, skeletons.
+- Label anything that only exists in a checkout as "in the checkout" or "(in tree)". Both skills
+  serve people who have neither `docs/` nor `packages/` in front of them.
+- Name the directory after the user's task. The directory name, the frontmatter `name` and the
+  identity a user sees are all the same string.
+
+Two rules that are the reason these are worth shipping at all:
+
+- **Never fork a normative document.** A reference file summarises the real doc and says which one
+  wins, or the two drift and the skill starts teaching a contract CI no longer enforces.
+- **Drive the real verifier.** Whatever this repository's actual gate is —
+  `scripts/pack-smoke.mjs`, the provider conformance suite — the skill runs *that*, with the real
+  flags, and reads the real output. A skill that ships a gentler check of its own is worse than no
+  skill.
+
+And verify a new skill the way both of these were: give a fresh sub-agent the skill and *nothing
+else*, deny it the rest of the repository, and have it build the real thing. Every serious defect
+in both skills was found that way and none of them was visible by re-reading.

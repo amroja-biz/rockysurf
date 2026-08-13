@@ -1,0 +1,119 @@
+^D[   0.0s] === rockysurf-d0no.7 real lifecycle: HETZNER ===
+[   0.0s] agent.sh from /private/tmp/claude-501/-Users-johndamask-code/69a06928-baf0-4d2c-8be8-5a2e7dc875ff/scratchpad/d0no7/agent.sh
+[   0.0s] core = this laptop, behind NAT. Every connection below is OUTBOUND; nothing listens.
+[   0.0s] cloud=hetzner provider=hetzner (Hetzner Cloud)
+[   0.0s] offering=cpx12 arch=amd64
+[   0.0s] capabilities: stop=true ipStableAcrossStop=true canPinHostKey=true userDataMaxBytes=32768 generatesUserData=true
+[   0.4s]   PASS  credentials accepted
+[   0.8s]   PASS  listOfferings() offers cpx12 — 13 offerings
+[   0.8s]   PASS  cpx12 is amd64 — amd64
+[   0.8s]   PASS  rendered user-data is #cloud-config
+[   0.8s]   PASS  rendered user-data contains no shell
+[   0.8s]   PASS  host key is pinned exactly when capabilities.canPinHostKey says so — canPinHostKey=true
+[   0.8s]   user-data 2138B (provider limit 32768B)
+[   1.4s]   provisioned: {"serverId":161666993,"name":"rocky-surf-spike-srv-6a6fa72c4912","sshKeyIds":[116966322]}
+[   1.4s]   PASS  provision() returned a provider handle
+[   1.6s]   state=pending
+[   7.0s]   state=pending
+[  12.4s]   PASS  instance reached running with a public IP — 49.13.94.234
+[  22.4s]   ssh attempt 1: Timed out while waiting for handshake
+[  24.5s]   ssh attempt 2: connect ECONNREFUSED 49.13.94.234:22
+[  26.1s]   ssh attempt 3: connect ECONNREFUSED 49.13.94.234:22
+[  28.5s]   ssh attempt 4: connect ECONNREFUSED 49.13.94.234:22
+[  32.0s]   ssh attempt 5: connect ECONNREFUSED 49.13.94.234:22
+[  38.7s]   PASS  FIRST SSH connection verified against the pinned host key (no trust-on-first-use)
+[  39.3s]   PASS  wrong host-key fingerprint rejected — host key mismatch: expected SHA256:qCALcunEJqkLaYmRPtGj2riGDGCIZLulQy23fDblwz8, host presented SHA256:FtB9Q040uFnhX9WTsVxPWIADH3qWHUsUMu02bC8ALSY
+[  40.2s]   PASS  cloud-init finished cleanly — status: done
+[  40.7s]   PASS  provider delivered the document as #cloud-config
+[  40.7s]   PASS  the box received core's user-data byte-for-byte — 2138B on box vs 2138B sent
+[  41.4s]   PASS  cloud-init created the rocky user — uid=1000(rocky) gid=1000(rocky) groups=1000(rocky),27(sudo)
+[  42.0s]   PASS  cloud-init installed core's authorized key
+[  42.8s]   PASS  the box is presenting the host key core minted (pinning is real, not TOFU) — SHA256:FtB9Q040uFnhX9WTsVxPWIADH3qWHUsUMu02bC8ALSY
+[  42.8s]   PASS  user-data carried no runcmd/bootcmd
+[  42.8s]   PASS  install plan is push-mode (box makes no outbound call to core)
+[  53.1s]   box | Aug 12 02:19:54 spike7-hetzner-mspgnjx6 systemd[1]: Starting rockysurf-bootstrap.service - /bin/bash /var/lib/rockysurf/agent.sh...
+[  53.1s]   box | Aug 12 02:19:54 spike7-hetzner-mspgnjx6 systemd[1]: Started rockysurf-bootstrap.service - /bin/bash /var/lib/rockysurf/agent.sh.
+[  53.1s]   box | Aug 12 02:19:54 spike7-hetzner-mspgnjx6 bash[1189]: [02:19:54] === rockysurf bootstrap agent (arch=amd64, user=root, plan=/var/lib/rockysurf/plan.json) ===
+[  53.1s]   box | Aug 12 02:19:54 spike7-hetzner-mspgnjx6 bash[1189]: [02:19:54] jq missing — bootstrapping it before the plan can be parsed
+[  62.3s]   box | Aug 12 02:20:03 spike7-hetzner-mspgnjx6 bash[1189]: Selecting previously unselected package libonig5:amd64.
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: [614B blob data]
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Preparing to unpack .../libonig5_6.9.9-1build1_amd64.deb ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Unpacking libonig5:amd64 (6.9.9-1build1) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Selecting previously unselected package libjq1:amd64.
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Preparing to unpack .../libjq1_1.7.1-3ubuntu0.24.04.2_amd64.deb ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Unpacking libjq1:amd64 (1.7.1-3ubuntu0.24.04.2) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Selecting previously unselected package jq.
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Preparing to unpack .../jq_1.7.1-3ubuntu0.24.04.2_amd64.deb ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Unpacking jq (1.7.1-3ubuntu0.24.04.2) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Setting up libonig5:amd64 (6.9.9-1build1) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Setting up libjq1:amd64 (1.7.1-3ubuntu0.24.04.2) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Setting up jq (1.7.1-3ubuntu0.24.04.2) ...
+[  62.3s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Processing triggers for man-db (2.12.0-4build2) ...
+[  63.1s]   box | Aug 12 02:20:04 spike7-hetzner-mspgnjx6 bash[1189]: Processing triggers for libc-bin (2.39-0ubuntu8.8) ...
+[  63.8s]   box | Aug 12 02:20:05 spike7-hetzner-mspgnjx6 bash[1189]: Running kernel seems to be up-to-date.
+[  63.8s]   box | Aug 12 02:20:05 spike7-hetzner-mspgnjx6 bash[1189]: No services need to be restarted.
+[  63.8s]   box | Aug 12 02:20:05 spike7-hetzner-mspgnjx6 bash[1189]: No containers need to be restarted.
+[  63.8s]   box | Aug 12 02:20:05 spike7-hetzner-mspgnjx6 bash[1189]: No user sessions are running outdated binaries.
+[  63.8s]   box | Aug 12 02:20:05 spike7-hetzner-mspgnjx6 bash[1189]: No VM guests are running outdated hypervisor (qemu) binaries on this host.
+[  64.7s]   box | Aug 12 02:20:06 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:06] loaded 1 secret(s): ROCKYSURF_DUMMY_TOKEN
+[  64.7s]   box | Aug 12 02:20:06 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:06] plan: 3 step(s), serverId=srv_6a6fa72c4912, arch=amd64
+[  64.7s]   box | Aug 12 02:20:06 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:06] ==> apt-basics (as root, arch=amd64)
+[  65.5s]   state | step=apt-basics status=running
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:08] --- apt-basics: verifying with: command -v curl && command -v git && command -v jq
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:08] ==> apt-basics-check (as root, arch=amd64)
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: /usr/bin/curl
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: /usr/bin/git
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: /usr/bin/jq
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:08] --- apt-basics: done (reports=installing_tools)
+[  66.8s]   box | Aug 12 02:20:08 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:08] ==> install-node (as root, arch=amd64)
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:11] --- install-node: verifying with: node --version && npm --version
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:11] ==> install-node-check (as root, arch=amd64)
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: v24.19.0
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: 11.17.0
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:11] --- install-node: done (reports=installing_tools)
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:11] ==> install-claude-code (as rocky, arch=amd64)
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 sudo[1993]:     root : PWD=/ ; USER=rocky ; COMMAND=/usr/bin/env ARCH=amd64 DEBIAN_FRONTEND=noninteractive ROCKYSURF_DUMMY_TOKEN=spike-not-a-real-token bash -c 'set -euo pipefail#012export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH"#012npm config set prefix "/home/rocky/.npm-global"#012npm install -g --no-fund --no-audit @anthropic-ai/claude-code'
+[  69.6s]   box | Aug 12 02:20:11 spike7-hetzner-mspgnjx6 sudo[1993]: pam_unix(sudo:session): session opened for user rocky(uid=1000) by (uid=0)
+[  71.6s]   state | step=install-claude-code status=running
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: added 2 packages in 4s
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: npm warn allow-scripts   @anthropic-ai/claude-code@2.1.228 (postinstall: node install.cjs)
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: npm warn allow-scripts
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: npm warn allow-scripts Run `npm install -g --allow-scripts=@anthropic-ai/claude-code` to allow these scripts once, or `npm config set allow-scripts=@anthropic-ai/claude-code --location=user` to allow them for all global installs.
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 sudo[1993]: pam_unix(sudo:session): session closed for user rocky
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:15] --- install-claude-code: verifying with: export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH" && claude --version
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:15] ==> install-claude-code-check (as rocky, arch=amd64)
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 sudo[2035]:     root : PWD=/ ; USER=rocky ; COMMAND=/usr/bin/env ARCH=amd64 DEBIAN_FRONTEND=noninteractive ROCKYSURF_DUMMY_TOKEN=spike-not-a-real-token bash -c 'export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH" && claude --version'
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 sudo[2035]: pam_unix(sudo:session): session opened for user rocky(uid=1000) by (uid=0)
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: 2.1.228 (Claude Code)
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 sudo[2035]: pam_unix(sudo:session): session closed for user rocky
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:15] --- install-claude-code: done (reports=ready)
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 bash[1189]: [02:20:15] plan complete
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 systemd[1]: rockysurf-bootstrap.service: Deactivated successfully.
+[  74.1s]   box | Aug 12 02:20:15 spike7-hetzner-mspgnjx6 systemd[1]: rockysurf-bootstrap.service: Consumed 18.714s CPU time.
+[  77.9s]   state | step=install-claude-code status=done
+[  77.9s]   PASS  agent ran under a transient systemd unit (the launcher containers could not verify) — systemd-run
+[  77.9s]   PASS  install plan completed
+[  77.9s]   PASS  all three plan steps done — apt-basics,install-node,install-claude-code
+[  77.9s]   PASS  store tracked progress to ready from state.json alone
+[  77.9s]   bootstrap took 35s
+[  78.6s]   PASS  claude --version over SSH as rocky — 2.1.228 (Claude Code)
+[  79.2s]   PASS  box architecture is amd64 — node v24.19.0 on amd64
+[  79.8s]   PASS  secrets file is 0600 — 600
+[  79.8s] terminating
+[  80.5s]   PASS  terminate() accepted
+[  80.9s]   PASS  zero orphans left behind
+[  81.0s]   PASS  listManaged() reports no servers
+[  81.0s] --- phase timings ---
+[  81.0s]   validateCredentials        0s
+[  81.0s]   provision                  1s
+[  81.0s]   boot-to-running           11s
+[  81.0s]   wait-for-ssh              26s
+[  81.0s]   host-key-mismatch          1s
+[  81.0s]   cloud-init-evidence        3s
+[  81.0s]   push-bootstrap            35s
+[  81.0s]   terminate                  1s
+[  81.0s]   orphan-sweep               0s
+[  81.0s]   TOTAL                     81s
+[  81.0s] RESULT: PASS — hetzner full lifecycle, zero orphans
+⠙[1G[0K

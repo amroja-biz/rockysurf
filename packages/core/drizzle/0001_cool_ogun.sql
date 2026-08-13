@@ -1,0 +1,1 @@
+ALTER TABLE `secrets` ADD `key_id` text DEFAULT 'v1' NOT NULL;

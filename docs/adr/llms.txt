@@ -1,0 +1,29 @@
+# Architecture Decision Records
+
+> Decision records for Rocky Surf's open-source v0.1. Each link is a self-contained ADR.
+> Newest decisions reflect current intent; superseded ones are kept for history.
+> Statuses: Proposed | Accepted | Deprecated | Superseded by ADR-NNNN | Rejected.
+>
+> ADRs 0001-0004 are the Phase 3 design freeze (`rockysurf-q5lm.1`), written from
+> `docs/spike/findings.md` — the de-risking spike's findings memo, which is the input
+> contract for the freeze. Read that memo for the evidence behind any decision here.
+
+## Control Plane & Runtime
+
+- [0001 Replace the AWS-serverless control plane with one portable self-hosted app](0001-single-portable-control-plane-app.md): [Accepted] One Hono + Drizzle/SQLite + SSE + in-process-jobs app replaces ~48 Lambdas, 8 DynamoDB tables and 8 CFN stacks; per-server CloudFormation dropped; create ordering inverted; startup recovery is a requirement.
+
+## Provisioning & Bootstrap
+
+- [0002 Push bootstrap is the default; callback is a scoped fallback](0002-push-bootstrap-default-callback-fallback.md): [Accepted] Inert ~2.1KB cloud-config plus outbound SSH is the default; callback verified on real cloud-init (q5lm.5) and kept, but scoped to already-reachable hosted cores because a NAT'd core needed a reverse tunnel to use it; embedded stays cut; two tokens with two lifetimes, short TTL over strict single-use.
+
+## Provider SDK
+
+- [0003 Freeze the provider SDK shape, with deliberate exclusions](0003-provider-sdk-shape-and-exclusions.md): [Accepted] Adopts A1-A7, B1-B3, C1-C3, D1-D6, E2/E4, F1-F2; adds `terminating`, `Offering.available`, resource ownership and a propagation grace on `describe()`; rejects `dedupeName`, `hostKeys` and a tenth error code; spot/resize stay cut.
+
+## Packs & Extensibility
+
+- [0004 Packs are PR-able YAML files; the database is a cache and edit layer](0004-packs-as-pr-able-yaml.md): [Accepted] `packs/*.yaml` become the source of truth for shipped packs, format frozen at v0.1, with a CI-enforced author contract (idempotent, $ARCH-aware, non-interactive, runAs-honest).
+
+## Operations
+
+- [0005 The config file's home, and the order it is found in](0005-config-file-resolution.md): [Accepted] Three-tier resolution — explicit `--config` (fatal if absent), cwd file (workflow tier), `~/.rockysurf/config.yaml` (durable home, literal path, no dataDir circularity); first saves create the home file, never cwd litter; the boot notice names which loaded.

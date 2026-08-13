@@ -1,0 +1,94 @@
+# Rocky Surf — the custom IAM role the control plane uses to create, stop, start and destroy
+# Compute Engine dev boxes in your project. It carries EXACTLY the permissions published in
+# docs/providers/gcp.md and nothing else.
+#
+# ---------------------------------------------------------------------------------------------
+# THIS FILE IS A SHIPPED ARTIFACT, NOT TEST SCAFFOLDING.
+#
+# Rocky Surf is self-hosted, so the cloud resources a deployment needs ship with the product as
+# infrastructure-as-code a self-hoster can actually run. The GCP form of that is a custom role
+# definition plus `deploy/gcp/setup.sh`, and the choice of format is deliberate:
+#
+#   - Deployment Manager is OUT ON FACTS, not on taste. Google discontinued support on
+#     2026-04-01 and has blocked NEW users from enabling the V2 API since 2026-06-30, so a
+#     self-hoster following our instructions today literally cannot use it.
+#   - Terraform is a real extra install for the median self-hoster, and Infrastructure Manager
+#     adds an API to enable and a service account to create on top of that.
+#   - gcloud is not an extra install for anybody who can authenticate this provider at all: it
+#     is how Application Default Credentials get created in the first place.
+#
+# So the only prerequisite is gcloud, and this file is consumed directly by
+# `gcloud iam roles create --file=`. Terraform users are welcome to read the list and express it
+# their own way; docs/providers/gcp.md says so.
+#
+# The permission list below and the one published in docs/providers/gcp.md are checked for
+# equality by `node scripts/check-gcp-role.mjs`, which runs in `pnpm run lint`. They cannot
+# drift apart silently: change one without the other and CI fails, naming the difference. Two
+# copies of a security boundary is otherwise exactly the situation where the published policy
+# quietly stops being the policy anyone deployed.
+#
+# STATUS: NOT YET RUN AGAINST REAL GOOGLE CLOUD. Unlike the AWS policy, which was verified under
+# a restricted principal on real infrastructure, this list is derived from the per-field
+# authorization annotations on the Compute Engine REST reference. Every permission here is
+# traceable to a call the provider makes; none has been proven sufficient by a launch.
+# rockysurf-ev41.8 is the bead that settles it.
+# ---------------------------------------------------------------------------------------------
+
+title: Rocky Surf Dev Box Manager
+description: >-
+  Least-privilege role for Rocky Surf: create, read, stop, start and delete Compute Engine
+  instances it labelled itself, and maintain one shared SSH firewall rule. Grants no ability to
+  read or touch instances it did not create, and no identity to the machines it makes.
+stage: GA
+
+includedPermissions:
+  # -- Credential, project and zone check -------------------------------------------------
+  # `zones.get` is the cheapest authenticated Compute call there is and proves four things at
+  # once: the credential is live, the project exists with the Compute Engine API enabled, the
+  # caller can read it, and the configured zone is real.
+  - compute.zones.get
+
+  # -- Creating an instance ---------------------------------------------------------------
+  # `instances.insert` checks far more than `instances.create`. Every request-body field the
+  # provider populates carries its own authorization annotation, which is why setMetadata,
+  # setTags and setLabels appear here even though the provider never calls those methods.
+  - compute.instances.create
+  - compute.disks.create
+  - compute.instances.setMetadata
+  - compute.instances.setTags
+  - compute.instances.setLabels
+  - compute.disks.setLabels
+  - compute.subnetworks.use
+  - compute.subnetworks.useExternalIp
+
+  # -- Resolving the base image -----------------------------------------------------------
+  # The provider resolves Ubuntu through its image FAMILY so a new patched image is picked up
+  # without a release. For Google's public images these are already granted to every
+  # authenticated caller, so what these lines actually buy is the ability to point
+  # `imageProject` at your OWN project's custom image.
+  - compute.images.get
+  - compute.images.getFromFamily
+  - compute.images.useReadOnly
+
+  # -- Reading and running instances ------------------------------------------------------
+  - compute.instances.get
+  - compute.instances.list
+  - compute.instances.delete
+  - compute.instances.stop
+  - compute.instances.start
+
+  # -- Waiting for operations -------------------------------------------------------------
+  # BOTH are required, and this is the single easiest one to get wrong. Instance operations are
+  # ZONAL; firewall operations are GLOBAL. Grant only the zonal one and firewall creation fails
+  # at the poll rather than at the insert, which is a confusing way to learn about it.
+  - compute.zoneOperations.get
+  - compute.globalOperations.get
+
+  # -- The one shared SSH firewall rule ---------------------------------------------------
+  # `compute.networks.updatePolicy` is the most-missed permission in this whole set: a role with
+  # firewalls.create alone cannot create a rule, because the rule's `network` field carries its
+  # own authorization annotation. There is no `firewalls.list` here on purpose — the provider
+  # reads its own rule by name and never lists them.
+  - compute.firewalls.create
+  - compute.firewalls.get
+  - compute.networks.updatePolicy

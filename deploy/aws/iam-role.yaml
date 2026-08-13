@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  Rocky Surf — the IAM role the control plane assumes to create, stop, start and destroy EC2 dev
+  boxes in your account. It carries EXACTLY the policy published in docs/providers/aws.md and
+  nothing else. Deploy it under a stack name beginning with `rocky-surf-`.
+
+# ---------------------------------------------------------------------------------------------
+# THIS TEMPLATE IS A SHIPPED ARTIFACT, NOT TEST SCAFFOLDING.
+#
+# Rocky Surf is self-hosted, so the cloud resources a deployment needs ship with the product as
+# parameterized infrastructure-as-code. This is the file a self-hoster deploys; it is also the
+# file the restricted-principal verification run (rockysurf-gyp1.5) assumes, so the policy that
+# gets proven is the policy that gets shipped rather than a lab copy of it.
+#
+# The policy below and the JSON block in docs/providers/aws.md are checked for equality by
+# `node scripts/check-iam-policy.mjs`, which runs as part of `pnpm run lint`. They cannot drift
+# apart silently: change one without the other and CI fails, naming the statement that differs.
+#
+# The role is not required. Rocky Surf uses the standard AWS credential chain, so attaching the
+# same policy to an IAM user works identically — the role exists because assuming a scoped role
+# is the least-privilege way to run it, and because a role is the only form the verification run
+# can assume.
+# ---------------------------------------------------------------------------------------------
+
+Parameters:
+  TrustedPrincipalArn:
+    Type: String
+    Description: >-
+      Who may assume this role — the identity Rocky Surf runs as. An IAM user ARN
+      (arn:aws:iam::123456789012:user/alice), a role ARN including an IAM Identity Center
+      permission set (arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/...), or your
+      account root (arn:aws:iam::123456789012:root) to delegate the decision to your own IAM
+      policies. There is no default: who holds the keys to your dev boxes is a decision to write
+      down, not to inherit.
+    AllowedPattern: 'arn:aws[a-z-]*:iam::\d{12}:(root|(user|role)/.+)'
+    ConstraintDescription: must be an IAM user ARN, an IAM role ARN, or an account root ARN
+
+  ProviderRegion:
+    Type: String
+    Default: us-east-1
+    Description: >-
+      The region in your rockysurf.config.yaml. Every resource-scoped statement is pinned to it.
+      IAM is global, so the stack itself may be deployed in any region — this parameter, not the
+      stack's region, is what the policy grants against.
+    AllowedPattern: '[a-z]{2}(-gov)?-[a-z]+-\d'
+    ConstraintDescription: must be a region code such as us-east-1
+
+  ManagedByTag:
+    Type: String
+    Default: rockysurf
+    Description: >-
+      Must match `managedBy` in your config. Every mutating statement is conditioned on this tag
+      value, so a mismatch means Rocky Surf can create instances it is then not allowed to stop
+      or terminate.
+    AllowedPattern: '[A-Za-z0-9._:/=+@-]{1,128}'
+
+  SsmParameterArn:
+    Type: String
+    Default: 'arn:aws:ssm:*::parameter/aws/service/canonical/*'
+    Description: >-
+      The public SSM parameter namespace the AMI is resolved from. The default matches the
+      default `amiParameterPrefix` (Canonical's Ubuntu 24.04 parameters). If you point
+      amiParameterPrefix at another vendor, widen this to
+      arn:aws:ssm:*::parameter/aws/service/* or SSM denies the lookup before any instance is
+      attempted. The empty account field is deliberate: public parameters live outside any
+      account.
+
+  RoleName:
+    Type: String
+    Default: rocky-surf-provider
+    Description: >-
+      IAM role names are global per account, so this is a parameter rather than a constant —
+      deploying a second Rocky Surf against the same account needs a second name.
+    AllowedPattern: '[\w+=,.@-]{1,64}'
+
+Resources:
+  ProviderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      # ASCII ONLY, and not by accident. IAM validates a role description against a printable
+      # Latin-1 character class and rejects anything outside it, so the em dash this file uses
+      # everywhere else fails the stack at CREATE with a raw regex in the error and no hint as
+      # to which field produced it. CloudFormation's own Description has no such rule, which is
+      # why the template above can keep its punctuation.
+      Description: !Sub 'Rocky Surf control plane: EC2 dev boxes tagged managed-by=${ManagedByTag} in ${ProviderRegion}'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedPrincipalArn
+            Action: 'sts:AssumeRole'
+      Tags:
+        - Key: managed-by
+          Value: !Ref ManagedByTag
+        - Key: Name
+          Value: !Ref RoleName
+      Policies:
+        - PolicyName: rocky-surf-provider
+          # ---------------------------------------------------------------------------------
+          # KEEP IN SYNC WITH docs/providers/aws.md — enforced by scripts/check-iam-policy.mjs.
+          # The doc explains every statement; this is the machine-readable half of the same
+          # artifact. `${ProviderRegion}` and `${AWS::AccountId}` here are the doc's REGION and
+          # ACCOUNT_ID placeholders.
+          # ---------------------------------------------------------------------------------
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadOnlyDiscovery
+                Effect: Allow
+                Action:
+                  - 'ec2:DescribeAccountAttributes'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeImages'
+                  - 'ec2:DescribeVpcs'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:DescribeSecurityGroups'
+                Resource: '*'
+
+              - Sid: ResolveUbuntuAmiFromPublicSsm
+                Effect: Allow
+                Action: 'ssm:GetParameter'
+                Resource: !Ref SsmParameterArn
+
+              - Sid: LaunchTaggedInstances
+                Effect: Allow
+                Action: 'ec2:RunInstances'
+                Resource:
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:instance/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:volume/*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestTag/managed-by': !Ref ManagedByTag
+
+              - Sid: LaunchUsingExistingNetworkAndImage
+                Effect: Allow
+                Action: 'ec2:RunInstances'
+                Resource:
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}::image/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:subnet/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                  # The elastic network interface belongs HERE, not with the tagged resources.
+                  # RunInstances creates it, but the provider's TagSpecifications cover only the
+                  # instance and the volume, so `aws:RequestTag/managed-by` does not exist for the
+                  # ENI and a tag-conditioned statement matches nothing. Found by the gyp1.5
+                  # restricted-principal run; see docs/providers/aws.md for the full story.
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:network-interface/*'
+
+              - Sid: TagOnCreate
+                Effect: Allow
+                Action: 'ec2:CreateTags'
+                Resource:
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:instance/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:volume/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                Condition:
+                  StringEquals:
+                    'ec2:CreateAction':
+                      - RunInstances
+                      - CreateSecurityGroup
+
+              - Sid: ManageOwnInstancesOnly
+                Effect: Allow
+                Action:
+                  - 'ec2:TerminateInstances'
+                  - 'ec2:StopInstances'
+                  - 'ec2:StartInstances'
+                Resource: !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:instance/*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/managed-by': !Ref ManagedByTag
+
+              - Sid: CreateTheSharedSshGroup
+                Effect: Allow
+                Action: 'ec2:CreateSecurityGroup'
+                Resource:
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:vpc/*'
+
+              - Sid: AuthorizeSshOnOwnGroupOnly
+                Effect: Allow
+                Action: 'ec2:AuthorizeSecurityGroupIngress'
+                Resource: !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/managed-by': !Ref ManagedByTag
+
+Outputs:
+  RoleArn:
+    Description: Assume this to run Rocky Surf with exactly the published permissions.
+    Value: !GetAtt ProviderRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoleArn'
+
+  RoleName:
+    Description: The role's name, for `aws iam get-role` and for attaching it elsewhere.
+    Value: !Ref ProviderRole
+
+  ProviderRegion:
+    Description: The region this role's resource-scoped statements are pinned to.
+    Value: !Ref ProviderRegion

@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.ts"],
+  // `arm-fake.ts` is the in-memory ARM the tests drive. It lives in `src/` rather than in a test
+  // file so that every suite can import it, and it is excluded here for the same reason the test
+  // files are: a published package should not ship a fake cloud.
+  "exclude": ["src/**/*.test.ts", "src/arm-fake.ts"]
+}

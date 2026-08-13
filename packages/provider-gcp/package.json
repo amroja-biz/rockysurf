@@ -1,0 +1,55 @@
+{
+  "name": "@rockysurf/provider-gcp",
+  "version": "0.1.0",
+  "description": "Google Compute Engine provider — plain fetch against the REST API, Application Default Credentials for auth.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amroja-biz/rockysurf.git",
+    "directory": "packages/provider-gcp"
+  },
+  "bugs": "https://github.com/amroja-biz/rockysurf/issues",
+  "homepage": "https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-gcp#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rockysurf/provider-sdk": "workspace:*",
+    "google-auth-library": "^11.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@rockysurf/provider-conformance": "workspace:*",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "rockysurf",
+    "provider",
+    "gcp",
+    "gce",
+    "google-cloud"
+  ]
+}

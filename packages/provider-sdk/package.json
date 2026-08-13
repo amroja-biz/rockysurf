@@ -1,0 +1,48 @@
+{
+  "name": "@rockysurf/provider-sdk",
+  "version": "0.1.0",
+  "description": "Frozen v0 contract every Rocky Surf compute provider implements. Types only — zero runtime dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amroja-biz/rockysurf.git",
+    "directory": "packages/provider-sdk"
+  },
+  "bugs": "https://github.com/amroja-biz/rockysurf/issues",
+  "homepage": "https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-sdk#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "rockysurf",
+    "provider",
+    "sdk"
+  ]
+}

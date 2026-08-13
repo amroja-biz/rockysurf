@@ -1,0 +1,115 @@
+# Rocky Surf secret-scanning configuration (rockysurf-ftl9.5).
+#
+# Two jobs, and only the second one is unusual.
+#
+#   1. THE GENERIC ONE. `useDefault` pulls in gitleaks' full rule set — AWS access keys, Stripe
+#      live keys, GitHub tokens, private key blocks and the rest. Nothing here weakens it.
+#
+#   2. THE PROJECT-SPECIFIC ONE. Rocky Surf was a hosted SaaS before it was open source. The
+#      identifiers of that deployment — one AWS account, one GitHub App, one Stripe price, one
+#      operator's username — were scrubbed out before the first public commit, and these rules
+#      exist so they cannot creep back in through an old note or a pasted log. None of them is a
+#      credential you can authenticate with, which is exactly why no generic scanner would ever
+#      flag them. They are, however, a map of somebody's live infrastructure, and this
+#      repository is public.
+#
+# THE RULES ARE TESTED. `node scripts/gitleaks-selftest.mjs` builds a fixture containing every
+# pinned value and asserts each rule fires on it, plus a negative-control file of near-misses it
+# must ignore. A rule that stops matching — because a regex was edited, or because a gitleaks
+# upgrade changed how configs are parsed — fails that test rather than silently passing
+# everything. It also checks the exemptions below have not gone stale. CI runs it in the same
+# job as the scan.
+#
+# Scanning locally:
+#   gitleaks git .   --config .gitleaks.toml   # history, which is what CI gates on
+#   gitleaks dir .   --config .gitleaks.toml   # the working tree, uncommitted files included
+
+title = "Rocky Surf"
+
+[extend]
+useDefault = true
+
+# ------------------------------------------------------------------------------------------
+# The legacy SaaS deployment's identifiers.
+#
+# Every regex below is pinned to a value that actually existed. They are deliberately NOT
+# generic ("looks like an AWS account id") — a generic rule for a 12-digit number is a rule that
+# fires on timestamps, and a rule that fires on timestamps gets turned off.
+# ------------------------------------------------------------------------------------------
+
+[[rules]]
+id = "rockysurf-legacy-aws-account"
+description = "The hosted deployment's AWS account id (also the tail of its SSO profile name)"
+regex = '''277707111475'''
+tags = ["rockysurf", "legacy-saas", "account-id"]
+
+[[rules]]
+id = "rockysurf-legacy-github-app-client-id"
+description = "A GitHub App or OAuth App client id — the open-source build authenticates with neither"
+# Both prefixes on purpose. `Iv23li` is the GitHub App, `Ov23li` the OAuth App it was confused
+# with for a week; the incident write-ups quote both, so a rule that caught only one would let
+# the other through. Broader than a single pinned value because there is no legitimate reason
+# for ANY app client id to appear in this repository: the open-source control plane has no
+# GitHub App, so a match is either the old deployment's or somebody else's.
+regex = '''[IO]v23li[A-Za-z0-9]{14}'''
+tags = ["rockysurf", "legacy-saas", "github-app"]
+
+[[rules]]
+id = "rockysurf-legacy-github-app-id"
+description = "The hosted deployment's numeric GitHub App id"
+regex = '''\b2773473\b'''
+tags = ["rockysurf", "legacy-saas", "github-app"]
+
+[[rules]]
+id = "rockysurf-legacy-stripe-price-id"
+description = "A live Stripe price id from the metered-billing configuration"
+# `price_1` and 20+ characters, which is the shape of a real Stripe price id. Anchoring on the
+# `1` matters: the Hetzner provider's API responses carry `price_hourly` and `price_monthly`
+# keys, and a bare `price_[A-Za-z0-9]+` would flag every one of them. That is the negative
+# control in the self-test.
+regex = '''price_1[A-Za-z0-9]{20,}'''
+tags = ["rockysurf", "legacy-saas", "stripe"]
+
+[[rules]]
+id = "rockysurf-legacy-operator-handle"
+description = "The original operator's GitHub username, hardcoded as an allowlist entry"
+# It appeared as a hardcoded allowlist and billing-exemption entry — i.e. as configuration, in
+# a product whose whole premise is that the operator configures their own. A self-hoster who
+# finds this string in a shipped file has found a bug.
+regex = '''jbdamask'''
+tags = ["rockysurf", "legacy-saas", "hardcoded-user"]
+
+# ------------------------------------------------------------------------------------------
+# EXEMPTIONS
+#
+# Every one of these is a hole in the scan, so each block says how big the hole is and what
+# closes it. The fixture block is checked by the self-test and cannot silently go stale.
+# (The pre-scrub legacy tree and its history-only exemptions were deleted along with the
+# legacy tree itself when the public history was cut — an exemption must not outlive its
+# subject, and a fresh single-commit history has no old commits to excuse.)
+# ------------------------------------------------------------------------------------------
+
+# --- 1. Self-reference. These two files MUST carry the pinned values: one defines the rules,
+# --- the other proves they fire. Without the exemption the scanner reports itself. The hole:
+# --- a genuine credential committed to either file would not be reported. Both are short and
+# --- both get read whenever the rules change.
+[[allowlists]]
+description = "The rule definitions and their self-test"
+paths = [
+  '''^\.gitleaks\.toml$''',
+  '''^scripts/gitleaks-selftest\.mjs$''',
+]
+
+# --- 2. Test fixtures. Four PEM banners with no key material between them (a doc comment, two
+# --- string-shape assertions and a `user-half`/`host-half` placeholder), and one hex
+# --- idempotency key in a Hetzner request fixture. Scoped to the two rules that fire, so the
+# --- project-specific rules still apply to these files in full.
+[[allowlists]]
+description = "PEM banners and request fixtures in the test suites — no key material"
+targetRules = ["private-key", "generic-api-key"]
+paths = [
+  '''^packages/core/src/ssh/keys\.ts$''',
+  '''^packages/core/src/ssh/.*\.test\.ts$''',
+  '''^packages/core/src/secrets/store\.test\.ts$''',
+  '''^packages/provider-hetzner/src/provider\.test\.ts$''',
+]

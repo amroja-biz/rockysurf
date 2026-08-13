@@ -1,0 +1,52 @@
+{
+  "name": "@rockysurf/provider-hetzner",
+  "version": "0.1.0",
+  "description": "Hetzner Cloud compute provider — plain fetch against the public API.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amroja-biz/rockysurf.git",
+    "directory": "packages/provider-hetzner"
+  },
+  "bugs": "https://github.com/amroja-biz/rockysurf/issues",
+  "homepage": "https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-hetzner#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rockysurf/provider-sdk": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@rockysurf/provider-conformance": "workspace:*",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "rockysurf",
+    "provider",
+    "hetzner"
+  ]
+}

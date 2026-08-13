@@ -1,0 +1,109 @@
+^D[   0.0s] === rockysurf-d0no.7 real lifecycle: AWS ===
+[   0.0s] agent.sh from /private/tmp/claude-501/-Users-johndamask-code/69a06928-baf0-4d2c-8be8-5a2e7dc875ff/scratchpad/d0no7/agent.sh
+[   0.0s] core = this laptop, behind NAT. Every connection below is OUTBOUND; nothing listens.
+[   0.0s] cloud=aws provider=aws (Amazon EC2)
+[   0.0s] offering=t4g.small arch=arm64
+[   0.0s] capabilities: stop=true ipStableAcrossStop=false canPinHostKey=true userDataMaxBytes=16384 generatesUserData=true
+[   1.1s]   PASS  credentials accepted
+[   1.1s]   PASS  listOfferings() offers t4g.small — 4 offerings
+[   1.1s]   PASS  t4g.small is arm64 — arm64
+[   1.1s]   PASS  rendered user-data is #cloud-config
+[   1.1s]   PASS  rendered user-data contains no shell
+[   1.1s]   PASS  host key is pinned exactly when capabilities.canPinHostKey says so — canPinHostKey=true
+[   1.1s]   user-data 2130B (provider limit 16384B)
+[   4.0s]   provisioned: {"instanceId":"i-03df430a03ce0d8eb","region":"us-east-1"}
+[   4.0s]   PASS  provision() returned a provider handle
+[   6.4s]   state=pending
+[  11.6s]   PASS  instance reached running with a public IP — 3.93.71.115
+[  21.6s]   ssh attempt 1: Timed out while waiting for handshake
+[  32.6s]   ssh attempt 2: Timed out while waiting for handshake
+[  34.9s]   PASS  FIRST SSH connection verified against the pinned host key (no trust-on-first-use)
+[  35.1s]   PASS  wrong host-key fingerprint rejected — host key mismatch: expected SHA256:eAeuC2uaE3HGDzHbgT+SLft0zS0aTcoyZJ4MDtqe6i0, host presented SHA256:1ow8NwvlsbZK5cpnSPWoThPPlz/TeUq5mIWHA+T9EJA
+[  36.5s]   PASS  cloud-init finished cleanly — status: done
+[  36.8s]   PASS  provider delivered the document as #cloud-config
+[  36.8s]   PASS  the box received core's user-data byte-for-byte — 2130B on box vs 2130B sent
+[  37.0s]   PASS  cloud-init created the rocky user — uid=1000(rocky) gid=1000(rocky) groups=1000(rocky),27(sudo)
+[  37.2s]   PASS  cloud-init installed core's authorized key
+[  37.5s]   PASS  the box is presenting the host key core minted (pinning is real, not TOFU) — SHA256:1ow8NwvlsbZK5cpnSPWoThPPlz/TeUq5mIWHA+T9EJA
+[  37.5s]   PASS  user-data carried no runcmd/bootcmd
+[  37.5s]   PASS  install plan is push-mode (box makes no outbound call to core)
+[  41.5s]   state | step=apt-basics status=running
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 systemd[1]: Starting rockysurf-bootstrap.service - /bin/bash /var/lib/rockysurf/agent.sh...
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 systemd[1]: Started rockysurf-bootstrap.service - /bin/bash /var/lib/rockysurf/agent.sh.
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 bash[1282]: [02:17:47] === rockysurf bootstrap agent (arch=arm64, user=root, plan=/var/lib/rockysurf/plan.json) ===
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 bash[1282]: [02:17:47] loaded 1 secret(s): ROCKYSURF_DUMMY_TOKEN
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 bash[1282]: [02:17:47] plan: 3 step(s), serverId=srv_ba5e53fc5188, arch=arm64
+[  41.5s]   box | Aug 12 02:17:47 spike7-aws-mspgl351 bash[1282]: [02:17:47] ==> apt-basics (as root, arch=arm64)
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: [02:18:06] --- apt-basics: verifying with: command -v curl && command -v git && command -v jq
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: [02:18:06] ==> apt-basics-check (as root, arch=arm64)
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: /usr/bin/curl
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: /usr/bin/git
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: /usr/bin/jq
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: [02:18:06] --- apt-basics: done (reports=installing_tools)
+[  60.0s]   box | Aug 12 02:18:06 spike7-aws-mspgl351 bash[1282]: [02:18:06] ==> install-node (as root, arch=arm64)
+[  62.7s]   box | Aug 12 02:18:08 spike7-aws-mspgl351 bash[1282]: [02:18:08] --- install-node: verifying with: node --version && npm --version
+[  62.7s]   box | Aug 12 02:18:08 spike7-aws-mspgl351 bash[1282]: [02:18:08] ==> install-node-check (as root, arch=arm64)
+[  62.7s]   box | Aug 12 02:18:08 spike7-aws-mspgl351 bash[1282]: v24.19.0
+[  62.7s]   box | Aug 12 02:18:09 spike7-aws-mspgl351 bash[1282]: 11.17.0
+[  62.7s]   box | Aug 12 02:18:09 spike7-aws-mspgl351 bash[1282]: [02:18:09] --- install-node: done (reports=installing_tools)
+[  62.7s]   box | Aug 12 02:18:09 spike7-aws-mspgl351 bash[1282]: [02:18:09] ==> install-claude-code (as rocky, arch=arm64)
+[  62.7s]   box | Aug 12 02:18:09 spike7-aws-mspgl351 sudo[1726]:     root : PWD=/ ; USER=rocky ; COMMAND=/usr/bin/env ARCH=arm64 DEBIAN_FRONTEND=noninteractive ROCKYSURF_DUMMY_TOKEN=spike-not-a-real-token bash -c 'set -euo pipefail#012export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH"#012npm config set prefix "/home/rocky/.npm-global"#012npm install -g --no-fund --no-audit @anthropic-ai/claude-code'
+[  62.7s]   box | Aug 12 02:18:09 spike7-aws-mspgl351 sudo[1726]: pam_unix(sudo:session): session opened for user rocky(uid=1000) by (uid=0)
+[  63.0s]   state | step=install-claude-code status=running
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: added 2 packages in 5s
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: npm warn allow-scripts   @anthropic-ai/claude-code@2.1.228 (postinstall: node install.cjs)
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: npm warn allow-scripts
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: npm warn allow-scripts Run `npm install -g --allow-scripts=@anthropic-ai/claude-code` to allow these scripts once, or `npm config set allow-scripts=@anthropic-ai/claude-code --location=user` to allow them for all global installs.
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 sudo[1726]: pam_unix(sudo:session): session closed for user rocky
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: [02:18:14] --- install-claude-code: verifying with: export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH" && claude --version
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: [02:18:14] ==> install-claude-code-check (as rocky, arch=arm64)
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 sudo[1768]:     root : PWD=/ ; USER=rocky ; COMMAND=/usr/bin/env ARCH=arm64 DEBIAN_FRONTEND=noninteractive ROCKYSURF_DUMMY_TOKEN=spike-not-a-real-token bash -c 'export PATH="/home/rocky/.npm-global/bin:/usr/local/bin:$PATH" && claude --version'
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 sudo[1768]: pam_unix(sudo:session): session opened for user rocky(uid=1000) by (uid=0)
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: 2.1.228 (Claude Code)
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 sudo[1768]: pam_unix(sudo:session): session closed for user rocky
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: [02:18:14] --- install-claude-code: done (reports=ready)
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 bash[1282]: [02:18:14] plan complete
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 systemd[1]: rockysurf-bootstrap.service: Deactivated successfully.
+[  68.2s]   box | Aug 12 02:18:14 spike7-aws-mspgl351 systemd[1]: rockysurf-bootstrap.service: Consumed 27.265s CPU time.
+[  68.5s]   state | step=install-claude-code status=done
+[  68.5s]   PASS  agent ran under a transient systemd unit (the launcher containers could not verify) — systemd-run
+[  68.5s]   PASS  install plan completed
+[  68.5s]   PASS  all three plan steps done — apt-basics,install-node,install-claude-code
+[  68.5s]   PASS  store tracked progress to ready from state.json alone
+[  68.5s]   bootstrap took 31s
+[  68.8s]   PASS  claude --version over SSH as rocky — 2.1.228 (Claude Code)
+[  69.0s]   PASS  box architecture is arm64 — node v24.19.0 on arm64
+[  69.2s]   PASS  secrets file is 0600 — 600
+[  69.2s] terminating
+[  69.7s]   PASS  terminate() accepted
+[  70.6s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[  75.8s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[  81.0s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[  86.1s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[  91.3s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[  96.4s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 101.6s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 106.7s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 111.8s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 117.0s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 122.1s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 127.3s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 132.4s]   waiting for EC2 to finish reaping (normally 30-120s): i-03df430a03ce0d8eb
+[ 137.7s]   PASS  zero orphans left behind
+[ 138.3s]   PASS  listManaged() reports no servers
+[ 138.3s]   NOTE: listManaged() still reports security-group/sg-0a949e8ed67c5a1bd
+[ 138.3s]   (the AWS shared SSH security group is intentionally persistent and shared across servers)
+[ 138.3s] --- phase timings ---
+[ 138.3s]   validateCredentials        1s
+[ 138.3s]   provision                  3s
+[ 138.3s]   boot-to-running            8s
+[ 138.3s]   wait-for-ssh              23s
+[ 138.3s]   host-key-mismatch          0s
+[ 138.3s]   cloud-init-evidence        2s
+[ 138.3s]   push-bootstrap            31s
+[ 138.3s]   terminate                  0s
+[ 138.3s]   orphan-sweep              68s
+[ 138.3s]   TOTAL                    138s
+[ 138.3s] RESULT: PASS — aws full lifecycle, zero orphans
+⠙[1G[0K

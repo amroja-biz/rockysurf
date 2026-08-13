@@ -1,0 +1,60 @@
+{
+  "name": "@rockysurf/provider-conformance",
+  "version": "0.1.0",
+  "description": "SDK conformance checks every compute provider runs against itself. Test-only; never a runtime dependency.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amroja-biz/rockysurf.git",
+    "directory": "packages/provider-conformance"
+  },
+  "bugs": "https://github.com/amroja-biz/rockysurf/issues",
+  "homepage": "https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-conformance#readme",
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rockysurf/provider-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "rockysurf",
+    "provider",
+    "conformance",
+    "testing"
+  ],
+  "_comment": "TWO RESOLUTIONS, ON PURPOSE (rockysurf-92nv). In this workspace `main`/`types`/`exports` point at SOURCE: provider packages depend on this one from their TESTS, `pnpm run check` runs `test` without running `build`, and pointing at `dist/` would mean every provider's test run needs this package compiled first. Published, it must ship real code, so `publishConfig` swaps the same three fields to `dist/` — pnpm applies those overrides at `pnpm pack`/`publish` time, so the tarball an out-of-tree author installs resolves compiled JavaScript while the workspace keeps its build-order-free test runs. Verified by tarball in scripts/verify-tarballs.mjs."
+}

@@ -1,0 +1,12 @@
+# Security reports must not become public issues, so the blank-issue escape hatch is closed
+# and the security link is offered in its place.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/amroja-biz/rockysurf/security/advisories/new
+    about: >
+      Private vulnerability reporting. Please do not open a public issue for a security
+      problem, and please do not disclose it before a fix ships. See SECURITY.md.
+  - name: Questions and ideas
+    url: https://github.com/amroja-biz/rockysurf/discussions
+    about: For "how do I…" and "would you consider…", before it is a bug or a request.

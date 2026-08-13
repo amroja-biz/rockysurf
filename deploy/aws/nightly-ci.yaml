@@ -1,0 +1,215 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >-
+  Rocky Surf — the GitHub Actions OIDC entry role for .github/workflows/nightly-real-cloud.yml.
+  It holds almost nothing: permission to assume the SHIPPED provider role (deploy/aws/iam-role.yaml)
+  and the one read the orphan audit makes that the published policy deliberately does not grant.
+
+# ---------------------------------------------------------------------------------------------
+# THIS IS CI INFRASTRUCTURE, AND THAT IS THE WHOLE DISTINCTION FROM iam-role.yaml.
+#
+# deploy/aws/iam-role.yaml is a SHIPPED artifact: what a self-hoster deploys, carrying exactly the
+# policy docs/providers/aws.md publishes. This file is not shipped to users — it exists so a fork
+# can reproduce this project's nightly verification (rockysurf-evo1) in its own account without
+# reverse-engineering it from a workflow comment.
+#
+# The two roles are separate ON PURPOSE. The nightly's first hop lands here; the second hop chains
+# into the published provider role, so every provider call the lifecycle makes runs under exactly
+# the permissions a self-hoster gets. Grant those permissions HERE instead and the nightly proves
+# nothing about what is published — which is the failure mode rockysurf-evo1 exists to close.
+#
+# Deploy this FIRST, then deploy/aws/iam-role.yaml with TrustedPrincipalArn set to this stack's
+# NightlyRoleArn output. There is no circular dependency: this stack grants sts:AssumeRole against
+# the provider role's DETERMINISTIC ARN (IAM role ARNs are a function of account and name), so the
+# grant can be written before the role it names exists.
+# ---------------------------------------------------------------------------------------------
+
+Parameters:
+  GitHubSubjectClaim:
+    Type: CommaDelimitedList
+    Default: 'repo:amroja-biz/rockysurf:ref:refs/heads/*,repo:amroja-biz@216598267/rockysurf@1332106278:ref:refs/heads/*'
+    Description: >-
+      Which GitHub workflow runs may assume this role, matched against the OIDC token's `sub`
+      claim with StringLike (any entry may match). The default admits any BRANCH of the one
+      repository, and deliberately not `repo:owner/name:*`. TWO entries because GitHub is rolling
+      out an immutable-ID subject format (`repo:owner@ORG_ID/name@REPO_ID:...`) alongside the
+      classic one — the first real run was refused because the token carried the @id form while
+      the trust matched only the classic form. Find a repo's ids with:
+      `gh api repos/OWNER/NAME/actions/oidc/customization/sub` (the sub_claim_prefix field).
+
+      Why a branch wildcard rather than a pinned `refs/heads/main`: the schedule trigger always
+      runs on the default branch, and this repository's default branch is expected to change
+      during the open-source history rewrite. A pinned ref would make the nightly fail with an
+      unhelpful STS error on the morning after the rename. The wildcard also lets the wiring be
+      tested from a branch via workflow_dispatch before it merges.
+
+      What it still excludes: pull-request contexts (`repo:owner/name:pull_request`), tags,
+      environments, and every other repository. A fork wanting the tighter grant should set this
+      to the exact ref it schedules from.
+# AllowedPattern removed with the change to CommaDelimitedList: CloudFormation does not
+# validate list items against a pattern, and a wrong claim fails safe (assume refused).
+
+  ProviderRoleName:
+    Type: String
+    Default: rocky-surf-provider
+    Description: >-
+      The RoleName parameter of the deploy/aws/iam-role.yaml stack this role is allowed to assume.
+      Must match, or the second hop fails with AccessDenied. Kept as a name rather than an ARN so
+      this stack can be deployed before that one.
+    AllowedPattern: '[\w+=,.@-]{1,64}'
+
+  ProviderRegion:
+    Type: String
+    Default: us-east-1
+    Description: >-
+      The region the nightly runs in. The audit read below is confined to it.
+    AllowedPattern: '[a-z]{2}(-gov)?-[a-z]+-\d'
+    ConstraintDescription: must be a region code such as us-east-1
+
+  RoleName:
+    Type: String
+    Default: rocky-surf-nightly-ci
+    Description: IAM role names are global per account, so a second deployment needs a second name.
+    AllowedPattern: '[\w+=,.@-]{1,64}'
+
+  CreateOidcProvider:
+    Type: String
+    Default: 'yes'
+    AllowedValues: ['yes', 'no']
+    Description: >-
+      The GitHub OIDC provider is ACCOUNT-GLOBAL: exactly one may exist per account for
+      token.actions.githubusercontent.com, and creating a second fails the stack. Set this to `no`
+      if the account already has one (check with
+      `aws iam list-open-id-connect-providers`) — the role then references the existing provider,
+      whose ARN is deterministic.
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'yes']
+
+Resources:
+  # Account-global. Deleting this stack removes it, which would break every other workflow in the
+  # account that authenticates by OIDC — hence the CreateOidcProvider escape hatch above.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: 'https://token.actions.githubusercontent.com'
+      ClientIdList:
+        - sts.amazonaws.com
+      # Vestigial, and kept only because the field is long-standing and harmless. Since June 2023
+      # AWS validates this specific provider against its own trusted CA library and ignores the
+      # thumbprint entirely, which is why a stale value here does not break authentication the way
+      # it once did. Both historical intermediates are listed because either could be served.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: managed-by
+          Value: rockysurf
+
+  NightlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      # ASCII ONLY (docs/learnings/aws.md #28): IAM rejects a role description containing anything
+      # outside printable Latin-1, with a raw regex and no field name in the error. The em dashes
+      # this template uses everywhere else would fail the stack at CREATE.
+      Description: !Sub 'Rocky Surf nightly CI: GitHub OIDC entry role that assumes ${ProviderRoleName}'
+      # Role chaining caps a chained session at one hour regardless of this value, and the second
+      # hop is a chain. Anything longer would be a number that does not mean what it says.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                # Without this, a token minted for any other audience would be accepted. The
+                # aws-actions/configure-aws-credentials action requests exactly this audience.
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com'
+              StringLike:
+                'token.actions.githubusercontent.com:sub': !Ref GitHubSubjectClaim
+      Tags:
+        - Key: managed-by
+          Value: rockysurf
+        - Key: Name
+          Value: !Ref RoleName
+      Policies:
+        - PolicyName: rocky-surf-nightly-ci
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # The entire point of the role. Everything the lifecycle does to the cloud happens
+              # after this hop, under the published policy rather than under this one.
+              - Sid: ChainIntoThePublishedProviderRole
+                Effect: Allow
+                Action: 'sts:AssumeRole'
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProviderRoleName}'
+
+              # The orphan audit, and the reason this role has any EC2 permission at all.
+              # scripts/e2e/lifecycle.mjs walks volumes with ec2:DescribeVolumes to catch a root
+              # volume that outlived its instance. That call is deliberately ABSENT from the
+              # published policy — the provider never makes it — so it cannot run under the
+              # chained identity, and it should not: an orphan the credentials under test cannot
+              # SEE would be an orphan the audit calls clean. It therefore runs as the operator,
+              # which in CI is this role: the workflow captures this session before the chaining
+              # hop and hands it to the audit. See scripts/e2e/aws-audit-credentials.mjs, which
+              # refuses to start a restricted run whose audit is not a distinct principal.
+              - Sid: OrphanVolumeAudit
+                Effect: Allow
+                Action: 'ec2:DescribeVolumes'
+                # EC2 Describe* actions take no resource-level ARNs, so the scope that IS
+                # available is the region.
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref ProviderRegion
+
+              # The terminate sweep is audit-shaped too, and the first real run proved why it
+              # must run as THIS role: the provider-role hop failed, and a sweep that only works
+              # through the credentials under test goes blind at exactly the moment it matters.
+              - Sid: OrphanInstanceSweepSee
+                Effect: Allow
+                Action: 'ec2:DescribeInstances'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref ProviderRegion
+              - Sid: OrphanInstanceSweepKill
+                Effect: Allow
+                Action: 'ec2:TerminateInstances'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref ProviderRegion
+                    # Only instances the product created and tagged. An untagged instance is not
+                    # ours to kill, orphan hunt or no.
+                    'ec2:ResourceTag/managed-by': 'rockysurf'
+
+Outputs:
+  NightlyRoleArn:
+    Description: >-
+      Set this as the repository SECRET AWS_NIGHTLY_ROLE_ARN, and pass it as TrustedPrincipalArn
+      when deploying deploy/aws/iam-role.yaml.
+    Value: !GetAtt NightlyRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-NightlyRoleArn'
+
+  ExpectedProviderRoleArn:
+    Description: >-
+      The provider-role ARN this role is allowed to assume. The deploy/aws/iam-role.yaml stack must
+      produce exactly this, and it becomes the repository VARIABLE AWS_PROVIDER_ROLE_ARN.
+    Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ProviderRoleName}'
+
+  OidcProviderArn:
+    Description: The GitHub Actions OIDC provider this role federates against.
+    Value: !If
+      - ShouldCreateOidcProvider
+      - !Ref GitHubOidcProvider
+      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'

@@ -1,0 +1,58 @@
+# One command from a clean checkout to the first-run wizard (rockysurf-ftl9.4).
+#
+#   docker compose up --build
+#
+# Then open http://localhost:3000 and sign in with the password printed once in the logs:
+#
+#   docker compose logs rockysurf | grep -A2 'first boot'
+#
+# Everything that must outlive the container — the SQLite database, `secret.key`, and the
+# config file the entrypoint seeds — lives in the `rockysurf-data` volume. `docker compose
+# down` keeps it; `docker compose down -v` destroys it, and with it every stored credential and
+# the SSH keys for boxes you already own.
+
+services:
+  rockysurf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rockysurf:local
+    # A restart loop must not outlive an operator's attention, but a machine reboot should
+    # bring the control plane back — it is the thing that reconciles the servers you are paying
+    # for, and it runs a recovery pass over anything mid-flight at startup.
+    restart: unless-stopped
+    ports:
+      # Loopback only. The UI is an admin surface with a single password in front of it and no
+      # TLS of its own; publishing it on 0.0.0.0 would put that on the network. Put a reverse
+      # proxy in front of this port to expose it deliberately.
+      #
+      # Only the HOST side is configurable: inside the container the port is whatever
+      # `/data/rockysurf.config.yaml` says, and 3000 is what the seeded file says.
+      - '127.0.0.1:${ROCKYSURF_HOST_PORT:-3000}:3000'
+    volumes:
+      - rockysurf-data:/data
+    environment:
+      # Optional, and passed through only when set on the host. Set it to choose the admin
+      # password instead of reading the generated one out of the logs — or to recover an
+      # installation whose password was lost, since it overwrites what is stored.
+      - ROCKYSURF_ADMIN_PASSWORD
+      # Optional. Overrides <dataDir>/secret.key, for operators who keep the master key in a
+      # secret manager rather than in the volume.
+      - ROCKYSURF_SECRET_KEY
+    healthcheck:
+      # Inherited from the image; repeated here so `docker compose up --wait` and the smoke
+      # test have a definition that does not depend on which image tag was built.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  rockysurf-data:

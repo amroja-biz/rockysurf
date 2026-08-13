@@ -1,0 +1,70 @@
+^D[   0.0s] region=us-east-1 offering=t4g.small arch=arm64
+[   1.4s]   PASS  credentials accepted
+[   1.4s] core listening on 127.0.0.1:8799 (never bound to a public interface)
+[   1.4s]   plan URL given to the box: http://127.0.0.1:8799/internal/servers/srv_a9e310013d42/plan?token=<redacted>
+[   1.4s]   PASS  callback user-data fits the AWS ceiling — 11752B of 16384B
+[   1.4s]   agent is 14185B verbatim; compressed document is 11752B (72% of ceiling)
+[   4.4s]   provisioned: {"instanceId":"i-0284d6d6226a7c27b","region":"us-east-1"}
+[   4.6s]   state=pending
+[   9.8s]   PASS  instance reached running with a public IP — 54.166.241.83
+[  16.8s]   ssh attempt 1: connect ECONNREFUSED 54.166.241.83:22
+[  17.9s]   ssh attempt 2: connect ECONNREFUSED 54.166.241.83:22
+[  19.4s]   ssh attempt 3: connect ECONNREFUSED 54.166.241.83:22
+[  22.3s]   PASS  SSH up, verified against the pinned host key (used only for the tunnel and evidence)
+[  23.9s]   PASS  reverse tunnel open: box 127.0.0.1:8799 → core — the box can now reach core; core still cannot reach the box on any port it opened
+[  25.9s]   core <- box | step=installing_tools stepId=apt-basics status=running
+[  45.9s]   core <- box | step=installing_tools stepId=install-node status=running
+[  48.0s]   core <- box | step=ready stepId=install-claude-code status=running
+[  54.0s]   core <- box | step=ready stepId=install-claude-code status=done
+[  54.0s]   PASS  the box fetched its plan from core with the single-use token — 2026-08-12T02:48:47.770Z
+[  54.0s]   PASS  core's row reached ready, reported by the box itself
+[  54.0s]   PASS  core heard about step apt-basics
+[  54.0s]   PASS  core heard about step install-node
+[  54.0s]   PASS  core heard about step install-claude-code
+[  54.0s]   PASS  every report carried the runId core minted when it handed out the plan — c4bbcc78-bd3d-4040-a3f7-6eb32f3799f9
+[  54.0s]   7 progress reports across 3 steps
+[  54.0s]   PASS  a second use of the plan token is refused — HTTP 410
+[  54.0s]   PASS  the refused response carries no plan content
+[  54.0s]   PASS  the replay was recorded as a leak signal
+[  54.0s]   PASS  a wrong plan token gets 401 — HTTP 401
+[  54.1s]   PASS  wrong host-key fingerprint rejected — host key mismatch: expected SHA256:e9NPcRMc+NRfbfdHYBE1mr7IpNjHjdlp7v2EZc62q00, host presented SHA256:by2lJ4oeXJRjpzf9oMIKPKgNGuHOdFO5/084H+0leuk
+[  54.8s]   PASS  cloud-init finished cleanly — status: done
+[  55.0s]   PASS  the box received core's callback user-data byte-for-byte — 11752B on box vs 11752B sent
+[  55.0s]   PASS  callback user-data carries a runcmd (unlike push mode, it cannot be inert)
+[  55.0s]   PASS  the agent travelled compressed (encoding: gz+b64)
+[  55.2s]   PASS  cloud-init decoded gz+b64 to the exact agent core sent (sha256 match) — 10e67acf97d9d206… 14185B on box
+[  55.5s]   PASS  cloud-init applied the declared file modes — /var/lib/rockysurf/agent.sh 700 /var/lib/rockysurf/stub.sh 700 /var/lib/rockysurf/callback.env 600
+[  55.7s]   PASS  the stub deleted the spent plan URL from the box
+[  55.9s]   PASS  the box holds the callback-mode plan it fetched itself — mode=callback steps=3 runId=c4bbcc78…
+[  56.1s]   PASS  cloud-init created the rocky user — uid=1000(rocky) gid=1000(rocky) groups=1000(rocky),27(sudo)
+[  56.3s]   PASS  the box presents the host key core minted (pinning works in callback mode too)
+[  56.7s]   PASS  claude --version over SSH as rocky — 2.1.228 (Claude Code)
+[  56.9s]   PASS  box architecture is arm64 — node v24.19.0 on arm64
+[  57.2s]   agent unit after completion: inactive (transient unit, --collect reaps it)
+[  57.2s] terminating
+[  57.7s]   PASS  terminate() accepted
+[  58.6s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  63.7s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  68.9s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  74.1s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  79.2s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  84.3s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  89.5s]   waiting for EC2 to finish reaping (normally 30-120s): i-0284d6d6226a7c27b
+[  94.8s]   PASS  zero orphans left behind
+[  95.3s]   PASS  listManaged() reports no instances
+[  95.3s]   NOTE: listManaged() still reports security-group/sg-0a949e8ed67c5a1bd
+[  95.3s]   (the AWS shared SSH security group is intentionally persistent and shared across servers)
+[  95.3s] --- phase timings ---
+[  95.3s]   validateCredentials         1s
+[  95.3s]   provision                   3s
+[  95.3s]   boot-to-running             5s
+[  95.3s]   wait-for-ssh               13s
+[  95.3s]   open-reverse-tunnel         2s
+[  95.3s]   callback-bootstrap         30s
+[  95.3s]   host-key-mismatch           0s
+[  95.3s]   evidence                    3s
+[  95.3s]   terminate                   0s
+[  95.3s]   orphan-sweep               37s
+[  95.3s]   TOTAL                      95s
+[  95.3s] RESULT: PASS — aws callback-mode lifecycle, zero orphans
+⠙[1G[0K

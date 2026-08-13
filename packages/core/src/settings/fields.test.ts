@@ -1,0 +1,281 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import { configSchema } from '../config/index.js'
+import {
+  isSecretKeyName,
+  isSecretPath,
+  SETTINGS_FIELDS,
+  SETTINGS_LISTS,
+  SETTINGS_SECTIONS,
+  specFor,
+} from './fields.js'
+import { secretView } from './view.js'
+
+/**
+ * THE CLASSIFICATION CANNOT FALL BEHIND THE SCHEMA.
+ *
+ * `fields.ts` decides which config fields are credentials, and it decides it by hand. Hand-
+ * written lists rot: someone adds `providers.digitalocean.token` to `config/schema.ts`, nobody
+ * remembers this file, and the settings API starts returning a live token in a JSON body. The
+ * failure would be silent, and it would be a leak.
+ *
+ * So this file reads `config/schema.ts` as text and fails when a credential-named field appears
+ * there without a matching entry here. The same shape as `secrets/route-inventory.test.ts`, and
+ * for the same reason: a rule enforced against the source tree keeps working while nobody is
+ * looking at it.
+ */
+
+const SCHEMA_SOURCE = readFileSync(fileURLToPath(new URL('../config/schema.ts', import.meta.url)), 'utf8')
+
+/**
+ * Every field declared in the schema, by the name it has there.
+ *
+ * Matched on the DECLARATION — `name: z.…` or `name: someSchema` — rather than on indentation,
+ * which varies with how prettier broke the chain around it (`token:` sits two spaces deeper
+ * than `port:` for no reason a rule should care about).
+ */
+function declaredFields(source: string): string[] {
+  const zodFields = [...source.matchAll(/^\s+([A-Za-z][A-Za-z0-9]*):\s+z\b/gm)].map((m) => m[1]!)
+  const composed = [...source.matchAll(/^\s+([A-Za-z][A-Za-z0-9]*):\s+[a-z][A-Za-z0-9]*Schema\b/gm)].map(
+    (m) => m[1]!,
+  )
+  return [...new Set([...zodFields, ...composed])]
+}
+
+/**
+ * Fields whose NAME says credential but whose VALUE is not one, each with its reason.
+ *
+ * The list is short on purpose. An entry here is a claim that a field named like a secret may
+ * be returned to a browser in full, so it costs a sentence explaining why.
+ */
+const NOT_CREDENTIALS: Record<string, string> = {
+  tokens: 'the LIST of per-repository entries — each entry\'s `pat` is classified, the list is not',
+}
+
+describe('secret classification tracks config/schema.ts', () => {
+  const fields = declaredFields(SCHEMA_SOURCE)
+
+  it('finds the schema, so an empty scan cannot make this vacuous', () => {
+    expect(fields).toContain('port')
+    expect(fields).toContain('sshAllowedCidr')
+    expect(fields.length).toBeGreaterThan(15)
+  })
+
+  it('classifies every credential-named field the schema declares', () => {
+    const classifiedNames = new Set(
+      SETTINGS_FIELDS.filter((f) => f.kind === 'secret').map((f) => f.path.split('.').pop()!),
+    )
+    const unclassified = fields.filter(
+      (name) => isSecretKeyName(name) && !classifiedNames.has(name) && !(name in NOT_CREDENTIALS),
+    )
+
+    expect(
+      unclassified,
+      `config/schema.ts declares ${unclassified.join(', ')}, which reads like a credential and is not ` +
+        "classified in fields.ts. Add a `kind: 'secret'` entry for it — or, if its value is not a " +
+        'credential, name it in NOT_CREDENTIALS with the reason.',
+    ).toEqual([])
+  })
+
+  it('classifies nothing the schema no longer has', () => {
+    const declared = new Set(fields)
+    const stale = SETTINGS_FIELDS.filter((f) => f.kind === 'secret')
+      .map((f) => f.path.split('.').pop()!)
+      .filter((name) => !declared.has(name))
+    expect(stale, `${stale.join(', ')} is classified secret but no longer declared in the schema`).toEqual([])
+  })
+
+  it('names the three credential fields v0.1 actually has', () => {
+    expect(SETTINGS_FIELDS.filter((f) => f.kind === 'secret').map((f) => f.path)).toEqual([
+      'github.pat',
+      'github.tokens.*.pat',
+      'providers.hetzner.token',
+    ])
+  })
+
+  it('leaves the path-shaped fields alone — a path to a key is not key material', () => {
+    expect(isSecretPath(['providers', 'byo', 'identityFile'])).toBe(false)
+    expect(isSecretPath(['providers', 'byo', 'hosts', 0, 'identityFile'])).toBe(false)
+    expect(isSecretPath(['providers', 'byo', 'hosts', 0, 'fingerprint'])).toBe(false)
+    expect(isSecretPath(['github', 'tokens'])).toBe(false)
+  })
+
+  it('masks a credential-named key wherever it turns up, schema or no schema', () => {
+    expect(isSecretPath(['providers', 'somecloud', 'token'])).toBe(true)
+    expect(isSecretPath(['providers', 'somecloud', 'apiToken'])).toBe(true)
+    expect(isSecretPath(['whatever', 'adminPassword'])).toBe(true)
+  })
+})
+
+describe('the inventory is internally consistent', () => {
+  it('gives every read-only field a reason an operator can act on', () => {
+    for (const field of SETTINGS_FIELDS.filter((f) => !f.writable)) {
+      expect(field.reason, `${field.path} is read-only with no reason`).toBeTruthy()
+      expect(field.reason!.length).toBeGreaterThan(40)
+    }
+  })
+
+  it('describes fields the config schema really has', () => {
+    // Every inventory path must resolve against a parsed config — a typo here would render a
+    // control for a field that can never be saved.
+    const full = configSchema.parse({})
+    for (const field of SETTINGS_FIELDS) {
+      const [section] = field.path.split('.')
+      expect(Object.keys(full), `${field.path} names a section the schema does not have`).toContain(section)
+    }
+  })
+
+  it('matches a concrete list path back to its spec', () => {
+    expect(specFor(['github', 'tokens', 3, 'pat'])?.kind).toBe('secret')
+    expect(specFor(['providers', 'byo', 'hosts', 0, 'port'])?.kind).toBe('number')
+    expect(specFor(['server', 'nonsense'])).toBeUndefined()
+  })
+
+  it('declares an item shape for every list the editor offers', () => {
+    for (const list of SETTINGS_LISTS) {
+      for (const item of list.itemFields) {
+        expect(specFor([...list.path.split('.'), 0, item]), `${list.path}.*.${item} has no spec`).toBeDefined()
+      }
+    }
+  })
+})
+
+/**
+ * EVERY FIELD SAYS WHAT IT IS FOR (rockysurf-5qzg, directive 3).
+ *
+ * `help` is required by `FieldSpec`, so a field added without it does not compile — that is the
+ * real gate, and it is a better one than a test because it fires in the editor rather than in
+ * CI. What these cases add is that the string is a SENTENCE rather than a placeholder somebody
+ * typed to make the compiler stop, and that the same is true of the sections.
+ */
+describe('every setting on the page explains itself', () => {
+  it('gives every field help an operator could act on', () => {
+    for (const field of SETTINGS_FIELDS) {
+      expect(field.help, `${field.path} has no help text`).toBeTruthy()
+      expect(field.help.length, `${field.path}'s help is too short to say anything`).toBeGreaterThan(24)
+      expect(field.help.trim(), `${field.path}'s help should read as a sentence`).toMatch(/[.!?]$/)
+      // The reason a read-only field gives is a different message from what the field is FOR,
+      // and repeating one as the other would leave a control with nothing said about it.
+      if (field.reason) expect(field.help).not.toBe(field.reason)
+    }
+  })
+
+  /**
+   * THE ENV-VAR-ONLY POLICY IS IN THE WORDS, NOT ONLY IN THE PAGE (rockysurf-4o3o).
+   *
+   * The page refuses a literal; this is what stops the sentence under the box drifting back to
+   * describing the field as somewhere a token goes, which would leave the refusal arriving as a
+   * surprise after somebody had typed one.
+   */
+  it('tells every credential box that it takes a variable name rather than a token', () => {
+    for (const field of SETTINGS_FIELDS.filter((f) => f.kind === 'secret')) {
+      expect(field.help, `${field.path}'s help does not say it takes a variable NAME`).toContain(
+        'NAME of an environment variable',
+      )
+      expect(field.help, `${field.path}'s help does not say what not to put in it`).toContain(
+        'not the token itself',
+      )
+    }
+  })
+
+  it('gives every section a title and help', () => {
+    for (const section of SETTINGS_SECTIONS) {
+      expect(section.title, `${section.id} has no title`).toBeTruthy()
+      expect(section.help.length, `${section.id}'s help is too short`).toBeGreaterThan(24)
+      expect(section.help.trim()).toMatch(/[.!?]$/)
+    }
+  })
+
+  it('names a section for every part of the file the page draws', () => {
+    // Pinned, because the page addresses sections by these ids: dropping one silently leaves a
+    // section with no heading and no explanation.
+    expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
+      'server',
+      'github',
+      'providers.hetzner',
+      'providers.aws',
+      'providers.azure',
+      'providers.byo',
+      'providers.byo.hosts',
+      'limits',
+      'mcp',
+    ])
+  })
+
+  it('puts every field inside a section the page draws', () => {
+    const ids = SETTINGS_SECTIONS.map((s) => s.id)
+    for (const field of SETTINGS_FIELDS.filter((f) => !f.hidden)) {
+      const covered = ids.some((id) => field.path === id || field.path.startsWith(`${id}.`))
+      expect(covered, `${field.path} belongs to no section, so the page has nowhere to draw it`).toBe(true)
+    }
+  })
+})
+
+/**
+ * WHAT DOES NOT RENDER, AND WHY IT IS A SHORT LIST (rockysurf-5qzg, directive 1).
+ *
+ * The rule an owner stated: a field whose only message is "you cannot use this" should not be on
+ * the page at all. The trap is applying it to every read-only field, which would take away two
+ * that operators genuinely read. These cases pin the distinction so a later sweep cannot quietly
+ * widen it in either direction.
+ */
+describe('a setting that does not exist yet is not drawn', () => {
+  it('hides auth.mode, whose one available edit selects a mode that is not built', () => {
+    expect(SETTINGS_FIELDS.filter((f) => f.hidden).map((f) => f.path)).toEqual(['auth.mode'])
+  })
+
+  it('keeps hiding it from the page without letting it be written', () => {
+    // Hidden is a rendering flag. The route still refuses the path by name, with this reason —
+    // which is a better refusal than the "the page does not edit that field" a missing entry
+    // would produce.
+    const spec = specFor(['auth', 'mode'])!
+    expect(spec.hidden).toBe(true)
+    expect(spec.writable).toBe(false)
+    expect(spec.reason).toContain('lock you out')
+  })
+
+  it('still draws the read-only settings that are real, and says where they are edited', () => {
+    for (const path of ['server.dataDir', 'providers.aws.sizes']) {
+      const spec = SETTINGS_FIELDS.find((f) => f.path === path)!
+      expect(spec.writable).toBe(false)
+      expect(spec.hidden, `${path} is a working setting and its value is worth reading`).toBeUndefined()
+      // Each names the place the edit actually happens, which is what makes it more than a refusal.
+      expect(spec.reason).toMatch(/file|edit/i)
+    }
+  })
+
+  it('never hides a field an operator could edit, which would be a control that vanished', () => {
+    for (const field of SETTINGS_FIELDS.filter((f) => f.hidden)) {
+      expect(field.writable, `${field.path} is hidden and writable — one of those is wrong`).toBe(false)
+      expect(field.reason, `${field.path} is hidden with no reason for the refusal`).toBeTruthy()
+    }
+  })
+})
+
+describe('a reference is only a reference when it is the whole value', () => {
+  it('reads a bare reference as one', () => {
+    expect(secretView('${HETZNER_TOKEN}')).toEqual({
+      secret: true,
+      state: 'reference',
+      reference: '${HETZNER_TOKEN}',
+    })
+  })
+
+  it('masks anything with a literal half, which is where a leak would hide', () => {
+    expect(secretView('tok_live_${SUFFIX}').state).toBe('set')
+    expect(secretView('${A}${B}').state).toBe('set')
+    expect(secretView(' ${A}').state).toBe('set')
+    expect(secretView('$${ESCAPED}').state).toBe('set')
+  })
+
+  it('reads absence and emptiness as not set', () => {
+    expect(secretView(undefined).state).toBe('unset')
+    expect(secretView(null).state).toBe('unset')
+    expect(secretView('').state).toBe('unset')
+  })
+
+  it('masks a non-string, rather than assuming a number cannot be a credential', () => {
+    expect(secretView(12345).state).toBe('set')
+  })
+})

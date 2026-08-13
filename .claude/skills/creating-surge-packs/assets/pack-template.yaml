@@ -1,0 +1,144 @@
+# TEMPLATE — copy to packs/<pack-id>.yaml in a Rocky Surf checkout and fill it in.
+#
+# The filename must match packId. Delete the parts you do not need; delete these comments once
+# the file says what it means on its own. Keep the comments that record a DECISION (why a version
+# is pinned, why something is unpinned, why a flag is passed) — those are the ones a reviewer and
+# your future self need.
+#
+# Before naming anything, see what is taken — toolId must be unique across the WHOLE repository:
+#   grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u
+#
+# Validate after every edit, in ~2s and with no Docker (from the repo root):
+#   pnpm --filter @rockysurf/core exec vitest run src/packs/packs.test.ts
+# Then prove it, with Docker:
+#   node scripts/pack-smoke.mjs --pack <pack-id> --arch arm64
+#   node scripts/pack-smoke.mjs --pack <pack-id> --arch amd64
+#
+# Two things that fail the build rather than warning you: a script containing `apt-get install`
+# must contain the literal string `apt-updated`, and a `runAs: rocky` script may not contain the
+# word for privilege escalation ANYWHERE, comments included.
+version: 1
+
+pack:
+  packId: my-pack                 # lowercase, single hyphens; must equal the filename
+  name: My Pack                   # display name
+  tools:
+    # The shared base toolchain, DEFINED in packs/ai-coding-agents.yaml and referenced here by
+    # id. Keep the ones you need and delete the rest — do not redefine them, the loader rejects
+    # a toolId defined in two files.
+    - build-essential             # C/C++ toolchain
+    - curl
+    - gh                          # GitHub CLI; reads $GITHUB_TOKEN from the environment
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs                      # Node 22 LTS
+    - playwright-deps             # Chromium's system libraries (root)
+    - playwright                  # the browser itself, per-user
+    - beads                       # bd task tracker
+    - agent-deck
+    - beads-viewer
+    # ...and the tools this file introduces:
+    - my-tool
+  displayOrder: 100               # position in the UI's pack list, ascending
+  enabled: true
+  # Documented as optional; a test asserts every pack has one matching this shape. Put the PNG in
+  # BOTH packages/core/public/images/surge-packs/ and packages/web/public/images/surge-packs/.
+  imageUrl: /images/surge-packs/my-pack.png
+  # theme: theme-orange
+  requiresRepos: false            # true => the user picks Git repositories and $REPOS is set
+  requiresRdp: false              # true => the user is asked for a remote-desktop password
+  # desktop: xfce                 # omit for a headless box
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Plain text — no markdown, no HTML. Short lines, literal commands, indentation as the only
+    structure. Say how to authenticate everything this pack installs, and admit anything the
+    install could not finish.
+
+    my-tool
+      my-tool auth login      paste an API key from https://example.com/keys
+      my-tool --help
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+tools:
+  # ------------------------------------------------------------------------------------------
+  # Bands: 10 apt packages · 20 language runtimes · 30 needs a runtime · 35 desktop · 40 agents
+  # 50 needs an agent. Leave gaps of 10. Higher installOrder is the ONLY way to say "after".
+  # ------------------------------------------------------------------------------------------
+  - toolId: my-tool               # unique across the WHOLE repository
+    name: My Tool
+    description: One line, shown next to the name in the UI
+    category: agent               # 'agent' for an AI coding agent, 'base' for anything else
+    url: https://example.com      # the tool's home page
+    installOrder: 40
+    runAs: root                   # 'root' for system-wide, 'rocky' for a per-user install in $HOME
+    bootstrap: false              # always false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      # apt: the shared stamp refreshes the package list once per box, and keeps the harness's
+      # second run a genuine no-op. Required — the loader test looks for the literal string.
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y ca-certificates
+
+      # Downloading a binary? Branch on $ARCH — never write x86_64/aarch64 into a URL — and fail
+      # loudly on anything else. Delete this block if you install from apt or npm.
+      case "$ARCH" in
+        amd64) tool_arch=amd64 ;;
+        arm64) tool_arch=arm64 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      # PIN what you download. If you deliberately stay unpinned, say why here.
+      TOOL_VERSION=1.2.3
+      if [ "$(my-tool --version 2>/dev/null | awk 'NR==1{print $2}')" != "$TOOL_VERSION" ]; then
+        tmp=$(mktemp)
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://example.com/releases/v${TOOL_VERSION}/my-tool-linux-${tool_arch}" -o "$tmp"
+        install -m 0755 "$tmp" /usr/local/bin/my-tool
+        rm -f "$tmp"
+      fi
+
+      # Every script ends by proving the install actually worked. Installers exit 0 after
+      # half-working, and this is how you find out.
+      my-tool --version >/dev/null
+
+    # Optional. Per-server configuration, run after every tool's installScript, as the same
+    # runAs. This is where $REPOS work belongs.
+    # setupScript: |
+    #   set -euo pipefail
+    #   for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
+    #     [ -n "$repo" ] || continue
+    #     dir="$HOME/$(basename "$repo" .git)"
+    #     [ -d "$dir" ] || continue
+    #     (cd "$dir" && my-tool index)
+    #   done
+
+  # A per-user tool is a SECOND tool, not a sudo. Delete if you do not need one.
+  # - toolId: my-tool-user
+  #   name: My Tool (user setup)
+  #   description: Per-user configuration for My Tool
+  #   category: base
+  #   url: https://example.com
+  #   installOrder: 45
+  #   runAs: rocky
+  #   bootstrap: false
+  #   enabled: true
+  #   installScript: |
+  #     set -euo pipefail
+  #     # Appends must be guarded, or the harness's byte-identical .bashrc check fails on run 2.
+  #     touch "$HOME/.bashrc"
+  #     grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"

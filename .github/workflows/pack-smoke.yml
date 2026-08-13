@@ -1,0 +1,112 @@
+name: Pack smoke
+
+# The NORMATIVE, merge-gating pack check from docs/writing-a-pack.md § "The CI smoke test".
+# Its own workflow rather than a job in ci.yml because it is the one gate measured in minutes
+# rather than seconds, and because its matrix — every pack, on both architectures — is the part
+# most likely to need editing when a pack is added.
+#
+# WHAT IT PROVES, and why each half is load-bearing:
+#
+#   TWO ARCHITECTURES. There is no "amd64 only" pack. A hardcoded `x86_64` in a download URL is
+#   the single most common pack bug and it is invisible on one architecture.
+#
+#   TWO RUNS IN ONE CONTAINER, WITH THE RESUME JOURNAL DELETED BETWEEN THEM. The second run is
+#   the whole exercise. The on-box agent is contracted to read /var/lib/rockysurf/state.json and
+#   skip every step already marked `done` — that is how an interrupted install resumes — so a
+#   harness that merely re-invokes the agent gets a green run in seconds in which no script body
+#   executed twice. scripts/pack-smoke.mjs deletes the journal first, and asserts the second run
+#   contains no resume-skip line, so a regression in that discard fails the check rather than
+#   quietly making it meaningless.
+#
+# The container is deliberately harsher than any real cloud image: stock ubuntu:24.04, no
+# convenience packages, empty apt lists, and no sudo.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  # Which packs exist is data, not something to keep in sync by hand: a contributor who adds
+  # packs/rust-dev.yaml gets a matrix leg for it without touching this file.
+  discover:
+    name: Discover packs
+    runs-on: ubuntu-latest
+    outputs:
+      packs: ${{ steps.list.outputs.packs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          set -euo pipefail
+          # `find`, not a `ls packs/*.yaml packs/*.yml` glob: with no .yml files present bash
+          # hands ls the unmatched pattern, ls exits 2, and `set -o pipefail` turns a correct
+          # listing into a failed job.
+          packs=$(find packs -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) -printf '%f\n' \
+            | sed 's/\.[^.]*$//' | sort | jq -R . | jq -sc .)
+          test "$packs" != '[]' || { echo '::error::no pack files in packs/'; exit 1; }
+          echo "packs=$packs" >> "$GITHUB_OUTPUT"
+          echo "matrix: $packs"
+
+  packs:
+    name: ${{ matrix.pack }} (${{ matrix.arch }})
+    needs: discover
+    runs-on: ${{ matrix.runner }}
+    # Generous on purpose. The heaviest packs install a compiler, a browser stack and a desktop
+    # environment, twice; locally the longest is a few minutes, and a runner with fewer cores and
+    # a colder apt mirror is the case this number has to survive. A timeout that fires
+    # spuriously teaches people to re-run the job without reading it.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        pack: ${{ fromJSON(needs.discover.outputs.packs) }}
+        arch: [amd64, arm64]
+        # Native runners on both sides. GitHub's arm64 Linux runners are free for public
+        # repositories, and native is worth arranging: the same work under QEMU user-mode
+        # emulation runs roughly an order of magnitude slower, which for a matrix that installs
+        # a compiler and a browser stack is the difference between minutes and hitting the
+        # timeout. If the `ubuntu-24.04-arm` label is ever unavailable, set the arm64 runner to
+        # `ubuntu-24.04` and add `qemu: true` — the harness already passes
+        # `docker run --platform`, so QEMU is the only missing piece.
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The harness resolves the pack with core's OWN resolver, imported from the built package,
+      # so the plan under test is the plan a release renders rather than a re-implementation of
+      # it that could agree with the pack while disagreeing with production.
+      - name: Build core (the harness imports its resolver)
+        # `...` builds core's workspace DEPENDENCIES first (provider-sdk resolves through its
+        # dist/, which a fresh runner has never built). Filtering core alone compiled against a
+        # missing package and failed every leg of this matrix on the first real run — the
+        # rockysurf-7mdh fresh-clone lesson, found in one more hiding place (PR #6).
+        run: pnpm --filter '@rockysurf/core...' build
+
+      # Only needed when the runner's architecture differs from the target's. Left in place, and
+      # conditional, so switching the arm64 leg back to an amd64 runner is a one-line change.
+      - name: Enable QEMU
+        if: matrix.qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/${{ matrix.arch }}
+
+      - name: Two runs, one container, journal discarded between them
+        run: node scripts/pack-smoke.mjs --pack ${{ matrix.pack }} --arch ${{ matrix.arch }}
