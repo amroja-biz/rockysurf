@@ -498,6 +498,54 @@ const limitsSchema = section(
   }),
 )
 
+/**
+ * The pack registry — where the shop's `index.json` is fetched from (rockysurf-arym.3).
+ *
+ * REPOINTABLE, because forks are contemplated rather than merely tolerated: TRADEMARK.md
+ * invites people to fork under their own name, and a fork whose control plane could only ever
+ * browse someone else's registry would be a fork in name only. An organisation running an
+ * internal shop points this at their own repository and gets the same behaviour.
+ *
+ * SWITCHABLE OFF, because an air-gapped installation is a supported way to run this. `enabled:
+ * false` means the shop routes report a disabled registry; it does not mean a failed fetch, and
+ * an operator should be able to tell those apart.
+ *
+ * NOTHING HERE IS READ AT BOOT. The registry is fetched when an admin opens the shop, never
+ * during startup. A control plane behind a proxy, or with no route off the machine at all, must
+ * boot exactly as fast and as successfully as it does now — a network call on the startup path
+ * would turn every outage of a third party into an outage of this one.
+ */
+const registrySchema = section(
+  z.strictObject({
+    enabled: z.boolean().default(true),
+    /**
+     * The base a pack's `path` is resolved against, so `<baseUrl>/<path>` is the file and
+     * `<baseUrl>/index.json` is the listing.
+     *
+     * raw.githubusercontent.com and NOT api.github.com, deliberately (rockysurf-c6cm). The
+     * unauthenticated GitHub API allows 60 requests per hour shared across everything on one
+     * source IP; a control plane behind a corporate NAT would exhaust that before it had listed
+     * the shop once. The raw host is a CDN with no such quota, which is also why the registry
+     * publishes a generated index instead of expecting a client to walk a tree.
+     */
+    baseUrl: z
+      .url({ error: 'registry.baseUrl must be an http(s) URL' })
+      .default('https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main')
+      // A trailing slash would produce `…//index.json`, which most servers tolerate and some
+      // do not. Normalised once here rather than at each of the call sites.
+      .transform((v) => v.replace(/\/+$/, '')),
+    /**
+     * How long a fetched index is reused before the next request refetches it, in seconds.
+     *
+     * Browsing the shop is several requests over a minute or two, and one HTTP call per page
+     * view would be rude to a CDN and slow for the operator. Short enough that a merged pack
+     * shows up while somebody is still waiting for it; a manual refresh exists for when it is
+     * not short enough.
+     */
+    cacheTtlSeconds: z.coerce.number().int().nonnegative().default(300),
+  }),
+)
+
 export const configSchema = section(
   z.strictObject({
     server: serverSchema,
@@ -506,6 +554,7 @@ export const configSchema = section(
     providers: providersSchema,
     limits: limitsSchema,
     mcp: mcpSchema,
+    registry: registrySchema,
   }),
 )
 
@@ -515,5 +564,6 @@ export type GithubTokenEntry = Config['github']['tokens'][number]
 export type ProvidersConfig = Config['providers']
 export type LimitsConfig = Config['limits']
 export type McpConfig = Config['mcp']
+export type RegistryConfig = Config['registry']
 export type McpScope = McpConfig['scopes'][number]
 export type ByoHost = Config['providers']['byo']['hosts'][number]

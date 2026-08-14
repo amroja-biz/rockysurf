@@ -59,5 +59,6 @@ export {
   type McpConfig,
   type McpScope,
   type ProvidersConfig,
+  type RegistryConfig,
   type ServerConfig,
 } from './schema.js'

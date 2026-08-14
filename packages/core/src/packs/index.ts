@@ -43,6 +43,16 @@ export {
   type TrustTier,
 } from './registry-index.js'
 
+export {
+  createRegistryClient,
+  type FetchedPack,
+  type RegistryClient,
+  type RegistryClientDeps,
+  type RegistryFailure,
+  type RegistryIndexResult,
+  type RegistryPackResult,
+} from './registry.js'
+
 export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 
 export {
