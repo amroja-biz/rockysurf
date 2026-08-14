@@ -318,18 +318,54 @@ tools:
     enabled: true
     installScript: |
       set -euo pipefail
-      # Both bin directories go on PATH BEFORE the installer runs, and that is not tidiness.
-      # Upstream now installs to ~/.local/bin (it used to use ~/.beads/bin) and finishes by
-      # verifying its own work with a PATH lookup — under the agent's non-interactive shell
-      # that lookup fails, the installer exits non-zero, and the whole step fails with bd
-      # sitting installed on disk. Found on real hardware in the 55fx.9 exit run.
+      # Both bin directories go on PATH BEFORE anything else, and that is not tidiness.
+      # Upstream installs to ~/.local/bin (it used to use ~/.beads/bin), and a box that
+      # bootstrapped under an older version has bd in the other one.
       export PATH="$HOME/.local/bin:$HOME/.beads/bin:$PATH"
-      # UNPINNED: installs from the project's main branch, which is the only distribution it
-      # offers. Guarded so a re-run neither re-downloads nor re-appends.
-      if ! command -v bd >/dev/null 2>&1; then
-        curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+      #
+      # PINNED, and fetched from the release download endpoint rather than through upstream's
+      # scripts/install.sh — the same reason as beads-viewer below, which is rockysurf-pcma, and
+      # the reason this step got the same treatment is rockysurf-c6cm: it is the one that
+      # actually took the trunk down. That installer opens by asking api.github.com for the
+      # latest release, an unauthenticated call sharing a 60-per-hour quota keyed on SOURCE IP.
+      # A shared CI runner draws an address that other tenants have already spent, the call
+      # returns 403, and the installer does not fail on it — it falls through to a Go source
+      # build, finds no toolchain, and exits 1. Main run 31802231839 died exactly that way while
+      # the same leg had been green on its own pull request minutes earlier: quota roulette on
+      # the merge signal, with the asset it wanted sitting on a CDN that has no quota at all.
+      #
+      # Upstream's installer offers no way to pin — no flag, no environment variable — so the
+      # fix has to bypass it. What that installer does beyond fetching, this reproduces: the
+      # binary into ~/.local/bin, and the `beads` symlink beside it.
+      #
+      # To bump: change the version and both digests. The release publishes checksums.txt.
+      bd_version=v1.2.1
+      case "$ARCH" in
+        amd64) bd_sha=48aecf42ffdefa6470298d8022deeb762e30c8729dc0a4bdda93888c0b0354e2 ;;
+        arm64) bd_sha=507c35d0fbf382b5ac64824386460a80849d73064d3f50b23eb247eabb68c7a8 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is a
+      # no-op — the run-twice gate measures the second half of that.
+      stamp="$HOME/.rockysurf/installed-beads-$bd_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # gastownhall is where the repository lives now; steveyegge/beads redirects to it, and a
+        # redirect is a thing that can be turned off, so the canonical name is what is written.
+        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/gastownhall/beads/releases/download/$bd_version/beads_${bd_version#v}_linux_$ARCH.tar.gz" \
+          -o "$tmp/beads.tar.gz"
+        echo "$bd_sha  $tmp/beads.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/beads.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/bd" "$HOME/.local/bin/bd"
+        # Upstream's installer creates this alias, so dropping it would be a silent regression
+        # for anyone who types `beads`. -f -n rather than rm-then-link: idempotent on its own.
+        ln -sfn bd "$HOME/.local/bin/beads"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
       fi
-      # Both directories, because which one holds bd depends on the installer's version.
+      # Both directories, because which one holds bd depends on when the box was built.
       touch "$HOME/.bashrc"
       for dir in "$HOME/.local/bin" "$HOME/.beads/bin"; do
         grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
@@ -347,14 +383,52 @@ tools:
     enabled: true
     installScript: |
       set -euo pipefail
-      # A third-party installer whose idempotency we cannot inspect gets an explicit stamp,
-      # so re-running the step is a no-op regardless of how the installer behaves.
-      # UNPINNED: main-branch installer, the only distribution offered.
-      stamp="$HOME/.rockysurf/installed-agent-deck"
+      # PINNED and fetched from the release download endpoint, for the reason written out on
+      # `beads` above and on `beads-viewer` below: upstream's install.sh opens by asking
+      # api.github.com for the latest release, that call is unauthenticated on a box holding no
+      # token, and the quota it shares is keyed on source IP (rockysurf-c6cm).
+      #
+      # THIS ONE COULD HAVE BEEN PINNED IN PLACE, and was not, deliberately. That installer does
+      # take `--version`, which alone would have skipped the API call — but it is also
+      # interactive: it asks "Configure tmux for agent-deck? [Y/n]" through a `read` that only
+      # works here by accident, because a box with no controlling terminal makes the read fail
+      # and the empty answer defaults to yes. Rule 3 says a pack must not depend on that. The
+      # flag upstream provides for it, `--non-interactive`, sets SKIP_TMUX_CONFIG itself — so
+      # there is no invocation of that installer that is both rule-3 honest and keeps the tmux
+      # configuration. Since the configuration goes either way, the version that also drops the
+      # unpinned remote code and verifies a digest is the one worth having.
+      #
+      # WHAT THAT COSTS, stated rather than discovered later: ~/.tmux.conf no longer gets
+      # upstream's block (mouse scrolling, clipboard integration, 256-colour, 10k history,
+      # Shift+Enter in csi-u form). A box still runs agent-deck; tmux is just stock. Restoring it
+      # means vendoring upstream's block into this pack, where it would drift silently — worth
+      # doing only if someone asks for it, and worth doing as its own change.
+      #
+      # To bump: change the version and both digests. The release publishes checksums.txt.
+      ad_version=v1.11.0
+      case "$ARCH" in
+        amd64) ad_sha=b99ca6e61b9518d3a7a1b3487d941f199d8da695c6045afe2b903e2e6d62232b ;;
+        arm64) ad_sha=aa6bd85fe01c842b993d6c0d269e4d2480e8cd3a484b6bd32464d92cab024f50 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so a bump reinstalls and no bump is a no-op.
+      stamp="$HOME/.rockysurf/installed-agent-deck-$ad_version"
       if [ ! -f "$stamp" ]; then
-        curl -fsSL https://raw.githubusercontent.com/asheshgoplani/agent-deck/main/install.sh | bash
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/asheshgoplani/agent-deck/releases/download/$ad_version/agent-deck_${ad_version#v}_linux_$ARCH.tar.gz" \
+          -o "$tmp/agent-deck.tar.gz"
+        echo "$ad_sha  $tmp/agent-deck.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/agent-deck.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/agent-deck" "$HOME/.local/bin/agent-deck"
         mkdir -p "$(dirname "$stamp")" && touch "$stamp"
       fi
+      # Self-contained, as beads-viewer is: a pack taking agent-deck without beads would
+      # otherwise get a binary its shell cannot find.
+      touch "$HOME/.bashrc"
+      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
+      "$HOME/.local/bin/agent-deck" version >/dev/null
 
   - toolId: beads-viewer
     name: Beads Viewer
