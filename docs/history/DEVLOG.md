@@ -6,7 +6,7 @@ Rocky Surf is an open-source, self-hosted control plane for provisioning cloud d
 
 **Status:** Active
 **Started:** 2026-02-01
-**Last Updated:** 2026-08-13
+**Last Updated:** 2026-08-14
 
 ---
 
@@ -1959,8 +1959,84 @@ The afternoon restructured how the project builds itself, then used the new stru
 By close, everything through the two-day build is done and merged — five providers, six packs, nine publishable packages, two skills, spend caps that fire, a ten-leg CI matrix — and the only open GitHub issue is #2: launch.
 
 ### References
-- Handoff: `.plan/HANDOFF-2026-08-13.md` · config: `docs/adr/` (ADR-0005)
+- Handoff: the session journal (private archive) · config: `docs/adr/` (ADR-0005)
 - Vendor-SDK ruling and numbers: `docs/writing-a-provider.md` ("Vendor SDKs") · skills: `.claude/skills/README.md`
 - Merge/measured-numbers/worktree rules: `bd memories` · trunk PRs #9–#15
+
+---
+
+## 2026-08-13/14 (night) - The Soft Launch, and the Provider Proven Before Sunrise
+
+The owner said "I want to do a soft launch," and by the next morning the repository was public,
+its CI was green, its nightly was resurrected from a two-day silent death, and the one provider
+that had never touched its real cloud had been proven on both architectures — partly by a human,
+partly by an agent driving the product's own MCP server while the human slept.
+
+**The cut.** The soft launch scope was deliberately narrow: re-cut clean history from the frozen
+trunk, get CI green on the new repository, flip it public — no npm publish, hero video and
+stranger test deferred to the loud launch. The Aug-12 candidate served as the verified reference
+for the transformations, and improving on it caught three things: the candidate's own quickstart
+was broken (`git clone` one directory, `cd` another), its OIDC trust predated GitHub's
+immutable-ID subject claims, and its deletion list predated the Agent Skills — which live under
+`.claude/` precisely so a clone gets them with zero install, and which the acceptance criteria
+would have silently deleted. The final tree passed the whole battery: zero pinned values outside
+the secret-scanner's own rule definitions, gitleaks clean over tree and history, the scanner's
+self-test green, and a fresh clone building and passing every suite. One force-push (the old
+candidate preserved as a branch), first CI green, repository public.
+
+**What launch prep flushed out.** The pre-cut sweep found the nightly real-cloud workflow had
+been silently dead for two days: a job-level `env` using a context GitHub only provides at step
+level meant the whole file stopped evaluating — a 0-second phantom failure on every push that
+everyone read as noise, while the real cost was invisible: the schedule simply never fired, so
+the published IAM policy had gone unverified since the change landed. The same sweep found the
+tree's secret scan red — the token-resolution feature had used a real handle and repository as
+test fixtures — and the fix taught a lesson worth keeping: the tree was renamed clean, but
+history is never rewritten here, so the five pre-rename commits were excused *by sha*, not by
+path, leaving the rule at full strength over every live file. And minutes after the help page
+shipped, the owner caught it teaching `npx rockysurf` — a command npm cannot supply until
+v0.1.0 publishes. The fix pins the honest checkout form with a test, and the same disease was
+found and filed in the provider docs.
+
+**The first public bug arrived in minutes.** The owner started the GCP setup and the Settings
+page had no GCP section: the provider branch and the settings work had merged past each other
+days earlier, and no test tied the settings registry to the config schema. The fix — public
+PR #1 — added the missing fields, matching wizard copy (whose generic fallback had offered GCP
+an "API token" paste box that Application Default Credentials never take), and the structural
+guard that matters more than either: settings coverage is now *derived* from the config schema,
+so the next provider cannot merge invisible.
+
+**The exit run.** GCP was the one provider with no real-cloud run behind it — its capability
+matrix column says "reasoned, not measured" on purpose. The owner's first create found the trap
+waiting at the front door: `gcloud auth login` and `gcloud auth application-default login` are
+two different credentials, and a months-old ADC file for a different Google account produced a
+403 that read as a role bug. The diagnostic that cracked it — the same GET returning 403 through
+the provider but 404 through gcloud means "ADC is not who you think" — went straight into the
+backlog as a docs task. After the re-login: firewall rule created and scoped, instance up,
+host-key-pinned SSH, a real pack installed with the log streaming into the UI, the owner in over
+SSH, terminate, and a zero-orphan audit from Google's side.
+
+**Then the owner went to bed and the agent ran the second half.** The arm64 leg went through the
+product's own MCP server — and earned its findings ledger before a single box finished. The MCP
+create tool cannot ask for an ARM box at all; the offering resolver ignores even an explicit
+architecture and then refuses the mismatch it created; the `token` and `mcp` subcommands
+strict-fail on environment variables they never read, which would break any real MCP-client
+launch; and the create-rate limiter refused the agent mid-run with its machine-readable reason —
+the guardrail meeting its exact intended adversary, and the agent doing what the threat model
+says a good one does: report, wait, retry inside the rules. The t2a box reached ready in three
+and a half minutes; a lost-response retry on its terminate surfaced that terminate is not
+idempotent at the route level (the instance was gone; the retry's answer said "illegal
+transition"). Final audit: zero instances, zero disks, the shared firewall rule persisting as
+designed. The whole exit run — both architectures, every finding — cost under a dollar.
+
+By morning: the repository public and green, the nightly proven twice (the second run the test
+of record for the corrected CI credentials), five providers of which four are measured on their
+real clouds, and a findings ledger that turned one night of launch and testing into a dozen
+precisely-filed improvements. Remaining for the loud launch: the hero video, the stranger test,
+npm publish and the v0.1.0 tag, and the announcement.
+
+### References
+- Cut runbook and evidence: the launch bead's close record · public PR #1: the settings guard
+- The nightly resurrection and the by-sha exemption: `.gitleaks.toml` block 6 and the workflow's job comments
+- GCP evidence: `docs/providers/capability-matrix.md` (measured-vs-expected flip tracked in the backlog)
 
 ---
