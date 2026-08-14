@@ -2040,3 +2040,114 @@ npm publish and the v0.1.0 tag, and the announcement.
 - GCP evidence: `docs/providers/capability-matrix.md` (measured-vs-expected flip tracked in the backlog)
 
 ---
+
+## 2026-08-14 - The Day the Shop Opened
+
+Issue #9 asked for what agent-skill and MCP ecosystems already have: a dedicated community
+registry for Surge Packs, organised so users can tell official from community, loaded at runtime
+without a restart, and "scanned to ensure they are secure." By the end of the day the registry
+existed, held one real reviewed pack, and a live control plane was browsing it — and the road
+there ran through three CI pipelines that reported success while doing nothing, one architecture
+ruling that deleted half the design, and a security requirement the product refused to pretend
+it could meet.
+
+**First, the overnight ledger got paid.** The soft-launch night's MCP run had filed its findings;
+the morning wave closed them. The offering resolver had made `size` decorative — every create
+landed on the cheapest machine in the catalogue, and an explicit `arch` was worse than ignored:
+the resolver picked a machine without consulting it, kept the caller's value alongside, and let
+the provider refuse the contradiction the route itself had built. The fix moves resolution into
+core with one rule: a size is a floor, a requested architecture is part of the floor, and nothing
+substitutes silently — a cloud that cannot serve the request says so, with a 400 for "never" and
+a 503 for "sold out today," because only one of those is worth retrying. The same wave made
+terminate idempotent under the retry shape a lost response actually produces (concurrent, not
+sequential — the sequential test had passed all along while the real window sat inside the
+provider call), taught `token` and `mcp` to demand only the config values they read, and pinned
+the two pack installers that had been fetching "latest" through the unauthenticated GitHub API —
+the quota roulette that had already turned a trunk merge red from inside a vendor's install
+script.
+
+**The architecture argument was short, and the owner won it.** The working design had official
+packs mirrored into the registry by CI, so the shop could present one complete catalogue. The
+owner asked the question that collapsed it: why mirror at all? The answer was that the mirror
+served the registry's completeness, not the user's — the control plane's own shop page is where
+people browse, and it can merge two sources itself. So the design became split horizon: official
+packs ship inside the release tarball and never transit the registry; the shop holds community
+packs and nothing else. "Official" now means *arrived with the software* — a provenance no
+contributor can claim in a pull request, which is stronger than any label a workflow could have
+stamped. The same reasoning removed the trust field from the registry's index entirely: a
+registry vouching for itself is worth no more than the document carrying the claim, so the trust label
+lives in the operator's config next to the URL they chose to add, and an index that tries to
+carry one is refused rather than ignored.
+
+**The bundling half of that sentence turned out to be fiction.** Nobody had checked what `npx
+rockysurf` actually installs: neither published package included `packs/` at all, so every fresh
+npm install had been booting a control plane with an empty pack picker — and a test asserting
+"serves with zero packs on a fresh installation" passed, because it was true and wrong. The fix
+commits the bundle into the package with a drift lint holding it byte-identical to the source
+tree, a choice made twice over: a generated file that exists only in working trees had already
+burned the branch once (a `.gitignore` pattern matching `packs/` at any depth quietly matched
+`src/packs/` too, so the new module was ignored, `git add -A` skipped it, and the branch went up
+importing a file it did not contain), and the drift lint caught its own author within the hour,
+refusing a bundle generated on a stale branch that every other check would have shipped.
+
+**On "scanned to ensure they are secure," the product now says what scanning cannot do.** A pack's
+install script is arbitrary shell run as root; no pattern match over it is a security control,
+and an operator told a pack was "security scanned" reads nothing. So the checks prove what they
+can prove — the frozen format, the author rules, and survival of a resumed install, run twice in
+a stock container with the journal deleted in between — and the security control is disclosure:
+before an install, the operator sees every script verbatim, the count of steps that run as root,
+and every URL the scripts fetch, under a caveat the API enforces structurally. The derived
+summary carries `summaryIsComplete: false` as a field, not a sentence, so a page cannot render
+the list without admitting a script that assembles a URL from variables defeats it. The scripts
+are the ground truth; the summary is a reading aid; the interface is built so it cannot claim
+otherwise.
+
+**The registry's first pack found the gate broken — which is why it was ours.** Rather than let a
+stranger's first contribution be the smoke matrix's first-ever run, the team authored one real
+pack (Aider, pinned by version through pipx precisely because upstream's own install page
+recommends the curl-pipe the pack docs warn against) and pushed it through the full pipeline. The
+matrix never ran: a `jq -r` flag deep in the discover step emitted raw strings instead of JSON,
+the parse died inside a command substitution that still exited zero, and the check job was never
+created — while every visible job reported green. Fixed, with a guard that fails loudly on an
+empty pack list. Then the index pipeline failed the same way for a different reason: its
+churn-guard opened with `git diff --quiet` on a file that was still untracked, and `git diff`
+says nothing about untracked files, so the run that should have created the index printed
+"unchanged" and exited zero — twice. The registry had been publishing nothing while its workflow
+reported success. The pattern got a name and an audit: every step that produces something must
+also assert the thing exists. The audit found one more — a filtered release build could have
+published a control plane with no web UI and no packs, since nothing asserted either was in the
+tarball — and one humbling fact: the main repository's copy of the broken discover step was fully
+guarded all along. The shop's version was a degraded transcription of a correct original. The
+live risk here is copying between repositories, not ignorance of the pattern.
+
+**The gates themselves got more honest.** A one-in-four web suite flake, blamed in two separate
+bugs on slow renders and missing awaits, traced to a single shared stub port: one file's
+`EADDRINUSE` hung a hook whose listen promise had no error handler, and the next file ran against
+a port nobody was serving, its failures dressed by the test library's one-second query budget.
+The fix assigns ports from the OS, makes the listen helper reject instead of hang, and adds a
+check that fails the build if any web test hardcodes a port again — with zero timeouts raised
+anywhere, since a lengthened timeout without a mechanism is just a slower flake. The published
+tarballs lost the source maps that were 55% of core's unpacked size and pointed at directories
+npm never ships. And the capability matrix moved in both directions on the same principle:
+byo's column upgraded to what the real-sshd run proves, Hetzner's IP-stability claim demoted to
+reasoned — the transcript said "measured," but no recording had ever re-read the address, and
+writing an assertion is not observing the thing. The dagger stays until a run carries it.
+
+**The docs failed a reader before any code did.** The owner read the shop's `--base-packs`
+explanation and concluded community packs could only use tools already registered in core — that
+a Deepseek pack would wait on a maintainer. The code said otherwise, proven before a word was
+rewritten: a pack defining a tool no repository had ever seen lints clean, indexes with a correct
+digest, and passes the full container check with no flags and no core involvement. The prose had
+led with the restriction and never stated the freedom it sat inside. Every relevant document now
+opens with a worked pack that invents its own tool, the shared-plumbing rule is explained as
+review rather than permission — a maintainer should never have to work out whether your `curl` is
+the real one — and fixture tests pin the reading so the sentence and the behaviour cannot drift
+apart again.
+
+By close: the registry live and verified end to end — raw URL, matching digest, a real control
+plane's client browsing the shelf with the operator's own label on it — the resolver honest, the
+gates loud, and the epic wrapped except for what waits on the v0.1.0 publish. The one queued item
+worth naming is the disclosure comment on fork PRs: GitHub hands fork runs a read-only token, so
+the workflow that shows reviewers what operators see will go red on exactly the contributors it
+exists for until the privileged half is split out — queued rather than shipped, because an
+untested privileged workflow is a worse trade than an absent feature.
