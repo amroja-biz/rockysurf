@@ -12,9 +12,11 @@ import {
   interpolateEnv,
   interpolateTreeLeniently,
   loadConfig,
+  loadConfigLeniently,
   loadConfigWithSource,
   MissingEnvVarsError,
   parseConfig,
+  parseConfigLenientlyRequiring,
   referencedEnvVars,
   referencedEnvVarsIn,
   resolveConfigPath,
@@ -443,6 +445,102 @@ describe('${ENV} interpolation', () => {
 
   it('a quoted numeric reference is coerced, so both spellings work', () => {
     expect(parseConfig('server:\n  port: "${PORT}"\n', 'test.yaml', { PORT: '8080' }).server.port).toBe(8080)
+  })
+})
+
+/**
+ * A COMMAND THAT READS PART OF THE CONFIG (rockysurf-dd9q).
+ *
+ * `rockysurf token` and `rockysurf mcp` are the two, and the environment they run in is not the
+ * operator's: an MCP client launches `rockysurf mcp` from a `.mcp.json` with only the variables
+ * that file sets. Boot's rule — every `${VAR}` the file names must be set — therefore made an
+ * installation with one repository token in its config unable to serve MCP at all, and the
+ * workaround was exporting dummy values for secrets the command never reads.
+ */
+describe('loading a config for a command that reads part of it', () => {
+  const TOKENS =
+    'server:\n  dataDir: "/srv/rocky"\nmcp:\n  scopes: [read, create]\n' +
+    'github:\n  tokens:\n    - repo: "acme/private-thing"\n      pat: "${PRIVATE_THING_PAT}"\n'
+
+  const requiring = (requires: Parameters<typeof parseConfigLenientlyRequiring>[1], text = TOKENS) =>
+    parseConfigLenientlyRequiring(text, requires, 'test.yaml', {})
+
+  it('reads the settings it names in an environment that sets none of the variables', () => {
+    const config = requiring((c) => ({ 'server.dataDir': c.server.dataDir }))
+    expect(config.server.dataDir).toBe('/srv/rocky')
+    expect(config.mcp.scopes).toEqual(['read', 'create'])
+  })
+
+  // The whole point: boot still refuses the very file this just read, naming the variable.
+  it('does not change what BOOT does with the same file', () => {
+    const err = configErrorFrom(() => parseConfig(TOKENS, 'test.yaml', {}))
+    expect(err.message).toContain('${PRIVATE_THING_PAT}')
+  })
+
+  it('refuses when a setting it DOES read is the one waiting on a variable', () => {
+    const err = configErrorFrom(() =>
+      requiring((c) => ({ 'server.dataDir': c.server.dataDir }), 'server:\n  dataDir: "${ROCKY_DATA}"\n'),
+    )
+    expect(err.message).toContain('${ROCKY_DATA}')
+    // Named where it is written, so the operator does not have to find it.
+    expect(err.message).toContain('server.dataDir')
+  })
+
+  /**
+   * The residual the doc comment states rather than shades: a reference in a field the schema
+   * must COERCE cannot survive lenient interpolation, because `${PORT}` left as written is not a
+   * number and there is no `Config` to hand back. It stays fatal — but it is reported as the
+   * variable it is, not as "expected number", which would send the operator to fix a field whose
+   * only problem is the variable.
+   */
+  it('names the variable, not the type, when an unset one lands in a coerced field', () => {
+    const err = configErrorFrom(() => requiring(() => ({}), 'server:\n  port: ${PORT}\n'))
+    expect(err.message).toContain('${PORT}')
+    expect(err.message).toContain('server.port')
+    expect(err.message).not.toContain('expected number')
+  })
+
+  it('still refuses a file that is wrong for a reason no variable would fix', () => {
+    const err = configErrorFrom(() =>
+      requiring(() => ({}), 'server:\n  porrt: 3000\ngithub:\n  pat: "${SOME_PAT}"\n'),
+    )
+    expect(err.message).toContain('is not valid')
+    expect(err.message).toContain('porrt')
+  })
+
+  it('still refuses a file that is not YAML at all', () => {
+    expect(configErrorFrom(() => requiring(() => ({}), 'server: [\n')).message).toContain('not valid YAML')
+  })
+
+  // `$${VAR}` is an escape yielding the literal text `${VAR}`, which a scan of the RESULT cannot
+  // tell from a reference nobody resolved. The unset list is what decides.
+  it('does not mistake an escaped reference for an unresolved one', () => {
+    const config = requiring((c) => ({ 'github.pat': c.github.pat }), 'github:\n  pat: "$${LITERAL}"\n')
+    expect(config.github.pat).toBe('${LITERAL}')
+  })
+
+  it('finds a reference nested inside a value it reads, not just a bare one', () => {
+    const err = configErrorFrom(() =>
+      requiring(
+        (c) => ({ 'github.tokens': c.github.tokens }),
+        'github:\n  tokens:\n    - repo: "acme/thing"\n      pat: "${NESTED_PAT}"\n',
+      ),
+    )
+    expect(err.message).toContain('${NESTED_PAT}')
+  })
+
+  it('reads the same file, from disk, that loadConfig would refuse', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-lenient-'))
+    try {
+      writeFileSync(join(dir, 'rockysurf.config.yaml'), TOKENS)
+      const options = { argv: [], cwd: dir, home: dir, env: {} }
+      expect(
+        loadConfigLeniently({ ...options, requires: (c) => ({ 'mcp.scopes': c.mcp.scopes }) }).config.mcp.scopes,
+      ).toEqual(['read', 'create'])
+      expect(configErrorFrom(() => loadConfig(options)).message).toContain('${PRIVATE_THING_PAT}')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
