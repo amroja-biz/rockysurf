@@ -79,6 +79,8 @@ Options:
   --source <dir>=<tier>  A directory to index and the trust tier its packs get: one of
                        ${TRUST_TIERS.join(', ')}. Repeatable (index only).
   --out <path>         Where to write the index. Omit to print it (index only).
+  --allow-empty        Treat a directory with no pack files as clean rather than as a mistyped
+                       path. For a registry tier that is legitimately empty (lint only).
   --json               Machine-readable output on stdout.
 
 Neither command is a security scan: install scripts are arbitrary root-privileged shell and no
@@ -158,9 +160,18 @@ function runLint(argv: string[], io: PackCommandIo): number {
 
   // A directory with nothing pack-shaped in it is a MISTAKE, not a pass. The commonest way to
   // get a green lint you have not earned is to point it at the wrong path, and a check that
-  // congratulates you for that is worse than no check — the shop's CI would merge on it.
-  if (report.files.length === 0) {
-    io.err(`${dirs.dir} holds no pack files (*.yaml, *.yml). Nothing was checked.`)
+  // congratulates you for that is worse than no check — a registry's CI would merge on it.
+  //
+  // `--allow-empty` is for the one caller that legitimately expects nothing: a registry whose
+  // community tier is empty until its first contribution. It is a FLAG rather than a default
+  // because the two situations are indistinguishable from inside this function, and only the
+  // caller knows which one it is in. A registry says so once, in its workflow; a pack author who
+  // mistyped a path still gets told.
+  if (report.files.length === 0 && !argv.includes('--allow-empty')) {
+    io.err(
+      `${dirs.dir} holds no pack files (*.yaml, *.yml). Nothing was checked.\n` +
+        'If an empty directory is expected here, pass --allow-empty.',
+    )
     return 1
   }
 

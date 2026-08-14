@@ -81,6 +81,21 @@ describe('rockysurf pack lint', () => {
     expect(io.err.join('\n')).toContain('holds no pack files')
   })
 
+  it('accepts an empty directory under --allow-empty', () => {
+    // A registry's community tier is empty until its first contribution, and its CI would
+    // otherwise be red from the day the repository is created. The caller says so explicitly;
+    // this function cannot tell that case from a typo.
+    const io = capture()
+    expect(runPackCommand(['lint', dirWith({}), '--allow-empty'], io.io)).toBe(0)
+  })
+
+  it('--allow-empty does not excuse a directory whose packs are broken', () => {
+    // It relaxes "there is nothing here", never "what is here is wrong".
+    const io = capture()
+    const dir = dirWith({ 'a-pack.yaml': { version: 1, pack: { ...PACK, tools: ['nope'] }, tools: [] } })
+    expect(runPackCommand(['lint', dir, '--allow-empty'], io.io)).toBe(1)
+  })
+
   it('resolves references against --base-packs, repeatably', () => {
     const io = capture()
     const dir = dirWith({
