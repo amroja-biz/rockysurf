@@ -63,6 +63,7 @@ export { makeFakeProvider, type FakeProvider, type FakeProviderOptions } from '.
 export {
   configSchema,
   loadConfig,
+  loadConfigLenientlyOrExit,
   loadConfigOrExit,
   ConfigError,
   type Config,

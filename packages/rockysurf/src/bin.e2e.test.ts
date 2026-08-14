@@ -349,6 +349,77 @@ describe('the rockysurf binary', () => {
       expect(exit.code).toBe(0)
     }
   }, 120_000)
+
+  /**
+   * `token` AND `mcp` IN SOMEBODY ELSE'S ENVIRONMENT (rockysurf-dd9q).
+   *
+   * These two are the only commands whose caller is not the operator's shell. A `.mcp.json`
+   * launches `rockysurf mcp` with the variables that file sets and nothing else, so the export
+   * set the config file was written against is simply absent — and boot's rule, that every
+   * `${VAR}` the file names must be set, refused both commands over a repository token neither
+   * of them reads. The workaround found on the night this was filed was exporting dummy values
+   * for the operator's real PATs, which is the opposite of handing an agent the narrowest thing
+   * that works.
+   *
+   * Spawned rather than unit-tested for the reason the whole file exists: what was broken was
+   * the path from a config file to a running MCP server, and only a real process has an
+   * environment to strip.
+   */
+  it('mints a token and serves MCP with the operator’s unrelated variables unset', async () => {
+    const dir = tempDir()
+    const dataDir = join(dir, 'data')
+    const port = 47000 + Math.floor(Math.random() * 2000)
+    const configPath = join(dir, 'rockysurf.config.yaml')
+    writeFileSync(
+      configPath,
+      `server:\n  port: ${port}\n  dataDir: ${dataDir}\n` +
+        'mcp:\n  scopes: [read, stop]\n' +
+        'github:\n  tokens:\n    - repo: "acme/private-thing"\n      pat: "${ACME_PRIVATE_PAT}"\n',
+    )
+
+    // The operator's shell, which HAS the variable: core boots and creates the admin row that a
+    // token is minted against. Nothing later in this test gets to see it.
+    const server = await startServer({
+      args: ['--config', configPath],
+      port,
+      env: { ACME_PRIVATE_PAT: 'ghp-not-a-real-token', ROCKYSURF_ADMIN_PASSWORD: 'test-admin-password' },
+    })
+    expect((await stopServer(server)).code).toBe(0)
+
+    // The MCP client's environment, which does not.
+    const stripped = { ...process.env }
+    delete stripped['ACME_PRIVATE_PAT']
+    delete stripped['ROCKYSURF_TOKEN']
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [binPath, ...args, '--config', configPath], {
+        encoding: 'utf8',
+        env: stripped,
+        timeout: 60_000,
+      })
+
+    const token = run(['token'])
+    expect(token.stderr).not.toContain('ACME_PRIVATE_PAT')
+    expect(token.status, token.stderr).toBe(0)
+    // stdout is only the token, so `ROCKYSURF_TOKEN=$(rockysurf token)` works.
+    expect(token.stdout.trim()).not.toBe('')
+    expect(token.stderr).toContain('Token minted')
+
+    // `mcp` gets as far as needing a token of its own, which is proof it read the config: the
+    // refusal it prints is the one about ROCKYSURF_TOKEN, not the one about somebody's PAT.
+    const mcp = run(['mcp'])
+    expect(mcp.status).toBe(1)
+    expect(mcp.stderr).toContain('ROCKYSURF_TOKEN is not set')
+    expect(mcp.stderr).not.toContain('ACME_PRIVATE_PAT')
+
+    // And boot still refuses the very same file, so nothing was loosened where it matters.
+    const boot = spawnSync(process.execPath, [binPath, '--config', configPath], {
+      encoding: 'utf8',
+      env: stripped,
+      timeout: 60_000,
+    })
+    expect(boot.status).toBe(1)
+    expect(boot.stderr).toContain('${ACME_PRIVATE_PAT}')
+  }, 120_000)
 })
 
 /* ------------------------------------------------------------------ helpers */

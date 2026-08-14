@@ -835,7 +835,30 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         await provider.terminate(data)
       }
 
-      return await transition(row, 'terminated')
+      /**
+       * READ THE ROW AGAIN, because the `await` above is long enough to lose a race with a
+       * retry of this very call (rockysurf-nimu).
+       *
+       * The check at the top of this function makes a SEQUENTIAL second terminate succeed. It
+       * cannot see a CONCURRENT one, which is the shape a lost response actually produces: the
+       * client's response never arrived, the request that produced it is still inside
+       * `provider.terminate` — tens of seconds on a real cloud — and the retry reads the same
+       * `running` row the first call read. Both then reach here; the second calls
+       * `updateServerStatus`, which re-reads the row and asserts against the status it finds,
+       * and the loser gets `409 illegal server status transition: terminated → terminated` for
+       * a terminate that WORKED. An agent is the caller that cannot survive that: SECURITY.md's
+       * model agent reports the refusal and stops, so it reports a phantom failure for a
+       * destroyed machine and a human goes looking for a box that is not there.
+       *
+       * Re-reading closes it because there is no `await` between this read and the write —
+       * `transition` reaches `updateServerStatus` synchronously, and better-sqlite3 is
+       * synchronous, so no other turn of the loop can interleave. Anything added between the
+       * two that yields would reopen the window.
+       */
+      const fresh = owned(userId, serverId)
+      if (fresh.status === 'terminated') return fresh
+
+      return await transition(fresh, 'terminated')
     },
 
     sync,

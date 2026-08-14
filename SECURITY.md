@@ -374,6 +374,16 @@ mcp:
 The token is the only thing the client is trusted with, and it is not a capability — what the
 token may *do* is decided by the file above. [The scope split](#the-scope-split) below is why.
 
+**Your MCP client's environment does not need your other secrets.** `rockysurf mcp` and
+`rockysurf token` read the config file for the settings they use — `mcp.scopes`, and the data
+directory and port respectively — so a `${VAR}` elsewhere in the file that this environment does
+not set is left alone rather than refused. That matters because the client launches the server
+with the `env` block above and nothing else: requiring every variable the file names would mean
+copying each of your provider and repository tokens into a JSON file in a project directory, to
+satisfy a check for values the command never reads. Starting the control plane itself is
+unchanged and still requires all of them — a core that boots with an empty credential where a
+token belongs is worse than a core that refuses to boot.
+
 ### Blast radius
 
 **In the worst case — a fully compromised or fully injected MCP client, with every scope granted —

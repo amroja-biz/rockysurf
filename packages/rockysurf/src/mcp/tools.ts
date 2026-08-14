@@ -270,7 +270,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     title: 'Terminate a server',
     description:
       'Destroy a server and its disk. IRREVERSIBLE — anything not committed and pushed is ' +
-      'lost. Requires a scope granted separately from create.',
+      'lost. Requires a scope granted separately from create. Safe to retry: terminating a ' +
+      'server that is already terminated succeeds rather than reporting a conflict.',
     scope: 'terminate',
     inputSchema: serverIdSchema,
     run: async (args, { client }) => {

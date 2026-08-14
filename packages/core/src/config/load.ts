@@ -8,6 +8,7 @@ import {
   interpolateTreeLeniently,
   MissingEnvVarsError,
   referencedEnvVars,
+  referencedEnvVarsIn,
 } from './interpolate.js'
 import { configSchema, type Config } from './schema.js'
 
@@ -205,17 +206,63 @@ export function formatIssues(issues: readonly z.core.$ZodIssue[]): string {
   return issues.map((issue) => `  ${issuePath(issue)}: ${issue.message}`).join('\n')
 }
 
+/** A setting that cannot be read because the variable it names is not in this environment. */
+interface UnsetReference {
+  variable: string
+  /** The dotted path the reference is written at, when the caller knows it. */
+  path?: string
+}
+
+/**
+ * "This file names variables you have not set", said the same way wherever it is fatal.
+ *
+ * One message rather than two, because the two callers are the same sentence at different
+ * scopes: boot needs EVERY variable the file names, and `loadConfigLeniently` needs only the
+ * ones its command is about to read (rockysurf-dd9q). Which variables are listed differs; what
+ * the operator has to do about them does not.
+ */
+function missingEnvVarsError(
+  configPath: string,
+  references: readonly UnsetReference[],
+  cause?: unknown,
+): ConfigError {
+  return new ConfigError(
+    [
+      `${configPath} references environment variables that are not set:`,
+      '',
+      ...references.map(({ variable, path }) => `  \${${variable}}${path ? `  (${path})` : ''}`),
+      '',
+      'Set them in your shell or in a .env file, then start again. See .env.example.',
+    ].join('\n'),
+    configPath,
+    { cause },
+  )
+}
+
 function validationError(error: z.ZodError, configPath: string): ConfigError {
+  return invalidConfigError(
+    error.issues.map((issue) => ({ path: issuePath(issue), message: issue.message })),
+    configPath,
+    error,
+  )
+}
+
+/** The same refusal from a list of issues, for a caller that has already filtered them. */
+function invalidConfigError(
+  issues: readonly ConfigIssue[],
+  configPath: string,
+  cause?: unknown,
+): ConfigError {
   return new ConfigError(
     [
       `${configPath} is not valid:`,
       '',
-      formatIssues(error.issues),
+      issues.map((issue) => `  ${issue.path}: ${issue.message}`).join('\n'),
       '',
       `See ${EXAMPLE_CONFIG_FILENAME} in the repository root for a complete working file.`,
     ].join('\n'),
     configPath,
-    { cause: error },
+    { cause },
   )
 }
 
@@ -246,16 +293,10 @@ export function parseConfig(
     interpolated = interpolateTree(raw, env)
   } catch (cause) {
     if (cause instanceof MissingEnvVarsError) {
-      throw new ConfigError(
-        [
-          `${configPath} references environment variables that are not set:`,
-          '',
-          ...cause.vars.map((v) => `  \${${v}}`),
-          '',
-          'Set them in your shell or in a .env file, then start again. See .env.example.',
-        ].join('\n'),
+      throw missingEnvVarsError(
         configPath,
-        { cause },
+        cause.vars.map((variable) => ({ variable })),
+        cause,
       )
     }
     throw cause
@@ -489,6 +530,18 @@ export interface LoadedConfig {
  * else and hoping the two agree.
  */
 export function loadConfigWithSource(options: LoadConfigOptions = {}): LoadedConfig {
+  const { text, source } = readConfigFile(options)
+  return { config: parseConfig(text, source.path, options.env ?? process.env), source }
+}
+
+/**
+ * Resolve the file, read it, and say the operator's half of it — everything up to the parse.
+ *
+ * Shared by `loadConfigWithSource` and `loadConfigLeniently`, which differ ONLY in how strictly
+ * they read the text. Which file wins, what an absent file means, and which notice is printed
+ * are the same question for both, and a second copy of that answer is a second thing to drift.
+ */
+function readConfigFile(options: LoadConfigOptions): { text: string; source: ConfigSource } {
   const source = resolveConfigSource(options)
   const configPath = source.path
 
@@ -524,7 +577,125 @@ export function loadConfigWithSource(options: LoadConfigOptions = {}): LoadedCon
   // A file was really read: say which one, once, before anything else is printed.
   if (read) options.notice?.(loadedNotice(configPath))
 
-  return { config: parseConfig(text, configPath, options.env ?? process.env), source }
+  return { text, source }
+}
+
+/**
+ * What a command promises to read, keyed by the dotted path each value is written at.
+ *
+ * The VALUES are what is checked, and the paths are only for the message — so a field renamed
+ * without renaming its key here produces a slightly stale sentence, never a check that silently
+ * stops checking. A dotted string used to LOOK the value up would have the opposite failure.
+ */
+export type RequiredSettings = (config: Config) => Record<string, unknown>
+
+export interface LenientLoadConfigOptions extends LoadConfigOptions {
+  /** The settings this command actually reads. Everything else may still name an unset variable. */
+  requires: RequiredSettings
+}
+
+/**
+ * The config file, read by a command that consumes PART of it (rockysurf-dd9q).
+ *
+ * AN UNSET VARIABLE IS FATAL ONLY WHERE IT IS READ. `loadConfig` demands every `${VAR}` the
+ * file names, which is right for `boot()`: the control plane goes on to use all of it, and a
+ * provider credential silently interpolated to `''` is worse than a refusal. It is wrong for
+ * `rockysurf token` and `rockysurf mcp`, which read one table and one config value
+ * respectively — and, crucially, run in somebody ELSE'S environment. An MCP client launches
+ * `rockysurf mcp` from a `.mcp.json` with only the variables that file sets, so an installation
+ * whose config references `${ACME_PAT}` for a repository token could not start its MCP server
+ * at all without copying every unrelated secret into the client's environment: the precise
+ * opposite of handing an agent the narrowest thing that works.
+ *
+ * So: interpolate leniently (the seam built for rockysurf-1z5q), then demand `requires` and
+ * nothing else. A reference the command never reads is left as its own text in the returned
+ * `Config` — which is why `requires` is not optional. A caller that reads a field it did not
+ * name gets `${ACME_PAT}` where a token belongs, and this returns a real `Config` that no type
+ * can distinguish from a booted one.
+ *
+ * ONE RESIDUAL, stated rather than shaded: a reference in a field the SCHEMA must coerce —
+ * `port: ${PORT}`, `mcp.scopes: ${SCOPES}` — is fatal here even when the command does not read
+ * it, because `${PORT}` left as written is not a number and there is no `Config` to hand back.
+ * The message names the variable and the field rather than reporting "expected number", which
+ * would send the operator to fix a field whose only problem is the variable. In practice the
+ * references operators write are secrets, and every one of those is a string.
+ */
+export function loadConfigLeniently(options: LenientLoadConfigOptions): LoadedConfig {
+  const { text, source } = readConfigFile(options)
+  return {
+    config: parseConfigLenientlyRequiring(text, options.requires, source.path, options.env ?? process.env),
+    source,
+  }
+}
+
+/** `loadConfigLeniently`, printing the message and exiting rather than throwing — see `loadConfigOrExit`. */
+export function loadConfigLenientlyOrExit(options: LenientLoadConfigOptions): Config {
+  try {
+    return loadConfigLeniently({
+      ...options,
+      notice: options.notice ?? ((message) => console.error(message)),
+    }).config
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      console.error(err.message)
+      process.exit(1)
+    }
+    throw err
+  }
+}
+
+/**
+ * `parseConfig`, demanding only the variables `requires` names. The text half of
+ * `loadConfigLeniently`, split out for the same reason `parseConfig` is: every branch is
+ * reachable without a filesystem.
+ */
+export function parseConfigLenientlyRequiring(
+  text: string,
+  requires: RequiredSettings,
+  configPath: string = `<${DEFAULT_CONFIG_FILENAME}>`,
+  env: NodeJS.ProcessEnv = process.env,
+): Config {
+  let raw: unknown
+  try {
+    raw = parseYaml(text)
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    throw new ConfigError(`${configPath} is not valid YAML:\n\n  ${detail}`, configPath, { cause })
+  }
+
+  const { value: interpolated, unset } = interpolateTreeLeniently(raw, env)
+  const result = configSchema.safeParse(interpolated === null || interpolated === undefined ? {} : interpolated)
+
+  if (!result.success) {
+    // Two kinds of issue are mixed together here and only one is the file's fault. `port:
+    // ${PORT}` is a string where a number belongs solely because the substitution had nothing to
+    // put there — the distinction `checkConfigText` already draws, drawn again because this path
+    // must not answer "expected number" for a field whose only problem is a variable.
+    const waiting = unset.flatMap((variable) =>
+      pathsReferencing(raw, variable).map((path) => ({ variable, path })),
+    )
+    const structural: ConfigIssue[] = []
+    const references: UnsetReference[] = []
+    for (const issue of result.error.issues) {
+      const at = issuePath(issue)
+      const blamed = waiting.filter((w) => at === w.path || at.startsWith(`${w.path}.`))
+      if (blamed.length === 0) structural.push({ path: at, message: issue.message })
+      else references.push(...blamed)
+    }
+    if (structural.length > 0) throw invalidConfigError(structural, configPath, result.error)
+    throw missingEnvVarsError(configPath, references)
+  }
+
+  const missing = Object.entries(requires(result.data)).flatMap(([path, value]) =>
+    // Intersected with `unset` rather than trusted on its own: `$${LITERAL}` is an escape that
+    // yields the text `${LITERAL}`, which a scan cannot tell from a reference nobody resolved.
+    referencedEnvVarsIn(value)
+      .filter((variable) => unset.includes(variable))
+      .map((variable) => ({ variable, path })),
+  )
+  if (missing.length > 0) throw missingEnvVarsError(configPath, missing)
+
+  return result.data
 }
 
 /**
