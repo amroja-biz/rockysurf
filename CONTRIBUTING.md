@@ -52,16 +52,15 @@ run in which not one install script executed a second time. If you are adding a 
 harness before opening the PR — it is the same code CI runs, and it takes a couple of minutes
 per architecture. See [`docs/writing-a-pack.md`](docs/writing-a-pack.md).
 
-**Two of the matrix legs are red, and it is not your branch's fault.** The harness found two
-real pack bugs the first time it ran, which is what a gate is for — both fail identically on a
-real cloud box, and neither pack can currently reach `ready`:
+**Every leg of the pack-smoke matrix is green, so a red one is about your branch.** It did not
+start that way, and the history is the reason to trust the gate: the first time the harness ran
+it found two real pack bugs, each of which failed identically on a real cloud box. `gas-town`
+needed a `dolt` binary that nothing in `packs/` installed (`rockysurf-nekl`), and `open-claw`
+stopped at `openclaw onboard`'s interactive prompt with no TTY, which is rule 3
+(`rockysurf-5av5`). Both were fixed rather than skipped, and both packs reach `ready` twice in a
+row now.
 
-- `gas-town` — `gt install` needs the `dolt` binary and nothing in `packs/` installs it
-  (`rockysurf-nekl`).
-- `open-claw` — `openclaw onboard` is an interactive wizard and stops at a prompt with no TTY,
-  which is rule 3 (`rockysurf-5av5`).
-
-Don't disable a leg to get a green tick. The other three packs pass clean, twice each.
+Don't disable a leg to get a green tick.
 
 ## Layout
 
