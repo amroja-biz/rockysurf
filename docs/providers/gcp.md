@@ -12,7 +12,7 @@ boxes in your own project — and nothing beyond that.
 - [What it costs](#what-it-costs)
 - [Testing it](#testing-it)
 - [What is deliberately absent](#what-is-deliberately-absent)
-- [Status: not yet run against real Google Cloud](#status-not-yet-run-against-real-google-cloud)
+- [Status: proven on real Google Cloud, except stop/start](#status-proven-on-real-google-cloud-except-stopstart)
 
 ---
 
@@ -37,6 +37,63 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 # or nothing at all, if you run core on a GCE instance, Cloud Run or GKE with the service
 # account attached — then no key exists anywhere to leak
 ```
+
+### `gcloud auth login` and ADC are two different credentials
+
+**`gcloud auth login` does not create or refresh Application Default Credentials**, and this is
+the single most likely reason a correct configuration fails on a first run. They are two separate
+logins that happen to be performed by the same tool. They can be two different Google accounts.
+Only the second one is what Rocky Surf reads:
+
+| command | who it authenticates | what reads it |
+|---|---|---|
+| `gcloud auth login` | your `gcloud` CLI session | `gcloud`, and nothing else |
+| `gcloud auth application-default login` | Application Default Credentials | Rocky Surf, and every client library |
+
+An ADC file, once written, sits there until something overwrites it. It does not expire in any
+way you would notice and no amount of `gcloud auth login` touches it. This cost Rocky Surf's own
+GCE exit run its first minutes: a freshly logged-in `gcloud`, and an
+`application_default_credentials.json` eight months old belonging to a **different Google
+account**.
+
+**How to check who ADC actually is:**
+
+```bash
+# the file's own age is the first tell — nothing refreshes it but the ADC login itself
+ls -l ~/.config/gcloud/application_default_credentials.json
+
+# the project it quotes against is the second. Read only that field: the rest of the file is a
+# refresh token, so do not cat it into a terminal you are sharing or pasting from.
+jq -r '.quota_project_id' ~/.config/gcloud/application_default_credentials.json
+```
+
+A `quota_project_id` naming a project you do not recognise means the file belongs to some other
+account, from some other piece of work, months ago. There is one fix and it is the obvious one:
+run `gcloud auth application-default login` again.
+
+**The 403-vs-404 signature, which is the diagnosis rather than a symptom.** If Rocky Surf reports
+`PERMISSION_DENIED` on a call while `gcloud` gets a **404 for the same call**, stop granting
+permissions — that pair means the two are not the same caller:
+
+```bash
+# Rocky Surf: 403, Required 'compute.firewalls.get'
+gcloud compute firewall-rules describe rockysurf-ssh --project=my-project-123456
+# gcloud: 404, not found
+```
+
+Google answers a caller who cannot see a resource with `403 Required '<permission>'` rather than
+with a 404, because confirming that something does not exist is itself information about a
+project you have no visibility into. So the 403 is not "your role is short a permission" — it is
+"whoever is asking cannot see this project at all". Meanwhile `gcloud`, authenticated as an
+account that *can* see it, gets the honest 404: the firewall rule genuinely has not been created
+yet, which on a first launch is correct. **Two different answers to one call means two different
+identities**, and adding permissions to the role changes nothing, because the identity being
+refused is not the one you granted them to.
+
+You should not have to find this page to learn that. The provider recognises the shape — a 403 on
+a *read* — and says so in the error itself, naming the ADC login as the thing to re-run. It stays
+quiet on a 403 from a create or a delete, where a permission really can be missing and the hint
+would be misdirection.
 
 Point the provider at your project:
 
@@ -308,8 +365,14 @@ Start Rocky Surf and let it validate:
 
 ```bash
 gcloud auth application-default login
-npx rockysurf
+node packages/rockysurf/dist/bin.js
 ```
+
+**That second line is the `rockysurf` command until v0.1.0 is on npm.** The published form is
+`npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
+you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
+Docker Compose path in the [README](../../README.md#quickstart) works today too. See
+[`docs/RELEASING.md`](../RELEASING.md).
 
 `validateCredentials()` reads the configured zone and fails with a plain message if the
 credential, the project, the API or the zone is wrong.
@@ -350,39 +413,54 @@ undercuts the point of a persistent dev box, and idle auto-stop is the cost leve
 
 ---
 
-## Status: not yet run against real Google Cloud
+## Status: proven on real Google Cloud, except stop/start
 
-**Nothing on this page has been proven by a launch.** This is the honest status block, and it is
-deliberately different from [the AWS one](aws.md#the-iam-policy), which describes a full
-lifecycle run under a restricted principal on real infrastructure.
+**This page has been proven by a launch — on 2026-08-14, against real Compute Engine**
+(`rockysurf-ev41.8`). It was written before that run, from Google's REST reference, and the run
+is what turned it from carefully derived into checked. One part of it is still derived, and this
+block says which.
 
-The GCP provider was built without Google Cloud credentials. What that does and does not mean:
+**What the run measured.** The full create → bootstrap → terminate lifecycle, on both
+architectures: `e2-small` and `e2-micro` on amd64, `t2a-standard-1` on arm64, in `us-central1-a`
+— the default zone, and one of the eight with T2A stock. The permission list
+above is *sufficient* — a box launched under it, which is the check the AWS policy failed the
+first time it was tried for real. The shared SSH firewall rule was created and maintained,
+including on a first launch in a project that had never had one, which is the only launch that
+exercises `firewalls.create` and `compute.networks.updatePolicy`. Bootstrap was pushed over SSH,
+so the SSH path is verified by the boxes having reached ready at all. Terminate left **zero
+orphans**: an audit on Google's side afterwards found no instances and no disks, with only the
+shared `rockysurf-ssh` rule persisting, which is what it is for.
 
-**What is verified.** Every one of the provider's nine methods is exercised against an in-memory
-Compute Engine driven through the real HTTP client, so request construction, error mapping,
-operation polling and the state machine are all tested. It passes
-`@rockysurf/provider-conformance`, including the `describe()` absence-grace probe. The permission
-list above is derived from the per-field authorization annotations on Compute Engine's REST
-reference, so every entry traces to a call the provider makes.
+**`canInjectHostKeys: true` is now measured, and it was the important one.** The provider
+declares that a core-minted SSH host key reaches the box through the `user-data` metadata key,
+which cloud-init's GCE datasource documents that it reads. Real Google boxes presented exactly
+the fingerprint core minted, on both architectures. GCE's guest agent does not regenerate the key
+out from under it — the failure that would have made the capability `false` and dropped the
+security posture to trust-on-first-use. It did not happen.
 
-**What is not.** That the list is *sufficient* — the AWS policy was published, reviewed, and
-still had a bug that failed every first launch until a real restricted-principal run found it.
-Nothing here has had that treatment.
+**What is still not measured: stop and start.** No GCP box has been stopped and restarted. The
+run created boxes, bootstrapped them and destroyed them, and deliberately never power-cycled one.
+So `compute.instances.stop` and `compute.instances.start` in the role above are the two
+permissions no launch has exercised, and `ipStableAcrossStop: false` — the claim that an
+ephemeral external IP is released on stop and a different one assigned on start — remains read
+from Google's documentation rather than watched. Treat that one row of
+[the capability matrix](capability-matrix.md) as reasoning, and the rest of this page as checked.
 
-Three specific claims a real run has to settle:
+**The evidence is weaker in form than AWS's and Hetzner's, and you should know how.** Those two
+have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and
+[`spike/recordings/`](../../spike/recordings/) that you can read; this run was driven by hand and
+through the MCP server, and **no transcript of it was recorded into the repository**. What is
+written above is a report of it, not a thing you can check for yourself. Hetzner goes further
+still — it is re-run nightly, so its claim is continuous rather than dated. Wiring a GCP leg into
+that nightly is tracked and not yet done.
 
-1. **`canInjectHostKeys: true`.** The provider declares that a core-minted SSH host key reaches
-   the box through the `user-data` metadata key, which cloud-init's GCE datasource documents that
-   it reads. If GCE's guest agent regenerates host keys on boot, **that capability is false** and
-   the security posture changes: strict verification on the first connection becomes
-   trust-on-first-use. This is the most important open question on this page.
-2. **Whether `instances.get` ever reports not-found for a machine it just created.** Google
-   documents it as strongly consistent. The provider implements the full propagation grace
-   anyway, because the ADR permits lengthening it and never skipping it, and because the AWS
-   provider shipped without one while eighty-five tests were green.
-3. **That the firewall permissions work on a first launch in a fresh project** — the only launch
-   that exercises them.
+Two smaller things the run did not settle, both harmless:
 
-Tracked as `rockysurf-ev41.8`. Until it runs, treat this page as carefully derived rather than
-proven, and if you hit a `PERMISSION_DENIED`, the error names the permission it wanted and we
-would like to hear about it.
+1. **Whether `instances.get` ever reports not-found for a machine it just created.** Google
+   documents it as strongly consistent and nothing in the run contradicted that. The provider
+   implements the full propagation grace anyway, because the ADR permits lengthening it and never
+   skipping it, and because the AWS provider shipped without one while eighty-five tests were
+   green.
+2. **Anything about a project unlike the one it ran in** — a shared VPC, an org policy
+   constraining external IPs, a different image project. If you hit a `PERMISSION_DENIED`, the
+   error names the permission it wanted and we would like to hear about it.

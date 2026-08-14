@@ -13,6 +13,10 @@ It ships inside the `rockysurf` CLI. There is nothing to install — switch it o
 npx rockysurf
 ```
 
+Reading this in a git checkout, before the v0.1.0 release? Then `npx` has no `rockysurf` to
+fetch yet. Run `pnpm -r build` once and use `node packages/rockysurf/dist/bin.js`, which is the
+same binary `npx` will fetch.
+
 Building your own composition root instead? `npm install @rockysurf/provider-azure`, then register
 its default export in your registry.
 

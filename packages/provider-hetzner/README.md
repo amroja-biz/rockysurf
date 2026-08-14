@@ -5,6 +5,11 @@ documented REST API with plain `fetch` — no vendor SDK, so there is no transit
 to audit and nothing extra to download on an `npx` cold start. It creates servers and the SSH Key
 objects they need, and nothing else.
 
+Running it as an operator rather than reading it as a developer?
+[`docs/providers/hetzner.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/providers/hetzner.md)
+is the same ground from that side — the token, what it can reach, and what terminate leaves
+behind.
+
 - [How you get it](#how-you-get-it)
 - [Configuration](#configuration)
 - [Credentials](#credentials)

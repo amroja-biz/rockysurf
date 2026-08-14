@@ -44,12 +44,11 @@ const CAPABILITIES: ProviderCapabilities = {
    * cloud-init's GCE datasource reads the `user-data` metadata key, so `ssh_keys:` places a
    * core-minted host key before the box's first boot.
    *
-   * READ FROM DOCUMENTATION, NOT FROM A RUN. Both other clouds' `true` here is backed by a
-   * capstone that watched a real box present exactly the minted fingerprint on first contact.
-   * This one is not, because this package was built without GCP credentials — and this is a
-   * security posture rather than a feature flag, so the gap is named in
-   * `docs/providers/capability-matrix.md` and is the first thing `rockysurf-ev41.8` must
-   * settle. If GCE's guest agent regenerates host keys on boot, this value is wrong.
+   * MEASURED. This package was built without GCP credentials, so this value was read from
+   * documentation until `rockysurf-ev41.8` ran it against real Compute Engine on 2026-08-14:
+   * boxes on both architectures presented exactly the fingerprint core minted on first contact,
+   * the same evidence the other clouds' `true` rests on. The failure this comment used to warn
+   * about — GCE's guest agent regenerating host keys on boot — does not occur.
    */
   canInjectHostKeys: true,
   /**
