@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import {
   defaultDatabasePath,
   issueSession,
-  loadConfigOrExit,
+  loadConfigLenientlyOrExit,
   openDatabase,
   runCli,
   type OpenedDatabase,
@@ -120,9 +120,16 @@ export async function runRockysurfCli(argv: string[], options: RunCliOptions = {
  * file is opened, so there is nothing for it to race the running control plane over. `argv` is
  * passed explicitly rather than left to `process.argv`, so `--config` works when the CLI is
  * called in-process as well as from a shell.
+ *
+ * AND IT PARSES THE CONFIG IN SOMEBODY ELSE'S ENVIRONMENT (rockysurf-dd9q). A `.mcp.json` runs
+ * `rockysurf mcp` with the variables that file sets and no others, so the operator's shell
+ * exports are simply not there — and boot's rule, that every `${VAR}` the file names must be
+ * set, made an installation with one repository token in its config unable to serve MCP at all
+ * until every unrelated secret was duplicated into the client's environment. `scopes` is the
+ * one value this command reads, so `scopes` is the one it demands.
  */
 async function runMcpCommand(argv: string[]): Promise<number> {
-  const config = loadConfigOrExit({ argv })
+  const config = loadConfigLenientlyOrExit({ argv, requires: (c) => ({ 'mcp.scopes': c.mcp.scopes }) })
   return runMcpServer({ scopes: config.mcp.scopes })
 }
 
@@ -137,9 +144,17 @@ async function runMcpCommand(argv: string[]): Promise<number> {
  *
  * ONE TABLE AND ONE INSERT, against a database core is very probably serving right now. See the
  * note above on why it may not boot core to get there.
+ *
+ * Two settings, and therefore two demands (rockysurf-dd9q): the data directory it opens the
+ * database under, and the port it prints in the `.mcp.json` it tells the operator to paste. A
+ * `${ACME_PAT}` this command never reads is somebody else's problem, and refusing to mint a
+ * token over one was how an operator ended up exporting dummy values to get past it.
  */
 async function runTokenCommand(argv: string[]): Promise<number> {
-  const config = loadConfigOrExit({ argv })
+  const config = loadConfigLenientlyOrExit({
+    argv,
+    requires: (c) => ({ 'server.dataDir': c.server.dataDir, 'server.port': c.server.port }),
+  })
   const databasePath = defaultDatabasePath(config.server.dataDir)
   // No database file means core has never run here, which is the same answer as no admin row.
   // Checked before opening, because better-sqlite3 CREATES the file it is pointed at, and

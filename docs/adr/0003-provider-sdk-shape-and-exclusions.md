@@ -415,8 +415,27 @@ The memo lists these as not-yet-decidable, and this ADR does not decide them:
   to end.~~ **Resolved** by `rockysurf-ftl9.3`: `@rockysurf/provider-byo` implements it, and
   amendment E12 above is the one interface change it needed. Still unexercised against a real
   operator fleet — the tests drive an in-process SSH server, not somebody's rack.
-- **T-shirt size resolution when an architecture is unavailable.** The fallback logic cannot be
-  designed before B1 gives it something to read.
+- ~~**T-shirt size resolution when an architecture is unavailable.** The fallback logic cannot be
+  designed before B1 gives it something to read.~~ **Resolved** by `rockysurf-clf2`: **there is no
+  fallback.** B1 (`Offering.available`) gave it something to read, and what it reads says the two
+  cases must not be merged — "this cloud sells no ARM" and "ARM is sold out this afternoon" are
+  different facts, so an unmeetable request is a `400` and a sold-out one a `503`, and neither
+  quietly becomes a machine the caller did not ask for.
+
+  Leaving this open cost more than the design would have. Core's create route filled the gap with
+  "cheapest available offering in the catalogue", which made `size` decorative — every size
+  resolved to the same machine — and made `arch` worse than decorative: the route chose without
+  consulting it, kept the caller's value beside the choice, and the provider refused the pair with
+  `invalid_spec: arch arm64 does not match offering e2-micro (amd64)`, blaming the caller for a
+  contradiction the route had built. Arch-only creation was impossible on every surface except the
+  SPA, which resolved in the browser and posted a concrete `offeringId`.
+
+  The rule now, in `packages/core/src/servers/offerings.ts`: a size is a **floor** (`small` ≥ 2
+  vCPU / 2 GB, `medium` ≥ 2 / 4, `large` ≥ 4 / 8), a requested `arch` is part of that floor rather
+  than a filter applied afterwards, and the answer is the cheapest **available** offering
+  satisfying both — a cloud with coarser types rounds up. Substituting is never a resolution.
+  Nothing in this changes the SDK: it is core reading `Offering.cpu`, `memoryGb`, `arch` and
+  `available`, which is what B1 and the frozen shape were for.
 - **Multi-region and multi-project scoping of the `listManaged()` prefix** (D6).
 - **Equalizing default network exposure between clouds.** AWS needs a VPC, subnet and security
   group; Hetzner needs none and a server is SSH-reachable the moment it boots. Inheriting that

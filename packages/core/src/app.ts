@@ -410,6 +410,23 @@ export function createApp(deps: AppDeps): CreatedApp {
       githubTokenScopes: (repositories) =>
         narrowTokensToRepositories(config.github.tokens, repositories).map(githubTokenScope),
       carriesFallbackToken: Boolean(config.github.pat),
+      /*
+       * `providers.<cloud>.sizes`, finally read by something (rockysurf-j10e).
+       *
+       * The section is looked up BY REGISTRY ID rather than by a list of cloud names written
+       * here, so this stays a generic read of whatever the config file has — the same shape as
+       * the `Object.entries(config.providers)` above, and no provider-id conditional enters
+       * core. A provider with no section, or a section with no `sizes`, yields `undefined`,
+       * which the route reads as "offer everything": the documented default, and the one an
+       * operator who has never heard of this field gets.
+       */
+      offeringAllowlist: (providerId) => {
+        const section: unknown = (config.providers as Record<string, unknown>)[providerId]
+        if (typeof section !== 'object' || section === null) return undefined
+        const sizes: unknown = (section as { sizes?: unknown }).sizes
+        if (!Array.isArray(sizes) || sizes.some((s) => typeof s !== 'string')) return undefined
+        return sizes as readonly string[]
+      },
     }),
   )
   /*

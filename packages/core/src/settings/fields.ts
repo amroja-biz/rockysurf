@@ -307,7 +307,8 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     kind: 'stringList',
     writable: false,
     help:
-      'The instance types offered on the New Server page. Unset offers everything the region sells; ' +
+      'The only instance types this installation will create — on the New Server page and through ' +
+      'the API, the CLI and MCP alike. Unset offers everything the region sells; ' +
       't4g.* are ARM (Graviton) and are the cheap, fast default.',
     reason: 'An allowlist of instance types, edited in the file — this page does not surface a list editor for it.',
   },
@@ -357,7 +358,8 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     kind: 'stringList',
     writable: false,
     help:
-      'The VM sizes offered on the New Server page. Unset offers everything the region sells; the ' +
+      'The only VM sizes this installation will create — on the New Server page and through the ' +
+      'API, the CLI and MCP alike. Unset offers everything the region sells; the ' +
       'sizes with a `p` in them (B2ps_v2, D2ps_v5) are ARM (Ampere) and are the cheap, fast default.',
     reason: 'An allowlist of VM sizes, edited in the file — this page does not surface a list editor for it.',
   },
@@ -404,7 +406,8 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     kind: 'stringList',
     writable: false,
     help:
-      'The machine types offered on the New Server page. Unset offers everything the zone sells; ' +
+      'The only machine types this installation will create — on the New Server page and through ' +
+      'the API, the CLI and MCP alike. Unset offers everything the zone sells; ' +
       't2a-standard-* are ARM (Tau T2A) and are the cheap, fast default.',
     reason: 'An allowlist of machine types, edited in the file — this page does not surface a list editor for it.',
   },

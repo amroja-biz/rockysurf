@@ -327,6 +327,45 @@ describe('terminate is idempotent', () => {
     fake.reset()
     await expect(lifecycle.terminate(userId, row.id)).resolves.toMatchObject({ status: 'terminated' })
   })
+
+  /**
+   * THE RETRY THAT OVERLAPS THE FIRST CALL, which is the shape a lost response really has
+   * (rockysurf-nimu).
+   *
+   * The test above retries after the first terminate has returned, and passed all along. It
+   * cannot see the bug, because the bug is in the window the two calls SHARE: a real terminate
+   * spends tens of seconds inside the provider, and a caller that never received the response
+   * retries while the first request is still in there. Both then read the same pre-terminated
+   * row. The provider no-ops the second call by contract, and the row's transition guard —
+   * which re-reads — used to answer `illegal server status transition: terminated → terminated`
+   * for a machine that was, in fact, destroyed.
+   */
+  it('succeeds for a retry that overlaps the first call, which is what a lost response produces', async () => {
+    const slow = makeFakeProvider()
+    let release!: () => void
+    const insideTerminate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const realTerminate = slow.terminate.bind(slow)
+    vi.spyOn(slow, 'terminate').mockImplementation(async (data) => {
+      await insideTerminate
+      await realTerminate(data)
+    })
+
+    lifecycle = build(slow)
+    const row = await create()
+
+    // Both are in flight before either finishes, so both read the row as it was.
+    const first = lifecycle.terminate(userId, row.id)
+    const retry = lifecycle.terminate(userId, row.id)
+    release()
+
+    const [firstRow, retryRow] = await Promise.all([first, retry])
+    expect(firstRow.status).toBe('terminated')
+    expect(retryRow.status).toBe('terminated')
+    // The loser reports the winner's row rather than a second termination of its own.
+    expect(retryRow.terminatedAt).toBe(firstRow.terminatedAt)
+  })
 })
 
 describe('capability gating (amendment A2)', () => {
