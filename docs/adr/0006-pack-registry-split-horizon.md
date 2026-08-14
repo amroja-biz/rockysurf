@@ -6,12 +6,11 @@ Accepted — 2026-08-14. Implemented by `rockysurf-arym` (GitHub issue #9): the 
 (`arym.2`), the registry client (`arym.3`), the install route and provenance columns (`arym.4`),
 and the shop page (`arym.5`), all merged.
 
-One half of decision 1 is **not** in place yet: bundling `packs/` into the published tarball is
-`rockysurf-io02`, still open. Until it lands, an installation created by `npx rockysurf` has no
-official packs — not because the decision is wrong but because the packaging has not caught up
-with it. Said here rather than left for a reader to discover, since "official means shipped with
-the release you are running" is the load-bearing sentence of this document and a release that
-ships none cannot honour it.
+Both halves of decision 1 are in place: bundling `packs/` into the published tarball landed as
+`rockysurf-io02` (a committed copy under `packages/core/packs`, with a drift lint holding it
+byte-identical to `packs/`), so "official means shipped with the release you are running" — the
+load-bearing sentence of this document — is true of the code as it is. No published release
+carries it yet; the first will be v0.1.0.
 
 ADR-0004 stands unamended — see "The format does not change" below.
 
@@ -203,7 +202,7 @@ is willing to say about it, not what a pack is.
 
 - GitHub issue [#9](https://github.com/amroja-biz/rockysurf/issues/9) — the commission, and the
   owner's ruling in its thread
-- `rockysurf-io02` — a fresh `npx` install has an empty pack picker; the bundling half of decision 1
+- `rockysurf-io02` — a fresh `npx` install had an empty pack picker; the bundling half of decision 1, closed
 - `rockysurf-c6cm` — the unauthenticated GitHub API quota, which is why the index is a file
 - `rockysurf-cqrm` — signing the index, deferred
 - `packages/core/src/packs/disclosure.ts` — why disclosure carries what scanning cannot
