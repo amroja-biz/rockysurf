@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { openTestDatabase } from '../db/client.js'
 import type { Db } from '../db/client.js'
 import { getPack, getTool, listPacks, listTools, upsertPack, upsertTool } from '../db/repositories/packs.js'
+import { formatFindings, lintPacksDir } from './lint.js'
 import { loadPacksFromDir, parsePackFile, renderPackFile } from './loader.js'
 import { packFileSchema } from './schema.js'
 import { PackValidationError, syncPacksToDb } from './sync.js'
@@ -142,72 +143,24 @@ describe('the shipped packs', () => {
     }
   })
 
-  it('no shipped tool claims the runtime-reserved bootstrap flag', () => {
-    for (const tool of loaded.tools.values()) expect(tool.bootstrap, tool.toolId).toBe(false)
-  })
-
   /* --- the four rules, mechanically, on the repository's own packs --- */
 
-  const scripts = () =>
-    [...loaded.tools.values()].flatMap((t) =>
-      (['installScript', 'setupScript'] as const)
-        .filter((f) => t[f])
-        .map((f) => ({ id: `${t.toolId}.${f}`, runAs: t.runAs, body: t[f]! })),
-    )
-
-  it('rule 2: no script hardcodes an architecture without branching on $ARCH', () => {
-    for (const s of scripts()) {
-      if (/x86_64|aarch64|linux-x64|linux-arm64/.test(s.body)) {
-        expect(s.body, s.id).toContain('$ARCH')
-      }
-    }
-  })
-
-  it('rule 3: no apt-get install without -y, and no npx without --yes', () => {
-    for (const s of scripts()) {
-      expect(s.body, s.id).not.toMatch(/apt-get install(?![^\n]*(-y|--yes))/)
-      expect(s.body, s.id).not.toMatch(/\bnpx\b(?![^\n]*--yes)/)
-      expect(s.body, s.id).not.toMatch(/\bread -p\b/)
-    }
-  })
-
-  it('rule 4: no sudo inside a runAs: rocky script', () => {
-    // The one that only fails in the container CI runs in, which is exactly why it is here
-    // and not left to review.
-    for (const s of scripts()) {
-      if (s.runAs !== 'root') expect(s.body, s.id).not.toMatch(/\bsudo\b/)
-    }
-  })
-
-  it('rule 1: every append to a file is guarded', () => {
-    for (const s of scripts()) {
-      if (/>>\s*\S/.test(s.body)) expect(s.body, s.id).toContain('grep -q')
-    }
-  })
-
-  it('rule 1: no cache-busted download URLs', () => {
-    for (const s of scripts()) expect(s.body, s.id).not.toMatch(/date \+%s/)
-  })
-
-  it('assumes nothing about the cloud: no AWS CLI, no s3://, no metadata service', () => {
-    for (const s of scripts()) {
-      expect(s.body, s.id).not.toMatch(/\baws\s+(s3|ec2|configure)\b/)
-      expect(s.body, s.id).not.toContain('s3://')
-      expect(s.body, s.id).not.toContain('169.254.169.254')
-    }
-  })
-
-  it('every apt-installing script refreshes the package list first', () => {
-    for (const s of scripts()) {
-      if (s.body.includes('apt-get install')) expect(s.body, s.id).toContain('apt-updated')
-    }
-  })
-
-  it('installOrder respects the documented bands', () => {
-    for (const tool of loaded.tools.values()) {
-      expect(tool.installOrder, tool.toolId).toBeGreaterThanOrEqual(10)
-      expect(tool.installOrder, tool.toolId).toBeLessThanOrEqual(60)
-    }
+  /**
+   * THE RULES THEMSELVES MOVED TO `lint.ts` (rockysurf-arym.2), and this asserts them from
+   * there rather than keeping a second copy.
+   *
+   * They lived here as a dozen inline regexes for as long as every pack lived in `packs/`.
+   * That stopped being tenable when packs started arriving from a registry: the shop's CI has
+   * to gate a community pull request with the same rules, and it cannot run this repository's
+   * vitest suite. A rule that exists in two places is a rule that will eventually mean two
+   * things — and the divergence would show up as a pack this repository rejects and the shop
+   * accepts, which is the worst direction for it to fail in.
+   *
+   * So the shipped packs are now checked by exactly the command contributors are told to run.
+   * `lint.test.ts` covers the rules themselves, each with a fixture that breaks it.
+   */
+  it('satisfy the published author contract, checked by `rockysurf pack lint`', () => {
+    expect(formatFindings(lintPacksDir({ dir: packsDir }).findings)).toBe('')
   })
 
   it('open-claw expresses itself through fields rather than through its name', () => {

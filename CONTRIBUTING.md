@@ -41,6 +41,7 @@ Docker daemon, or a `gitleaks` binary. All three are runnable locally when you h
 | check | command | what it needs |
 |---|---|---|
 | pack smoke | `node scripts/pack-smoke.mjs --pack <id> --arch arm64` | Docker |
+| pack lint | `rockysurf pack lint packs/` | nothing — and `pnpm run check` runs it anyway |
 | BYO lifecycle | `node scripts/e2e/byo-host.mjs` | Docker, and `127.0.0.1:22` free |
 | release tarballs | `node scripts/verify-tarballs.mjs` | ~30s, packs and npm-installs |
 | secret scan | `gitleaks git . --config .gitleaks.toml` | the `gitleaks` binary |
@@ -143,6 +144,25 @@ every test run.
 
 Reference the shared base toolchain by tool id rather than redefining it. A `toolId` defined in
 two files is rejected by the loader.
+
+Two commands run the contract, and both are published, so a pack that does not live in this
+repository is held to the same standard:
+
+```bash
+rockysurf pack lint  packs/                                  # static, a second, no Docker
+rockysurf pack check packs/ --pack <id> --arch arm64         # the smoke harness
+```
+
+`pack lint` is the single definition of the mechanical rules — `packages/core/src/packs/lint.ts`.
+It used to be a dozen regexes inside `packs.test.ts`, which was fine while every pack lived in
+`packs/` and stopped being fine when packs started arriving from
+[`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop): that repository's CI
+gates community pull requests with these commands, and a rule that exists in two places will
+eventually mean two things. Add a rule to `lint.ts` with a fixture in `lint.test.ts` that breaks
+it, and both repositories get it.
+
+Neither command is a security check, and the help text for both says so. Install scripts are
+arbitrary root-privileged shell; what they prove is well-formedness and resume-safety.
 
 ## Documentation
 

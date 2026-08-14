@@ -15,6 +15,17 @@ export {
   type PackIssue,
 } from './loader.js'
 
+export {
+  formatFindings,
+  isClean,
+  lintLoaded,
+  lintPacksDir,
+  type LintFinding,
+  type LintOptions,
+  type LintReport,
+  type LintRule,
+} from './lint.js'
+
 export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 
 export {

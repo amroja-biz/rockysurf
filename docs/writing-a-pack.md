@@ -628,18 +628,50 @@ nothing.
 A pack that fails on one architecture and passes on the other fails the whole check. There is
 no "amd64 only" pack.
 
-### Running it yourself
+### The two checks, and which one to reach for
 
-The harness itself is one command, and it is the same code CI runs — same container, same two
-runs, same journal discard, same three files compared byte for byte:
+There is a fast static check and a slow behavioural one. Run the first constantly and the second
+before you open the pull request.
 
 ```bash
-node scripts/pack-smoke.mjs --pack my-pack --arch arm64   # then again with --arch amd64
+rockysurf pack lint  packs/                    # a second, no Docker
+rockysurf pack check packs/ --pack my-pack --arch arm64   # a few minutes, needs Docker
 ```
 
-It needs Docker and a built `@rockysurf/core` (`pnpm --filter @rockysurf/core build`), because it
-resolves your pack with core's own resolver rather than a re-implementation of it. Add `--keep`
-to leave the container up when something fails.
+**`pack lint`** validates the frozen schema, checks that every `toolId` resolves and that none is
+defined twice, and applies the mechanical half of the four rules — a hardcoded architecture with
+no `$ARCH` branch, an `apt-get install` without `-y`, `sudo` in a `runAs: rocky` script, an
+unguarded `>>`, and the "what you may not assume" list. It is the same code that validates this
+repository's own `packs/`, so a finding here is a finding a maintainer would have raised.
+
+**`pack check`** is the smoke harness described above: same container, same two runs, same
+journal discard, same three files compared byte for byte. Add `--keep` to leave the container up
+when something fails.
+
+**Neither is a security check.** An `installScript` is arbitrary shell that runs as root on
+somebody's box, and no amount of pattern matching over it can decide whether it is benign.
+What these two prove is that a pack is *well-formed and survives a resume*. What protects the
+person installing it is review, the registry's trust label, and the fact that the control plane
+shows them every script before they consent to it.
+
+If you are contributing to a pack in a directory of its own — a community pack in
+[`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop) rather than a pack in
+this repository — name the directory holding the shared base toolchain so your references to it
+resolve. Without this, every base tool your pack correctly *references* rather than redefines is
+reported as unknown:
+
+```bash
+rockysurf pack lint  packs/community --base-packs packs/official
+rockysurf pack check packs/community --base-packs packs/official --pack my-pack --arch arm64
+```
+
+From a checkout of this repository, `node scripts/pack-smoke.mjs` is the same harness pointed at
+`packs/`, and it is what CI runs. It needs a built workspace (`pnpm -r build`), because it
+resolves your pack with core's own resolver rather than a re-implementation of it.
+
+Exit codes are worth knowing if you are scripting either one: **0** is clean, **1** means the
+pack failed the check, and **2** means the check could not be run at all — a missing Docker
+daemon, a directory with no pack files in it, a `--pack` id that matches nothing.
 
 For a single script, mid-edit, you don't need any of that. This finds nearly everything in about
 a minute:
