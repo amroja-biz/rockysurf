@@ -111,9 +111,27 @@ a trust label that still lived in a document the registry itself published. The 
 the same guarantee more cheaply: official packs are the ones that came with the software, which
 needs no mechanism at all.
 
-**A `tier` field in `index.json`.** Rejected. Under the mirror design it was defensible, because
-CI wrote it. Once the shop is purely community it becomes a claim about trustworthiness written by
-the party being trusted, worth exactly as much as the document containing it.
+**A `tier` field in `index.json`.** Rejected, and the reasoning is the load-bearing part of
+decision 2 rather than a detail of it.
+
+Under the mirror design the field was defensible: CI wrote it, from which directory a file sat in,
+and a contributor could not reach the directory that produced `official`. Take the mirror away and
+the same field becomes **self-attestation** — a registry's own statement about how much it should
+be trusted, published in the document whose trustworthiness is the question. It could never be
+worth more than the thing containing it, and a reader who took it at face value would be trusting
+the claim to establish the trust.
+
+Sourcing the label from the operator's config instead has a property the field never could: it is
+**un-claimable**. `official` means only "arrived in the tarball", which is a fact about how the
+software got onto the machine rather than an assertion anyone can make. No registry can become
+first-party by saying so, and no config entry can either, because `official` is not a value
+`trust` accepts. Every label therefore traces back to something the operator did — installing a
+release, or writing a line in their own file.
+
+The schema refuses a stray `tier` rather than ignoring one, so an index that carries the field
+fails loudly instead of being quietly stripped; and the test that keeps this honest fetches a
+byte-identical index from two differently-labelled sources and asserts the labels differ. If that
+ever stops holding, the trust model is decorative and nothing else would say so.
 
 **Recording provenance in `sourceFile`.** Rejected: it makes the boot reconcile delete the pack.
 
