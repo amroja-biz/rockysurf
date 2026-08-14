@@ -30,6 +30,12 @@ const goodEntries = [
   'package/README.md',
   'package/dist/index.js',
   'package/dist/index.d.ts',
+  // Core's two GENERATED publishables. Both are produced by a build and both are listed in its
+  // `files`, and npm does not complain when a `files` entry matches nothing — so a tarball
+  // without them packs cleanly and ships a control plane with no UI and no official packs.
+  'package/public/index.html',
+  'package/public/assets/index-abc123.js',
+  'package/packs/ai-coding-agents.yaml',
 ]
 
 const goodManifest = {
@@ -53,6 +59,29 @@ describe('verify-tarballs', () => {
 
     // The point of the case: pack succeeds, the manifest is correct, and the package is empty.
     expect(details(violations)).toContain('no dist/')
+  })
+
+  it('fails a core with no SPA — a control plane that serves no web UI', () => {
+    // The shape this catches: a release built with a filtered `pnpm --filter … build` that never
+    // built `@rockysurf/web`, so `sync-web-bundle.mjs` never ran and `public/` is absent. npm
+    // packs it happily, and it looks like a normal release until somebody opens a browser.
+    const entries = goodEntries.filter((e) => !e.startsWith('package/public/'))
+    expect(details(checkTarball(goodManifest.name, entries, goodManifest))).toContain('serves no web UI')
+  })
+
+  it('fails a core with no packs — a release for which "official" would mean nothing', () => {
+    // ADR-0006 leans on "official means shipped with the release you are running". A release
+    // that ships none cannot honour that sentence, and rockysurf-io02 is the bug where it did
+    // not — invisible then, and asserted here now.
+    const entries = goodEntries.filter((e) => !e.startsWith('package/packs/'))
+    expect(details(checkTarball(goodManifest.name, entries, goodManifest))).toContain('no packs/*.yaml')
+  })
+
+  it('does not demand core’s generated directories of every other package', () => {
+    // They are core's alone. A provider with no `public/` is not broken, and a rule that said
+    // otherwise would fail eight packages to catch one.
+    const entries = goodEntries.filter((e) => !e.startsWith('package/public/') && !e.startsWith('package/packs/'))
+    expect(checkTarball(SDK, entries, { ...goodManifest, name: SDK })).toEqual([])
   })
 
   it('fails a tarball packed by npm rather than pnpm, which loses the license text', () => {
