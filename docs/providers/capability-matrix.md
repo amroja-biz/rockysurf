@@ -17,14 +17,16 @@ and the two real-cloud capstone transcripts beside it.
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
 | `stop` | `true` | `true` | `true` † | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` | `true` |
+| `ipStableAcrossStop` | **`false`** | `true` † | **`false`** † | `true` † | `true` |
 | `canInjectHostKeys` | `true` | `true` † | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
-real infrastructure.
+real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
+was never actually observed, and carrying it as measured because the rest of the column was is
+exactly the drift the daggers exist to prevent (`rockysurf-eanp`).
 
 **`gcp` is now measured too, but not in every row**: a real Compute Engine run settled most of the
 column and deliberately never touched two of the values, which is why the daggers in it moved
@@ -138,7 +140,17 @@ resource to create, tag and reap, which is the orphan class AWS declined too. **
 measured.** AWS's identical claim has a transcript behind it showing the address change; the
 real-GCE run never stopped a box, so nobody has watched this one happen.
 
-**Hetzner: yes.** The primary IPv4 survives a poweroff/poweron.
+**Hetzner: yes †.** The primary IPv4 survives a poweroff/poweron — a Hetzner Cloud primary IP is
+allocated to the server and released only when the server is deleted. **Reasoned from Hetzner's
+documentation, not measured** (`rockysurf-eanp`), which is a correction: this row read as measured
+for months on the strength of the rest of the column being measured. It was not. The committed
+transcript stops and starts the server and never re-reads the address, and the spike capstone says
+in as many words that neither box was stopped.
+
+`scripts/e2e/lifecycle.mjs` now asserts it — the address is captured before the stop and compared
+after the start, for both readings of the flag — so the next nightly that completes a Hetzner
+stop/start cycle will settle this row. **The dagger comes off when a run has carried it**, not
+when the assertion was written.
 
 **BYO: yes**, trivially — the address is whatever the operator configured, and core never
 changes it.
