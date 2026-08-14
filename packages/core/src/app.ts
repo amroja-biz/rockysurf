@@ -27,6 +27,7 @@ import { snapshotInstallPlan } from './bootstrap/install-plan.js'
 import { createSimulatedBootstrap } from './bootstrap/simulated-bootstrap.js'
 import { createPushBootstrapSupervisor } from './bootstrap/supervisor.js'
 import { createCostsRoutes } from './costs/routes.js'
+import { createRegistryClient, type RegistryClient } from './packs/registry.js'
 import { createPackRoutes } from './packs/routes.js'
 import type { SecretsStore } from './secrets/store.js'
 import { createDefaultRegistry, type ProviderRegistry } from './providers/registry.js'
@@ -84,6 +85,15 @@ export interface AppDeps {
   heartbeatMs?: number
   /** Built SPA assets. Absent until 4d. */
   publicDir?: string
+  /**
+   * The pack registry client (rockysurf-arym.4). Defaults to one built from `config.registry`.
+   *
+   * Injectable for the same reason `PackRoutesDeps.fetchText` is: the real client goes through
+   * the SSRF guard, which correctly refuses the loopback addresses a test server lives on, so a
+   * test of the shop seam has to supply its own. Constructing the default performs no fetch, so
+   * an app that never opens the shop never touches the network.
+   */
+  registry?: RegistryClient
   /**
    * The config file this process loaded, so the settings editor writes the file that is
    * actually in force (rockysurf-m29b).
@@ -354,7 +364,14 @@ export function createApp(deps: AppDeps): CreatedApp {
 
   // Mounted after the /api/v1/* auth middleware above, so every route inside it inherits a
   // session; the admin half applies its own isAdmin check on top.
-  app.route('/', createPackRoutes({ db }))
+  // The pack registry client is built HERE, from the config this app was handed, rather than
+  // injected — it is a pure function of `config.registry` with no lifecycle and nothing to
+  // close. Constructing it performs no fetch (rockysurf-arym.3), so this costs nothing at boot
+  // and a control plane with no route off the machine starts exactly as it did before.
+  app.route(
+    '/',
+    createPackRoutes({ db, registry: deps.registry ?? createRegistryClient({ config: config.registry }) }),
+  )
 
   /* ---------------------------------------------------------------------------- costs */
 
