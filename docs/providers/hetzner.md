@@ -22,8 +22,9 @@ One **API token with read/write access to one project**, and nothing else. There
 deploy, no policy file, no service account and no infrastructure to create first — this page has
 no `deploy/` directory behind it, unlike [AWS](aws.md), [Azure](azure.md) and [GCP](gcp.md).
 
-Create a project at [console.hetzner.com](https://console.hetzner.com), then, in that project,
-**Security → API tokens → Generate API token**, with **Read & Write** permission.
+Create a project at [console.hetzner.com](https://console.hetzner.com), then generate an API
+token inside that project — it lives under the project's **Security** section — with
+**Read & Write** permission.
 
 Read-only is not enough and fails at the first create. The provider makes servers and the SSH Key
 objects they need, and both are writes.
@@ -54,9 +55,10 @@ and read every resource it contains.
 So the boundary is the project, and it is the only boundary there is. Two consequences, both
 worth acting on:
 
-- **Give Rocky Surf its own project.** Hetzner projects are free and a token is scoped to one.
-  A project containing nothing but Rocky Surf's dev boxes turns "this token can do anything here"
-  into a statement about a blast radius you chose.
+- **Give Rocky Surf its own project.** A token is scoped to one project, so a project containing
+  nothing but Rocky Surf's dev boxes turns "this token can do anything here" into a statement
+  about a blast radius you chose. This is the closest thing to a least-privilege setup the API
+  offers, and it costs one menu click.
 - **Rocky Surf's own restraint is not the same as a permission boundary.** It only ever deletes,
   stops or starts a server whose `managed-by` label it set itself, and `listManaged()` filters on
   that label — but that is the application declining to touch your other servers, not the API
@@ -129,10 +131,12 @@ prepare, which is why Hetzner is the quickest of the four clouds to start on —
 boxes are **exposed by default**, unlike the AWS, Azure and GCP providers, where you must name the
 CIDR allowed to reach SSH and startup fails if you do not.
 
-What stands between the box and the internet is therefore SSH itself: key-only authentication, a
-host key core minted before the server existed, and no password login. If you want a network
-boundary as well, Hetzner Cloud Firewalls are a per-project feature you can apply yourself —
-Rocky Surf does not create, adopt or modify one.
+What stands between the box and the internet is therefore SSH itself, and it is set up to carry
+that weight: the rendered cloud-config sets `ssh_pwauth: false`, `lock_passwd: true` and
+`disable_root: true`, so there is no password to guess on any account and root cannot log in at
+all. Access is by key only, against a host key core minted before the server existed. If you want
+a network boundary as well, Hetzner Cloud Firewalls are a per-project feature you can apply
+yourself — Rocky Surf does not create, adopt or modify one.
 
 ## What it creates, and what it reaps
 
