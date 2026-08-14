@@ -17,7 +17,7 @@ you paste a real token.
 
 | | |
 |---|---|
-| **Hetzner** | The quickest start. Create a project, mint a read/write API token, paste it. |
+| **Hetzner** | The quickest start. Create a project, mint a read/write API token, paste it. No role to deploy and nothing to prepare — [`providers/hetzner.md`](providers/hetzner.md). |
 | **AWS** | Uses the standard credential chain, never a key in the config file. Needs an IAM policy and an explicit `sshAllowedCidr` — [`providers/aws.md`](providers/aws.md). |
 | **Azure** | Credentials from your environment, a managed identity, or `az login` — never from the config file. Needs a resource group you create, a least-privilege role and an explicit `sshAllowedCidr` — [`providers/azure.md`](providers/azure.md). |
 | **GCP** | Uses Application Default Credentials — `gcloud auth application-default login`, a key file, or the metadata server — never a key in the config file. Needs a project and an explicit `sshAllowedCidr` — [`providers/gcp.md`](providers/gcp.md). |

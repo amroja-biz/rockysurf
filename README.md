@@ -69,7 +69,7 @@ spend money by accident.
 
 | Provider | What it is | Stop/start | Host key | Docs |
 |---|---|---|---|---|
-| **Hetzner** | Hetzner Cloud, plain REST — the cheapest way to start | yes, IP survives | minted before boot | [`packages/provider-hetzner`](packages/provider-hetzner/README.md) |
+| **Hetzner** | Hetzner Cloud, plain REST — the cheapest way to start | yes, IP survives | minted before boot | [`docs/providers/hetzner.md`](docs/providers/hetzner.md) |
 | **AWS** | EC2 via `RunInstances`, no CloudFormation | yes, **public IP changes** | minted before boot | [`docs/providers/aws.md`](docs/providers/aws.md) |
 | **Azure** | ARM REST, no vendor SDK; one resource group you own | yes, IP survives | minted before boot* | [`docs/providers/azure.md`](docs/providers/azure.md) |
 | **GCP** | Compute Engine v1 REST, no vendor SDK | yes, **public IP changes*** | minted before boot | [`docs/providers/gcp.md`](docs/providers/gcp.md) |
@@ -225,13 +225,14 @@ it in CI rather than in review.
 | [`SECURITY.md`](SECURITY.md) | Credential custody, SSH trust, network defaults, the MCP threat model, reporting |
 | [`docs/adr/llms.txt`](docs/adr/llms.txt) | Index of architecture decisions — start here for the design |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | What each provider can do, and the evidence |
+| [`docs/providers/hetzner.md`](docs/providers/hetzner.md) | Hetzner: the token, locations and arm64 stock, what terminate leaves behind |
 | [`docs/providers/aws.md`](docs/providers/aws.md) | AWS: the minimal IAM policy, credentials, SSH access |
 | [`docs/providers/azure.md`](docs/providers/azure.md) | Azure: the least-privilege role, credentials, what terminate deletes |
 | [`docs/providers/byo.md`](docs/providers/byo.md) | BYO: claiming a host, host keys, what release leaves behind |
 | [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Adding a compute provider against the frozen SDK |
 | [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | The pack-author contract — normative, CI-enforced |
 | [`.claude/skills/`](.claude/skills/README.md) | Agent Skills that teach a Claude Code session these contracts — live in a checkout, no install |
-| [`docs/RELEASING.md`](docs/RELEASING.md) | Publishing the eight packages to npm |
+| [`docs/RELEASING.md`](docs/RELEASING.md) | Publishing the nine packages to npm |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, gates, conventions |
 
 ## License
