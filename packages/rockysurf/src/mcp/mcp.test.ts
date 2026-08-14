@@ -508,6 +508,151 @@ describe('the spend cap, against a real control plane', () => {
   })
 })
 
+/**
+ * AN AGENT ASKING FOR AN ARM BOX (rockysurf-0t2h).
+ *
+ * `create_server` took name/size/pack_id/repositories/create_anyway/provider/rdp_password and
+ * nothing else, so there was no way for an agent to say `arm64` — while the SPA has treated
+ * architecture as first-class since it was written. The confirming run went out over MCP and
+ * came back an amd64 e2-micro.
+ *
+ * The ordering mattered and is worth recording: this parameter could not be added until
+ * rockysurf-clf2 fixed the resolver. Before that, an `arch` reaching the API was ignored by
+ * the chooser and then refused by the provider as a mismatch, so a tool argument added first
+ * would have been a new way to fail rather than a new thing an agent could do. Hence the
+ * real-core leg below rather than only a body assertion: it is the resolver these arguments
+ * depend on, and stubbing it would prove nothing about the bug.
+ */
+describe('create_server can express architecture', () => {
+  const dirs: string[] = []
+
+  afterAll(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('advertises arch as a closed choice, so an agent can discover it', () => {
+    // Unlike `provider` and `offering_id`, whose values come from the operator's config, the
+    // two architectures are the SDK's own frozen list — so this one CAN be enumerated, and an
+    // agent reading the schema learns that arm64 is on the menu without being told.
+    const schema = MCP_TOOLS.find((t) => t.name === 'create_server')!.inputSchema
+    const parsed = schema.parse({ size: 'small', arch: 'arm64' }) as Record<string, unknown>
+    expect(parsed['arch']).toBe('arm64')
+    expect(() => schema.parse({ size: 'small', arch: 'sparc' })).toThrow()
+  })
+
+  it('carries arch and offering_id into the create body, under the API\'s own names', async () => {
+    const c = client()
+    await runTool('create_server', { size: 'large', arch: 'arm64', offering_id: 'fake-sold-out' }, ctx(['create'], c))
+    const [, body] = (c.post as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ]
+    expect(body['arch']).toBe('arm64')
+    // snake_case at the tool boundary, camelCase on the wire — the translation this layer is for.
+    expect(body['offeringId']).toBe('fake-sold-out')
+  })
+
+  it('sends neither field when the agent named neither', async () => {
+    const c = client()
+    await runTool('create_server', { size: 'small' }, ctx(['create'], c))
+    const [, body] = (c.post as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ]
+    // Absent, not null: the control plane reads absence as "you choose", and a null would be
+    // a value it has to have an opinion about.
+    expect(body).not.toHaveProperty('arch')
+    expect(body).not.toHaveProperty('offeringId')
+  })
+
+  async function bootCore() {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-mcp-arch-'))
+    dirs.push(dir)
+    const configPath = join(dir, 'rockysurf.config.yaml')
+    writeFileSync(configPath, `server:\n  dataDir: ${join(dir, 'data')}\nlimits:\n  maxServers: 5\n`)
+
+    const booted = await boot({
+      argv: ['--config', configPath],
+      listen: false,
+      announce: () => {},
+      log: () => {},
+      providers: () => new ProviderRegistry([makeFakeProvider()]),
+    })
+    const [admin] = booted.db.sqlite.prepare('SELECT id FROM users WHERE is_admin = 1 LIMIT 1').all() as {
+      id: string
+    }[]
+    const { token } = issueSession(booted.db.db, admin!.id)
+    const client = createCoreClient({
+      baseUrl: 'http://core.test',
+      token,
+      fetchImpl: ((input: string, init?: RequestInit) => booted.app.request(input, init)) as unknown as typeof fetch,
+    })
+    return { booted, client }
+  }
+
+  const machineOf = (booted: Awaited<ReturnType<typeof bootCore>>['booted'], serverId: string) =>
+    booted.db.sqlite.prepare('SELECT offering_id, arch FROM servers WHERE id = ?').get(serverId) as {
+      offering_id: string
+      arch: string
+    }
+
+  it('gets the agent the architecture it asked for, against a real control plane', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const scopes: McpScope[] = ['read', 'create']
+
+      // The fake catalogue's cheapest machine is arm64 fake-small, so amd64 is the request
+      // that used to be impossible: resolution took the cheapest, kept the agent's `amd64`
+      // beside it, and the provider refused the pair it had just been handed.
+      const amd = (await runTool('create_server', { size: 'small', arch: 'amd64' }, { client, scopes })) as {
+        server: { serverId: string }
+      }
+      expect(machineOf(booted, amd.server.serverId)).toMatchObject({ arch: 'amd64', offering_id: 'fake-medium' })
+
+      const arm = (await runTool(
+        'create_server',
+        { size: 'small', arch: 'arm64', name: 'arm-box' },
+        { client, scopes },
+      )) as { server: { serverId: string } }
+      expect(machineOf(booted, arm.server.serverId)).toMatchObject({ arch: 'arm64', offering_id: 'fake-small' })
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('gets the agent the SIZE it asked for, which was the other half of the same clip', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const created = (await runTool('create_server', { size: 'large' }, {
+        client,
+        scopes: ['read', 'create'] as McpScope[],
+      })) as { server: { serverId: string } }
+      // An MCP create asking for a size used to land on the cheapest machine in the catalogue
+      // whatever it asked for — the e2-micro the confirming run got.
+      expect(machineOf(booted, created.server.serverId).offering_id).toBe('fake-medium')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('refuses, rather than substituting, when the cloud cannot serve the request', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      // large + arm64 matches only the deliberately-unavailable fake-sold-out. An agent has to
+      // be told that, not handed an amd64 box and left to discover it when its binaries fail.
+      const error = (await runTool('create_server', { size: 'large', arch: 'arm64' }, {
+        client,
+        scopes: ['read', 'create'] as McpScope[],
+      }).catch((e: unknown) => e)) as Error
+      expect(error).toBeInstanceOf(Error)
+      expect(error.message).toMatch(/sold out/i)
+      expect(booted.db.sqlite.prepare('SELECT COUNT(*) AS n FROM servers').get()).toMatchObject({ n: 0 })
+    } finally {
+      await booted.close()
+    }
+  })
+})
+
 describe('the tool surface', () => {
   it('is exactly the six tools the bead names, each with a scope', () => {
     expect(MCP_TOOLS.map((t) => t.name).sort()).toEqual([

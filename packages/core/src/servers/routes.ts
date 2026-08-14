@@ -18,6 +18,7 @@ import {
   type LifecycleService,
 } from './lifecycle.js'
 import type { ProviderRegistry } from '../providers/registry.js'
+import { allowedOfferings, resolveOffering, SIZE_REQUIREMENTS } from './offerings.js'
 import type { Context } from 'hono'
 
 /**
@@ -131,6 +132,16 @@ export interface ServerRoutesDeps {
   githubTokenScopes?: (repositories: readonly string[]) => string[]
   /** Whether the instance-wide `github.pat` — which every box carries — is configured at all. */
   carriesFallbackToken?: boolean
+  /**
+   * The offering ids this installation permits on a given cloud — `providers.<cloud>.sizes`
+   * (rockysurf-j10e). `undefined` for a provider with no allowlist, which offers everything.
+   *
+   * A FUNCTION rather than the config section, for the reason `preflightRepositories` is one:
+   * the answer lives in the config file and the route must not grow a dependency on it. It
+   * also keeps the provider ids out of core — the composition point reads whatever sections
+   * the file has, and this route only ever passes a registry id back in.
+   */
+  offeringAllowlist?: (providerId: string) => readonly string[] | undefined
 }
 
 /** The row as the SPA expects to see it. Legacy field names, no internal columns. */
@@ -265,6 +276,11 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
    * still usable, and the failed one arrives with an empty list and an `offeringsError` the UI
    * can show. One cloud having a bad day should not make the create page unusable for the
    * other.
+   *
+   * The catalogue is narrowed by `providers.<cloud>.sizes` before it leaves (rockysurf-j10e),
+   * so the settings page's claim that the field controls "the instance types offered on the
+   * New Server page" is finally true. The create route applies the same allowlist, because a
+   * limit only the UI honours is not a limit.
    */
   routes.get('/api/v1/providers', async (c) => {
     const providers = await Promise.all(
@@ -274,7 +290,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
             id: p.id,
             displayName: p.displayName,
             capabilities: p.capabilities,
-            offerings: await p.listOfferings(),
+            offerings: allowedOfferings(await p.listOfferings(), deps.offeringAllowlist?.(p.id)),
           }
         } catch (err) {
           return {
@@ -370,20 +386,108 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       }
     }
 
-    // Resolve the offering when the caller gave a size rather than a native id. Full t-shirt
-    // resolution (and the arch-unavailable fallback) is deliberately out of scope here — see
-    // ADR-0003's "deliberately unresolved". This picks the cheapest AVAILABLE offering,
-    // which is what `Offering.available` was added for.
-    let offeringId = body.offeringId
-    let arch = body.arch
-    if (!offeringId || !arch) {
-      const offerings = (await provider.listOfferings()).filter((o) => o.available)
-      const chosen = offerings.sort((a, b) => (a.hourly?.amount ?? Infinity) - (b.hourly?.amount ?? Infinity))[0]
-      if (!chosen) {
-        return c.json({ error: `provider ${providerId} has no available offerings right now`, code: 'capacity' }, 503)
+    /**
+     * WHICH MACHINE, and the end of "any size resolves to the cheapest offering"
+     * (rockysurf-clf2, amending ADR-0003's "deliberately unresolved" t-shirt item).
+     *
+     * What this replaced took the cheapest AVAILABLE offering in the whole catalogue whenever
+     * either `offeringId` or `arch` was absent, which was wrong three separate ways:
+     *
+     *  - `size` did nothing. `large` and `small` produced the same machine, and the caller
+     *    learned which one only from the bill.
+     *  - `arch` did worse than nothing. The cheapest offering was chosen without consulting
+     *    it, then the caller's `arch` was kept via `arch ??=`, and the provider refused the
+     *    pair — `invalid_spec: arch arm64 does not match offering e2-micro (amd64)` — blaming
+     *    the caller for a contradiction this route had just built. Arch-only creation was
+     *    therefore impossible on every surface except the SPA.
+     *  - An explicit `offeringId` with no `arch` stamped the CHEAPEST offering's arch onto a
+     *    row provisioning a different one, so the box's `$ARCH` could disagree with its own
+     *    machine type.
+     *
+     * Now: the size is a floor, the arch is part of it, and the answer is the cheapest
+     * available offering that actually satisfies both. Nothing silently substitutes — an
+     * unsatisfiable request is refused, and refused differently depending on whether this
+     * cloud cannot do it at all (400) or cannot do it right now (503).
+     */
+    const allowlist = deps.offeringAllowlist?.(providerId)
+
+    /*
+     * The allowlist is checked against the caller's string BEFORE the catalogue is fetched,
+     * because it can be: it is a list of ids, and so is the request. An operator's spend limit
+     * that the HTTP API could step over while the SPA honoured it would protect nobody — the
+     * API is the surface an agent uses — and doing it here means the limit holds even when the
+     * cloud's own catalogue is unreadable.
+     */
+    if (body.offeringId && allowlist && !allowlist.includes(body.offeringId)) {
+      return badRequest(
+        c,
+        `offering "${body.offeringId}" is not one this installation offers on ${providerId}. Allowed: ${allowlist.join(', ')}`,
+        [{ path: 'offeringId', message: 'not an offering this installation can create' }],
+      )
+    }
+
+    let offeringId: string
+    let arch: 'amd64' | 'arm64'
+
+    if (body.offeringId && body.arch) {
+      /*
+       * FULLY SPECIFIED, so the catalogue is not consulted at all — deliberately.
+       *
+       * A caller who named both the machine and its architecture has left core nothing to
+       * resolve, and making the create depend on `listOfferings()` anyway would mean a cloud's
+       * pricing endpoint having a bad day could block a create that needs no pricing to
+       * proceed (the property `pricing.test.ts` pins). A wrong id is still caught — by the
+       * provider's own `validateSpec`, in the provider's own words, which is where it was
+       * caught before this bead too.
+       */
+      offeringId = body.offeringId
+      arch = body.arch
+    } else if (body.offeringId) {
+      /*
+       * An id with no arch. The catalogue is REQUIRED here rather than optional: arch is not
+       * derivable from a native id without it, and the code this replaced filled the gap with
+       * the cheapest offering's arch — stamping `amd64` on a row provisioning an ARM machine.
+       * Failing is the honest answer; guessing is what the bug was.
+       */
+      let catalogue
+      try {
+        catalogue = allowedOfferings(await provider.listOfferings(), allowlist)
+      } catch (err) {
+        return fail(c, err)
       }
-      offeringId ??= chosen.id
-      arch ??= chosen.arch
+      const offering = catalogue.find((o) => o.id === body.offeringId)
+      if (!offering) {
+        return badRequest(c, `provider ${providerId} has no offering "${body.offeringId}"`, [
+          { path: 'offeringId', message: 'not an offering this installation can create' },
+        ])
+      }
+      if (!offering.available) {
+        return c.json({ error: `offering "${offering.id}" is sold out right now`, code: 'capacity' }, 503)
+      }
+      offeringId = offering.id
+      // From the OFFERING, never from the cheapest row in the catalogue: this is what the box
+      // is actually built on, and it is what `$ARCH` in every pack script resolves to.
+      arch = offering.arch
+    } else {
+      let catalogue
+      try {
+        catalogue = allowedOfferings(await provider.listOfferings(), allowlist)
+      } catch (err) {
+        return fail(c, err)
+      }
+      const resolution = resolveOffering(catalogue, {
+        ...SIZE_REQUIREMENTS[body.size],
+        ...(body.arch ? { arch: body.arch } : {}),
+      })
+      if (!resolution.ok) {
+        const scope = allowlist ? ` (of the ${allowlist.length} this installation offers)` : ''
+        const message = `${providerId}: ${resolution.reason}${scope}`
+        // Sold out is retryable and unsatisfiable is not, so they must not share a status.
+        if (resolution.soldOut) return c.json({ error: message, code: 'capacity' }, 503)
+        return badRequest(c, message, [{ path: 'size', message: resolution.reason }])
+      }
+      offeringId = resolution.offering.id
+      arch = resolution.offering.arch
     }
 
     try {

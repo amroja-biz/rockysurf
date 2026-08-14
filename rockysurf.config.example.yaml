@@ -132,7 +132,8 @@ providers:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 
-    # Optional allowlist of instance types offered in the UI. Omit to offer everything the
+    # Optional allowlist: the only instance types this installation will create, on the New
+    # Server page and through the API, the CLI and MCP alike. Omit to offer everything the
     # region sells. t4g.* are ARM (Graviton) and are the cheap, fast default.
     # sizes: [t4g.small, t4g.medium, t4g.large]
 
@@ -165,7 +166,8 @@ providers:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 
-    # Optional allowlist of VM sizes offered in the UI. Omit to offer everything the region
+    # Optional allowlist: the only VM sizes this installation will create, on the New Server
+    # page and through the API, the CLI and MCP alike. Omit to offer everything the region
     # sells. A `p` in the name (B2ps_v2, D2ps_v5) means ARM (Ampere) — the cheap, fast default.
     # sizes: [Standard_B2ps_v2, Standard_B4ps_v2]
 
@@ -215,7 +217,8 @@ providers:
     # imageProject: ubuntu-os-cloud
     # imageFamilyPrefix: ubuntu-2404-lts  # the architecture is appended: -amd64 / -arm64
 
-    # Optional allowlist of machine types offered in the UI. Omit to offer everything.
+    # Optional allowlist: the only machine types this installation will create, on the New
+    # Server page and through the API, the CLI and MCP alike. Omit to offer everything.
     # t2a-* are ARM and are the cheap, fast default where they are available.
     # sizes: [t2a-standard-2, t2a-standard-4, e2-standard-2]
 
