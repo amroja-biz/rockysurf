@@ -14,7 +14,9 @@ import { createSecretsStore, type SecretsStore } from '../secrets/store.js'
 import { createEventsService, type EventsService } from '../services/events.js'
 import { provisionServerKeys } from '../ssh/server-keys.js'
 import type { ServerRow } from '../db/schema.js'
-import { runPushBootstrap } from './push-runner.js'
+import { applyAgentState, runPushBootstrap } from './push-runner.js'
+import { markBootstrapReady } from './supervisor.js'
+import type { AgentState } from './push.js'
 
 /**
  * WHERE CORE ACTUALLY DIALS (rockysurf-ftl9.12).
@@ -132,5 +134,66 @@ describe('the port core dials in push mode', () => {
     }).catch(() => undefined)
 
     expect(connections).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * WHEN A PUSH-MODE ROW BECOMES `running` (rockysurf-1c8z).
+ *
+ * `agent.sh` journals a step as `running` when it STARTS — `set_step "$id" running` sits above
+ * `install_tool` deliberately, so the SPA's timeline can light the step that is happening. Every
+ * plan the resolver renders ends with a step whose `reports` is `ready`, and
+ * `recordProgress('ready')` is what flips the row to `running` and stamps `startedAt`. So the
+ * row was promoted the moment the LAST step began: a box that then died mid-step read as
+ * healthy, and uptime and cost accrual had already started.
+ *
+ * `supervisor.ts` had always claimed `markBootstrapReady` was "the ONLY thing" that promotes a
+ * push-mode row. These pin that claim rather than the workaround.
+ */
+describe('a promoting report is not believed from the journal', () => {
+  /** The journal as the agent writes it while a step is executing. */
+  const journalAt = (stepId: string, stepStatus: 'running' | 'done'): AgentState => ({
+    planVersion: 1,
+    serverId: row.id,
+    step: stepId,
+    status: 'running',
+    updatedAt: new Date().toISOString(),
+    steps: [
+      { id: 'tool:curl', reports: 'installing_tools', status: 'done' },
+      { id: 'tool:branding', reports: 'ready', status: stepStatus },
+    ],
+  })
+
+  it('leaves the row provisioning while the final step is still running', () => {
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journalAt('tool:branding', 'running'))
+
+    // The whole bug in one assertion: the box is mid-branding, and a machine that dies here must
+    // not have read as running.
+    expect(getServer(db, row.id)!.status).toBe('provisioning')
+    expect(getServer(db, row.id)!.startedAt).toBeFalsy()
+  })
+
+  it('still leaves it provisioning once that step reports done, because completion is the drive’s to declare', () => {
+    // Not an oversight: `markBootstrapReady` runs when the whole drive settles, which is a fact
+    // about the run rather than about one step's exit code. A plan whose last step happened to
+    // report something else must not strand a healthy box either.
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journalAt('tool:branding', 'done'))
+    expect(getServer(db, row.id)!.status).toBe('provisioning')
+  })
+
+  it('still records the ordinary steps, so the timeline lights up as they happen', () => {
+    // The fix must not cost the thing rockysurf-xinr bought: a step that reports a NON-promoting
+    // label is recorded while it runs, which is what drives the SPA's timeline.
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journalAt('tool:curl', 'running'))
+    expect(getServer(db, row.id)!.provisioningStep).toBe('installing_tools')
+    expect(getServer(db, row.id)!.status).toBe('provisioning')
+  })
+
+  it('promotes when the supervisor says the drive finished, and not before', async () => {
+    // The other half: having refused the journal's claim, something must still promote — and
+    // the row must reach `running` with `startedAt` stamped.
+    const promoted = await markBootstrapReady(db, events, getServer(db, row.id)!)
+    expect(promoted?.status).toBe('running')
+    expect(promoted?.startedAt).toBeTruthy()
   })
 })

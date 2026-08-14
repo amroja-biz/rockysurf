@@ -1,7 +1,7 @@
 import type { Db } from '../db/client.js'
 import { recordProgress } from '../db/repositories/servers.js'
 import { appendEvent } from '../db/repositories/users.js'
-import { isValidProvisioningStep } from '../db/transitions.js'
+import { isValidProvisioningStep, statusForStep } from '../db/transitions.js'
 import type { ProvisioningStep, ServerRow } from '../db/schema.js'
 import type { EventsService } from '../services/events.js'
 import type { SecretsStore } from '../secrets/store.js'
@@ -120,10 +120,32 @@ export class CallbackUnavailableError extends Error {
   }
 }
 
-/** The label the agent reports, mapped onto a provisioning step core knows. */
+/**
+ * The label the agent reports, mapped onto a provisioning step core knows.
+ *
+ * A REPORT THAT WOULD PROMOTE THE ROW IS NOT ACCEPTED FROM HERE AT ALL (rockysurf-1c8z).
+ *
+ * `agent.sh` journals a step as `running` when it STARTS — `set_step "$id" running` sits above
+ * `install_tool`, deliberately, so the SPA's timeline can light the step that is happening. For
+ * every ordinary step that is exactly right. For the LAST one it was a lie: every plan the
+ * resolver renders ends with a step whose `reports` is `ready`, `recordProgress('ready')` is
+ * what flips the row to `running` and stamps `startedAt`, so a push-mode box was announced as
+ * running the moment its final step began. A box that then died mid-step read as healthy, and
+ * uptime and cost accrual had already started.
+ *
+ * `supervisor.ts` says of its own `markBootstrapReady` that stamping `ready` there rather than
+ * trusting the plan's last step is "the ONLY thing" that promotes a push-mode row. That was the
+ * design; this function was quietly the second path. Now it is not: the supervisor promotes when
+ * the DRIVE COMPLETES, which is the fact worth writing down, and it broadcasts the status event
+ * itself so nothing about rockysurf-xinr's live-update fix depends on this call.
+ *
+ * Stated as "would this report promote?" rather than as `label === 'ready'`, because
+ * `statusForStep` is where that question is already answered — one definition, not two.
+ */
 function toProvisioningStep(state: AgentState): ProvisioningStep | undefined {
   const label = state.steps.find((s) => s.id === state.step)?.reports ?? state.step
-  return isValidProvisioningStep(label) ? label : undefined
+  if (!isValidProvisioningStep(label)) return undefined
+  return statusForStep(label) ? undefined : label
 }
 
 export async function runPushBootstrap(
@@ -223,10 +245,14 @@ export function applyAgentState(deps: PushRunnerDeps, row: ServerRow, state: Age
     }),
   )
 
-  // A report that promoted the row says so in the event type the SPA reads statuses from.
-  // Without this the promotion is invisible until a reload: the plan's last step reports
-  // `ready`, so this is the call that flips a push-mode server to `running`, and
-  // `markBootstrapReady` then finds nothing left to do and broadcasts nothing.
+  // A report that changed the row's status says so in the event type the SPA reads statuses
+  // from (rockysurf-xinr): the dashboard reads a server's status from `server-status` alone, so
+  // a change that only wrote the row would leave every open tab stale until a reload.
+  //
+  // Since rockysurf-1c8z no report reaching here can promote to `running` — `toProvisioningStep`
+  // refuses those, and `markBootstrapReady` broadcasts its own. This stays because it is about
+  // any status change, not that one, and the alternative is a broadcast that exists only for a
+  // case somebody has to remember is impossible.
   if (updated && updated.status !== row.status) {
     void deps.events.broadcastToUser(row.userId, serverStatusEvent(updated))
   }

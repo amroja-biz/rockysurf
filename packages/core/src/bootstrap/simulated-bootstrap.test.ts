@@ -390,7 +390,14 @@ describe('pacing', () => {
     expect(slept).toEqual([2000, 2000, 2000, 2000])
     expect(result.launcher).toBe('simulated')
     expect(result.state.status).toBe('done')
-    expect(getServer(db, row.id)!.provisioningStep).toBe('ready')
+
+    // The drive advanced the timeline as far as a DRIVE can: `installing_tools` is the last
+    // non-promoting label in this plan. It deliberately does not leave the row at `ready`
+    // (rockysurf-1c8z) — declaring the box ready is the supervisor's call, made when the whole
+    // run settles, and this function is invoked here without one. Asserting `ready` from here
+    // was asserting the coupling that let a mid-final-step death read as running.
+    expect(getServer(db, row.id)!.provisioningStep).toBe('installing_tools')
+    expect(getServer(db, row.id)!.status).toBe('provisioning')
   })
 
   it('takes its budget from the environment, and shrugs off a typo in it', () => {

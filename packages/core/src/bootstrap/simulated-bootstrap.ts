@@ -141,9 +141,10 @@ export function createSimulatedBootstrap(
       emit(state)
     }
 
-    // Terminal. The last step's `reports` is `ready` on every plan the resolver renders, so this
-    // has usually already promoted the row by the time the supervisor's own `markBootstrapReady`
-    // runs — the same order a real push settles in.
+    // Terminal. The last step's `reports` is `ready` on every plan the resolver renders, and
+    // core deliberately does NOT promote on that report (rockysurf-1c8z) — the supervisor's own
+    // `markBootstrapReady` does it when the drive completes. This emits the finished journal;
+    // the promotion follows, in the same order a real push settles in.
     state = snapshot(plan, journal, plan.steps.at(-1)?.id ?? 'ready', 'done', now)
     emit(state)
     log('[trial] simulated install finished; this box exists only in this process')
