@@ -79,6 +79,24 @@ description = "The original operator's GitHub username, hardcoded as an allowlis
 regex = '''jbdamask'''
 tags = ["rockysurf", "legacy-saas", "hardcoded-user"]
 
+[[rules]]
+id = "rockysurf-legacy-local-username"
+description = "The original operator's local account name, as absolute paths spell it"
+# rockysurf-5ypc: not a credential — but CONTRIBUTING's own reasoning applies: identifiers like
+# this carry no secret value, survive rewrites, and together are a map of somebody's live
+# infrastructure. The existing occurrences live in recorded evidence and stay by the owner's
+# ruling (see the exemption below); this rule is what keeps any NEW file from adding one.
+regex = '''johndamask'''
+tags = ["rockysurf", "pinned-identifier", "local-username"]
+
+[[rules]]
+id = "rockysurf-legacy-private-worktree"
+description = "The private development worktree's name, as absolute paths spell it"
+# rockysurf-5ypc, same reasoning as the rule above: the repository this project deliberately
+# does not publish should not be namable from the one it does.
+regex = '''1-open-source-rocky-surf-v0-1'''
+tags = ["rockysurf", "pinned-identifier", "private-repo"]
+
 # ------------------------------------------------------------------------------------------
 # EXEMPTIONS
 #
@@ -112,4 +130,28 @@ paths = [
   '''^packages/core/src/ssh/.*\.test\.ts$''',
   '''^packages/core/src/secrets/store\.test\.ts$''',
   '''^packages/provider-hetzner/src/provider\.test\.ts$''',
+]
+
+# --- 3. Recorded evidence (rockysurf-5ypc; owner ruling 2026-08-14: option c). The transcripts
+# --- and the documents quoting them prove the capability matrix, and rewriting a recording
+# --- weakens the thing it exists to be — so the existing occurrences stay, named file by file.
+# --- The hole: exactly these files may carry the two identifiers; every other file may not,
+# --- which is the point of the rules. Scoped to the two rules, so everything else still
+# --- applies to these files in full.
+[[allowlists]]
+description = "Recorded evidence carrying the operator's local username or the private worktree name"
+targetRules = ["rockysurf-legacy-local-username", "rockysurf-legacy-private-worktree"]
+paths = [
+  '''^docs/adr/0001-single-portable-control-plane-app\.md$''',
+  '''^docs/adr/0002-push-bootstrap-default-callback-fallback\.md$''',
+  '''^docs/adr/0004-packs-as-pr-able-yaml\.md$''',
+  '''^docs/history/DEVLOG\.md$''',
+  '''^scripts/e2e/recordings/aws-lifecycle-amd64\.log$''',
+  '''^scripts/e2e/recordings/aws-lifecycle-arm64\.log$''',
+  '''^scripts/e2e/recordings/aws-restricted-t3-small\.log$''',
+  '''^scripts/e2e/recordings/aws-restricted-t4g-small\.log$''',
+  '''^scripts/e2e/recordings/byo-container\.log$''',
+  '''^scripts/e2e/recordings/hetzner-lifecycle\.log$''',
+  '''^spike/recordings/aws-lifecycle\.txt$''',
+  '''^spike/recordings/hetzner-lifecycle\.txt$''',
 ]
