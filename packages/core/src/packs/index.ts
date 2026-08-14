@@ -15,6 +15,8 @@ export {
   type PackIssue,
 } from './loader.js'
 
+export { BUNDLED_PACKS_DIR, bundledPacksDir } from './bundled.js'
+
 export {
   formatFindings,
   isClean,

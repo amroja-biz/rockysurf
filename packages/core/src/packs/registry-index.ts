@@ -144,9 +144,18 @@ export function buildRegistryIndex(options: BuildIndexOptions): RegistryIndex {
   // what the contract asks for — resolves against a definition in some other file, and judging
   // each directory in isolation reports every well-behaved pack as referencing unknown tools.
   const loadedBySource = options.sources.map((source) => ({ source, loaded: loadPacksFromDir(source.dir) }))
+  // A base pack the registry itself also publishes is the same pack seen twice, not a second
+  // definition — the same subtraction `lintPacksDir` makes, and for the same reason: the default
+  // base directory is the bundled copy of a set a registry may legitimately contain.
+  const indexedPackIds = new Set(loadedBySource.flatMap(({ loaded }) => loaded.packs.map((p) => p.packId)))
+  const baseTools = (options.basePacksDirs ?? []).flatMap((dir) => {
+    const base = loadPacksFromDir(dir)
+    const shadowed = new Set(base.packs.filter((p) => indexedPackIds.has(p.packId)).map((p) => p.sourceFile))
+    return [...base.tools.values()].filter((t) => !shadowed.has(t.sourceFile)).map((t) => t.toolId)
+  })
   const knownTools = new Set([
     ...loadedBySource.flatMap(({ loaded }) => [...loaded.tools.keys()]),
-    ...(options.basePacksDirs ?? []).flatMap((dir) => [...loadPacksFromDir(dir).tools.keys()]),
+    ...baseTools,
   ])
   const satisfiedElsewhere = (message: string): boolean => {
     const referenced = /references unknown tool "([^"]+)"/.exec(message)

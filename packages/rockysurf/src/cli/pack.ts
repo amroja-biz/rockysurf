@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import {
   RegistryIndexError,
   buildRegistryIndex,
+  bundledPacksDir,
   formatFindings,
   lintPacksDir,
   renderRegistryIndex,
@@ -77,8 +78,9 @@ const USAGE = `usage: rockysurf pack <lint|check|index> [options]
 Options:
   --base-packs <dir>   A directory whose tools may be REFERENCED but which is not itself under
                        test — the shared base toolchain a pack is expected to reference rather
-                       than redefine. Repeatable. Without it, a directory holding one pack
-                       fails on every tool it does not define itself.
+                       than redefine. Repeatable. DEFAULTS to the packs bundled in this
+                       rockysurf, so a community pack referencing them needs no flag at all;
+                       naming one replaces that default rather than adding to it.
   --pack <id>          Check only this pack (check only).
   --arch <amd64|arm64> Architecture to run under (check only; defaults to this machine's).
   --keep               Leave the container and logs behind for inspection (check only).
@@ -146,7 +148,28 @@ function resolveDirs(argv: string[], io: PackCommandIo): { dir: string; basePack
     return undefined
   }
   // Absolute, so every message names a path the reader can paste, whatever the cwd was.
-  return { dir: resolve(dir), basePacksDirs: flagValues(argv, '--base-packs').map((d) => resolve(d)) }
+  return { dir: resolve(dir), basePacksDirs: baseDirs(argv) }
+}
+
+/**
+ * `--base-packs`, defaulting to the packs bundled in THIS `rockysurf` (rockysurf-io02).
+ *
+ * The default is what makes the registry's CI a one-liner. A community pack references the
+ * shared base toolchain by tool id rather than redefining it, and a purely-community registry
+ * does not contain those definitions — so before the packs shipped in the tarball, a shop had to
+ * clone this repository just to point the flag somewhere. Now `npx rockysurf@0.1.0 pack lint
+ * packs` resolves them out of the version it already pinned, which is both simpler and more
+ * precisely pinned than tracking a branch.
+ *
+ * An explicit `--base-packs` still wins outright rather than adding to the default: somebody who
+ * names a directory means that directory, and quietly unioning it with a set they did not ask
+ * for is how a check passes against tools the target installation will not have.
+ */
+function baseDirs(argv: string[]): string[] {
+  const explicit = flagValues(argv, '--base-packs').map((d) => resolve(d))
+  if (explicit.length > 0) return explicit
+  const bundled = bundledPacksDir()
+  return bundled ? [bundled] : []
 }
 
 function runLint(argv: string[], io: PackCommandIo): number {
@@ -232,7 +255,7 @@ function runIndex(argv: string[], io: PackCommandIo): number {
     }
     sources.push({ dir: resolve(prefix), prefix })
   }
-  const basePacksDirs = flagValues(argv, '--base-packs').map((d) => resolve(d))
+  const basePacksDirs = baseDirs(argv)
 
   let rendered: string
   try {

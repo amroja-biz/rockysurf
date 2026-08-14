@@ -6,3 +6,9 @@ node_modules/
 public/
 public.build/
 public.prev/
+# The repository's `packs/`, copied in by this package's own build
+# (scripts/sync-packs-bundle.mjs) so the published tarball ships them (rockysurf-io02).
+# Generated, never committed — the source of truth is `packs/` at the repository root.
+packs/
+packs.build/
+packs.prev/

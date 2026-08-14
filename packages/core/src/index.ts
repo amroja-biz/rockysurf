@@ -99,10 +99,12 @@ export {
  * `packs/`. One definition of the format, one definition of the author rules.
  */
 export {
+  BUNDLED_PACKS_DIR,
   PACKS_DIR_NAME,
   REGISTRY_INDEX_VERSION,
   RegistryIndexError,
   buildRegistryIndex,
+  bundledPacksDir,
   createRegistryClient,
   describePack,
   formatFindings,

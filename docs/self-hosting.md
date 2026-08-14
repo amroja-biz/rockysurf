@@ -55,7 +55,7 @@ Everything that must outlive the container is in the `rockysurf-data` volume, mo
 | `rockysurf.config.yaml` | Your configuration. Seeded from the image on first start, yours from then on. |
 | `rockysurf.db` | The SQLite database: servers, packs, sessions, encrypted secrets. |
 | `secret.key` | The master key those secrets are encrypted with. **Back this up.** |
-| `packs/` | Only used when the image has no `packs/` of its own. |
+| `packs/` | Your own pack files, if you keep any. Takes precedence over the ones the release ships. |
 
 `docker compose down` keeps the volume. `docker compose down -v` destroys it, and with it every
 stored credential and the SSH keys for boxes you already own — those boxes will still be
@@ -516,10 +516,36 @@ themselves — `amp-agents`, `codex-cli`, `open-claw` and `open-code` each pull 
 name all six files rather than the one you edited. **Read the log from the top: the first file
 listed is usually the one to fix.**
 
-**What it does not do is empty the picker.** Deleting a pack's rows is a conclusion drawn from
-a source that was read successfully, so a boot that loaded no pack at all — every file broken,
-an empty `packs/` directory, or a start from a directory with no checkout around it — draws no
-conclusion and changes nothing. The database keeps what it has and the boot says so:
+### Where the pack files come from
+
+First match wins, and the boot notice names which one it used:
+
+| | Source | When |
+|---|---|---|
+| 1 | `./packs` in the working directory | You are running from a checkout. |
+| 2 | `<dataDir>/packs` | It holds pack files — you are running your own catalog. |
+| 3 | The packs the release ships | Everything else, which is what `npx rockysurf` and the image do. |
+
+Tier 3 is why "official" means something: an official pack is one that **shipped with the release
+you are running**. It is read out of the installed package rather than copied into your data
+directory, so upgrading brings the new set and retires anything dropped upstream — a copy would
+have frozen your catalog at whatever your first install happened to ship.
+
+**One directory wins.** If you put pack files in `<dataDir>/packs`, you are running your own
+catalog and the shipped ones are not merged in underneath. That is the rule this has always had
+between a checkout and the data directory, extended by one tier rather than changed. It also
+means a pack that exists only in a checkout is removed by a boot taken outside that checkout —
+recoverable by booting from the checkout again, and the same rule as any other file the source no
+longer offers.
+
+To edit a shipped pack, export it from the admin UI, change it, and import it back — the path
+[ADR-0004](adr/0004-packs-as-pr-able-yaml.md) describes. The files inside the installed package
+are not meant to be edited in place.
+
+**What none of this does is empty the picker.** Deleting a pack's rows is a conclusion drawn from
+a source that was read successfully, so a boot that loaded no pack at all — every file broken, or
+an empty `packs/` directory in a release that ships none — draws no conclusion and changes
+nothing. The database keeps what it has and the boot says so:
 
 ```
 packs: no checkout detected (no packs/ in /home/you, none in /home/you/.rockysurf/packs) — leaving 6 database pack(s) as they are
