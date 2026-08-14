@@ -196,6 +196,21 @@ export function makeFakeProvider(options: FakeProviderOptions = {}): FakeProvide
   const latencyMs = options.latencyMs ?? 0
 
   const instances = new Map<string, FakeInstance>()
+  /**
+   * Instance ids this provider has ever answered `running` for (rockysurf-r5qn).
+   *
+   * SEPARATE FROM THE INSTANCE RECORD, and that separation is the point. `FakeInstance.
+   * everRunning` lives on the record and dies with it, so once an instance is gone there is
+   * nothing left to consult — which is precisely the moment the question is asked. The real
+   * providers keep exactly this: a per-PROCESS `Set` that outlives the cloud's own state,
+   * because "I have seen this running" is a fact about what this process observed, not about
+   * what the account still contains.
+   *
+   * Deliberately NOT cleared by `reset()`. That hook wipes the ACCOUNT; a provider object's
+   * memory of what it once saw is not in the account, and clearing it here would make the fake
+   * forget something a real provider would still know.
+   */
+  const seenRunning = new Set<string>()
   const byIdempotencyKey = new Map<string, string>()
   const pendingFailures = new Map<FakeMethod, ProviderError>(Object.entries(options.failures ?? {}) as [FakeMethod, ProviderError][])
   const calls: FakeMethod[] = []
@@ -246,6 +261,24 @@ export function makeFakeProvider(options: FakeProviderOptions = {}): FakeProvide
     const instance = instances.get(instanceId)
     if (!instance) return undefined
     return visible(instance) ? settle(instance) : undefined
+  }
+
+  /**
+   * The view this provider ANSWERS A DESCRIBE WITH, remembering that it said `running`.
+   *
+   * Recorded on the describe path rather than inside `viewOf` (rockysurf-r5qn), because
+   * `provision()` also builds a view — of an instance that is deliberately NOT yet visible to
+   * reads when `propagationMs` is set. Stamping there would teach the grace that the instance
+   * had been seen running before any read could have seen it, and the propagation case would
+   * then answer `terminated` on the first attempt: the exact data-loss bug the grace exists to
+   * prevent. `provider-aws` has no equivalent hazard — its `initial` comes from the RunInstances
+   * response and its `viewOf` only ever sees describe results — which is why the same
+   * bookkeeping sits in a different place there.
+   */
+  function served(instance: FakeInstance): InstanceView {
+    const settled = settle(instance)
+    if (settled.state === 'running') seenRunning.add(settled.instanceId)
+    return viewOf(settled)
   }
 
   function viewOf(instance: FakeInstance): InstanceView {
@@ -354,16 +387,24 @@ export function makeFakeProvider(options: FakeProviderOptions = {}): FakeProvide
       // booting, BILLING instance as dead the moment it is created, because the create call
       // returns before the read path is consistent. That is a data-loss bug, and it is the
       // single easiest rule in the SDK to leave out.
+      //
+      // AND ONLY FOR ONE NEVER SEEN RUNNING, which is the other half of the same rule and was
+      // missing here (rockysurf-r5qn). An instance this provider has already answered `running`
+      // for is not ambiguous when it disappears: it is gone, and sitting through the grace to
+      // say so is pure delay in a teardown core polls in a loop. `provider-aws` and
+      // `provider-hetzner` both take the narrow reading; this file is the one a provider author
+      // reads to learn the rule, so it was teaching the wrong one.
       if (!known || !visible(known)) {
-        for (let attempt = 1; attempt < DESCRIBE_ABSENCE_GRACE.attempts; attempt++) {
+        const attempts = seenRunning.has(instanceId) ? 1 : DESCRIBE_ABSENCE_GRACE.attempts
+        for (let attempt = 1; attempt < attempts; attempt++) {
           await new Promise<void>((r) => setTimeout(r, DESCRIBE_ABSENCE_GRACE.delayMs))
           const retry = instances.get(instanceId)
-          if (retry && visible(retry)) return viewOf(settle(retry))
+          if (retry && visible(retry)) return served(retry)
         }
         return { state: 'terminated' }
       }
 
-      return viewOf(settle(known))
+      return served(known)
     },
 
     async terminate(data: ProviderData): Promise<void> {

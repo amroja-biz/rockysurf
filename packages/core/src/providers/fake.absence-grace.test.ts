@@ -99,16 +99,18 @@ describe('conformance: describe() absence grace', () => {
       const { data } = await provider.provision(SPEC)
       expect((await provider.describe(data)).state).toBe('running')
 
-      // Teardown, which is the only way an instance the fake has served ever stops being
-      // reported as present. It answers `terminated` from its own records rather than by
-      // 404ing, and that is the point of the assertion: the grace must cost nothing here,
-      // because core polls this call in a loop while tearing a box down.
+      // `reset()` rather than `terminate()`, and the difference is the whole assertion
+      // (rockysurf-r5qn). After `terminate()` the fake still HOLDS the instance, answering
+      // `terminated` from its own records, so describe() returns on the first read whether or
+      // not the grace is implemented correctly — the case passed for a reason that had nothing
+      // to do with the rule. `reset()` drops the record entirely, as if the account were wiped,
+      // which is the only way to reach the branch the contract is actually about: an instance
+      // this provider has SEEN RUNNING and can no longer find.
       //
-      // The fake's other route to absence — `reset()`, which wipes the account — DOES pay the
-      // grace it no longer needs, because describe() never consults `everRunning`. Narrower
-      // than the real providers, unreachable in a normal teardown, and tracked as
-      // rockysurf-r5qn rather than fixed from inside another package's task.
-      await provider.terminate(data)
+      // The real providers reach that branch on every teardown, because a terminated instance
+      // eventually drops out of the cloud's own listing. The fake needed the harsher hook to
+      // get there, which is why the divergence survived a green conformance run.
+      provider.reset()
       return { run: () => describeUnderFakeClock(provider, data) }
     },
   }
