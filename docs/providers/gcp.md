@@ -38,6 +38,63 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 # account attached — then no key exists anywhere to leak
 ```
 
+### `gcloud auth login` and ADC are two different credentials
+
+**`gcloud auth login` does not create or refresh Application Default Credentials**, and this is
+the single most likely reason a correct configuration fails on a first run. They are two separate
+logins that happen to be performed by the same tool. They can be two different Google accounts.
+Only the second one is what Rocky Surf reads:
+
+| command | who it authenticates | what reads it |
+|---|---|---|
+| `gcloud auth login` | your `gcloud` CLI session | `gcloud`, and nothing else |
+| `gcloud auth application-default login` | Application Default Credentials | Rocky Surf, and every client library |
+
+An ADC file, once written, sits there until something overwrites it. It does not expire in any
+way you would notice and no amount of `gcloud auth login` touches it. This cost Rocky Surf's own
+GCE exit run its first minutes: a freshly logged-in `gcloud`, and an
+`application_default_credentials.json` eight months old belonging to a **different Google
+account**.
+
+**How to check who ADC actually is:**
+
+```bash
+# the file's own age is the first tell — nothing refreshes it but the ADC login itself
+ls -l ~/.config/gcloud/application_default_credentials.json
+
+# the project it quotes against is the second. Read only that field: the rest of the file is a
+# refresh token, so do not cat it into a terminal you are sharing or pasting from.
+jq -r '.quota_project_id' ~/.config/gcloud/application_default_credentials.json
+```
+
+A `quota_project_id` naming a project you do not recognise means the file belongs to some other
+account, from some other piece of work, months ago. There is one fix and it is the obvious one:
+run `gcloud auth application-default login` again.
+
+**The 403-vs-404 signature, which is the diagnosis rather than a symptom.** If Rocky Surf reports
+`PERMISSION_DENIED` on a call while `gcloud` gets a **404 for the same call**, stop granting
+permissions — that pair means the two are not the same caller:
+
+```bash
+# Rocky Surf: 403, Required 'compute.firewalls.get'
+gcloud compute firewall-rules describe rockysurf-ssh --project=my-project-123456
+# gcloud: 404, not found
+```
+
+Google answers a caller who cannot see a resource with `403 Required '<permission>'` rather than
+with a 404, because confirming that something does not exist is itself information about a
+project you have no visibility into. So the 403 is not "your role is short a permission" — it is
+"whoever is asking cannot see this project at all". Meanwhile `gcloud`, authenticated as an
+account that *can* see it, gets the honest 404: the firewall rule genuinely has not been created
+yet, which on a first launch is correct. **Two different answers to one call means two different
+identities**, and adding permissions to the role changes nothing, because the identity being
+refused is not the one you granted them to.
+
+You should not have to find this page to learn that. The provider recognises the shape — a 403 on
+a *read* — and says so in the error itself, naming the ADC login as the thing to re-run. It stays
+quiet on a 403 from a create or a delete, where a permission really can be missing and the hint
+would be misdirection.
+
 Point the provider at your project:
 
 ```yaml

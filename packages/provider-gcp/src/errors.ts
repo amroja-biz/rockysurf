@@ -119,6 +119,29 @@ export interface GceErrorItem {
 }
 
 /**
+ * Google answers a caller who cannot SEE a resource with `403 Required '<permission>'` rather
+ * than with a 404, because confirming that something is absent is itself information about a
+ * project the caller has no visibility into. So this exact shape — a 403 on a read — usually is
+ * not a role that is short a permission. It is a different identity from the one the permission
+ * was granted to, and the commonest cause by far is a stale
+ * `application_default_credentials.json` left behind by unrelated work months earlier
+ * (`rockysurf-6ose`, found in the first minutes of the real-GCE run). The tell an operator can
+ * check in one command is that `gcloud` gets a 404 for the same call.
+ *
+ * Only reads are annotated. A 403 on a create or a delete genuinely can be a missing permission,
+ * and a hint that fired on every 403 would be noise on the failures it does not explain.
+ */
+const STALE_ADC_HINT =
+  'a 403 on a read means this caller cannot see the resource, not necessarily that the role is ' +
+  'short a permission. If gcloud gets 404 for the same call, your Application Default ' +
+  'Credentials are a different identity from your gcloud session — re-run ' +
+  "'gcloud auth application-default login'"
+
+function isNoVisibilityRead(context: GceErrorContext, message: string): boolean {
+  return context.status === 403 && context.method.toUpperCase() === 'GET' && message.includes("Required '")
+}
+
+/**
  * Map a GCE failure onto the frozen taxonomy, keeping the cloud's own string verbatim.
  *
  * `reason` (HTTP) and `code` (Operation) are checked against their own tables and never against
@@ -133,7 +156,8 @@ export function toProviderError(item: GceErrorItem, message: string, context: Gc
     fromStatus(context.status)
 
   const where = `gcp ${context.method} ${context.path}`
-  return new ProviderError(mapped, `${where}: ${providerCode ?? `HTTP ${context.status ?? '?'}`}: ${message}`, {
+  const hint = isNoVisibilityRead(context, message) ? ` — ${STALE_ADC_HINT}` : ''
+  return new ProviderError(mapped, `${where}: ${providerCode ?? `HTTP ${context.status ?? '?'}`}: ${message}${hint}`, {
     ...(providerCode ? { providerCode } : {}),
     cause: context.cause,
   })

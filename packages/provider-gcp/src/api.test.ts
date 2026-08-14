@@ -102,6 +102,49 @@ describe('error mapping', () => {
     expect(err.providerCode).toBe(code)
   })
 
+  describe("the 403-on-a-read hint (rockysurf-6ose)", () => {
+    // Google refuses a caller who cannot see a resource with `403 Required '<permission>'`
+    // instead of a 404, so this shape reads as a missing permission while actually meaning the
+    // caller is somebody else — most often a stale ADC file. The hint is the only place an
+    // operator meets that explanation at the moment it matters.
+    const noVisibility = {
+      error: {
+        errors: [{ reason: 'forbidden', message: "Required 'compute.firewalls.get' permission" }],
+        message: "Required 'compute.firewalls.get' permission",
+      },
+    }
+
+    it('names the stale-ADC possibility on a 403 for a read', () => {
+      const err = toProviderError(
+        { reason: 'forbidden' },
+        "Required 'compute.firewalls.get' permission",
+        { method: 'GET', path: '/global/firewalls/rockysurf-ssh', status: 403 },
+      )
+      expect(err.code).toBe('auth')
+      expect(err.message).toContain('gcloud auth application-default login')
+    })
+
+    it('says nothing about ADC on a 403 for a write, where a permission really may be missing', () => {
+      const err = toProviderError({ reason: 'forbidden' }, "Required 'compute.instances.create' permission", {
+        method: 'POST',
+        path: '/zones/us-central1-a/instances',
+        status: 403,
+      })
+      expect(err.code).toBe('auth')
+      expect(err.message).not.toContain('application-default')
+    })
+
+    it('reaches an operator through the real client, not just the mapper', async () => {
+      const { client } = api([{ status: 403, body: noVisibility }], { maxRetries: 0 })
+      const err = await client.call('GET', '/global/firewalls/rockysurf-ssh').catch((e: unknown) => e)
+
+      assertProviderErrorShape(err)
+      expect(isProviderError(err) && err.message).toContain('gcloud auth application-default login')
+      // The cloud's own word still rides through untouched (ADR-0003, F1).
+      expect(isProviderError(err) && err.providerCode).toBe('forbidden')
+    })
+  })
+
   it('falls back to the HTTP status when the reason is one it has never seen', async () => {
     const { client } = api([{ status: 403, body: httpError('someBrandNewReason') }], { maxRetries: 0 })
     const err = await client.call('GET', '/anything').catch((e: unknown) => e)
