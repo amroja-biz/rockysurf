@@ -9,6 +9,12 @@ public.prev/
 # The repository's `packs/`, copied in by this package's own build
 # (scripts/sync-packs-bundle.mjs) so the published tarball ships them (rockysurf-io02).
 # Generated, never committed — the source of truth is `packs/` at the repository root.
-packs/
-packs.build/
-packs.prev/
+#
+# LEADING SLASH, and it is load-bearing rather than tidy. A bare `packs/` matches a directory of
+# that name at ANY depth, which includes `src/packs/` — the pack loader's own source directory.
+# Written unanchored, this silently excluded a new file there from a commit, and the branch went
+# up with an import of a module that was not in it. Anchor to the package root, where the
+# generated directory actually is.
+/packs/
+/packs.build/
+/packs.prev/
