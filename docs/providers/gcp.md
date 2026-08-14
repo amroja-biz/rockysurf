@@ -421,7 +421,8 @@ is what turned it from carefully derived into checked. One part of it is still d
 block says which.
 
 **What the run measured.** The full create → bootstrap → terminate lifecycle, on both
-architectures: `e2-small` and `e2-micro` on amd64, `t2a-standard-1` on arm64. The permission list
+architectures: `e2-small` and `e2-micro` on amd64, `t2a-standard-1` on arm64, in `us-central1-a`
+— the default zone, and one of the eight with T2A stock. The permission list
 above is *sufficient* — a box launched under it, which is the check the AWS policy failed the
 first time it was tried for real. The shared SSH firewall rule was created and maintained,
 including on a first launch in a project that had never had one, which is the only launch that
@@ -444,6 +445,14 @@ permissions no launch has exercised, and `ipStableAcrossStop: false` — the cla
 ephemeral external IP is released on stop and a different one assigned on start — remains read
 from Google's documentation rather than watched. Treat that one row of
 [the capability matrix](capability-matrix.md) as reasoning, and the rest of this page as checked.
+
+**The evidence is weaker in form than AWS's and Hetzner's, and you should know how.** Those two
+have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and
+[`spike/recordings/`](../../spike/recordings/) that you can read; this run was driven by hand and
+through the MCP server, and **no transcript of it was recorded into the repository**. What is
+written above is a report of it, not a thing you can check for yourself. Hetzner goes further
+still — it is re-run nightly, so its claim is continuous rather than dated. Wiring a GCP leg into
+that nightly is tracked and not yet done.
 
 Two smaller things the run did not settle, both harmless:
 

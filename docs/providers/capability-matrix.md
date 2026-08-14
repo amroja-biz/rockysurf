@@ -57,9 +57,14 @@ values remain as well-founded as they were — `stop` is `instances.stop`, and
 reasoning rather than observation. A lifecycle run is not evidence for a power cycle it never
 performed, and flipping a whole column on the strength of one is the move this table exists to
 prevent. `userDataMaxBytes` is unchanged and undaggered: Google's documented
-per-metadata-value ceiling, structural and never approached. See
-[the status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) for
-the run in full.
+per-metadata-value ceiling, structural and never approached.
+
+One difference in the *form* of the evidence, since this table is where people come to compare
+it: `aws` and `hetzner` have committed transcripts you can read, and `hetzner` is re-run nightly.
+The GCP run was driven by hand and through the MCP server, and no transcript of it was recorded
+into the repository — what backs the column is a report of a run rather than an artefact of one.
+[The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) has it
+in full.
 
 `byo` is now **implemented** (`@rockysurf/provider-byo`, `rockysurf-ftl9.3`) and its column is
 enforced by that package's tests rather than being a specification. Like `azure` it has no
