@@ -4,11 +4,15 @@ import {
   RegistryIndexError,
   buildRegistryIndex,
   bundledPacksDir,
+  describePack,
   formatFindings,
   lintPacksDir,
+  loadPacksFromDir,
   renderRegistryIndex,
   type IndexSourceDir,
   type LintReport,
+  type PackDisclosure,
+  type ToolDefinition,
 } from '@rockysurf/core'
 import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './pack-smoke.js'
 
@@ -64,6 +68,14 @@ const USAGE = `usage: rockysurf pack <lint|check|index> [options]
                 journal in between, and require the second run to change nothing. Proves
                 idempotency. Needs a Docker daemon.
 
+  describe <dir> Say what a pack DOES: every script it runs, which of them run as root, and
+                every URL those scripts fetch. The same derivation the control plane shows an
+                operator before they consent to an install, so a reviewer of a community pull
+                request sees what the person installing it will see.
+
+                  rockysurf pack describe packs --pack my-pack
+                  rockysurf pack describe packs --pack my-pack --json
+
   index         Generate a pack registry's index.json from its pack directories. Run by the
                 registry's CI on merge, never by hand: it records a sha256 per pack, and a
                 hand-written index describes files it no longer matches.
@@ -84,6 +96,8 @@ Options:
   --pack <id>          Check only this pack (check only).
   --arch <amd64|arm64> Architecture to run under (check only; defaults to this machine's).
   --keep               Leave the container and logs behind for inspection (check only).
+  --markdown           Render the description as markdown, for posting into a pull request
+                       (describe only). --json gives the raw derivation instead.
   --source <dir>       A directory whose packs go into the index, recorded under that path.
                        Repeatable (index only).
   --out <path>         Where to write the index. Omit to print it (index only).
@@ -137,6 +151,7 @@ export function runPackCommand(argv: string[], io: PackCommandIo): number {
   if (subcommand === 'lint') return runLint(rest, io)
   if (subcommand === 'check') return runCheck(rest, io)
   if (subcommand === 'index') return runIndex(rest, io)
+  if (subcommand === 'describe') return runDescribe(rest, io)
   io.err(USAGE)
   return 1
 }
@@ -279,6 +294,171 @@ function runIndex(argv: string[], io: PackCommandIo): number {
   io.err(`wrote ${out}`)
   return 0
 }
+
+/**
+ * `rockysurf pack describe` — what a pack does to a box, derived rather than asserted.
+ *
+ * THE POINT IS THAT A REVIEWER SEES WHAT AN OPERATOR SEES. The control plane shows every script
+ * verbatim before an install, plus which steps run as root and every URL the scripts fetch
+ * (packs/disclosure.ts, ADR-0006). A maintainer reading a community pull request is making a
+ * related judgement with worse tooling — a raw YAML diff — and maintainer review is one of the
+ * three things the trust model actually leans on. This is the same derivation, on the command
+ * line, so a registry's CI can put it in front of them.
+ *
+ * THE SPLIT BETWEEN DEFINED AND REFERENCED TOOLS is what makes the markdown readable. A pack
+ * that borrows nine base tools would otherwise bury its own twenty lines under six hundred that
+ * a reviewer has read a hundred times. So the scripts shown in full are the ones the pack FILE
+ * introduces, and the borrowed ones are named and counted. `--json` carries the whole thing, and
+ * is what an operator's own page is built from — nothing is hidden, only ordered.
+ *
+ * NEITHER FORM IS A VERDICT. It reports what the scripts say they do; deciding whether that is
+ * acceptable is the reader's job, and the caveat travels with the output because a URL list
+ * derived from shell cannot be complete.
+ */
+function runDescribe(argv: string[], io: PackCommandIo): number {
+  const dirs = resolveDirs(argv, io)
+  if (!dirs) return 1
+
+  // Validated through `lintPacksDir` rather than the raw loader, so "does not validate" means
+  // exactly what `pack lint` means — including resolving the shared base toolchain, without
+  // which every well-behaved pack looks broken for referencing tools it correctly did not
+  // define. A pack the runtime would refuse cannot be described honestly.
+  const report = lintPacksDir({
+    dir: dirs.dir,
+    ...(dirs.basePacksDirs.length > 0 ? { basePacksDirs: dirs.basePacksDirs } : {}),
+  })
+  if (report.findings.length > 0) {
+    io.err(`${dirs.dir} does not validate, so it cannot be described:`)
+    io.err(formatFindings(report.findings))
+    return 2
+  }
+
+  const loaded = loadPacksFromDir(dirs.dir)
+
+  const only = flagValue(argv, '--pack')
+  const packs = loaded.packs.filter((p) => !only || p.packId === only)
+  if (packs.length === 0) {
+    io.err(only ? `no pack called "${only}" in ${dirs.dir}` : `no packs found in ${dirs.dir}`)
+    return 2
+  }
+
+  // Base tools are resolvable but not defined here, exactly as at install time: a pack
+  // referencing `claude-code` runs that tool's script too, and a description that omitted it
+  // would show a reviewer less than will actually happen.
+  const known = new Map<string, ToolDefinition>()
+  for (const dir of dirs.basePacksDirs) {
+    for (const tool of loadPacksFromDir(dir).tools.values()) if (!known.has(tool.toolId)) known.set(tool.toolId, strip(tool))
+  }
+  for (const tool of loaded.tools.values()) known.set(tool.toolId, strip(tool))
+
+  const described = packs.map((pack) => {
+    const own = [...loaded.tools.values()].filter((t) => t.sourceFile === pack.sourceFile).map(strip)
+    const { sourceFile: _dropped, ...packFields } = pack
+    return {
+      packId: pack.packId,
+      definesTools: own.map((t) => t.toolId),
+      disclosure: describePack({ file: { version: 1, pack: packFields, tools: own }, knownTools: known }),
+    }
+  })
+
+  if (argv.includes('--json')) {
+    io.out(JSON.stringify(described.length === 1 ? described[0] : described, null, 2))
+    return 0
+  }
+  for (const entry of described) io.out(render(entry, argv.includes('--markdown')))
+  return 0
+}
+
+/** `sourceFile` is provenance the loader attaches, not part of the frozen format. */
+function strip(tool: ToolDefinition & { sourceFile?: string }): ToolDefinition {
+  const { sourceFile: _dropped, ...rest } = tool
+  return rest
+}
+
+function render(
+  entry: { packId: string; definesTools: string[]; disclosure: PackDisclosure },
+  markdown: boolean,
+): string {
+  const { disclosure } = entry
+  const defines = new Set(entry.definesTools)
+  const borrowed = disclosure.tools.filter((t) => !defines.has(t.toolId))
+  const own = disclosure.tools.filter((t) => defines.has(t.toolId))
+  const h = (text: string) => (markdown ? `## ${text}` : text)
+  const code = (text: string) => (markdown ? ['```bash', text.trimEnd(), '```'].join('\n') : indent(text))
+
+  const lines: string[] = []
+  lines.push(markdown ? `# What \`${disclosure.name}\` does` : `${disclosure.name} (${disclosure.packId})`)
+  lines.push('')
+  lines.push(
+    `Runs **${disclosure.tools.length}** install step(s), of which **${disclosure.rootStepCount}** run as root.`
+      .replace(/\*\*/g, markdown ? '**' : ''),
+  )
+  lines.push('')
+
+  lines.push(h('URLs these scripts fetch'))
+  lines.push('')
+  if (disclosure.fetchesUrls.length === 0) lines.push('No download URL appears literally in them.')
+  else for (const url of disclosure.fetchesUrls) lines.push(markdown ? `- \`${url}\`` : `  ${url}`)
+  lines.push('')
+  // Carried in EVERY form. A list of URLs without this sentence tells a reader they have seen
+  // every download, and a script that builds a URL from a variable makes that false.
+  lines.push(
+    markdown
+      ? '> This list is derived by reading the scripts and **cannot be complete** — a script that'
+        + ' builds a URL from a variable will not appear above. The scripts themselves are what runs.'
+        // Same words in both forms, deliberately. The caveat is the load-bearing sentence of
+        // the whole derivation; a plain-text rendering that softened it would be a second,
+        // weaker promise for whoever happens to read that one.
+      : '  NOTE: this list is derived by reading the scripts and cannot be complete — a script'
+        + '\n  that builds a URL from a variable will not appear. The scripts themselves are'
+        + '\n  what runs.',
+  )
+  lines.push('')
+
+  if (own.length > 0) {
+    lines.push(h(`Scripts this pack introduces (${own.length})`))
+    lines.push('')
+    for (const tool of own) {
+      lines.push(markdown ? `### \`${tool.toolId}\` — runs as \`${tool.runAs}\`` : `${tool.toolId} (runs as ${tool.runAs})`)
+      lines.push(tool.description)
+      lines.push('')
+      lines.push(code(tool.installScript))
+      if (tool.setupScript) {
+        lines.push('')
+        lines.push(markdown ? '_setup, after any repositories are cloned:_' : '  setup, after any repositories are cloned:')
+        lines.push(code(tool.setupScript))
+      }
+      lines.push('')
+    }
+  }
+
+  if (borrowed.length > 0) {
+    // Named and counted rather than dumped: a reviewer has read these before, and burying the
+    // twenty lines under review beneath six hundred they have not changed is how a review
+    // becomes a scroll.
+    lines.push(h(`Tools it borrows, defined elsewhere (${borrowed.length})`))
+    lines.push('')
+    lines.push(borrowed.map((t) => (markdown ? `\`${t.toolId}\`` : t.toolId)).join(', '))
+    lines.push('')
+    lines.push(
+      markdown
+        ? '_Their scripts run too. `--json` carries them in full._'
+        : '  Their scripts run too. --json carries them in full.',
+    )
+    lines.push('')
+  }
+
+  if (disclosure.referencesTools.length > 0) {
+    lines.push(
+      `${markdown ? '**Unresolved:** ' : 'UNRESOLVED: '}${disclosure.referencesTools.join(', ')}` +
+        ' — nothing here defines these, so an installation without them would leave those steps out.',
+    )
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
+const indent = (text: string) => text.trimEnd().split('\n').map((l) => `    ${l}`).join('\n')
 
 function runCheck(argv: string[], io: PackCommandIo): number {
   const dirs = resolveDirs(argv, io)

@@ -224,6 +224,98 @@ describe('rockysurf pack check', () => {
   })
 })
 
+describe('rockysurf pack describe', () => {
+  /**
+   * The reviewer-side half of the disclosure (rockysurf-arym.8). What the control plane shows an
+   * operator before they consent, on the command line, so a registry's CI can put it in front of
+   * whoever is reviewing a community pull request.
+   */
+  const OWN = {
+    ...TOOL,
+    toolId: 'my-tool',
+    runAs: 'rocky',
+    installScript: 'curl -fsSL https://example.com/install.sh | sh\n',
+  }
+  const community = () =>
+    dirWith({
+      'my-pack.yaml': {
+        version: 1,
+        pack: {
+          packId: 'my-pack',
+          name: 'My Pack',
+          tools: ['claude-code', 'my-tool'],
+          displayOrder: 9,
+          enabled: true,
+        },
+        tools: [OWN],
+      },
+    })
+
+  it('reports the root-step count and every URL the scripts fetch', () => {
+    const io = capture()
+    expect(runPackCommand(['describe', community(), '--pack', 'my-pack'], io.io)).toBe(0)
+    const out = io.out.join('\n')
+    expect(out).toContain('https://example.com/install.sh')
+    // claude-code and its own dependencies run as root; my-tool does not.
+    expect(out).toMatch(/install step\(s\), of which \d+ run as root/)
+  })
+
+  it('shows the pack’s OWN scripts in full and only names the ones it borrows', () => {
+    // A pack borrowing nine base tools would otherwise bury its own twenty lines under six
+    // hundred a reviewer has read a hundred times, which is how a review becomes a scroll.
+    const io = capture()
+    runPackCommand(['describe', community(), '--pack', 'my-pack', '--markdown'], io.io)
+    const out = io.out.join('\n')
+    expect(out).toContain('curl -fsSL https://example.com/install.sh')
+    expect(out).toContain('Tools it borrows, defined elsewhere')
+    expect(out).toContain('`claude-code`')
+    // The borrowed tool's script body is NOT dumped into the comment.
+    expect(out).not.toContain('claude-code@latest')
+  })
+
+  it('carries the incompleteness caveat in every form', () => {
+    // A list of URLs without this sentence tells a reader they have seen every download, and a
+    // script that builds one from a variable makes that false. It travels with the output.
+    for (const extra of [[], ['--markdown']]) {
+      const io = capture()
+      runPackCommand(['describe', community(), '--pack', 'my-pack', ...extra], io.io)
+      expect(io.out.join('\n')).toContain('cannot be complete')
+    }
+  })
+
+  it('emits the whole derivation under --json, matching what an operator’s page is built from', () => {
+    const io = capture()
+    expect(runPackCommand(['describe', community(), '--pack', 'my-pack', '--json'], io.io)).toBe(0)
+    const parsed = JSON.parse(io.out.join('\n'))
+    expect(parsed.packId).toBe('my-pack')
+    expect(parsed.definesTools).toEqual(['my-tool'])
+    // Nothing is hidden by the markdown split — the borrowed tools are all here.
+    expect(parsed.disclosure.tools.length).toBeGreaterThan(1)
+    expect(parsed.disclosure.summaryIsComplete).toBe(false)
+  })
+
+  it('refuses to describe a pack that does not validate', () => {
+    // A pack the runtime would refuse cannot be described honestly, and 2 says "could not run"
+    // rather than "the pack failed a check".
+    const io = capture()
+    const dir = dirWith({ 'a-pack.yaml': { version: 1, pack: { ...PACK, tools: ['nope'] }, tools: [] } })
+    expect(runPackCommand(['describe', dir], io.io)).toBe(2)
+    expect(io.err.join('\n')).toContain('does not validate')
+  })
+
+  it('resolves the base toolchain, so a well-behaved pack is describable at all', () => {
+    // Without this it would report every correctly-referenced base tool as unknown and refuse —
+    // the same trap the lint's --base-packs default exists for.
+    const io = capture()
+    expect(runPackCommand(['describe', community(), '--pack', 'my-pack'], io.io)).toBe(0)
+  })
+
+  it('exits 2 when no pack matches --pack', () => {
+    const io = capture()
+    expect(runPackCommand(['describe', community(), '--pack', 'nope'], io.io)).toBe(2)
+  })
+})
+
 describe('rockysurf pack index', () => {
   /**
    * `--source` paths are resolved against the CWD, because the path recorded in the index has
