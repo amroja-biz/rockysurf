@@ -1,5 +1,16 @@
+import { existsSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { formatFindings, lintPacksDir, type LintReport } from '@rockysurf/core'
+import {
+  RegistryIndexError,
+  TRUST_TIERS,
+  buildRegistryIndex,
+  formatFindings,
+  lintPacksDir,
+  renderRegistryIndex,
+  type IndexSourceDir,
+  type LintReport,
+  type TrustTier,
+} from '@rockysurf/core'
 import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './pack-smoke.js'
 
 /**
@@ -40,7 +51,7 @@ export interface PackCommandIo {
   err: (line: string) => void
 }
 
-const USAGE = `usage: rockysurf pack <lint|check> <dir> [options]
+const USAGE = `usage: rockysurf pack <lint|check|index> [options]
 
   lint <dir>    Validate every pack file in <dir>: the frozen schema, ids, cross-file
                 references, and the mechanical half of the four author rules. No Docker.
@@ -48,6 +59,14 @@ const USAGE = `usage: rockysurf pack <lint|check> <dir> [options]
   check <dir>   Run each pack twice in a stock ubuntu:24.04 container, discarding the resume
                 journal in between, and require the second run to change nothing. Proves
                 idempotency. Needs a Docker daemon.
+
+  index         Generate a pack registry's index.json from its pack directories. Run by the
+                registry's CI on merge, never by hand — the trust tier is written here, and a
+                tier a contributor can set on their own pack is not a tier.
+
+                  rockysurf pack index --source packs/official=official \\
+                                       --source packs/community=community \\
+                                       --out index.json
 
 Options:
   --base-packs <dir>   A directory whose tools may be REFERENCED but which is not itself under
@@ -57,6 +76,9 @@ Options:
   --pack <id>          Check only this pack (check only).
   --arch <amd64|arm64> Architecture to run under (check only; defaults to this machine's).
   --keep               Leave the container and logs behind for inspection (check only).
+  --source <dir>=<tier>  A directory to index and the trust tier its packs get: one of
+                       ${TRUST_TIERS.join(', ')}. Repeatable (index only).
+  --out <path>         Where to write the index. Omit to print it (index only).
   --json               Machine-readable output on stdout.
 
 Neither command is a security scan: install scripts are arbitrary root-privileged shell and no
@@ -86,7 +108,7 @@ function flagValues(argv: string[], flag: string): string[] {
 
 /** The first non-flag argument: the directory. `--flag value` pairs are stepped over. */
 function positional(argv: string[]): string | undefined {
-  const takesValue = new Set(['--base-packs', '--pack', '--arch'])
+  const takesValue = new Set(['--base-packs', '--pack', '--arch', '--source', '--out'])
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!
     if (arg.startsWith('-')) {
@@ -104,6 +126,7 @@ export function runPackCommand(argv: string[], io: PackCommandIo): number {
   const [subcommand, ...rest] = argv
   if (subcommand === 'lint') return runLint(rest, io)
   if (subcommand === 'check') return runCheck(rest, io)
+  if (subcommand === 'index') return runIndex(rest, io)
   io.err(USAGE)
   return 1
 }
@@ -159,6 +182,67 @@ function summarize(report: LintReport): string {
   for (const finding of report.findings) byRule.set(finding.rule, (byRule.get(finding.rule) ?? 0) + 1)
   const counts = [...byRule].map(([rule, n]) => `${rule}: ${n}`).join(', ')
   return `pack lint: ${report.findings.length} finding(s) — ${counts}`
+}
+
+/**
+ * `rockysurf pack index` — render a registry's `index.json`.
+ *
+ * A `--source` is a directory and the tier its packs get: `packs/community=community`. The
+ * DIRECTORY PATH ON DISK AND THE PATH RECORDED IN THE INDEX ARE THE SAME STRING, deliberately.
+ * Core fetches `<registry base URL>/<path>`, so the index only describes a fetchable file if
+ * the generator was run from the registry's root — and letting the two diverge would produce an
+ * index that validates, commits cleanly, and 404s for every operator.
+ */
+function runIndex(argv: string[], io: PackCommandIo): number {
+  const specs = flagValues(argv, '--source')
+  if (specs.length === 0) {
+    io.err('pack index needs at least one --source <dir>=<tier>')
+    io.err(USAGE)
+    return 1
+  }
+
+  const sources: IndexSourceDir[] = []
+  for (const spec of specs) {
+    const separator = spec.lastIndexOf('=')
+    if (separator < 1) {
+      io.err(`--source must be <dir>=<tier>, got "${spec}"`)
+      return 1
+    }
+    const prefix = spec.slice(0, separator).replace(/\/+$/, '')
+    const tier = spec.slice(separator + 1)
+    if (!(TRUST_TIERS as readonly string[]).includes(tier)) {
+      io.err(`--source tier must be one of ${TRUST_TIERS.join(', ')}, got "${tier}"`)
+      return 1
+    }
+    // A source that is not there is a mistake, not an empty tier. The way this command fails
+    // silently is a CI job that renames a directory and publishes an index missing half the
+    // registry — every operator's shop quietly loses its community packs and nothing errors.
+    if (!existsSync(prefix)) {
+      io.err(`--source directory "${prefix}" does not exist (run this from the registry root)`)
+      return 2
+    }
+    sources.push({ dir: resolve(prefix), prefix, tier: tier as TrustTier })
+  }
+
+  let rendered: string
+  try {
+    rendered = renderRegistryIndex(buildRegistryIndex({ sources }))
+  } catch (err) {
+    if (err instanceof RegistryIndexError) {
+      io.err(err.message)
+      return 1
+    }
+    throw err
+  }
+
+  const out = flagValue(argv, '--out')
+  if (!out) {
+    io.out(rendered.trimEnd())
+    return 0
+  }
+  writeFileSync(resolve(out), rendered)
+  io.err(`wrote ${out}`)
+  return 0
 }
 
 function runCheck(argv: string[], io: PackCommandIo): number {

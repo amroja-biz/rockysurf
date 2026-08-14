@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -176,6 +176,103 @@ describe('rockysurf pack check', () => {
     const io = capture()
     expect(runPackCommand(['check', shippedPacksDir, '--pack', 'not-a-pack'], io.io)).toBe(2)
     expect(io.err.join('\n')).toContain('no pack called "not-a-pack"')
+  })
+})
+
+describe('rockysurf pack index', () => {
+  /**
+   * `--source` paths are resolved against the CWD, because the path recorded in the index has
+   * to be the path a client fetches — which only holds if the generator ran from the registry
+   * root. So these tests chdir, and restore.
+   */
+  const inDir = <T,>(dir: string, fn: () => T): T => {
+    const previous = process.cwd()
+    process.chdir(dir)
+    try {
+      return fn()
+    } finally {
+      process.chdir(previous)
+    }
+  }
+
+  function registry(): string {
+    const root = mkdtempSync(join(tmpdir(), 'rockysurf-registry-cli-'))
+    scratchDirs.push(root)
+    mkdirSync(join(root, 'packs/official'), { recursive: true })
+    mkdirSync(join(root, 'packs/community'), { recursive: true })
+    writeFileSync(
+      join(root, 'packs/official/base.yaml'),
+      JSON.stringify({
+        version: 1,
+        pack: { packId: 'base', name: 'Base', tools: ['a-tool'], displayOrder: 1, enabled: true },
+        tools: [TOOL],
+      }),
+    )
+    writeFileSync(
+      join(root, 'packs/community/extra.yaml'),
+      JSON.stringify({
+        version: 1,
+        pack: { packId: 'extra', name: 'Extra', tools: ['a-tool'], displayOrder: 2, enabled: true },
+        tools: [],
+      }),
+    )
+    return root
+  }
+
+  const SOURCES = ['--source', 'packs/official=official', '--source', 'packs/community=community']
+
+  it('writes an index that labels each tier and resolves references across them', () => {
+    const io = capture()
+    const root = registry()
+    const code = inDir(root, () => runPackCommand(['index', ...SOURCES], io.io))
+    expect(code).toBe(0)
+
+    const index = JSON.parse(io.out.join('\n'))
+    expect(index.packs.map((p: { packId: string; tier: string }) => [p.packId, p.tier])).toEqual([
+      ['base', 'official'],
+      ['extra', 'community'],
+    ])
+    expect(index.packs[1].referencesTools).toEqual(['a-tool'])
+  })
+
+  it('writes to --out and says where', () => {
+    const io = capture()
+    const root = registry()
+    const code = inDir(root, () => runPackCommand(['index', ...SOURCES, '--out', 'index.json'], io.io))
+    expect(code).toBe(0)
+    // stdout stays empty so a caller redirecting it to a file does not get the document twice.
+    expect(io.out).toEqual([])
+    expect(io.err.join('\n')).toContain('wrote index.json')
+    expect(JSON.parse(readFileSync(join(root, 'index.json'), 'utf8')).version).toBe(1)
+  })
+
+  it('exits 2 when a --source directory is not there', () => {
+    // The silent-failure shape this guards: a CI job renames a directory, the index publishes
+    // without half the registry, and nothing errors — every operator's shop quietly loses its
+    // community packs.
+    const io = capture()
+    const root = registry()
+    const code = inDir(root, () => runPackCommand(['index', '--source', 'packs/nope=community'], io.io))
+    expect(code).toBe(2)
+    expect(io.err.join('\n')).toContain('does not exist')
+  })
+
+  it.each([
+    ['no sources at all', ['index']],
+    ['a source with no tier', ['index', '--source', 'packs/community']],
+    ['a tier nobody defined', ['index', '--source', 'packs/community=verified']],
+  ])('exits 1 on %s', (_label, argv) => {
+    const io = capture()
+    const root = registry()
+    expect(inDir(root, () => runPackCommand(argv, io.io))).toBe(1)
+  })
+
+  it('exits 1 when a pack in the registry does not load', () => {
+    const io = capture()
+    const root = registry()
+    writeFileSync(join(root, 'packs/community/broken.yaml'), 'pack: [unclosed\n')
+    expect(inDir(root, () => runPackCommand(['index', ...SOURCES], io.io))).toBe(1)
+    expect(io.err.join('\n')).toContain('cannot be indexed')
   })
 })
 
