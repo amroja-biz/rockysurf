@@ -4,7 +4,16 @@
 
 Accepted — 2026-08-14. Implemented by `rockysurf-arym` (GitHub issue #9): the harness commands
 (`arym.2`), the registry client (`arym.3`), the install route and provenance columns (`arym.4`),
-the shop page (`arym.5`). ADR-0004 stands unamended — see "The format does not change" below.
+and the shop page (`arym.5`), all merged.
+
+One half of decision 1 is **not** in place yet: bundling `packs/` into the published tarball is
+`rockysurf-io02`, still open. Until it lands, an installation created by `npx rockysurf` has no
+official packs — not because the decision is wrong but because the packaging has not caught up
+with it. Said here rather than left for a reader to discover, since "official means shipped with
+the release you are running" is the load-bearing sentence of this document and a release that
+ships none cannot honour it.
+
+ADR-0004 stands unamended — see "The format does not change" below.
 
 ## Context
 
