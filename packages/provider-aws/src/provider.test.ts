@@ -317,10 +317,21 @@ describe('provision', () => {
     expect(runInputs()[0]?.KeyName).toBeUndefined()
   })
 
-  it('tags instances AND volumes, so a leaked volume stays attributable', async () => {
+  /**
+   * EVERY RESOURCE THE LAUNCH CREATES CARRIES THE TAGS (rockysurf-b14y).
+   *
+   * `RunInstances` can tag four types — instances, volumes, spot instance requests and network
+   * interfaces — and this launch creates three of them. The ENI was the one left out, which cost
+   * twice over: `listManaged()` walks by tag and so could not have seen an ENI that outlived its
+   * instance, and the published IAM policy had to keep `network-interface/*` in the
+   * UNCONDITIONED `RunInstances` statement, because `aws:RequestTag/managed-by` does not exist
+   * for a resource the request does not tag. Tagging it lets that ARN move back under the tag
+   * condition, which is what makes the policy tighter rather than merely tidier.
+   */
+  it('tags the instance, the volume AND the network interface the launch creates', async () => {
     await provider.provision(spec())
     const tagSpecs = runInputs()[0]?.TagSpecifications ?? []
-    expect(tagSpecs.map((t) => t.ResourceType)).toEqual(['instance', 'volume'])
+    expect(tagSpecs.map((t) => t.ResourceType)).toEqual(['instance', 'volume', 'network-interface'])
     for (const ts of tagSpecs) {
       const tags = Object.fromEntries((ts.Tags ?? []).map((t) => [t.Key, t.Value]))
       expect(tags).toMatchObject({ 'managed-by': 'rockysurf', 'server-id': 'srv-abc123', Name: 'rockysurf-srv-abc123' })
