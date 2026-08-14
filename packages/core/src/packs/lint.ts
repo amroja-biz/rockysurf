@@ -85,7 +85,30 @@ interface ScriptUnderTest {
   id: string
   runAs: string
   body: string
+  /**
+   * `body` with whole-line `#` comments blanked out, for rules about what a script DOES.
+   *
+   * A rule that reads comments cannot tell an instruction from an explanation, and the
+   * explanations in this repository are long: the `api.github.com` rule below would fire on the
+   * three paragraphs in `packs/ai-coding-agents.yaml` that exist precisely to say why that
+   * endpoint is not called (rockysurf-c6cm). A lint whose own documentation trips it is a lint
+   * people learn to route around.
+   *
+   * Lines are blanked rather than removed so a future rule can still report a line number, and
+   * only FULL-line comments go: `curl … # see rockysurf-x` keeps its command, and a `#` inside a
+   * string is left alone rather than guessed at. Existing rules deliberately still read the raw
+   * `body` — narrowing what they match is a change to what the gate catches, and belongs to
+   * whoever is looking at those rules rather than riding along with this one.
+   */
+  commands: string
 }
+
+/** Blank out whole-line `#` comments, preserving line count. See `ScriptUnderTest.commands`. */
+const commandsOnly = (body: string): string =>
+  body
+    .split('\n')
+    .map((line) => (/^\s*#/.test(line) ? '' : line))
+    .join('\n')
 
 const scriptsOf = (tools: Iterable<LoadedTool>): ScriptUnderTest[] =>
   [...tools].flatMap((tool) =>
@@ -96,6 +119,7 @@ const scriptsOf = (tools: Iterable<LoadedTool>): ScriptUnderTest[] =>
         id: `${tool.toolId}.${field}`,
         runAs: tool.runAs,
         body: tool[field]!,
+        commands: commandsOnly(tool[field]!),
       })),
   )
 
@@ -184,6 +208,26 @@ const SCRIPT_RULES: Array<{
       'none, so the first install fails with "Unable to locate package" — use an ' +
       '`apt_update_once`-style stamp (docs/writing-a-pack.md § Rule 1)',
     when: (s) => s.body.includes('apt-get install') && !s.body.includes('apt-updated'),
+  },
+  {
+    rule: 'assumes-too-much',
+    message:
+      'calls api.github.com. A bootstrapping box holds no GitHub token, so the call is ' +
+      'unauthenticated and shares a 60-per-hour quota keyed on SOURCE IP — which on a shared CI ' +
+      'runner or behind NAT is somebody else\'s quota too. Ask the releases/download endpoint ' +
+      'for a pinned version instead: it is a CDN, it has no quota, and a digest can be checked ' +
+      '(rockysurf-pcma, rockysurf-c6cm)',
+    // Read against `commands` rather than `body`: the packs that were fixed carry paragraphs
+    // naming this endpoint to explain why they no longer call it.
+    //
+    // WHAT THIS DOES NOT CATCH, and it is the shape that actually broke the trunk: a script that
+    // pipes a VENDOR'S installer to bash, where the API call lives in the remote file. No regex
+    // over our own text can see inside that. Several shipped packs still pipe installers
+    // (nodesource, claude.ai, opencode), so a rule against the pipe itself would fail main on
+    // day one and is a judgement about trusting vendors rather than about this bug. This rule
+    // catches the direct call and the hand-rolled latest-release lookup, which is the form a new
+    // pack is most likely to write.
+    when: (s) => s.commands.includes('api.github.com'),
   },
 ]
 

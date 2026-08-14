@@ -173,6 +173,11 @@ describe('the four author rules, each with a fixture that breaks it', () => {
       'assumes-too-much' as const,
       { installScript: 'apt-get install -y ripgrep\n' },
     ],
+    [
+      'a latest-release lookup against api.github.com',
+      'assumes-too-much' as const,
+      { installScript: 'v=$(curl -fsSL https://api.github.com/repos/o/r/releases/latest)\n' },
+    ],
     ['the reserved bootstrap flag', 'reserved-field' as const, { bootstrap: true }],
     ['an installOrder outside the documented bands', 'format' as const, { installOrder: 999 }],
   ])('fires on %s', (_label, rule, overrides) => {
@@ -198,6 +203,34 @@ describe('the four author rules, each with a fixture that breaks it', () => {
         'grep -q "/opt/bin" ~/.bashrc || echo "export PATH=$PATH:/opt/bin" >> ~/.bashrc\n',
     })
     expect(rulesFired(compliant)).toEqual([])
+  })
+
+  /**
+   * A rule that reads comments cannot tell an instruction from an explanation (rockysurf-c6cm).
+   *
+   * This is not hypothetical tidiness: the fix that removed the `api.github.com` calls from
+   * `packs/ai-coding-agents.yaml` replaced them with paragraphs naming that endpoint, because a
+   * pinned download with no explanation is a thing the next person quietly reverts. Firing on
+   * those paragraphs would mean the rule's own documentation fails the rule.
+   */
+  it('reads what a script does, not what its comments say about it', () => {
+    const explained = withTool({
+      runAs: 'rocky',
+      installScript:
+        'set -euo pipefail\n' +
+        '# PINNED rather than asking api.github.com, whose quota is keyed on source IP.\n' +
+        'curl -fsSL "https://github.com/o/r/releases/download/v1/r_linux_$ARCH.tar.gz" -o /tmp/t\n',
+    })
+    expect(rulesFired(explained)).toEqual([])
+  })
+
+  it('still fires on a call that shares its line with a comment', () => {
+    // Only WHOLE-line comments are blanked. Otherwise the blindness above becomes a way to hide
+    // a real call by parking a `#` after it.
+    const inline = withTool({
+      installScript: 'curl https://api.github.com/repos/o/r/releases/latest  # just the tag\n',
+    })
+    expect(rulesFired(inline)).toContain('assumes-too-much')
   })
 })
 

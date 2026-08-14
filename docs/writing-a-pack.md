@@ -317,6 +317,7 @@ following exist or are reachable.
 | The AWS CLI, or any cloud SDK | Nothing on the box is cloud-specific by design, and the box may not be on AWS at all | Bundle what you need, or don't need it |
 | Cloud credentials, instance roles, or `s3://` access | The box holds no cloud credentials. A pack that reaches for one is broken on every other provider | Fetch assets over plain HTTPS from a public URL |
 | The instance metadata service (`169.254.169.254`) | The bootstrap design has zero metadata coupling, and user-supplied boxes have no metadata service at all | Read `$ARCH` and the documented environment instead |
+| A GitHub API call to resolve "latest" | `api.github.com` allows 60 unauthenticated requests an hour **per source IP**, and a bootstrapping box never has a token. A shared CI runner or anything behind NAT is spending somebody else's quota too, and the 403 usually surfaces as an unrelated-looking failure in whichever tool is last in `installOrder` | Pin a version and fetch `https://github.com/OWNER/REPO/releases/download/TAG/ASSET`, which is CDN-served, has no quota, and lets you verify a `sha256` |
 | That the box can reach the control plane | The default topology is outbound-only: the control plane connects to the box, never the reverse, and it may sit behind NAT with no public address | Never phone home. Write to stdout; the agent captures it |
 | A desktop, an X server, or a display | Only packs that declare `desktop: xfce` get one | Declare it, or stay headless |
 | A login session for `rocky` — `systemctl --user`, `$XDG_RUNTIME_DIR`, a per-user D-Bus | The agent drops privilege without a PAM session, so no user systemd instance exists to install a user unit into. This is true on a real cloud box, not only in a container | From a `runAs: root` step, `loginctl enable-linger rocky` and wait for `/run/user/<uid>/bus`; the `rocky` step can then use `systemctl --user`. Guard both on `[ -d /run/systemd/system ]` |
@@ -329,6 +330,11 @@ Two more, worth calling out separately:
 - **Pin what you download.** `@latest` and a `main`-branch install script mean the thing CI
   tested is not the thing your users get. Prefer a version tag or a checksum. Cache-busting a
   download URL (appending `?$(date +%s)`) guarantees this problem rather than avoiding it.
+  This applies to a vendor's own `install.sh` as much as to a binary: piping one to `bash`
+  runs code you did not pin and cannot check, and several of them resolve "latest" through the
+  quota above. `beads`, `agent-deck` and `beads-viewer` in `packs/ai-coding-agents.yaml` are the
+  worked examples — each fetches one pinned asset and verifies a digest per architecture.
+  Bypassing an installer means you own the version bump, which is the trade being made.
 - **Secrets come from the environment, and only yours.** If a user supplies an API key for your
   tool, it arrives as an environment variable in your step. Control-plane credentials are never
   exported to install steps. Don't go looking for them, and never write a secret into a
