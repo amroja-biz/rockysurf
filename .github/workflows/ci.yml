@@ -162,7 +162,7 @@ jobs:
       - run: pnpm -r build
       - run: node scripts/verify-tarballs.mjs
 
-  # The BYO provider against a REAL OpenSSH server, in a container (rockysurf-ftl9.10). 70
+  # The BYO provider against a REAL OpenSSH server, in a container (rockysurf-ftl9.10). 75
   # checks, well under two minutes, and — uniquely among this project's real-infrastructure
   # runs — no cloud credentials, no secrets and no spend, which is what makes it the one that
   # can gate a pull request instead of waiting for the nightly.
@@ -171,9 +171,11 @@ jobs:
   # /run/systemd/system. The nightly's cloud runs never reach that path: they both boot systemd.
   # The two are complementary, not redundant.
   #
-  # It needs 127.0.0.1:22 free, because core dials port 22 unconditionally in push mode; the
-  # script preflights that and fails with a message rather than mysteriously. GitHub-hosted
-  # ubuntu runners do not serve SSH, so this holds — on a self-hosted runner it would not.
+  # IT NEEDS NO PARTICULAR PORT FREE (rockysurf-ftl9.15). It used to need 127.0.0.1:22, because
+  # core dialled 22 unconditionally in push mode — rockysurf-ftl9.12 fixed that, and the script
+  # now publishes the container's sshd on a random non-22 port, with --port to pin one. It still
+  # preflights, but for the port it picked. The caveat this paragraph used to carry about
+  # self-hosted runners went with it: not needing 22 makes the job more portable, not less.
   byo-host:
     name: BYO lifecycle (real sshd)
     runs-on: ubuntu-latest
