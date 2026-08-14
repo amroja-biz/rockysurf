@@ -48,6 +48,12 @@ Python bits, tmux, git, the GitHub CLI and so on — that the other five referen
 pack, list those ids in your `pack.tools` rather than redefining them; the loader rejects a
 `toolId` defined in two files.
 
+That is the only thing a pack may not do with tools. **Everything else it installs, it defines
+itself** — a tool is an id, a description and a script, and nothing needs registering anywhere
+first. A pack introducing software this project has never heard of is the normal case, not an
+exception, and it is what the community registry at
+[`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop) exists for.
+
 Every file here is validated on every test run against the same rules the contract asks of
 you, including the mechanical ones: no hardcoded architectures, no `apt-get install` without
 `-y`, no `sudo` inside a `runAs: rocky` script, and no unguarded append to a file.
