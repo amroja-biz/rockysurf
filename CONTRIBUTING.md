@@ -25,13 +25,21 @@ reason.
 
 | step | what it is |
 |---|---|
-| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
+| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-gitignore-anchors.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
 | `pnpm -r typecheck` | `tsc --noEmit` per package |
 | `pnpm -r test` | vitest per package |
 
-The three lint scripts are structural checks that a reviewer would have to remember otherwise:
-core's dependency direction, the published AWS IAM policy matching what the provider actually
-calls, and the AWS SDK staying out of the `npx` install closure.
+The lint scripts are structural checks a reviewer would have to remember otherwise: core's
+dependency direction, the published AWS IAM policy matching what the provider actually calls, the
+AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, and — the
+newest, and a scar — that nothing under a package's `src/` is gitignored.
+
+That last one is `rockysurf-ys0i`. A bare `packs/` in `packages/core/.gitignore` matched
+`src/packs/` too, because a pattern with no slash matches at any depth; a new file there was
+reported as *ignored* rather than untracked, `git add -A` skipped it silently, and a branch was
+pushed importing a module it did not contain. Every visible signal said fine. Anchor directory
+patterns in a per-package `.gitignore` to where the generated thing actually is — `/packs/`, not
+`packs/`.
 
 ### The checks `pnpm run check` does not run
 
