@@ -303,7 +303,7 @@ describe('the sanctioned provider-literal boundary', () => {
   })
 
   it('keeps every provider literal inside the copy helpers', () => {
-    for (const literal of ['aws', 'hetzner', 'byo']) {
+    for (const literal of ['aws', 'azure', 'gcp', 'hetzner', 'byo']) {
       expect(logic).not.toMatch(new RegExp(`['"\`]${literal}['"\`]`))
     }
   })

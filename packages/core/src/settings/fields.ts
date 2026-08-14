@@ -363,6 +363,53 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   },
 
   {
+    path: 'providers.gcp.enabled',
+    kind: 'boolean',
+    writable: true,
+    help:
+      'Whether Rocky Surf may create Compute Engine instances. Credentials come from Application ' +
+      'Default Credentials — the same chain `gcloud` uses — and never from this file.',
+  },
+  {
+    path: 'providers.gcp.projectId',
+    kind: 'string',
+    writable: true,
+    help:
+      'The project every instance lives in. Required whenever GCP is enabled, and never inferred: ' +
+      'a Google credential can be valid for many projects and names none of them, so a guess here ' +
+      'would create billable machines in a project you did not pick.',
+  },
+  {
+    path: 'providers.gcp.zone',
+    kind: 'string',
+    writable: true,
+    help:
+      'The single zone new instances are created in. The default is us-central1-a rather than -c, ' +
+      'deliberately — arm64 (Tau T2A) exists in only eight zones, and us-central1-c is not one of ' +
+      'them.',
+  },
+  {
+    path: 'providers.gcp.sshAllowedCidr',
+    kind: 'string',
+    writable: true,
+    help:
+      'Which network may reach SSH on the boxes GCP creates here, as a CIDR — your own address as ' +
+      'a /32 is the usual answer. Required whenever GCP is enabled, with no default on purpose.',
+    warning:
+      'This is a firewall rule: it decides which network may reach SSH on every box GCP creates ' +
+      'here. Your own address as a /32 is the usual answer.',
+  },
+  {
+    path: 'providers.gcp.sizes',
+    kind: 'stringList',
+    writable: false,
+    help:
+      'The machine types offered on the New Server page. Unset offers everything the zone sells; ' +
+      't2a-standard-* are ARM (Tau T2A) and are the cheap, fast default.',
+    reason: 'An allowlist of machine types, edited in the file — this page does not surface a list editor for it.',
+  },
+
+  {
     path: 'providers.byo.enabled',
     kind: 'boolean',
     writable: true,
@@ -516,6 +563,14 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
     help:
       'Virtual machines in one Azure region, in one resource group you create. Credentials come from ' +
       'the environment, a managed identity, or `az login`, so there is no credential to type here.',
+  },
+  {
+    id: 'providers.gcp',
+    title: 'Google Cloud',
+    help:
+      'Compute Engine instances in one zone, in one project you name. Credentials come from ' +
+      'Application Default Credentials — the same chain `gcloud` uses — so there is no credential ' +
+      'to type here.',
   },
   {
     id: 'providers.byo',

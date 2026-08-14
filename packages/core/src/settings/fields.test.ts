@@ -142,6 +142,62 @@ describe('the inventory is internally consistent', () => {
 })
 
 /**
+ * NO PROVIDER LANDS INVISIBLE (rockysurf-dl2o).
+ *
+ * The gap this guards against was real: the GCP provider branch added `providers.gcp` to
+ * `config/schema.ts`, the azure branch added its own settings entries the same morning, and
+ * nobody integrated the two — so the Settings page silently had no GCP section, in a file
+ * typecheck cannot defend because nothing requires an inventory entry to exist at all.
+ *
+ * So the expectation is DERIVED, not hand-listed: every provider section the config schema
+ * declares must appear in the settings inventory with at least its `enabled` switch, and must
+ * have a section for the page to draw it in. A provider deliberately kept off the page goes in
+ * `DELIBERATELY_ABSENT` with a written reason, which is what makes an omission a decision
+ * rather than an accident.
+ */
+describe('every provider the config schema declares appears in the settings inventory', () => {
+  /**
+   * Provider sections the page deliberately does not cover, name → reason. Empty today: even
+   * byo — whose nested `hosts` do not fit the flat field model — has its `enabled` switch and
+   * its section, with the hosts drawn as a list. An entry here is a claim that an operator
+   * cannot manage the provider from the page at all, so it costs a sentence saying why.
+   */
+  const DELIBERATELY_ABSENT: Record<string, string> = {}
+
+  const providerNames = Object.keys(configSchema.parse({}).providers)
+
+  it('finds the provider sections, so an empty scan cannot make this vacuous', () => {
+    expect(providerNames).toContain('hetzner')
+    expect(providerNames).toContain('gcp')
+    expect(providerNames.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('gives every provider at least its enabled switch, and a section to draw it in', () => {
+    const fieldPaths = new Set(SETTINGS_FIELDS.map((f) => f.path))
+    const sectionIds = new Set(SETTINGS_SECTIONS.map((s) => s.id))
+    for (const name of providerNames.filter((n) => !(n in DELIBERATELY_ABSENT))) {
+      expect(
+        fieldPaths.has(`providers.${name}.enabled`),
+        `config/schema.ts declares providers.${name}, but fields.ts has no providers.${name}.enabled — ` +
+          'the provider exists and the Settings page cannot even turn it on. Add its fields, or name ' +
+          'it in DELIBERATELY_ABSENT with the reason.',
+      ).toBe(true)
+      expect(
+        sectionIds.has(`providers.${name}`),
+        `providers.${name} has fields but no section, so the page has nowhere to draw them`,
+      ).toBe(true)
+    }
+  })
+
+  it('excludes nothing without a written reason for a provider that exists', () => {
+    for (const [name, reason] of Object.entries(DELIBERATELY_ABSENT)) {
+      expect(providerNames, `${name} is excluded but the schema no longer declares it`).toContain(name)
+      expect(reason.length, `${name} is excluded without a reason worth the name`).toBeGreaterThan(20)
+    }
+  })
+})
+
+/**
  * EVERY FIELD SAYS WHAT IT IS FOR (rockysurf-5qzg, directive 3).
  *
  * `help` is required by `FieldSpec`, so a field added without it does not compile — that is the
@@ -196,6 +252,7 @@ describe('every setting on the page explains itself', () => {
       'providers.hetzner',
       'providers.aws',
       'providers.azure',
+      'providers.gcp',
       'providers.byo',
       'providers.byo.hosts',
       'limits',

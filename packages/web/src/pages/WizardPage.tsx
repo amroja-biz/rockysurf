@@ -354,6 +354,7 @@ function DoneStep({ setup, onFinish }: { setup: SetupState | null; onFinish: () 
 function tokenLabel(id: string): string {
   if (id === 'aws') return 'AWS credentials'
   if (id === 'azure') return 'Azure credentials'
+  if (id === 'gcp') return 'Google Cloud credentials'
   return 'API token'
 }
 
@@ -361,6 +362,7 @@ function tokenPlaceholder(id: string): string {
   if (id === 'hetzner') return 'e.g. LRK9c…'
   if (id === 'aws') return 'AWS profile name'
   if (id === 'azure') return 'set in your environment, not here'
+  if (id === 'gcp') return 'set in your environment, not here'
   return ''
 }
 
@@ -373,6 +375,9 @@ function tokenHint(id: string): string {
   }
   if (id === 'azure') {
     return 'Rocky Surf reads Azure credentials from AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET, from a managed identity, or from `az login` — never from a file. Set subscriptionId, resourceGroup and sshAllowedCidr in rockysurf.config.yaml, and create the resource group first with `az group create`. See docs/providers/azure.md for the least-privilege role.'
+  }
+  if (id === 'gcp') {
+    return 'Rocky Surf reads Google Cloud credentials from Application Default Credentials — `gcloud auth application-default login`, GOOGLE_APPLICATION_CREDENTIALS, or the metadata server — never from a file. Set projectId, zone and sshAllowedCidr in rockysurf.config.yaml; projectId is required and never inferred. See docs/providers/gcp.md for the least-privilege role.'
   }
   return 'The credential this provider uses. It is encrypted before it is stored.'
 }
