@@ -499,41 +499,81 @@ const limitsSchema = section(
 )
 
 /**
- * The pack registry — where the shop's `index.json` is fetched from (rockysurf-arym.3).
+ * Trust labels an operator may put on a registry, in their own config file.
  *
- * REPOINTABLE, because forks are contemplated rather than merely tolerated: TRADEMARK.md
- * invites people to fork under their own name, and a fork whose control plane could only ever
- * browse someone else's registry would be a fork in name only. An organisation running an
- * internal shop points this at their own repository and gets the same behaviour.
+ * `official` is not in this list and cannot be. It means "shipped in the Rocky Surf tarball",
+ * which is a thing no registry can be — the split-horizon ruling on issue #9. Letting a config
+ * entry claim it would let an operator (or anything that could edit their config) dress a
+ * third-party registry up as first-party, which is precisely the confusion the labels exist to
+ * prevent.
+ */
+export const REGISTRY_TRUST = ['community', 'internal'] as const
+export type RegistryTrust = (typeof REGISTRY_TRUST)[number]
+
+/** The shop, which is the only registry an installation has until an operator adds one. */
+export const DEFAULT_REGISTRY_URL = 'https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main'
+
+const registrySourceSchema = z.strictObject({
+  /** Shown in the UI and used to attribute an installed pack. Unique within the list. */
+  name: z.string().trim().min(1),
+  /**
+   * The base a pack's `path` is resolved against, so `<url>/index.json` is the listing and
+   * `<url>/<path>` is the file.
+   *
+   * raw.githubusercontent.com and NOT api.github.com for the default (rockysurf-c6cm): the
+   * unauthenticated GitHub API allows 60 requests per hour shared across everything on one
+   * source IP, and a control plane behind a corporate NAT would exhaust that before it had
+   * listed the shop once. The raw host is a CDN with no such quota, which is also why a registry
+   * publishes a generated index rather than expecting a client to walk a tree.
+   */
+  url: z
+    .url({ error: 'a registry source url must be an http(s) URL' })
+    // A trailing slash would produce `…//index.json`, which most servers tolerate and some do
+    // not. Normalised once here rather than at each call site.
+    .transform((v) => v.replace(/\/+$/, '')),
+  /**
+   * WHAT THE OPERATOR SAYS THIS REGISTRY IS, and the only place a registry's trustworthiness is
+   * recorded.
+   *
+   * Deliberately not a field in the registry's own `index.json`. A trust label published by a
+   * registry is a claim about trustworthiness written by the party being trusted, and it can
+   * only ever be as good as the document containing it. Here it is a line in a file the operator
+   * owns, alongside the URL they chose to add — so an internal shop can be labelled `internal`
+   * and mean it, and nothing a registry publishes can promote itself.
+   */
+  trust: z.enum(REGISTRY_TRUST).default('community'),
+})
+
+/**
+ * The pack registries this installation browses (rockysurf-arym.3).
  *
- * SWITCHABLE OFF, because an air-gapped installation is a supported way to run this. `enabled:
- * false` means the shop routes report a disabled registry; it does not mean a failed fetch, and
- * an operator should be able to tell those apart.
+ * A LIST, with the community shop as the sole default, so an organisation can add an internal
+ * registry without giving up the public one. Config-only for now: there is no UI for adding a
+ * registry, because a registry is a thing an operator should have to write down.
  *
- * NOTHING HERE IS READ AT BOOT. The registry is fetched when an admin opens the shop, never
+ * NOTHING HERE IS READ AT BOOT. The registries are fetched when an admin opens the shop, never
  * during startup. A control plane behind a proxy, or with no route off the machine at all, must
  * boot exactly as fast and as successfully as it does now — a network call on the startup path
- * would turn every outage of a third party into an outage of this one.
+ * would turn every outage of a third party into an outage of this one. The owner has waived the
+ * offline concern for the product's main job; this is not that, and the boot path stays clean.
+ *
+ * SWITCHABLE OFF, because an air-gapped installation is a supported way to run this. `enabled:
+ * false` means the shop reports a disabled registry; it does not mean a failed fetch, and an
+ * operator should be able to tell those apart. Packs bundled in the tarball and packs created in
+ * the admin UI are unaffected either way.
  */
 const registrySchema = section(
   z.strictObject({
     enabled: z.boolean().default(true),
-    /**
-     * The base a pack's `path` is resolved against, so `<baseUrl>/<path>` is the file and
-     * `<baseUrl>/index.json` is the listing.
-     *
-     * raw.githubusercontent.com and NOT api.github.com, deliberately (rockysurf-c6cm). The
-     * unauthenticated GitHub API allows 60 requests per hour shared across everything on one
-     * source IP; a control plane behind a corporate NAT would exhaust that before it had listed
-     * the shop once. The raw host is a CDN with no such quota, which is also why the registry
-     * publishes a generated index instead of expecting a client to walk a tree.
-     */
-    baseUrl: z
-      .url({ error: 'registry.baseUrl must be an http(s) URL' })
-      .default('https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main')
-      // A trailing slash would produce `…//index.json`, which most servers tolerate and some
-      // do not. Normalised once here rather than at each of the call sites.
-      .transform((v) => v.replace(/\/+$/, '')),
+    sources: z
+      .array(registrySourceSchema)
+      .default([{ name: 'Rocky Surf Pack Shop', url: DEFAULT_REGISTRY_URL, trust: 'community' }])
+      // `registry: { sources: }` with nothing after it parses as null, and an operator who
+      // wrote that meant "none", not "give me the default back".
+      .or(z.null().transform(() => [] as z.output<typeof registrySourceSchema>[]))
+      .refine((list) => new Set(list.map((s) => s.name)).size === list.length, {
+        error: 'two registry sources share a name; names identify where an installed pack came from',
+      }),
     /**
      * How long a fetched index is reused before the next request refetches it, in seconds.
      *
@@ -565,5 +605,6 @@ export type ProvidersConfig = Config['providers']
 export type LimitsConfig = Config['limits']
 export type McpConfig = Config['mcp']
 export type RegistryConfig = Config['registry']
+export type RegistrySource = RegistryConfig['sources'][number]
 export type McpScope = McpConfig['scopes'][number]
 export type ByoHost = Config['providers']['byo']['hosts'][number]

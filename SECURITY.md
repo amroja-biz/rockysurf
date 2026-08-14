@@ -335,10 +335,18 @@ Its residual risk is documented in the module and repeated below.
 
 ### The pack registry
 
-The same guard covers the registry (`registry.baseUrl`, default
-`raw.githubusercontent.com/amroja-biz/rockysurf-shop/main`): every fetch of `index.json` and of a
-pack file goes through `fetchPublicText`, so a registry URL resolving to a private address is
-refused however it is configured. Nothing is fetched at boot — only when an admin opens the shop.
+The same guard covers every configured pack registry (`registry.sources[].url`, defaulting to the
+community shop alone): each fetch of an `index.json` and of a pack file goes through
+`fetchPublicText`, so a registry URL resolving to a private address is refused however it is
+configured — including an internal registry on an RFC1918 address, because vouching for a host is
+a decision with its own design rather than a default to fall into. Nothing is fetched at boot,
+only when an admin opens the shop.
+
+A registry's packs carry the trust label the OPERATOR wrote next to that registry in their config
+file, never one the registry published about itself: a trust field inside a registry's own index
+would be a claim about trustworthiness written by the party being trusted. `official` is not a
+label a registry may be given, because it means "shipped in the tarball" and no registry can be
+that.
 
 Each index entry carries a SHA-256 of the pack file it names, verified after fetch; a mismatch is
 refused and named. **This is a pin, not a signature.** It proves the bytes served are the bytes

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { configSchema, type RegistryConfig } from '../config/schema.js'
+import { DEFAULT_REGISTRY_URL, configSchema, type RegistryConfig } from '../config/schema.js'
 import { createRegistryClient } from './registry.js'
 import { sha256Text } from './registry-index.js'
 import type { SafeFetchResult } from './safe-fetch.js'
@@ -7,11 +7,14 @@ import type { SafeFetchResult } from './safe-fetch.js'
 /**
  * The registry client.
  *
- * Most of this is about what happens when the registry is WRONG, because a registry is a third
+ * Most of this is about what happens when a registry is WRONG, because a registry is a third
  * party: it can be offline, it can publish a malformed index, it can describe a file it does not
- * actually serve. None of those may become an exception out of this control plane, and none of
- * them may result in something being installed. So the assertions are mostly refusals, each
- * naming what a caller would do about it.
+ * actually serve. None of those may become an exception out of this control plane, none may
+ * result in something being installed, and none may blank out the registries that are fine.
+ *
+ * The other half is the trust label, which under the owner's split-horizon ruling comes from the
+ * operator's config and never from the registry's own document. Several tests exist only to pin
+ * that down, because it is the kind of property that quietly stops holding.
  */
 
 const PACK_YAML = `version: 1
@@ -40,8 +43,7 @@ const entry = (overrides: Record<string, unknown> = {}) => ({
   packId: 'rust-dev',
   name: 'Rust Dev',
   description: 'Installs 1 tool(s): rustup',
-  tier: 'community',
-  path: 'packs/community/rust-dev.yaml',
+  path: 'packs/rust-dev.yaml',
   sha256: sha256Text(PACK_YAML),
   definesTools: ['rustup'],
   referencesTools: [],
@@ -71,59 +73,146 @@ function stubFetch(responses: Record<string, string | { fail: string }>) {
   return { fetchText, calls }
 }
 
-const BASE = 'https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main'
+const BASE = DEFAULT_REGISTRY_URL
+const SHOP = 'Rocky Surf Pack Shop'
+const PACK_URL = `${BASE}/packs/rust-dev.yaml`
+const OK = { [`${BASE}/index.json`]: index(), [PACK_URL]: PACK_YAML }
 
-describe('the default registry', () => {
+const INTERNAL = { name: 'Acme internal', url: 'https://packs.acme.example/shop', trust: 'internal' }
+
+describe('the default configuration', () => {
+  it('is the community shop, and only it', () => {
+    const { sources, enabled } = config()
+    expect(enabled).toBe(true)
+    expect(sources).toEqual([{ name: SHOP, url: DEFAULT_REGISTRY_URL, trust: 'community' }])
+  })
+
   it('points at raw.githubusercontent.com, never the GitHub API', () => {
     // rockysurf-c6cm: the unauthenticated API allows 60 requests an hour shared across one
     // source IP. A control plane behind a corporate NAT would spend that before it had listed
     // the shop once, and the failure would look like a broken registry rather than a quota.
-    const { baseUrl } = config()
-    expect(new URL(baseUrl).host).toBe('raw.githubusercontent.com')
-    expect(baseUrl).not.toContain('api.github.com')
+    expect(new URL(config().sources[0]!.url).host).toBe('raw.githubusercontent.com')
+    expect(config().sources[0]!.url).not.toContain('api.github.com')
   })
 
-  it('is enabled by default and normalises a trailing slash away', () => {
-    expect(config().enabled).toBe(true)
-    expect(config({ baseUrl: 'https://example.com/shop/' }).baseUrl).toBe('https://example.com/shop')
+  it('normalises a trailing slash away', () => {
+    // `…//index.json` is tolerated by most servers and not by all. Normalised once, at parse.
+    const { sources } = config({ sources: [{ name: 'x', url: 'https://example.com/shop/' }] })
+    expect(sources[0]!.url).toBe('https://example.com/shop')
+  })
+
+  it('defaults a source with no trust to community, never to something better', () => {
+    const { sources } = config({ sources: [{ name: 'x', url: 'https://example.com/shop' }] })
+    expect(sources[0]!.trust).toBe('community')
+  })
+
+  it('refuses a source claiming to be official', () => {
+    // `official` means "shipped in the tarball", which no registry can be. Allowing a config
+    // entry to claim it would let a third-party registry be dressed as first-party, which is
+    // exactly the confusion the labels exist to prevent.
+    const parsed = configSchema.safeParse({
+      registry: { sources: [{ name: 'x', url: 'https://example.com/s', trust: 'official' }] },
+    })
+    expect(parsed.success).toBe(false)
+  })
+
+  it('refuses two sources sharing a name', () => {
+    // The name is how an installed pack is attributed, and how `getPack` addresses a registry.
+    // Two of them makes both ambiguous.
+    const parsed = configSchema.safeParse({
+      registry: {
+        sources: [
+          { name: 'dup', url: 'https://a.example/s' },
+          { name: 'dup', url: 'https://b.example/s' },
+        ],
+      },
+    })
+    expect(parsed.success).toBe(false)
+  })
+
+  it('treats an explicitly empty source list as none, not as the default', () => {
+    // An operator who wrote `sources:` with everything commented out meant "no registries",
+    // and handing the public shop back would be answering a different question.
+    expect(config({ sources: null }).sources).toEqual([])
   })
 })
 
-describe('fetching the index', () => {
-  it('fetches <baseUrl>/index.json and nothing else', async () => {
-    const { fetchText, calls } = stubFetch({ [`${BASE}/index.json`]: index() })
+describe('browsing', () => {
+  it('fetches <url>/index.json per source and stamps each pack with where it came from', async () => {
+    const { fetchText, calls } = stubFetch(OK)
     const client = createRegistryClient({ config: config(), fetchText })
 
-    const result = await client.getIndex()
-    expect(result.ok).toBe(true)
+    const shelves = await client.browse()
     expect(calls).toEqual([`${BASE}/index.json`])
-    // A listing is one request. Anything that walked a tree would be the API path this avoids.
-    expect(fetchText).toHaveBeenCalledTimes(1)
+    expect(shelves).toHaveLength(1)
+    expect(shelves[0]!.packs[0]).toMatchObject({
+      packId: 'rust-dev',
+      sourceName: SHOP,
+      trust: 'community',
+    })
   })
 
-  it('reuses the cached index inside the TTL, and refetches after it', async () => {
-    let clock = 1_000_000
-    const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index() })
+  it('takes the trust label from the operator’s config, not from the registry document', async () => {
+    // THE PROPERTY THE WHOLE TRUST MODEL RESTS ON. The index below is byte-identical to the one
+    // the public shop serves; the label differs because the OPERATOR said this URL is internal.
+    // Nothing a registry publishes can promote itself.
+    const url = INTERNAL.url
+    const { fetchText } = stubFetch({ [`${url}/index.json`]: index() })
+    const client = createRegistryClient({ config: config({ sources: [INTERNAL] }), fetchText })
+
+    const shelves = await client.browse()
+    expect(shelves[0]!.packs[0]).toMatchObject({ sourceName: 'Acme internal', trust: 'internal' })
+  })
+
+  it('one registry being down does not blank out the others', async () => {
+    // A merged list with a single failure mode would make an outage look like an empty shop.
+    // An operator needs to know WHICH shelf is empty and why.
+    const { fetchText } = stubFetch({ ...OK }) // INTERNAL is absent, so it fails
     const client = createRegistryClient({
-      config: config({ cacheTtlSeconds: 300 }),
+      config: config({ sources: [{ name: SHOP, url: BASE }, INTERNAL] }),
       fetchText,
-      now: () => clock,
     })
 
-    await client.getIndex()
-    await client.getIndex()
+    const shelves = await client.browse()
+    expect(shelves).toHaveLength(2)
+    expect(shelves[0]!.packs).toHaveLength(1)
+    expect(shelves[0]!.failure).toBeUndefined()
+    expect(shelves[1]!.packs).toEqual([])
+    expect(shelves[1]!.failure).toMatchObject({ kind: 'unreachable' })
+  })
+
+  it('reuses each source’s cached index inside the TTL, and refetches after it', async () => {
+    let clock = 1_000_000
+    const { fetchText } = stubFetch(OK)
+    const client = createRegistryClient({ config: config({ cacheTtlSeconds: 300 }), fetchText, now: () => clock })
+
+    await client.browse()
+    await client.browse()
     expect(fetchText).toHaveBeenCalledTimes(1)
 
     clock += 301_000
-    await client.getIndex()
+    await client.browse()
+    expect(fetchText).toHaveBeenCalledTimes(2)
+  })
+
+  it('caches per source, so adding a registry does not invalidate the others', async () => {
+    const { fetchText } = stubFetch({ ...OK, [`${INTERNAL.url}/index.json`]: index() })
+    const client = createRegistryClient({
+      config: config({ sources: [{ name: SHOP, url: BASE }, INTERNAL] }),
+      fetchText,
+      now: () => 0,
+    })
+    await client.browse()
+    await client.browse()
+    // Two sources, one fetch each, and the second browse served entirely from cache.
     expect(fetchText).toHaveBeenCalledTimes(2)
   })
 
   it('refetches on demand, so a merged pack does not need a wait', async () => {
-    const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index() })
+    const { fetchText } = stubFetch(OK)
     const client = createRegistryClient({ config: config(), fetchText, now: () => 0 })
-    await client.getIndex()
-    await client.getIndex({ force: true })
+    await client.browse()
+    await client.browse({ force: true })
     expect(fetchText).toHaveBeenCalledTimes(2)
   })
 })
@@ -131,12 +220,12 @@ describe('fetching the index', () => {
 describe('refusals, none of which throw', () => {
   it('reports a disabled registry as disabled, not as a failure', async () => {
     // An operator should be able to tell "I turned this off" from "this is broken". They are
-    // different sentences and only one of them is worth investigating.
+    // different sentences and only one is worth investigating.
     const { fetchText } = stubFetch({})
     const client = createRegistryClient({ config: config({ enabled: false }), fetchText })
 
-    const result = await client.getIndex()
-    expect(result).toMatchObject({ ok: false, kind: 'disabled' })
+    const shelves = await client.browse()
+    expect(shelves[0]!.failure).toMatchObject({ kind: 'disabled' })
     // And it must not have gone near the network to find that out.
     expect(fetchText).not.toHaveBeenCalled()
   })
@@ -148,31 +237,28 @@ describe('refusals, none of which throw', () => {
     const { fetchText } = stubFetch({ [`${BASE}/index.json`]: { fail: refusal } })
     const client = createRegistryClient({ config: config(), fetchText })
 
-    expect(await client.getIndex()).toMatchObject({ ok: false, kind: 'unreachable', reason: refusal })
+    expect((await client.browse())[0]!.failure).toMatchObject({ kind: 'unreachable', reason: refusal })
   })
 
   it('reports an index that is not JSON', async () => {
     const { fetchText } = stubFetch({ [`${BASE}/index.json`]: '<html>404</html>' })
     const client = createRegistryClient({ config: config(), fetchText })
-    expect(await client.getIndex()).toMatchObject({ ok: false, kind: 'invalid' })
+    expect((await client.browse())[0]!.failure).toMatchObject({ kind: 'invalid' })
   })
 
   it('reports an index that is JSON but not an index', async () => {
     const { fetchText } = stubFetch({ [`${BASE}/index.json`]: JSON.stringify({ version: 99, packs: [] }) })
     const client = createRegistryClient({ config: config(), fetchText })
-    const result = await client.getIndex()
-    expect(result).toMatchObject({ ok: false, kind: 'invalid' })
-    expect(result.ok === false && result.reason).toContain('not a pack registry index')
+    expect((await client.browse())[0]!.failure?.reason).toContain('not a pack registry index')
   })
 
   it('bounds the reason for a badly malformed index', async () => {
     // One issue per pack times a large registry is a reason nobody reads.
-    const packs = Array.from({ length: 40 }, () => ({ packId: 'x' }))
-    const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index(packs) })
+    const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index(Array.from({ length: 40 }, () => ({ packId: 'x' }))) })
     const client = createRegistryClient({ config: config(), fetchText })
-    const result = await client.getIndex()
-    expect(result.ok === false && result.reason).toMatch(/and \d+ more/)
-    expect(result.ok === false && result.reason.length).toBeLessThan(600)
+    const failure = (await client.browse())[0]!.failure!
+    expect(failure.reason).toMatch(/and \d+ more/)
+    expect(failure.reason.length).toBeLessThan(600)
   })
 
   it('does not cache a failure as if it were an index', async () => {
@@ -182,40 +268,35 @@ describe('refusals, none of which throw', () => {
     )
     const client = createRegistryClient({ config: config(), fetchText, now: () => 0 })
 
-    expect((await client.getIndex()).ok).toBe(false)
+    expect((await client.browse())[0]!.failure).toBeDefined()
     body = index()
     // Same instant, so a cached FAILURE would still be "fresh" and the registry would look
     // broken until the TTL expired — long after it came back.
-    expect((await client.getIndex()).ok).toBe(true)
+    expect((await client.browse())[0]!.failure).toBeUndefined()
   })
 })
 
 describe('fetching a pack', () => {
-  const responses = { [`${BASE}/index.json`]: index(), [`${BASE}/packs/community/rust-dev.yaml`]: PACK_YAML }
-
   it('fetches the path the index names and validates the frozen format', async () => {
-    const { fetchText, calls } = stubFetch(responses)
+    const { fetchText, calls } = stubFetch(OK)
     const client = createRegistryClient({ config: config(), fetchText })
 
-    const result = await client.getPack('rust-dev')
+    const result = await client.getPack(SHOP, 'rust-dev')
     expect(result.ok).toBe(true)
     expect(result.ok && result.file.pack.packId).toBe('rust-dev')
-    expect(result.ok && result.entry.tier).toBe('community')
+    expect(result.ok && result.entry).toMatchObject({ sourceName: SHOP, trust: 'community' })
     // The bytes are handed back as fetched, so what is shown and stored is what was verified.
     expect(result.ok && result.yaml).toBe(PACK_YAML)
-    expect(calls[1]).toBe(`${BASE}/packs/community/rust-dev.yaml`)
+    expect(calls[1]).toBe(PACK_URL)
   })
 
   it('refuses a file whose digest does not match the index, naming both', async () => {
     // THE CHECK THAT MATTERS. A pack file changed without regenerating the index is refused
     // rather than installed, whatever the reason for the change.
-    const { fetchText } = stubFetch({
-      ...responses,
-      [`${BASE}/packs/community/rust-dev.yaml`]: `${PACK_YAML}# tampered\n`,
-    })
+    const { fetchText } = stubFetch({ ...OK, [PACK_URL]: `${PACK_YAML}# tampered\n` })
     const client = createRegistryClient({ config: config(), fetchText })
 
-    const result = await client.getPack('rust-dev')
+    const result = await client.getPack(SHOP, 'rust-dev')
     expect(result).toMatchObject({ ok: false, kind: 'digest-mismatch' })
     expect(result.ok === false && result.reason).toContain(sha256Text(PACK_YAML))
   })
@@ -226,11 +307,11 @@ describe('fetching a pack', () => {
     // the operator one pack and install another.
     const { fetchText } = stubFetch({
       [`${BASE}/index.json`]: index([entry({ packId: 'something-else' })]),
-      [`${BASE}/packs/community/rust-dev.yaml`]: PACK_YAML,
+      [PACK_URL]: PACK_YAML,
     })
     const client = createRegistryClient({ config: config(), fetchText })
 
-    const result = await client.getPack('something-else')
+    const result = await client.getPack(SHOP, 'something-else')
     expect(result).toMatchObject({ ok: false, kind: 'invalid' })
     expect(result.ok === false && result.reason).toContain('disagrees with the file')
   })
@@ -238,42 +319,67 @@ describe('fetching a pack', () => {
   it('refuses a pack file that is not valid against the frozen format', async () => {
     const { fetchText } = stubFetch({
       [`${BASE}/index.json`]: index([entry({ sha256: sha256Text('pack: [unclosed\n') })]),
-      [`${BASE}/packs/community/rust-dev.yaml`]: 'pack: [unclosed\n',
+      [PACK_URL]: 'pack: [unclosed\n',
     })
     const client = createRegistryClient({ config: config(), fetchText })
-    expect(await client.getPack('rust-dev')).toMatchObject({ ok: false, kind: 'invalid' })
+    expect(await client.getPack(SHOP, 'rust-dev')).toMatchObject({ ok: false, kind: 'invalid' })
   })
 
   it('does not fail a pack over its filename', async () => {
     // The loader derives an expected packId from a filename. What arrives here is a fetched
     // path, not a file in `packs/`, so that one check is dropped — the same call the import
     // route makes, for the same reason.
-    const renamed = entry({ path: 'packs/community/whatever.yaml' })
     const { fetchText } = stubFetch({
-      [`${BASE}/index.json`]: index([renamed]),
-      [`${BASE}/packs/community/whatever.yaml`]: PACK_YAML,
+      [`${BASE}/index.json`]: index([entry({ path: 'packs/whatever.yaml' })]),
+      [`${BASE}/packs/whatever.yaml`]: PACK_YAML,
     })
     const client = createRegistryClient({ config: config(), fetchText })
-    expect((await client.getPack('rust-dev')).ok).toBe(true)
+    expect((await client.getPack(SHOP, 'rust-dev')).ok).toBe(true)
   })
 
   it('reports a pack the registry does not list', async () => {
-    const { fetchText } = stubFetch(responses)
+    const { fetchText } = stubFetch(OK)
     const client = createRegistryClient({ config: config(), fetchText })
-    expect(await client.getPack('nope')).toMatchObject({ ok: false, kind: 'not-found' })
+    expect(await client.getPack(SHOP, 'nope')).toMatchObject({ ok: false, kind: 'not-found' })
+  })
+
+  it('reports a source nobody configured', async () => {
+    const { fetchText } = stubFetch(OK)
+    const client = createRegistryClient({ config: config(), fetchText })
+    const result = await client.getPack('Acme internal', 'rust-dev')
+    expect(result).toMatchObject({ ok: false, kind: 'not-found' })
+    expect(result.ok === false && result.reason).toContain('No registry called')
   })
 
   it('reports a pack the index lists but the registry does not serve', async () => {
     const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index() })
     const client = createRegistryClient({ config: config(), fetchText })
-    expect(await client.getPack('rust-dev')).toMatchObject({ ok: false, kind: 'unreachable' })
+    expect(await client.getPack(SHOP, 'rust-dev')).toMatchObject({ ok: false, kind: 'unreachable' })
   })
 
   it('is disabled all the way down', async () => {
-    const { fetchText } = stubFetch(responses)
+    const { fetchText } = stubFetch(OK)
     const client = createRegistryClient({ config: config({ enabled: false }), fetchText })
-    expect(await client.getPack('rust-dev')).toMatchObject({ ok: false, kind: 'disabled' })
+    expect(await client.getPack(SHOP, 'rust-dev')).toMatchObject({ ok: false, kind: 'disabled' })
     expect(fetchText).not.toHaveBeenCalled()
+  })
+
+  it('does not let one source’s pack be fetched through another source’s name', async () => {
+    // Two registries may both publish a `rust-dev`. Addressing a pack by source AND id is what
+    // keeps "install the internal one" from silently fetching the public one.
+    const { fetchText, calls } = stubFetch({
+      ...OK,
+      [`${INTERNAL.url}/index.json`]: index([entry({ path: 'packs/rust-dev.yaml' })]),
+      [`${INTERNAL.url}/packs/rust-dev.yaml`]: PACK_YAML,
+    })
+    const client = createRegistryClient({
+      config: config({ sources: [{ name: SHOP, url: BASE }, INTERNAL] }),
+      fetchText,
+    })
+
+    const result = await client.getPack('Acme internal', 'rust-dev')
+    expect(result.ok && result.entry.sourceName).toBe('Acme internal')
+    expect(calls.every((c) => c.startsWith(INTERNAL.url))).toBe(true)
   })
 })
 
@@ -283,7 +389,7 @@ describe('nothing happens until somebody asks', () => {
     // off the machine at all, must start exactly as fast and as successfully as it does now. A
     // client that warmed its cache on construction would put a third party's outage on the
     // startup path, and nobody would notice until that third party had one.
-    const { fetchText } = stubFetch({ [`${BASE}/index.json`]: index() })
+    const { fetchText } = stubFetch(OK)
     createRegistryClient({ config: config(), fetchText })
     await Promise.resolve()
     expect(fetchText).not.toHaveBeenCalled()
@@ -291,11 +397,17 @@ describe('nothing happens until somebody asks', () => {
 })
 
 describe('describe()', () => {
-  it('reports what the shop is pointed at, so the UI need not read the config', async () => {
+  it('reports every configured source, so the UI need not read the config', async () => {
     const client = createRegistryClient({
-      config: config({ baseUrl: 'https://example.com/mine' }),
+      config: config({ sources: [{ name: SHOP, url: BASE }, INTERNAL] }),
       fetchText: stubFetch({}).fetchText,
     })
-    expect(client.describe()).toEqual({ enabled: true, baseUrl: 'https://example.com/mine' })
+    expect(client.describe()).toEqual({
+      enabled: true,
+      sources: [
+        { name: SHOP, url: BASE, trust: 'community' },
+        { name: 'Acme internal', url: INTERNAL.url, trust: 'internal' },
+      ],
+    })
   })
 })

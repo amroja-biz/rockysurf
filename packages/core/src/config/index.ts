@@ -51,6 +51,8 @@ export {
 } from './interpolate.js'
 
 export {
+  DEFAULT_REGISTRY_URL,
+  REGISTRY_TRUST,
   configSchema,
   expandTilde,
   type ByoHost,
@@ -60,5 +62,7 @@ export {
   type McpScope,
   type ProvidersConfig,
   type RegistryConfig,
+  type RegistrySource,
+  type RegistryTrust,
   type ServerConfig,
 } from './schema.js'

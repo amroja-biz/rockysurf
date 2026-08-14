@@ -63,6 +63,8 @@ export { makeFakeProvider, type FakeProvider, type FakeProviderOptions } from '.
 /* ---------------------------------------------------------------------- configuration */
 
 export {
+  DEFAULT_REGISTRY_URL,
+  REGISTRY_TRUST,
   configSchema,
   loadConfig,
   loadConfigLenientlyOrExit,
@@ -74,6 +76,8 @@ export {
   type McpScope,
   type ProvidersConfig,
   type RegistryConfig,
+  type RegistrySource,
+  type RegistryTrust,
   type ServerConfig,
 } from './config/index.js'
 
@@ -98,7 +102,6 @@ export {
   PACKS_DIR_NAME,
   REGISTRY_INDEX_VERSION,
   RegistryIndexError,
-  TRUST_TIERS,
   buildRegistryIndex,
   createRegistryClient,
   formatFindings,
@@ -114,11 +117,11 @@ export {
   type RegistryClient,
   type RegistryClientDeps,
   type RegistryFailure,
-  type RegistryIndexResult,
+  type RegistryListing,
   type RegistryPackResult,
   type RegistryEntry,
   type RegistryIndex,
-  type TrustTier,
+  type ShelfResult,
   lintLoaded,
   lintPacksDir,
   loadPacksFromDir,

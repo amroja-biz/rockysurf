@@ -82,9 +82,9 @@ describe('rockysurf pack lint', () => {
   })
 
   it('accepts an empty directory under --allow-empty', () => {
-    // A registry's community tier is empty until its first contribution, and its CI would
-    // otherwise be red from the day the repository is created. The caller says so explicitly;
-    // this function cannot tell that case from a typo.
+    // A registry has no packs until its first contribution, and its CI would otherwise be red
+    // from the day the repository is created. The caller says so explicitly; this function
+    // cannot tell that case from a typo.
     const io = capture()
     expect(runPackCommand(['lint', dirWith({}), '--allow-empty'], io.io)).toBe(0)
   })
@@ -213,10 +213,10 @@ describe('rockysurf pack index', () => {
   function registry(): string {
     const root = mkdtempSync(join(tmpdir(), 'rockysurf-registry-cli-'))
     scratchDirs.push(root)
-    mkdirSync(join(root, 'packs/official'), { recursive: true })
-    mkdirSync(join(root, 'packs/community'), { recursive: true })
+    mkdirSync(join(root, 'packs/one'), { recursive: true })
+    mkdirSync(join(root, 'packs/two'), { recursive: true })
     writeFileSync(
-      join(root, 'packs/official/base.yaml'),
+      join(root, 'packs/one/base.yaml'),
       JSON.stringify({
         version: 1,
         pack: { packId: 'base', name: 'Base', tools: ['a-tool'], displayOrder: 1, enabled: true },
@@ -224,7 +224,7 @@ describe('rockysurf pack index', () => {
       }),
     )
     writeFileSync(
-      join(root, 'packs/community/extra.yaml'),
+      join(root, 'packs/two/extra.yaml'),
       JSON.stringify({
         version: 1,
         pack: { packId: 'extra', name: 'Extra', tools: ['a-tool'], displayOrder: 2, enabled: true },
@@ -234,20 +234,39 @@ describe('rockysurf pack index', () => {
     return root
   }
 
-  const SOURCES = ['--source', 'packs/official=official', '--source', 'packs/community=community']
+  const SOURCES = ['--source', 'packs/one', '--source', 'packs/two']
 
-  it('writes an index that labels each tier and resolves references across them', () => {
+  it('writes an index resolving references across its source directories', () => {
     const io = capture()
     const root = registry()
     const code = inDir(root, () => runPackCommand(['index', ...SOURCES], io.io))
     expect(code).toBe(0)
 
     const index = JSON.parse(io.out.join('\n'))
-    expect(index.packs.map((p: { packId: string; tier: string }) => [p.packId, p.tier])).toEqual([
-      ['base', 'official'],
-      ['extra', 'community'],
-    ])
+    expect(index.packs.map((p: { packId: string }) => p.packId)).toEqual(['base', 'extra'])
     expect(index.packs[1].referencesTools).toEqual(['a-tool'])
+    // No trust label anywhere in the document: a pack's label comes from where the OPERATOR got
+    // it, never from something the registry wrote about itself.
+    expect(index.packs.every((p: Record<string, unknown>) => !('tier' in p) && !('trust' in p))).toBe(true)
+  })
+
+  it('resolves against --base-packs, which a purely-community registry needs', () => {
+    // The shop holds no base toolchain — it ships in the Rocky Surf tarball — so a pack
+    // referencing `claude-code` cannot be indexed without being told where that lives.
+    const io = capture()
+    const root = registry()
+    writeFileSync(
+      join(root, 'packs/two/borrows.yaml'),
+      JSON.stringify({
+        version: 1,
+        pack: { packId: 'borrows', name: 'Borrows', tools: ['claude-code'], displayOrder: 3, enabled: true },
+        tools: [],
+      }),
+    )
+    expect(inDir(root, () => runPackCommand(['index', ...SOURCES], capture().io))).toBe(1)
+    expect(
+      inDir(root, () => runPackCommand(['index', ...SOURCES, '--base-packs', shippedPacksDir], io.io)),
+    ).toBe(0)
   })
 
   it('writes to --out and says where', () => {
@@ -267,25 +286,22 @@ describe('rockysurf pack index', () => {
     // community packs.
     const io = capture()
     const root = registry()
-    const code = inDir(root, () => runPackCommand(['index', '--source', 'packs/nope=community'], io.io))
+    const code = inDir(root, () => runPackCommand(['index', '--source', 'packs/nope'], io.io))
     expect(code).toBe(2)
     expect(io.err.join('\n')).toContain('does not exist')
   })
 
-  it.each([
-    ['no sources at all', ['index']],
-    ['a source with no tier', ['index', '--source', 'packs/community']],
-    ['a tier nobody defined', ['index', '--source', 'packs/community=verified']],
-  ])('exits 1 on %s', (_label, argv) => {
+  it('exits 1 when given no sources at all', () => {
     const io = capture()
     const root = registry()
-    expect(inDir(root, () => runPackCommand(argv, io.io))).toBe(1)
+    expect(inDir(root, () => runPackCommand(['index'], io.io))).toBe(1)
+    expect(io.err.join('\n')).toContain('--source')
   })
 
   it('exits 1 when a pack in the registry does not load', () => {
     const io = capture()
     const root = registry()
-    writeFileSync(join(root, 'packs/community/broken.yaml'), 'pack: [unclosed\n')
+    writeFileSync(join(root, 'packs/two/broken.yaml'), 'pack: [unclosed\n')
     expect(inDir(root, () => runPackCommand(['index', ...SOURCES], io.io))).toBe(1)
     expect(io.err.join('\n')).toContain('cannot be indexed')
   })
