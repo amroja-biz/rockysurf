@@ -124,6 +124,32 @@ export function checkTarball(name, entries, manifest) {
     fail('no dist/ — `files` listed it and pack matched nothing, so this tarball contains no code')
   }
 
+  /*
+   * THE GENERATED DIRECTORIES CORE PUBLISHES, asserted rather than assumed (rockysurf-cwqo).
+   *
+   * `public/` (the SPA) and `packs/` (the shipped surge packs) are both produced during a build
+   * and both listed in core's `files`. Neither is committed in the case of `public/`, and npm
+   * does not complain when a `files` entry matches nothing — `build-package.mjs` records that
+   * exact behaviour, and it is how a code-free tarball got packed once already.
+   *
+   * So a release built with a filtered `pnpm --filter … build` that never built `@rockysurf/web`
+   * would publish a control plane that serves no UI, and one that skipped core's own build would
+   * publish a release with no official packs — which is the sentence ADR-0006 leans on. Both
+   * would look like a normal, green release right up until somebody opened a browser.
+   *
+   * The checks above are all about what must NOT be in a tarball. These two are the first about
+   * what must be, and that asymmetry is the whole class this came from: every step that produces
+   * something should assert the thing exists.
+   */
+  if (manifest.name === '@rockysurf/core') {
+    if (!entries.includes('package/public/index.html')) {
+      fail('no public/index.html — this core serves no web UI. Run `pnpm -r build` (the SPA is synced by @rockysurf/web\'s build), not a filtered one')
+    }
+    if (!entries.some((e) => /^package\/packs\/.+\.ya?ml$/.test(e))) {
+      fail('no packs/*.yaml — this release ships no official packs, so "official means shipped with the release you are running" would be false of it')
+    }
+  }
+
   for (const entry of entries) {
     for (const { pattern, label } of FORBIDDEN_ENTRIES) {
       if (pattern.test(entry)) fail(`ships a ${label}: ${entry}`)
