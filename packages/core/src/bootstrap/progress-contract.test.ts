@@ -15,6 +15,7 @@ import { makeFakeProvider, type FakeProviderOptions } from '../providers/fake.js
 import { ProviderRegistry } from '../providers/registry.js'
 import { createSecretsStore, type SecretsStore } from '../secrets/store.js'
 import { createEventsService, type EventsService } from '../services/events.js'
+import { markBootstrapReady } from './supervisor.js'
 import { applyAgentState } from './push-runner.js'
 import { parseInstallPlan, type InstallPlan } from './plan.js'
 import type { AgentState } from './push.js'
@@ -232,22 +233,48 @@ describe('bootstrap-progress, as the browser receives it', () => {
     await stream.close()
   })
 
-  it('announces the promotion the report caused, as a status event', async () => {
+  it('does not promote on the journal saying so, because the agent says it before the step runs', async () => {
     const { row, plan } = await createServer()
-    const stream = await openEventStream()
 
-    // Every plan the resolver renders ends with a step reporting `ready`, and THAT report is
-    // what promotes the row to `running`. The SPA reads statuses from `server-status` alone,
-    // so a promotion that emitted only a progress event left every open tab on "Provisioning"
-    // until the user reloaded — `markBootstrapReady` finds nothing left to promote and says
-    // nothing either.
+    // `agent.sh` journals a step `running` when it STARTS, and every plan the resolver renders
+    // ends with a step reporting `ready` — so believing that report promoted the row the moment
+    // the final step BEGAN, and a box that died there read as running (rockysurf-1c8z).
     const ready = plan.steps.find((step) => step.reports === 'ready')!
     applyAgentState({ db: opened.db, events, secrets }, row, journalAt(plan, ready.id))
+
+    expect(getServer(opened.db, row.id)?.status).toBe('provisioning')
+  })
+
+  it('announces the promotion, as a status event, from the call that causes it', async () => {
+    const { row } = await createServer()
+    const stream = await openEventStream()
+
+    // The guarantee this test has always been about (rockysurf-xinr): the SPA reads a server's
+    // status from `server-status` alone, so a promotion that wrote the row and said nothing left
+    // every open tab on "Provisioning" until the user reloaded. What changed with rockysurf-1c8z
+    // is only WHICH call promotes — the supervisor, when the drive completes, rather than the
+    // journal's claim that the last step has begun.
+    await markBootstrapReady(opened.db, events, row)
 
     const status = await stream.next((event) => event['type'] === 'server-status')
     expect(status['status']).toBe('running')
     expect(status['serverId']).toBe(row.id)
     expect(getServer(opened.db, row.id)?.status).toBe('running')
+
+    await stream.close()
+  })
+
+  it('lights the timeline’s last step too, so the screen and the row agree', async () => {
+    // Both events, because they are read by different things: the timeline consumes
+    // `bootstrap-progress` and the dashboard reads status from `server-status`. Moving the
+    // record without moving this one left the row right and the screen a step behind.
+    const { row } = await createServer()
+    const stream = await openEventStream()
+
+    await markBootstrapReady(opened.db, events, row)
+
+    const progress = await stream.next((event) => event['type'] === 'bootstrap-progress')
+    expect(progress['step']).toBe('ready')
 
     await stream.close()
   })

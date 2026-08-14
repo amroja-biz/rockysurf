@@ -8,7 +8,7 @@ import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
 import { HostKeyMismatchError } from './push.js'
 import { MissingKeyMaterialError, runPushBootstrap } from './push-runner.js'
-import { serverStatusEvent } from './progress-event.js'
+import { bootstrapProgressEvent, serverStatusEvent } from './progress-event.js'
 
 /**
  * The adapter between the provision ticker and the push runner (rockysurf-55fx.13).
@@ -102,11 +102,12 @@ interface Outcome {
  * detail of the supervisor — `lifecycle.sync` deliberately refuses to promote a provisioning
  * row, so a test that wants a running server has to go through this rather than fake it.
  *
- * It is not, however, the only caller that reaches the promotion: the plan's last step reports
- * `ready` while it is still RUNNING, and `applyAgentState` records that report, so in practice
- * the row is usually promoted a few seconds before the drive settles and this call finds
- * nothing left to do (rockysurf-1c8z). Both paths announce the promotion they cause, which is
- * what the SPA needs; which of them gets there first is that issue's business.
+ * It is now genuinely the only caller that reaches the promotion (rockysurf-1c8z). It briefly
+ * was not: `agent.sh` journals a step as `running` when it STARTS, and `applyAgentState`
+ * recorded that report — so the plan's last step, whose `reports` is `ready`, promoted the row
+ * the moment branding BEGAN. A box that died in its final step read as running, with uptime and
+ * cost already accruing. `toProvisioningStep` now refuses any report that would promote, which
+ * leaves this call, at the completion of the drive, as the fact.
  *
  * The `server-status` broadcast is load-bearing rather than decorative: the dashboard reads a
  * server's status from that event type alone (`DashboardPage.tsx`), so a promotion that only
@@ -117,6 +118,27 @@ export async function markBootstrapReady(db: Db, events: EventsService, row: Ser
   if (!updated) return undefined
 
   appendEvent(db, { type: 'server-status', serverId: updated.id, userId: updated.userId, payload: {} })
+
+  // THE TIMELINE'S LAST STEP, which follows the record that caused it (rockysurf-1c8z).
+  //
+  // This call is now the one that records `ready`, so it is the one that has to announce it.
+  // While the journal's own report was believed, `applyAgentState` broadcast this and the
+  // timeline lit its final step from there; refusing that report without moving the event left
+  // the SPA showing the previous step until a reload. The row was right and the screen was not,
+  // which is the failure mode rockysurf-xinr was about.
+  //
+  // A `bootstrap-progress` event AND a `server-status` one, because they are read by different
+  // things: the timeline consumes the first, the dashboard reads a server's status from the
+  // second alone. Same fact, two audiences.
+  await events.broadcastToUser(
+    updated.userId,
+    bootstrapProgressEvent({
+      serverId: updated.id,
+      step: 'ready',
+      status: updated.status,
+      publicIp: updated.publicIp,
+    }),
+  )
   await events.broadcastToUser(updated.userId, serverStatusEvent(updated))
   return updated
 }

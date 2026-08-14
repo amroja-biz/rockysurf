@@ -131,6 +131,11 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:instance/*'
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:volume/*'
+                  # The ENI RunInstances creates is tagged too (rockysurf-b14y), so it belongs
+                  # under the condition with everything else the launch attributes. It used to
+                  # sit in the unconditioned statement below, because an untagged resource has no
+                  # `aws:RequestTag/managed-by` for a condition to match.
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:network-interface/*'
                 Condition:
                   StringEquals:
                     'aws:RequestTag/managed-by': !Ref ManagedByTag
@@ -142,12 +147,6 @@ Resources:
                   - !Sub 'arn:aws:ec2:${ProviderRegion}::image/*'
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:subnet/*'
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
-                  # The elastic network interface belongs HERE, not with the tagged resources.
-                  # RunInstances creates it, but the provider's TagSpecifications cover only the
-                  # instance and the volume, so `aws:RequestTag/managed-by` does not exist for the
-                  # ENI and a tag-conditioned statement matches nothing. Found by the gyp1.5
-                  # restricted-principal run; see docs/providers/aws.md for the full story.
-                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:network-interface/*'
 
               - Sid: TagOnCreate
                 Effect: Allow

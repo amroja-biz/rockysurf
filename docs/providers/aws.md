@@ -89,7 +89,8 @@ the tag conditions to match.
       "Action": "ec2:RunInstances",
       "Resource": [
         "arn:aws:ec2:REGION:ACCOUNT_ID:instance/*",
-        "arn:aws:ec2:REGION:ACCOUNT_ID:volume/*"
+        "arn:aws:ec2:REGION:ACCOUNT_ID:volume/*",
+        "arn:aws:ec2:REGION:ACCOUNT_ID:network-interface/*"
       ],
       "Condition": {
         "StringEquals": { "aws:RequestTag/managed-by": "rockysurf" }
@@ -102,8 +103,7 @@ the tag conditions to match.
       "Resource": [
         "arn:aws:ec2:REGION::image/*",
         "arn:aws:ec2:REGION:ACCOUNT_ID:subnet/*",
-        "arn:aws:ec2:REGION:ACCOUNT_ID:security-group/*",
-        "arn:aws:ec2:REGION:ACCOUNT_ID:network-interface/*"
+        "arn:aws:ec2:REGION:ACCOUNT_ID:security-group/*"
       ]
     },
     {
@@ -165,10 +165,14 @@ the tag conditions to match.
 > exactly the two calls a *first* launch makes.
 >
 > **That run found a bug in this policy, which is the entire reason it was worth doing.**
-> `network-interface/*` sat in the tag-conditioned statement, where it can never match; every
-> first launch under the previously published version failed with `UnauthorizedOperation`. See
-> [the note below](#three-things-that-trip-people-up). What is printed above is the corrected
-> policy, and it is the one that passed.
+> `network-interface/*` sat in the tag-conditioned statement, where it could never match, because
+> nothing tagged the ENI; every first launch under the previously published version failed with
+> `UnauthorizedOperation`. See [the note below](#three-things-that-trip-people-up).
+>
+> **The policy has since been tightened further** (`rockysurf-b14y`): the provider now tags the
+> ENI at launch, so that ARN has moved back under the tag condition. That change has NOT yet been
+> through a restricted-principal run — it rides the next one. Until then, treat the ENI line as
+> reasoned rather than re-verified; everything else above is as it was proved.
 >
 > **The verification is continuous, not dated.** A policy proved once is a policy that was true
 > once: add an API call to the provider and this document silently becomes wrong, every
@@ -287,15 +291,24 @@ actually tags, so a statement-wide tag condition evaluates to false on the image
 denies the whole call. Splitting them lets the tagged resources carry a tag requirement while
 the rest stay unconditioned.
 
-**The network interface is in the *unconditioned* statement, and that placement is the one thing
-this policy originally got wrong.** An ENI is created by the launch, so it looks like it belongs
-with the instance and the volume — but Rocky Surf's `TagSpecifications` cover the instance and
-the volume only. Nothing tags the ENI, so `aws:RequestTag/managed-by` does not exist for it, the
-tag-conditioned statement matches nothing, and every launch fails with `UnauthorizedOperation` on
-`network-interface/*`. "Created by the call" and "tagged by the call" are not the same set, and
-only the second one can carry a `RequestTag` condition. This cost nothing to find and would have
-cost every self-hoster their first launch: the restricted-principal run refused to create a
-single server until it was fixed.
+**The network interface sits with the tagged resources, and getting there took two goes.** An ENI
+is created by the launch, so it looks like it belongs with the instance and the volume — but for
+a while Rocky Surf's `TagSpecifications` covered the instance and the volume only. Nothing tagged
+the ENI, so `aws:RequestTag/managed-by` did not exist for it, the tag-conditioned statement
+matched nothing, and every launch failed with `UnauthorizedOperation` on `network-interface/*`.
+That is worth stating as a rule, because it is the trap: **"created by the call" and "tagged by
+the call" are not the same set, and only the second can carry a `RequestTag` condition.** The
+restricted-principal run refused to create a single server until the ARN was moved out to the
+unconditioned statement.
+
+Moving it out was the right fix for the symptom and the wrong one for the cause. `RunInstances`
+tags four resource types — instances, volumes, spot instance requests and network interfaces —
+so the ENI could have been in the tagged set all along. It now is (`rockysurf-b14y`), which lets
+the ARN move back under the condition: strictly tighter than the version that shipped, and it
+also means an ENI that ever outlives its instance is visible to `listManaged()` and to the
+zero-orphan audit, which walk resources by tag. In practice launch-created ENIs carry
+`DeleteOnTermination=true` and go with the instance, so this is not a known leak — it is the
+untagged-volume case, closed before it happens rather than after.
 
 **The SSM scope follows your `amiParameterPrefix`.** The statement above is scoped to
 Canonical's namespace, which matches the default Ubuntu 24.04 prefix. If you point

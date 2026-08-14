@@ -443,11 +443,25 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
               HttpTokens: 'required',
               HttpPutResponseHopLimit: 1,
             },
-            // Volumes carry the same tags, so a leaked volume is still attributable and the
-            // zero-orphan audit can find it by tag rather than by walking instances.
+            // Volumes and the launch-created network interface carry the same tags, so a leaked
+            // one is still attributable and the zero-orphan audit can find it by tag rather than
+            // by walking instances.
+            //
+            // THE ENI IS HERE FOR A SECOND REASON (rockysurf-b14y), and it is the one that shows
+            // up in the published policy. `aws:RequestTag/managed-by` does not exist for a
+            // resource the request does not tag, so a tag-conditioned statement matches nothing
+            // and `network-interface/*` had to sit in the UNCONDITIONED RunInstances statement —
+            // found the hard way by the gyp1.5 restricted-principal run, where every launch
+            // failed with UnauthorizedOperation until that ARN was moved out. Tagging it here
+            // lets the ARN move back under the condition, which is strictly tighter.
+            //
+            // RunInstances tags exactly four resource types — instances, volumes, spot instance
+            // requests and network interfaces (EC2 API reference, RunInstances § TagSpecification.N,
+            // checked 2026-08-15) — so this is the whole of what a launch can attribute.
             TagSpecifications: [
               { ResourceType: 'instance', Tags: tags },
               { ResourceType: 'volume', Tags: tags },
+              { ResourceType: 'network-interface', Tags: tags },
             ],
           }),
         ),
