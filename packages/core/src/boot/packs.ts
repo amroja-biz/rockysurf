@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { BUNDLED_PACKS_DIR } from '../packs/bundled.js'
 import type { Db } from '../db/client.js'
 import { listFileBackedPackIds } from '../db/repositories/packs.js'
 import { loadPacksFromDir, syncPacksToDb, type LoadResult } from '../packs/index.js'
@@ -20,7 +21,7 @@ export interface SyncPacksAtBootOptions {
 export interface PacksAtBootResult {
   /** The directory that was used. */
   dir: string
-  source: 'checkout' | 'data-dir'
+  source: PacksDirSource
   packsSynced: number
   toolsSynced: number
   /** Files that failed validation and were therefore skipped. */
@@ -32,20 +33,64 @@ export interface PacksAtBootResult {
   reconciled: boolean
 }
 
+/** Where the pack files a boot loads came from. Reported in the boot notice. */
+export type PacksDirSource = 'checkout' | 'data-dir' | 'bundled'
+
 /**
- * Resolve which packs directory to use. Deliberately dumb for v0.1:
+ * Resolve which packs directory to use. First match wins:
  *
  *  - `./packs` relative to the working directory, when it exists — the checkout case, where
  *    someone is running the repository's own packs;
- *  - otherwise `<dataDir>/packs`, created empty if absent — the installed case, where
- *    `npx rockysurf` has no repository around it. An empty directory is a legitimate state:
- *    the admin UI can still create packs, and they live in the database with a null
- *    `sourceFile` that the reconcile never touches.
+ *  - `<dataDir>/packs`, when it holds pack files — an operator running their own set;
+ *  - the packs bundled in the installed package (rockysurf-io02) — the `npx` case, and what
+ *    makes "official means shipped with the release you are running" true of a real install;
+ *  - otherwise `<dataDir>/packs`, created empty. Still a legitimate state: the admin UI can
+ *    create packs, and the pack shop can install them, and both live in the database with a
+ *    null `sourceFile` that the reconcile never touches.
+ *
+ * ONE DIRECTORY WINS, which is the rule this has always had and not something the bundled tier
+ * introduces. An operator with files in `<dataDir>/packs` is running their own catalog and does
+ * not silently get the shipped one merged in underneath; merging several pack directories is a
+ * bigger change than this — `sourceFile` is a bare filename and two directories can hold the
+ * same one — and it is tracked separately.
  */
-export function resolvePacksDir(dataDir: string, cwd: string = process.cwd()): { dir: string; source: 'checkout' | 'data-dir' } {
+export function resolvePacksDir(
+  dataDir: string,
+  cwd: string = process.cwd(),
+): { dir: string; source: PacksDirSource } {
   const checkout = resolve(cwd, 'packs')
   if (existsSync(checkout)) return { dir: checkout, source: 'checkout' }
-  return { dir: join(dataDir, 'packs'), source: 'data-dir' }
+
+  // An operator who has put pack files in their data directory is running their own set, and
+  // takes over completely — the same either/or that has always applied between a checkout and
+  // the data directory, extended by one tier rather than changed. An EMPTY data directory does
+  // not count, because the branch below creates one on every non-checkout boot, so keying on its
+  // existence would mean the bundle was never reachable after the first start.
+  const dataDirPacks = join(dataDir, 'packs')
+  if (hasPackFiles(dataDirPacks)) return { dir: dataDirPacks, source: 'data-dir' }
+
+  // The packs this release ships (rockysurf-io02). Read in place rather than copied out, so that
+  // "official" keeps meaning what the owner's ruling on issue #9 says it means: shipped with the
+  // release you are RUNNING. Seeding a copy into the data directory would make that false the
+  // first time somebody upgraded — their v0.2 installation would still be serving v0.1's packs,
+  // and a pack retired upstream would live on forever with nothing to say where it came from.
+  //
+  // The cost is stated rather than hidden: these files sit inside the installed package and are
+  // not editable in place. Editing a shipped pack is what the admin UI's export/import path is
+  // for (ADR-0004), and the row's `sourceFile` already tells an operator the file wins on the
+  // next boot.
+  if (hasPackFiles(BUNDLED_PACKS_DIR)) return { dir: BUNDLED_PACKS_DIR, source: 'bundled' }
+
+  return { dir: dataDirPacks, source: 'data-dir' }
+}
+
+/** True when the directory exists AND holds something the loader would read. */
+function hasPackFiles(dir: string): boolean {
+  try {
+    return readdirSync(dir).some((name) => name.endsWith('.yaml') || name.endsWith('.yml'))
+  } catch {
+    return false
+  }
 }
 
 /**

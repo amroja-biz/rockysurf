@@ -105,7 +105,9 @@ describe('rockysurf pack lint', () => {
         tools: [],
       },
     })
-    expect(runPackCommand(['lint', dir], capture().io)).toBe(1)
+    // An explicit empty base directory REPLACES the bundled default, which is what makes this
+    // a test of --base-packs rather than of the fallback behind it.
+    expect(runPackCommand(['lint', dir, '--base-packs', dirWith({})], capture().io)).toBe(1)
     expect(runPackCommand(['lint', dir, '--base-packs', shippedPacksDir], io.io)).toBe(0)
   })
 
@@ -150,6 +152,34 @@ describe('rockysurf pack lint', () => {
     })
     expect(runPackCommand(['lint', dir], io.io)).toBe(1)
     expect(io.err.join('\n')).toMatch(/pack lint: \d+ finding\(s\) — /)
+  })
+})
+
+describe('--base-packs defaults to the packs this rockysurf ships', () => {
+  // rockysurf-io02. Before the packs were in the tarball, a registry's CI had to clone the Rocky
+  // Surf repository just to point this flag somewhere; now it resolves out of the version the
+  // registry already pins.
+  const community = () =>
+    dirWith({
+      'rust-dev.yaml': {
+        version: 1,
+        pack: { packId: 'rust-dev', name: 'Rust', tools: ['claude-code'], displayOrder: 9, enabled: true },
+        tools: [],
+      },
+    })
+
+  it('resolves a base tool reference with no flag at all', () => {
+    const io = capture()
+    expect(runPackCommand(['lint', community()], io.io)).toBe(0)
+  })
+
+  it('an explicit --base-packs replaces the default rather than adding to it', () => {
+    // Somebody who names a directory means that directory. Quietly unioning it with a set they
+    // did not ask for is how a check passes against tools the target installation will not have.
+    const io = capture()
+    const empty = dirWith({})
+    expect(runPackCommand(['lint', community(), '--base-packs', empty], io.io)).toBe(1)
+    expect(io.err.join('\n')).toContain('unknown tool "claude-code"')
   })
 })
 
@@ -263,7 +293,11 @@ describe('rockysurf pack index', () => {
         tools: [],
       }),
     )
-    expect(inDir(root, () => runPackCommand(['index', ...SOURCES], capture().io))).toBe(1)
+    // Against an explicitly empty base directory it fails; against the real one it resolves.
+    // Naming a directory replaces the bundled default rather than adding to it, so the negative
+    // half of this test still means something now that a default exists.
+    const empty = dirWith({})
+    expect(inDir(root, () => runPackCommand(['index', ...SOURCES, '--base-packs', empty], capture().io))).toBe(1)
     expect(
       inDir(root, () => runPackCommand(['index', ...SOURCES, '--base-packs', shippedPacksDir], io.io)),
     ).toBe(0)

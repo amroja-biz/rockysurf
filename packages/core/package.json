@@ -16,6 +16,7 @@
     "dist",
     "drizzle",
     "bootstrap",
+    "packs",
     "public",
     "README.md"
   ],
@@ -33,7 +34,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node ../../scripts/build-package.mjs",
+    "build": "node ../../scripts/sync-packs-bundle.mjs && node ../../scripts/build-package.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

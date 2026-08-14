@@ -1,0 +1,519 @@
+# Claude Code — the flagship pack.
+#
+# This file also DEFINES the shared base toolchain every other pack references by id
+# (see docs/writing-a-pack.md: a tool is defined in exactly one file and referenced from
+# anywhere). If you are adding a pack, list these ids in your `pack.tools` rather than
+# redefining them — a duplicate `toolId` is rejected by the loader.
+version: 1
+
+pack:
+  packId: ai-coding-agents
+  name: Claude Code
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - claude-code
+  displayOrder: 1
+  enabled: true
+  imageUrl: /images/surge-packs/claude-code.png
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Claude Code
+      claude                  first run walks you through signing in
+      claude setup-token      mints a long-lived token instead, for a subscription plan
+      API billing instead of a subscription? Put your key in the shell and keep it:
+        echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      agent-deck    session manager for Claude Code
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  # ---------------------------------------------------------------- band 10: apt packages
+  # Every apt tool refreshes the package list ONCE via a stamp file. Nothing refreshes it for
+  # us: the runtime is only obliged to bootstrap its own JSON parser, and a stock ubuntu:24.04
+  # container has no package lists at all. The stamp survives into the CI smoke test's second
+  # run, which is what makes that run a genuine no-op.
+  - toolId: build-essential
+    name: Build Essential
+    description: C/C++ compiler and build tools
+    category: base
+    url: https://packages.ubuntu.com/noble/build-essential
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y build-essential
+      cc --version >/dev/null
+
+  - toolId: curl
+    name: curl
+    description: Command-line HTTP client
+    category: base
+    url: https://curl.se
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y curl ca-certificates
+      curl --version >/dev/null
+
+  - toolId: gh
+    name: GitHub CLI
+    description: GitHub's official command-line client
+    category: base
+    url: https://cli.github.com
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      # Self-contained rather than ordered after the `curl` tool: this is the only band-10 step
+      # that fetches over the network, and `installOrder` ties are broken by toolId, which the
+      # contract is explicit is a determinism guarantee and not a dependency mechanism. Both
+      # installs are convergent, so the overlap costs nothing.
+      apt-get install -y curl ca-certificates
+
+      # GitHub's own apt repository, added the way the Mozilla one in packs/open-claw.yaml is:
+      # the keyring is fetched once, and the source list is written only when its content would
+      # change — so the `apt-get update` that a new source forces happens on the first run and
+      # never again. The smoke harness hashes /etc/apt/sources.list.d across the journal discard,
+      # and a source file whose bytes differ between runs fails it.
+      #
+      # $ARCH is already Debian's spelling, which is also apt's, so it goes straight into the
+      # `arch=` qualifier — but branch on it anyway so a third architecture fails loudly here
+      # rather than silently writing a source list no mirror serves.
+      case "$ARCH" in
+        amd64|arm64) gh_arch="$ARCH" ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      install -d -m 0755 /etc/apt/keyrings
+      keyring=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+      if [ ! -f "$keyring" ]; then
+        tmp=$(mktemp)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o "$tmp"
+        install -m 0644 "$tmp" "$keyring"
+        rm -f "$tmp"
+      fi
+
+      list=/etc/apt/sources.list.d/github-cli.list
+      want="deb [arch=${gh_arch} signed-by=${keyring}] https://cli.github.com/packages stable main"
+      if [ "$(cat "$list" 2>/dev/null)" != "$want" ]; then
+        echo "$want" > "$list"
+        apt-get update -qq
+      fi
+
+      # UNPINNED (deliberate): apt tracks the repository's current stable, and a pinned gh goes
+      # stale against the API it talks to. No authentication step follows — gh reads $GITHUB_TOKEN
+      # from the environment, which is exactly why server-secrets exports it to the box.
+      apt-get install -y gh
+      gh --version >/dev/null
+
+  - toolId: git
+    name: Git
+    description: Distributed version control system
+    category: base
+    url: https://git-scm.com
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y git
+      git --version >/dev/null
+
+  - toolId: pipx
+    name: pipx
+    description: Install and run Python applications in isolated environments
+    category: base
+    url: https://pipx.pypa.io
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y pipx
+      pipx --version >/dev/null
+
+  - toolId: python3-pip
+    name: pip
+    description: Python package installer
+    category: base
+    url: https://pip.pypa.io
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y python3-pip
+      python3 -m pip --version >/dev/null
+
+  - toolId: python3-venv
+    name: Python venv
+    description: Python virtual environment support
+    category: base
+    url: https://docs.python.org/3/library/venv.html
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y python3-venv
+      python3 -c 'import venv' >/dev/null
+
+  - toolId: tmux
+    name: tmux
+    description: Terminal multiplexer for managing sessions
+    category: base
+    url: https://github.com/tmux/tmux
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y tmux
+      tmux -V >/dev/null
+
+  - toolId: unzip
+    name: unzip
+    description: Archive extraction utility
+    category: base
+    url: https://infozip.sourceforge.net
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y unzip
+      unzip -v >/dev/null
+
+  # ---------------------------------------------------------------- band 20: runtimes
+  - toolId: nodejs
+    name: Node.js
+    description: JavaScript runtime (v22 LTS)
+    category: base
+    url: https://nodejs.org
+    installOrder: 20
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      # UNPINNED (deliberate): tracks the latest 22.x patch. Contract-compliant — the
+      # NodeSource script is convergent and apt resolves the right architecture itself — but
+      # not reproducible. Pinning a patch release here would strand boxes on stale security
+      # fixes; the major version IS pinned, which is the part that breaks tooling.
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      if ! command -v node >/dev/null 2>&1; then
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      fi
+      apt-get install -y nodejs
+      node --version >/dev/null
+      npm --version >/dev/null
+
+  # ---------------------------------------------------------------- band 25/30: runtime-dependent
+  # Split from the single legacy `playwright` tool, which declared runAs: rocky and then
+  # called `sudo npx playwright install-deps`. The system libraries genuinely need root and
+  # the browser download genuinely belongs to the user, so they are two steps with honest
+  # runAs values rather than one step that lies and reaches for a sudo the CI container has
+  # never had.
+  - toolId: playwright-deps
+    name: Playwright system libraries
+    description: Shared libraries Chromium needs, installed system-wide
+    category: base
+    url: https://playwright.dev
+    installOrder: 25
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      npx --yes playwright install-deps chromium
+
+  - toolId: playwright
+    name: Playwright
+    description: Headless browser testing framework
+    category: base
+    url: https://playwright.dev
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      cd "$HOME"
+      # UNPINNED (deliberate): a pinned Playwright drifts out of step with the browser build
+      # its API expects. npm install is convergent, so a re-run is a no-op.
+      npm install --no-fund --no-audit -D @playwright/test
+      npx --yes playwright install chromium
+      npx --yes playwright --version >/dev/null
+
+  - toolId: beads
+    name: Beads
+    description: Git-native task tracking CLI
+    category: base
+    url: https://github.com/steveyegge/beads
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # Both bin directories go on PATH BEFORE anything else, and that is not tidiness.
+      # Upstream installs to ~/.local/bin (it used to use ~/.beads/bin), and a box that
+      # bootstrapped under an older version has bd in the other one.
+      export PATH="$HOME/.local/bin:$HOME/.beads/bin:$PATH"
+      #
+      # PINNED, and fetched from the release download endpoint rather than through upstream's
+      # scripts/install.sh — the same reason as beads-viewer below, which is rockysurf-pcma, and
+      # the reason this step got the same treatment is rockysurf-c6cm: it is the one that
+      # actually took the trunk down. That installer opens by asking api.github.com for the
+      # latest release, an unauthenticated call sharing a 60-per-hour quota keyed on SOURCE IP.
+      # A shared CI runner draws an address that other tenants have already spent, the call
+      # returns 403, and the installer does not fail on it — it falls through to a Go source
+      # build, finds no toolchain, and exits 1. Main run 31802231839 died exactly that way while
+      # the same leg had been green on its own pull request minutes earlier: quota roulette on
+      # the merge signal, with the asset it wanted sitting on a CDN that has no quota at all.
+      #
+      # Upstream's installer offers no way to pin — no flag, no environment variable — so the
+      # fix has to bypass it. What that installer does beyond fetching, this reproduces: the
+      # binary into ~/.local/bin, and the `beads` symlink beside it.
+      #
+      # To bump: change the version and both digests. The release publishes checksums.txt.
+      bd_version=v1.2.1
+      case "$ARCH" in
+        amd64) bd_sha=48aecf42ffdefa6470298d8022deeb762e30c8729dc0a4bdda93888c0b0354e2 ;;
+        arm64) bd_sha=507c35d0fbf382b5ac64824386460a80849d73064d3f50b23eb247eabb68c7a8 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is a
+      # no-op — the run-twice gate measures the second half of that.
+      stamp="$HOME/.rockysurf/installed-beads-$bd_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # gastownhall is where the repository lives now; steveyegge/beads redirects to it, and a
+        # redirect is a thing that can be turned off, so the canonical name is what is written.
+        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/gastownhall/beads/releases/download/$bd_version/beads_${bd_version#v}_linux_$ARCH.tar.gz" \
+          -o "$tmp/beads.tar.gz"
+        echo "$bd_sha  $tmp/beads.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/beads.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/bd" "$HOME/.local/bin/bd"
+        # Upstream's installer creates this alias, so dropping it would be a silent regression
+        # for anyone who types `beads`. -f -n rather than rm-then-link: idempotent on its own.
+        ln -sfn bd "$HOME/.local/bin/beads"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      # Both directories, because which one holds bd depends on when the box was built.
+      touch "$HOME/.bashrc"
+      for dir in "$HOME/.local/bin" "$HOME/.beads/bin"; do
+        grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
+      done
+      command -v bd >/dev/null 2>&1
+
+  - toolId: agent-deck
+    name: Agent Deck
+    description: Claude Code session manager
+    category: base
+    url: https://github.com/asheshgoplani/agent-deck
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # PINNED and fetched from the release download endpoint, for the reason written out on
+      # `beads` above and on `beads-viewer` below: upstream's install.sh opens by asking
+      # api.github.com for the latest release, that call is unauthenticated on a box holding no
+      # token, and the quota it shares is keyed on source IP (rockysurf-c6cm).
+      #
+      # THIS ONE COULD HAVE BEEN PINNED IN PLACE, and was not, deliberately. That installer does
+      # take `--version`, which alone would have skipped the API call — but it is also
+      # interactive: it asks "Configure tmux for agent-deck? [Y/n]" through a `read` that only
+      # works here by accident, because a box with no controlling terminal makes the read fail
+      # and the empty answer defaults to yes. Rule 3 says a pack must not depend on that. The
+      # flag upstream provides for it, `--non-interactive`, sets SKIP_TMUX_CONFIG itself — so
+      # there is no invocation of that installer that is both rule-3 honest and keeps the tmux
+      # configuration. Since the configuration goes either way, the version that also drops the
+      # unpinned remote code and verifies a digest is the one worth having.
+      #
+      # WHAT THAT COSTS, stated rather than discovered later: ~/.tmux.conf no longer gets
+      # upstream's block (mouse scrolling, clipboard integration, 256-colour, 10k history,
+      # Shift+Enter in csi-u form). A box still runs agent-deck; tmux is just stock. Restoring it
+      # means vendoring upstream's block into this pack, where it would drift silently — worth
+      # doing only if someone asks for it, and worth doing as its own change.
+      #
+      # To bump: change the version and both digests. The release publishes checksums.txt.
+      ad_version=v1.11.0
+      case "$ARCH" in
+        amd64) ad_sha=b99ca6e61b9518d3a7a1b3487d941f199d8da695c6045afe2b903e2e6d62232b ;;
+        arm64) ad_sha=aa6bd85fe01c842b993d6c0d269e4d2480e8cd3a484b6bd32464d92cab024f50 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so a bump reinstalls and no bump is a no-op.
+      stamp="$HOME/.rockysurf/installed-agent-deck-$ad_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/asheshgoplani/agent-deck/releases/download/$ad_version/agent-deck_${ad_version#v}_linux_$ARCH.tar.gz" \
+          -o "$tmp/agent-deck.tar.gz"
+        echo "$ad_sha  $tmp/agent-deck.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/agent-deck.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/agent-deck" "$HOME/.local/bin/agent-deck"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      # Self-contained, as beads-viewer is: a pack taking agent-deck without beads would
+      # otherwise get a binary its shell cannot find.
+      touch "$HOME/.bashrc"
+      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
+      "$HOME/.local/bin/agent-deck" version >/dev/null
+
+  - toolId: beads-viewer
+    name: Beads Viewer
+    description: Web-based viewer for Beads task boards
+    category: base
+    url: https://github.com/Dicklesworthstone/beads_viewer
+    installOrder: 30
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # The legacy script appended a unix-timestamp query parameter to defeat the CDN cache,
+      # which guaranteed a different payload on every run — the opposite of what the contract
+      # asks for, and it made the run-twice CI gate meaningless for this tool. Removed.
+      #
+      # PINNED, and fetched from the release download endpoint rather than through upstream's
+      # install.sh, because that installer begins by asking api.github.com which release is
+      # latest — and for an unauthenticated caller that endpoint allows 60 requests an hour PER
+      # SOURCE IP. A bootstrapping box holds no GitHub token, so the call is unauthenticated by
+      # construction. When it is refused the installer reports no pre-built binary, falls
+      # through to a source build, finds no Go toolchain, and exits 1 — with the release asset
+      # it wanted sitting there perfectly reachable, on a CDN that has no quota at all.
+      #
+      # That is rockysurf-pcma. `agent-deck` and `beads` ask the same endpoint about their own
+      # repositories earlier in the plan, so a plan spends three of that hour's sixty requests
+      # and THIS step is the last of the three: when the shared address runs out of quota
+      # part-way through, this is the step it runs out on, which is exactly the state the
+      # failing run journalled — agent-deck done, beads done, beads-viewer failed, twice, on
+      # the one runner in a ten-leg matrix that drew a nearly-spent IP. Their installers carry
+      # the same fragility and are tracked separately (rockysurf-c6cm).
+      #
+      # To bump: change the version and both digests. The release publishes checksums.txt.
+      bv_version=v0.19.0
+      case "$ARCH" in
+        amd64) bv_sha=e5208262256c242e4453afbfc2b69559c5f77200187724ac52c97a153593267f ;;
+        arm64) bv_sha=bd6a4e2440bca15e771fdb582d985dfae998fa76731d18fb6e21e26926321039 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is a
+      # no-op — the run-twice gate measures the second half of that.
+      stamp="$HOME/.rockysurf/installed-beads-viewer-$bv_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/Dicklesworthstone/beads_viewer/releases/download/$bv_version/bv_linux_$ARCH.tar.gz" \
+          -o "$tmp/bv.tar.gz"
+        echo "$bv_sha  $tmp/bv.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/bv.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/bv" "$HOME/.local/bin/bv"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      # Self-contained: `beads` writes this same line, but a pack that took beads-viewer without
+      # beads would otherwise get a bv its shell cannot find. grep -qF keeps the second run
+      # byte-identical, which is what the smoke test hashes .bashrc to prove.
+      touch "$HOME/.bashrc"
+      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
+      "$HOME/.local/bin/bv" --version >/dev/null
+
+  # ---------------------------------------------------------------- band 40: agents
+  - toolId: claude-code
+    name: Claude Code
+    description: Anthropic's AI coding assistant CLI
+    category: agent
+    url: https://claude.com/claude-code
+    installOrder: 40
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # The official installer moved from ~/.claude/bin to ~/.local/bin, so the old hard-coded
+      # verification path could not find a claude it had just installed successfully. Ask PATH
+      # where claude is rather than asserting where it ought to be — the location is upstream's
+      # to change, and it has changed once already.
+      export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
+      # UNPINNED: the official installer always fetches current. Guarded so the second run
+      # neither reinstalls nor duplicates the PATH line.
+      if ! command -v claude >/dev/null 2>&1; then
+        curl -fsSL https://claude.ai/install.sh | bash
+      fi
+      touch "$HOME/.bashrc"
+      for dir in "$HOME/.local/bin" "$HOME/.claude/bin"; do
+        grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
+      done
+      claude --version >/dev/null

@@ -292,22 +292,11 @@ export function lintLoaded(loaded: LoadResult): LintFinding[] {
  * rockysurf-37pa measured, arriving here instead of at boot.
  */
 export function lintPacksDir(options: LintOptions): LintReport {
-  const baseTools = new Map<string, LoadedTool>()
-  const baseFindings: LintFinding[] = []
-
-  for (const baseDir of options.basePacksDirs ?? []) {
-    const base = loadPacksFromDir(baseDir)
-    for (const issue of base.issues) {
-      baseFindings.push({
-        file: `${baseDir}/${issue.file}`,
-        rule: 'format',
-        message: `base pack directory does not validate: ${issue.message}`,
-      })
-    }
-    for (const [id, tool] of base.tools) if (!baseTools.has(id)) baseTools.set(id, tool)
-  }
-
   const loaded = loadPacksFromDir(options.dir)
+  const { tools: baseTools, findings: baseFindings } = loadBasePacks(
+    options.basePacksDirs ?? [],
+    new Set(loaded.packs.map((p) => p.packId)),
+  )
 
   // A reference the base satisfies is not the target's problem. Matched on the tool id the
   // loader quoted rather than on the whole sentence, so rewording that message does not
@@ -342,6 +331,46 @@ export function lintPacksDir(options: LintOptions): LintReport {
   }
 
   return { findings, packs: loaded.packs.map((p) => p.packId), files: loaded.files }
+}
+
+/**
+ * Load the base directories, minus any pack the TARGET also defines.
+ *
+ * The subtraction is what makes a default base directory safe. `rockysurf pack lint` falls back
+ * to the packs bundled in the running `rockysurf` when no `--base-packs` is given, and those are
+ * a copy of this repository's `packs/` — so linting `packs/` itself would otherwise report every
+ * one of its tools as defined twice, in a file that is the same file.
+ *
+ * Dropping by packId rather than by toolId is the distinction that keeps the duplicate check
+ * worth having. A base file whose pack the target also defines is the SAME pack, so it
+ * contributes nothing; a base file the target knows nothing about stays, and a community pack
+ * that redefines `git` out of it is still caught — which is the case the check exists for, since
+ * a toolId defined twice breaks the operator's whole catalog rather than just that pack.
+ */
+function loadBasePacks(
+  dirs: string[],
+  targetPackIds: ReadonlySet<string>,
+): { tools: Map<string, LoadedTool>; findings: LintFinding[] } {
+  const tools = new Map<string, LoadedTool>()
+  const findings: LintFinding[] = []
+
+  for (const dir of dirs) {
+    const base = loadPacksFromDir(dir)
+    for (const issue of base.issues) {
+      findings.push({
+        file: `${dir}/${issue.file}`,
+        rule: 'format',
+        message: `base pack directory does not validate: ${issue.message}`,
+      })
+    }
+    // Files belonging to a pack the target also defines are the target's own, seen twice.
+    const shadowed = new Set(base.packs.filter((p) => targetPackIds.has(p.packId)).map((p) => p.sourceFile))
+    for (const [id, tool] of base.tools) {
+      if (shadowed.has(tool.sourceFile) || tools.has(id)) continue
+      tools.set(id, tool)
+    }
+  }
+  return { tools, findings }
 }
 
 /** One finding per line, in the shape editors and CI annotators already parse. */

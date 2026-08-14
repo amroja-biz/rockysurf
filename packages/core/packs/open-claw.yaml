@@ -1,0 +1,274 @@
+# OpenClaw — a graphical box reached over RDP rather than a headless one.
+#
+# This is the pack that used to need four hardcoded `packId === 'open-claw'` checks in the
+# UI. It needs none now: `requiresRdp`, `requiresRepos` and `desktop` say what it is, and the
+# application reads those fields instead of recognising the name.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml.
+version: 1
+
+pack:
+  packId: open-claw
+  name: OpenClaw
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - desktop-environment
+    - open-claw
+    - open-claw-onboard
+  displayOrder: 5
+  enabled: true
+  imageUrl: /images/surge-packs/open-claw.png
+  # No repository selection: this pack is a desktop, not a checkout.
+  requiresRepos: false
+  # The user is asked for a remote-desktop password at create time.
+  requiresRdp: true
+  desktop: xfce
+  guide: |
+    Tunnel the desktop over SSH (the command is above), point your RDP client at
+    localhost:3389, and sign in as `rocky` with the remote-desktop password you chose when
+    you created this server. Open a terminal inside that desktop session for the rest.
+
+    OpenClaw has no AI provider yet — this box holds no credentials of yours
+      openclaw onboard        connect a provider; it is a guided wizard, so run it here
+                              and not over a bare SSH command
+
+    The assistant itself is already running. The gateway is a systemd USER service, and the
+    bootstrap enables lingering for `rocky` so that service starts at boot and keeps running
+    when you log out of the desktop — you do not have to start it, and closing this session
+    does not stop it.
+
+      systemctl --user status openclaw-gateway     is it running?
+      systemctl --user restart openclaw-gateway    pick it up after connecting a provider
+      journalctl --user -u openclaw-gateway -f     watch what it is doing
+
+      On a box where the service could not be installed the note on the desktop says so, and
+      tells you to run `openclaw gateway run` yourself instead. That note —
+      OpenClaw-Getting-Started.txt — is the one that knows which box you have.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN, and this pack clones no repositories. If the
+      operator set `github.pat` in rockysurf.config.yaml it goes to the bootstrap only,
+      never into an interactive session.
+
+    Also installed
+      bd, tmux, Playwright with Chromium, and Firefox in the desktop.
+
+tools:
+  - toolId: desktop-environment
+    name: Desktop Environment
+    description: XFCE desktop with XRDP remote access and Firefox
+    category: base
+    url: https://xfce.org
+    installOrder: 35
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y xfce4 xfce4-goodies xrdp
+
+      # Mozilla's apt repository. Adding it is convergent; the `apt-get update` it requires
+      # runs only when the source list actually changed, so a re-run costs nothing.
+      install -d -m 0755 /etc/apt/keyrings
+      if [ ! -f /etc/apt/keyrings/packages.mozilla.org.asc ]; then
+        curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg -o /etc/apt/keyrings/packages.mozilla.org.asc
+      fi
+      list=/etc/apt/sources.list.d/mozilla.list
+      want='deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main'
+      if [ "$(cat "$list" 2>/dev/null)" != "$want" ]; then
+        echo "$want" > "$list"
+        printf 'Package: *\nPin: origin packages.mozilla.org\nPin-Priority: 1000\n' > /etc/apt/preferences.d/mozilla
+        apt-get update -qq
+      fi
+      apt-get install -y firefox
+
+      # Session wiring. Every write below replaces a whole file, so it converges — but we
+      # track whether anything actually changed, because restarting xrdp unconditionally
+      # would drop every live desktop session on a re-run. That is precisely the kind of
+      # visible side effect the second CI run exists to catch.
+      changed=0
+      for f in /home/rocky/.xsession /etc/skel/.xsession; do
+        if [ "$(cat "$f" 2>/dev/null)" != 'xfce4-session' ]; then
+          echo xfce4-session > "$f"
+          changed=1
+        fi
+      done
+      chown rocky:rocky /home/rocky/.xsession
+
+      want_wm='#!/bin/sh
+      xfce4-session'
+      if [ "$(cat /etc/xrdp/startwm.sh 2>/dev/null)" != "$want_wm" ]; then
+        printf '%s\n' "$want_wm" > /etc/xrdp/startwm.sh
+        chmod +x /etc/xrdp/startwm.sh
+        changed=1
+      fi
+
+      install -d -o rocky -g rocky /home/rocky/Desktop
+      if [ -f /usr/share/applications/firefox.desktop ] && [ ! -f /home/rocky/Desktop/firefox.desktop ]; then
+        install -m 0755 -o rocky -g rocky /usr/share/applications/firefox.desktop /home/rocky/Desktop/firefox.desktop
+      fi
+
+      # Guarded on systemd actually running: the CI smoke test container has no init, and an
+      # unguarded systemctl would fail the step there while working fine on a real box.
+      if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+        systemctl enable xrdp
+        [ "$changed" = 0 ] || systemctl restart xrdp
+      fi
+
+  - toolId: open-claw
+    name: OpenClaw
+    description: Personal AI assistant with multi-channel messaging support
+    category: agent
+    url: https://openclaw.ai
+    installOrder: 50
+    # Global npm install — root's job. The legacy definition said `rocky` and used sudo.
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # UNPINNED (deliberate): tracks its own releases.
+      npm install -g --no-fund --no-audit openclaw
+      openclaw --version >/dev/null
+
+      # The gateway is a systemd USER service, and `rocky` never logs in during a bootstrap:
+      # no PAM session means no user manager, no /run/user/<uid>, and nothing for
+      # `systemctl --user` to talk to. Lingering is systemd's own answer — it starts
+      # user@<uid>.service without a session, at boot, and keeps it running after the user
+      # logs out of the desktop, which is exactly the lifetime an assistant wants.
+      #
+      # openclaw will run `loginctl enable-linger` itself, but only after it has decided that
+      # user services are available — which is the very thing it cannot decide until this has
+      # run. Chicken and egg. Root breaks it here, which is also why it lives in this step and
+      # not in the `rocky` one below: enabling linger for another user is root's to do.
+      #
+      # Guarded on systemd running, like the xrdp step above: the CI smoke container has no
+      # init and loginctl would fail there.
+      if [ -d /run/systemd/system ] && command -v loginctl >/dev/null 2>&1; then
+        uid=$(id -u rocky)
+        # Deliberately not fatal, in either half. A box whose logind cannot be reached is a box
+        # that gets the assistant it got before this change — started by hand — and that is a
+        # far better outcome than failing the step and taking the desktop down with it.
+        if loginctl enable-linger rocky; then
+          # logind starts the user manager asynchronously and the onboarding step that follows
+          # needs its bus, so wait for it rather than race it.
+          for _ in $(seq 1 30); do
+            [ -S "/run/user/$uid/bus" ] && break
+            sleep 1
+          done
+        fi
+        [ -S "/run/user/$uid/bus" ] ||
+          echo "warning: no user bus at /run/user/$uid/bus; the gateway will not install as a service" >&2
+      else
+        echo "no systemd here: skipping loginctl enable-linger — the gateway cannot be a service on this box"
+      fi
+
+  # The user-facing half of OpenClaw, split out because `setupScript` runs as the tool's
+  # declared user and the onboarding daemon belongs to `rocky`, not to root.
+  #
+  # The legacy version of this step also fetched a wallpaper from a private S3 bucket with the
+  # AWS CLI and pinned Firefox's homepage to a vendor page. Both are gone: a self-hosted box
+  # has no AWS credentials, no AWS CLI, and no reason to carry someone's branding.
+  - toolId: open-claw-onboard
+    name: OpenClaw onboarding
+    description: Per-user OpenClaw daemon and desktop shortcut
+    category: base
+    url: https://docs.openclaw.ai/start/getting-started
+    installOrder: 55
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      mkdir -p "$HOME/Desktop"
+
+      # The stamp records WHAT happened, not merely that something did. The desktop note below
+      # has to tell the user whether their assistant is already running or whether starting it
+      # is on them, and on a resumed run — when onboarding is skipped — this file is the only
+      # witness left. An EMPTY stamp was written by an older version of this pack, back when
+      # the daemon never installed at all: "manual" is the truth about those boxes.
+      stamp="$HOME/.rockysurf/openclaw-onboarded"
+      mode=$([ -f "$stamp" ] && cat "$stamp" || true)
+      case "$mode" in service | manual) ;; *) mode='' ;; esac
+
+      if [ -z "$mode" ]; then
+        # `openclaw onboard` is a guided wizard. With no TTY it prints its security briefing,
+        # stops at a "Continue?" prompt, reads EOF and exits non-zero — rule 3, and it took the
+        # rest of the plan with it. --non-interactive is the tool's own answer, and it requires
+        # --accept-risk. --auth-choice skip is the only value that can work at bootstrap: no
+        # provider credential reaches this box, so the user connects one themselves.
+        #
+        # The gateway is a systemd USER service and this step has no login session, so it can
+        # only be installed where the root half above got a user manager lingering. Export the
+        # session variables a login would have set: openclaw infers them when the bus socket
+        # exists, but `systemctl --user` run by hand from this script would not.
+        if [ -d /run/systemd/system ] && [ -S "/run/user/$(id -u)/bus" ]; then
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          if openclaw onboard --non-interactive --accept-risk --auth-choice skip --install-daemon; then
+            mode=service
+          else
+            # A gateway that would not install is not worth failing the whole box for: this
+            # step is followed by branding and rdp, and taking those down would leave the user
+            # with no desktop to fix it from. Fall back to the onboarded-but-not-running box
+            # this pack shipped before, and say so on the desktop.
+            echo "openclaw: the gateway service did not install; leaving it for the user to start" >&2
+            openclaw onboard --non-interactive --accept-risk --auth-choice skip \
+              --no-install-daemon --skip-health
+            mode=manual
+          fi
+        else
+          # No reachable user manager: finish onboarding and skip the health probe, which by
+          # design only passes against a running gateway.
+          openclaw onboard --non-interactive --accept-risk --auth-choice skip \
+            --no-install-daemon --skip-health
+          mode=manual
+        fi
+        mkdir -p "$(dirname "$stamp")" && printf '%s\n' "$mode" > "$stamp"
+      fi
+
+      # Whole-file write: converges, and cannot accumulate duplicate lines on a re-run. What it
+      # says is read back out of the stamp, so a resumed run writes the same file rather than a
+      # hopeful one.
+      if [ "$mode" = service ]; then
+        state='Your assistant is already running: OpenClaw installed itself as a systemd user
+      service, which starts at boot and keeps running when you log out.
+
+        systemctl --user status openclaw-gateway     is it running?
+        systemctl --user restart openclaw-gateway    pick up a change you just made
+        journalctl --user -u openclaw-gateway -f     watch what it is doing'
+      else
+        state='Your assistant is NOT running. The gateway is a systemd user service and this box
+      had no user session to install it into, so starting it is on you:
+
+        openclaw gateway run                 start it — inside tmux, so closing the
+                                             terminal does not stop it
+        openclaw onboard --install-daemon    or install it as a service from this desktop
+                                             session, which is what the bootstrap could not do'
+      fi
+      { printf '%s\n' \
+          'OpenClaw — getting started: https://docs.openclaw.ai/start/getting-started' \
+          '' \
+          'This box was onboarded without an AI provider: it holds no credentials of yours.' \
+          'Open a terminal here and run  openclaw onboard  to connect one.' \
+          ''
+        printf '%s\n' "$state"
+      } > "$HOME/Desktop/OpenClaw-Getting-Started.txt"

@@ -1,0 +1,174 @@
+# Gas Town — multi-agent workspace manager, with all three agent CLIs alongside it.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml; `amp` and `codex` come
+# from packs/amp-agents.yaml and packs/codex-cli.yaml.
+version: 1
+
+pack:
+  packId: gas-town
+  name: Gas Town
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - gas-town-toolchain
+    - dolt
+    - claude-code
+    - amp
+    - codex
+    - gas-town
+  displayOrder: 4
+  enabled: true
+  imageUrl: /images/surge-packs/gas-town.png
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Authenticate the agents first — Gas Town drives them, and it cannot do this for you
+      claude setup-token      or just `claude`, which walks you through signing in
+      codex login             signs in with a ChatGPT plan
+      amp                     first run prints a sign-in URL for ampcode.com
+
+    Your workspace already exists
+      cd ~/gt                 `gt install` ran during setup
+      gt status               one rig and crew per repository you selected
+      gt --help
+
+      Dolt is installed and already has a commit identity (rocky@localhost); change it with
+      `dolt config --global` if you want your own name on the HQ's history.
+
+      gt is pinned to v1.1.0. Later releases cannot yet build a Beads-backed HQ on a fresh
+      box, so `go install ...@latest` would give you a workspace that fails to initialise.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+tools:
+  # Split out of the legacy `gas-town` tool, which declared runAs: rocky and opened with
+  # `sudo apt-get install golang-go`. Installing a compiler is root's job and now says so.
+  - toolId: gas-town-toolchain
+    name: Go toolchain
+    description: Go compiler, needed to build the Gas Town CLI
+    category: base
+    url: https://go.dev
+    installOrder: 35
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y golang-go
+      go version >/dev/null
+
+  # `gt install` refuses to create an HQ without dolt on PATH, and every `gt rig add` needs the
+  # Dolt server that `gt` starts. Nothing else in packs/ installs it, and beads' own CLI does
+  # not need it (bd embeds Dolt as a library), so it belongs here rather than next to `beads`.
+  - toolId: dolt
+    name: Dolt
+    description: Versioned SQL database, the store behind Gas Town's Beads-backed HQ
+    category: base
+    url: https://github.com/dolthub/dolt
+    installOrder: 36
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # PINNED, and arch-branched: dolt is not in apt, it ships as a per-architecture GitHub
+      # release tarball. Upstream's own installer is `curl … | sudo bash`, which rule 4 rules
+      # out; this is the same download without the sudo.
+      DOLT_VERSION=2.2.3
+      case "$ARCH" in
+        amd64) dolt_arch=amd64 ;;
+        arm64) dolt_arch=arm64 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # Guarded on the installed version rather than on a stamp, so a re-run neither
+      # re-downloads nor rewrites the binary, while bumping DOLT_VERSION still reinstalls.
+      if [ "$(dolt version 2>/dev/null | awk 'NR==1{print $3}')" != "$DOLT_VERSION" ]; then
+        tmp=$(mktemp)
+        curl -fsSL "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/dolt-linux-${dolt_arch}.tar.gz" \
+          | tar -xzO "dolt-linux-${dolt_arch}/bin/dolt" > "$tmp"
+        install -m 0755 "$tmp" /usr/local/bin/dolt
+        rm -f "$tmp"
+      fi
+      dolt version >/dev/null
+
+  - toolId: gas-town
+    name: Gas Town
+    description: Multi-agent workspace manager
+    category: agent
+    url: https://github.com/steveyegge/gastown
+    installOrder: 40
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$PATH:$HOME/go/bin"
+      # PINNED to the last release whose `gt install` can build a Beads-backed HQ, which is what
+      # this pack exists to hand the user. @latest is v1.2.1 today, and on a fresh box its HQ
+      # initialisation dies inside `bd init`: bd refuses to migrate the schema it has itself
+      # just created in the Dolt server, "pending schema migrations alter pre-existing dirty
+      # tables: config, interactions, routes" (gastownhall/beads#4566 — fixed for embedded mode,
+      # and that fix explicitly leaves server mode, which `gt` uses, untouched). v1.2.0 does not
+      # even compile without ICU headers. Re-point this at @latest once upstream lands the
+      # server-mode fix; the evidence and the rerun recipe are on rockysurf-nekl.
+      # Convergent either way: a second run finds the module cached and rewrites the same binary.
+      go install github.com/steveyegge/gastown/cmd/gt@v1.1.0
+      if ! grep -q 'go/bin' "$HOME/.bashrc"; then
+        echo 'export PATH="$PATH:$HOME/go/bin"' >> "$HOME/.bashrc"
+      fi
+      "$HOME/go/bin/gt" --version >/dev/null 2>&1 || [ -x "$HOME/go/bin/gt" ]
+    setupScript: |
+      set -euo pipefail
+      export PATH="$PATH:$HOME/go/bin:$HOME/.beads/bin:$HOME/.local/bin"
+
+      # The HQ's task database is Dolt, and Dolt will not open a store for a user with no commit
+      # identity — `gt install` stops with "dolt identity not configured and git user.name not
+      # available" before it creates anything. A box has no identity to inherit, so give it the
+      # one it does have. Guarded per key: `--add` on a key that already holds a value appends a
+      # second one rather than replacing it.
+      dolt config --global --list | grep -q '^user\.name ' || dolt config --global --add user.name rocky
+      dolt config --global --list | grep -q '^user\.email ' || dolt config --global --add user.email rocky@localhost
+
+      # `gt install` initialises the workspace once; re-running it on an existing checkout is
+      # not something we can assume is safe, so it is guarded on the marker it creates.
+      [ -d "$HOME/gt/.git" ] || gt install "$HOME/gt" --git
+      cd "$HOME/gt"
+
+      # One rig + crew per repository the user selected. `gt rig add` on an existing rig is
+      # an error rather than a no-op, so each is stamped: this is the generic guard for a
+      # third-party command with no idempotent mode.
+      for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
+        [ -n "$repo" ] || continue
+        repo_name=$(basename "$repo" .git)
+        clean_name=$(echo "$repo_name" | tr '-' '_' | tr -cd '[:alnum:]_')
+        [ -n "$clean_name" ] || continue
+        stamp="$HOME/.rockysurf/gt-rig-$clean_name"
+        if [ ! -f "$stamp" ]; then
+          gt rig add "$clean_name" "$repo"
+          gt crew add "${clean_name}_crew" --rig "$clean_name"
+          mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+        fi
+      done

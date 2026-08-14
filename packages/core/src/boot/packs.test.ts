@@ -33,13 +33,11 @@ describe('choosing a packs directory', () => {
     expect(resolved.dir).toBe(join(cwd, 'packs'))
   })
 
-  it('falls back to <dataDir>/packs — the installed case', () => {
-    const cwd = tempDir()
-    const dataDir = join(tempDir(), 'data')
-    const resolved = resolvePacksDir(dataDir, cwd)
-
-    expect(resolved.source).toBe('data-dir')
-    expect(resolved.dir).toBe(join(dataDir, 'packs'))
+  it('falls back to the packs this release ships — the installed case', () => {
+    // Was `data-dir`, and an empty one, which is the whole of rockysurf-io02: a published
+    // install had no pack files anywhere and came up with an empty picker. `bundled-packs.test.ts`
+    // covers the tiering; this asserts the case an `npx` user actually lands in.
+    expect(resolvePacksDir(join(tempDir(), 'data'), tempDir())).toMatchObject({ source: 'bundled' })
   })
 })
 
@@ -65,19 +63,25 @@ describe('syncing packs at boot', () => {
     opened.close()
   })
 
-  it('serves with zero packs on a fresh installation, creating the directory', () => {
+  it('serves the shipped packs on a fresh installation', () => {
+    // The inversion of what this test used to assert. It read "serves with ZERO packs on a fresh
+    // installation, creating the directory" and passed, because that was true and wrong: the
+    // published package carried no pack files, so a first `npx rockysurf` offered nothing to
+    // create a server with (rockysurf-io02). The empty directory was the symptom, and asserting
+    // it kept the symptom pinned.
     const opened = openTestDatabase()
-    const dataDir = join(tempDir(), 'data')
     const messages: string[] = []
 
-    const result = syncPacksAtBoot({ db: opened.db, dataDir, cwd: tempDir(), log: (m) => messages.push(m) })
+    const result = syncPacksAtBoot({
+      db: opened.db,
+      dataDir: join(tempDir(), 'data'),
+      cwd: tempDir(),
+      log: (m) => messages.push(m),
+    })
 
-    expect(result.source).toBe('data-dir')
-    expect(result.packsSynced).toBe(0)
-    expect(result.toolsSynced).toBe(0)
-    // An empty packs directory is a legitimate state, not an error.
-    expect(readdirSync(result.dir)).toEqual([])
-    expect(listPacks(opened.db)).toHaveLength(0)
+    expect(result.source).toBe('bundled')
+    expect(result.packsSynced).toBeGreaterThan(0)
+    expect(listPacks(opened.db).length).toBeGreaterThan(0)
     opened.close()
   })
 
@@ -146,17 +150,23 @@ describe('syncing packs at boot', () => {
     expect(a.source).toBe('checkout')
     expect(a.packsSynced).toBe(shippedPackFiles().length)
 
-    // Boot B — same data directory, started from a directory with no packs/ in sight.
-    // Since 8wgm the app boots happily from anywhere, so this is an ordinary thing to do.
+    // Boot B — same data directory, started from a directory with no packs/ in sight. Since
+    // 8wgm the app boots happily from anywhere, so this is an ordinary thing to do.
+    //
+    // WHAT CHANGED WITH rockysurf-io02, and it is worth being precise. This boot used to have NO
+    // pack source at all and therefore drew no conclusion. Now it falls back to the packs the
+    // release ships, so it DOES reconcile — against a set identical to the one boot A loaded
+    // from the checkout, which is why the catalog is unchanged either way.
+    //
+    // The consequence, stated rather than discovered: a boot from the bundle reconciles against
+    // the SHIPPED set, so a pack that exists only in somebody's checkout is removed by a boot
+    // taken outside it. That is the same rule a checkout boot has always had — a file the source
+    // no longer offers goes away — applied to a second legitimate source, and it is recoverable
+    // by booting from the checkout again. 96ce's actual guarantee is untouched and is asserted
+    // by the next test: a boot that loads NO pack at all still deletes nothing.
     const b = syncPacksAtBoot({ db: opened.db, dataDir, cwd: tempDir(), log })
     expect(listPacks(opened.db)).toHaveLength(shippedPackFiles().length + 1)
-    expect(b.reconciled).toBe(false)
-    // The count in the message is the file-backed rows boot A left behind, so it comes from
-    // disk. A literal here fails the day someone adds a pack file, which is a bug in the test
-    // and not in their pack (rockysurf-d5an).
-    expect(messages.at(-1)).toMatch(
-      new RegExp(`no checkout detected .* — leaving ${shippedPackFiles().length} database pack\\(s\\) as they are`),
-    )
+    expect(b.reconciled).toBe(true)
 
     // Boot C — back in the checkout. Still the same set, no duplicates, no losses.
     const c = syncPacksAtBoot({ db: opened.db, dataDir, cwd: repoRoot, log })

@@ -6,3 +6,13 @@ node_modules/
 public/
 public.build/
 public.prev/
+# `packages/core/packs` is COMMITTED, not ignored — see scripts/check-packs-bundle.mjs for why.
+# Only the swap scratch belongs here, and only when the sync is interrupted mid-copy.
+#
+# LEADING SLASH, and it is load-bearing rather than tidy. A bare `packs.build/` would be fine,
+# but a bare `packs/` matches a directory of that name at ANY depth — including `src/packs/`,
+# the pack loader's own source directory. Written unanchored it silently excluded a new file
+# there from a commit, and the branch went up importing a module that was not in it. Anchor
+# every directory pattern in this file to the package root.
+/packs.build/
+/packs.prev/

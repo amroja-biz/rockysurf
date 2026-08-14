@@ -25,7 +25,7 @@ reason.
 
 | step | what it is |
 |---|---|
-| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-npx-closure.mjs` |
+| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
 | `pnpm -r typecheck` | `tsc --noEmit` per package |
 | `pnpm -r test` | vitest per package |
 
@@ -41,7 +41,7 @@ Docker daemon, or a `gitleaks` binary. All three are runnable locally when you h
 | check | command | what it needs |
 |---|---|---|
 | pack smoke | `node scripts/pack-smoke.mjs --pack <id> --arch arm64` | Docker |
-| pack lint | `rockysurf pack lint packs/` | nothing — and `pnpm run check` runs it anyway |
+| pack lint | `rockysurf pack lint packs/` | a built workspace — and `pnpm run check` runs it anyway |
 | BYO lifecycle | `node scripts/e2e/byo-host.mjs` | Docker, and `127.0.0.1:22` free |
 | release tarballs | `node scripts/verify-tarballs.mjs` | ~30s, packs and npm-installs |
 | secret scan | `gitleaks git . --config .gitleaks.toml` | the `gitleaks` binary |
@@ -152,6 +152,19 @@ repository is held to the same standard:
 rockysurf pack lint  packs/                                  # static, a second, no Docker
 rockysurf pack check packs/ --pack <id> --arch arm64         # the smoke harness
 ```
+
+`--base-packs` defaults to the packs bundled in the `rockysurf` you are running
+(`packages/core/packs` — `rockysurf-io02`), which is what lets a community pack in the shop
+resolve the base toolchain with no flag and no clone.
+
+**`packages/core/packs` is a committed copy of this directory, not a build artifact.** Core's
+build writes it and `check-packs-bundle.mjs` fails when the two disagree, so editing a pack means
+building and committing the copy alongside it. It is committed rather than generated-and-ignored
+because generated state that lives only in a working tree is invisible to everyone except the
+person who happens to have built — a fresh clone does not have it, and a test that guarded on its
+presence would report "did not run" as a pass.
+Linting this repository's own `packs/` is unaffected: a base pack whose `packId` the target also
+defines is the same pack seen twice and contributes nothing.
 
 `pack lint` is the single definition of the mechanical rules — `packages/core/src/packs/lint.ts`.
 It used to be a dozen regexes inside `packs.test.ts`, which was fine while every pack lived in
