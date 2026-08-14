@@ -5,6 +5,7 @@ import type { ComponentType } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { AdminPackShopPage } from './pages/AdminPackShopPage'
 import { AdminSurgePacksPage } from './pages/AdminSurgePacksPage'
 import { AdminToolsPage } from './pages/AdminToolsPage'
 import { CostsPage } from './pages/CostsPage'
@@ -63,6 +64,7 @@ vi.mock('./lib/api', async () => {
     getSetupState: vi.fn(),
     listAdminTools: vi.fn(),
     listAdminSurgePacks: vi.fn(),
+    getPackRegistry: vi.fn(),
     getSettings: vi.fn(),
   }
 })
@@ -90,6 +92,7 @@ beforeEach(() => {
   vi.mocked(api.getSetupState).mockResolvedValue({ complete: true, needsProvider: false, providers: [] })
   vi.mocked(api.listAdminTools).mockResolvedValue([])
   vi.mocked(api.listAdminSurgePacks).mockResolvedValue([])
+  vi.mocked(api.getPackRegistry).mockResolvedValue({ enabled: true, sources: [], shelves: [] })
   // Settings fails to read here, which is the interesting state for this file: a page must not
   // shed its navigation exactly when it could not load.
   vi.mocked(api.getSettings).mockRejectedValue(new Error('no config file'))
@@ -105,6 +108,7 @@ const AUTHENTICATED_PAGES: Record<string, ComponentType> = {
   SettingsPage,
   AdminToolsPage,
   AdminSurgePacksPage,
+  AdminPackShopPage,
   CostsPage,
   HomePage,
   HelpPage,
@@ -165,6 +169,7 @@ describe('the navbar is on every authenticated page', () => {
       ['Costs', '/costs'],
       ['Tools', '/admin/tools'],
       ['Surge Packs', '/admin/surge-packs'],
+      ['Pack Shop', '/admin/pack-shop'],
       ['Settings', '/settings'],
       ['Help', '/help'],
       // The brand mark, whose accessible name is its wordmark.
