@@ -343,6 +343,30 @@ export const packs = sqliteTable('packs', {
   /** 'xfce', or null for a headless box. */
   desktop: text('desktop'),
   sourceFile: text('source_file'),
+  /**
+   * Where a pack installed from a registry came from (rockysurf-arym.4).
+   *
+   * SEPARATE COLUMNS, AND NOT `sourceFile`, WHICH WOULD DELETE THE PACK. `syncPacksToDb`
+   * removes every row with a non-null `sourceFile` whose file the next boot does not find, so
+   * recording provenance there — `shop:rust-dev`, say — would make a registry install vanish on
+   * the next restart. A registry pack keeps `sourceFile` NULL, exactly like one created in the
+   * admin UI, and the boot reconcile leaves it alone by construction.
+   *
+   * `registrySource` is the configured source's NAME rather than its URL, because that is what
+   * the operator wrote and what the UI shows; `registryUrl` is kept beside it so an install
+   * still says where it actually came from after a source is renamed or repointed.
+   *
+   * `registryTrust` is snapshotted at install time on purpose. It records what the operator
+   * believed when they consented, which is the question an audit asks — not what the config
+   * happens to say today.
+   */
+  registrySource: text('registry_source'),
+  registryUrl: text('registry_url'),
+  /** The digest verified at install. Lets the UI say exactly which bytes were accepted. */
+  registrySha256: text('registry_sha256'),
+  registryTrust: text('registry_trust'),
+  /** ISO-8601. When this installation accepted it, which is not when the registry published it. */
+  registryInstalledAt: text('registry_installed_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

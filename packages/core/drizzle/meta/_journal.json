@@ -57,6 +57,13 @@
       "when": 1786650111154,
       "tag": "0007_tiny_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786711858127,
+      "tag": "0008_careless_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

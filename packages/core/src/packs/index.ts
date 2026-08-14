@@ -52,6 +52,14 @@ export {
   type ShelfResult,
 } from './registry.js'
 
+export {
+  describePack,
+  urlsIn,
+  type DisclosureInput,
+  type PackDisclosure,
+  type ToolDisclosure,
+} from './disclosure.js'
+
 export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 
 export {

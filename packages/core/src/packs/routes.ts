@@ -15,9 +15,12 @@ import {
 import type { ToolRow } from '../db/schema.js'
 import { badRequest, conflict, created, forbidden, noContent, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
+import { describePack } from './disclosure.js'
 import { parsePackFile, renderPackFile } from './loader.js'
+import type { RegistryClient } from './registry.js'
 import { fetchPublicText } from './safe-fetch.js'
-import { packSchema, toolSchema } from './schema.js'
+import { packSchema, toolSchema, type PackFile, type ToolDefinition } from './schema.js'
+import type { RegistryProvenance } from '../db/repositories/packs.js'
 import type { AppEnv } from '../app.js'
 
 /**
@@ -44,6 +47,15 @@ export interface PackRoutesDeps {
    * loopback addresses a local test server lives on.
    */
   fetchText?: typeof fetchPublicText
+  /**
+   * The pack registries, when this installation has any (rockysurf-arym.4).
+   *
+   * Optional so an embedder — and every existing test — can build these routes without one. Its
+   * absence is not an error state: the registry routes answer with a disabled registry, exactly
+   * as they do when the operator set `registry.enabled: false`, because from the outside those
+   * are the same situation and inventing a second one helps nobody.
+   */
+  registry?: RegistryClient
 }
 
 /* ------------------------------------------------------------------------ view models */
@@ -108,7 +120,26 @@ const publicPack = (p: Pack, byId: Map<string, ToolRow>) => ({
  * by a YAML file — those are owned by the repository and an edit here would be overwritten on
  * the next boot sync (ADR-0004) — and an end user choosing a pack does not.
  */
-const adminPack = (p: Pack) => ({ ...packFields(p), tools: p.tools, sourceFile: p.sourceFile ?? null })
+const adminPack = (p: Pack) => ({
+  ...packFields(p),
+  tools: p.tools,
+  sourceFile: p.sourceFile ?? null,
+  /**
+   * Registry provenance, and it is a SEPARATE field from `sourceFile` rather than an
+   * alternative spelling of it. A registry pack has `sourceFile: null` — that is what keeps the
+   * boot reconcile from deleting it — so a UI that read provenance out of `sourceFile` would
+   * show every installed pack as "database" and lose where it came from.
+   */
+  registry: p.registrySource
+    ? {
+        source: p.registrySource,
+        url: p.registryUrl,
+        sha256: p.registrySha256,
+        trust: p.registryTrust,
+        installedAt: p.registryInstalledAt,
+      }
+    : null,
+})
 
 /* --------------------------------------------------------------------------- payloads */
 
@@ -134,7 +165,7 @@ function slugify(name: string): string {
 }
 
 export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
-  const { db, fetchText = fetchPublicText } = deps
+  const { db, fetchText = fetchPublicText, registry } = deps
   const routes = new Hono<AppEnv>()
 
   const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -376,6 +407,70 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     return c.body(yaml)
   })
 
+  /**
+   * THE ONE FUNCTION THAT TURNS A VALIDATED PackFile INTO ROWS.
+   *
+   * Both the YAML/URL import below and the registry install (rockysurf-arym.4) call it. Two code
+   * paths that both write packs is how two ways of installing a pack start disagreeing about
+   * what a pack is — and the disagreement would surface as an operator's catalog behaving
+   * differently depending on where a pack came from, which is exactly the thing provenance is
+   * supposed to make legible rather than confusing.
+   *
+   * `sourceFile` IS ALWAYS NULL HERE, for both callers. A non-null value marks a row as backed
+   * by a file in `packs/`, and the boot reconcile deletes every such row whose file it cannot
+   * find — so an imported or installed pack recorded that way would vanish on the next restart.
+   * Provenance goes in the registry columns instead.
+   */
+  function installPackFile(
+    file: PackFile,
+    provenance?: RegistryProvenance,
+  ): { ok: true; pack: Pack } | { ok: false; problem: string } {
+    for (const tool of file.tools) {
+      upsertTool(db, {
+        id: tool.toolId,
+        name: tool.name,
+        description: tool.description,
+        category: tool.category,
+        url: tool.url,
+        installScript: tool.installScript,
+        setupScript: tool.setupScript ?? null,
+        enabled: tool.enabled,
+        installOrder: tool.installOrder,
+        bootstrap: tool.bootstrap,
+        runAs: tool.runAs,
+        sourceFile: null,
+      })
+    }
+    // After the tools are written, because a pack may reference one this very file just
+    // introduced — and before the pack row, because a pack whose tools do not resolve installs
+    // nothing and should not appear in the picker at all.
+    const problem = checkTools(file.pack.tools)
+    if (problem) return { ok: false, problem }
+
+    return {
+      ok: true,
+      pack: upsertPack(db, {
+        id: file.pack.packId,
+        name: file.pack.name,
+        tools: file.pack.tools,
+        displayOrder: file.pack.displayOrder,
+        enabled: file.pack.enabled,
+        imageUrl: file.pack.imageUrl ?? null,
+        theme: file.pack.theme ?? null,
+        guide: file.pack.guide ?? null,
+        requiresRepos: file.pack.requiresRepos,
+        requiresRdp: file.pack.requiresRdp,
+        desktop: file.pack.desktop ?? null,
+        sourceFile: null,
+        // `null` rather than `undefined` on the import path, deliberately: importing a YAML file
+        // over a pack that came from a registry CLEARS the provenance, because the bytes now in
+        // the database are no longer the ones that registry published. Leaving the old
+        // provenance would attribute an operator's local file to somebody else.
+        registry: provenance ?? null,
+      }),
+    }
+  }
+
   routes.post('/api/v1/admin/surge-packs/import', validate('json', importBody), async (c) => {
     const body = c.req.valid('json')
 
@@ -399,44 +494,122 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
       return badRequest(c, 'Invalid pack file', real.map((i) => ({ path: i.file, message: i.message })))
     }
 
-    for (const tool of file.tools) {
-      upsertTool(db, {
-        id: tool.toolId,
-        name: tool.name,
-        description: tool.description,
-        category: tool.category,
-        url: tool.url,
-        installScript: tool.installScript,
-        setupScript: tool.setupScript ?? null,
-        enabled: tool.enabled,
-        installOrder: tool.installOrder,
-        bootstrap: tool.bootstrap,
-        runAs: tool.runAs,
-        sourceFile: null,
-      })
-    }
-    const problem = checkTools(file.pack.tools)
-    if (problem) return badRequest(c, problem)
+    const installed = installPackFile(file)
+    if (!installed.ok) return badRequest(c, installed.problem)
+    return success(c, adminPack(installed.pack))
+  })
 
-    return success(
-      c,
-      adminPack(
-        upsertPack(db, {
-          id: file.pack.packId,
-          name: file.pack.name,
-          tools: file.pack.tools,
-          displayOrder: file.pack.displayOrder,
-          enabled: file.pack.enabled,
-          imageUrl: file.pack.imageUrl ?? null,
-          theme: file.pack.theme ?? null,
-          guide: file.pack.guide ?? null,
-          requiresRepos: file.pack.requiresRepos,
-          requiresRdp: file.pack.requiresRdp,
-          desktop: file.pack.desktop ?? null,
-          sourceFile: null,
-        }),
-      ),
+  /* --------------------------------------------------------------- admin: the pack shop */
+
+  /**
+   * Browsing and installing from the configured pack registries (rockysurf-arym.4, issue #9).
+   *
+   * ADMIN-ONLY, because installing a pack means accepting shell that will run as root on every
+   * box created with it. It is the same authority the import endpoint needs and for the same
+   * reason.
+   */
+
+  /** One answer for "no registry", whether it is unconfigured or switched off. */
+  const noRegistry = () =>
+    ({
+      enabled: false,
+      sources: [],
+      shelves: [],
+    }) as const
+
+  routes.get('/api/v1/admin/pack-registry', async (c) => {
+    if (!registry) return success(c, noRegistry())
+    const installedIds = new Set(listPacks(db).map((p) => p.id))
+    const shelves = await registry.browse({ force: c.req.query('refresh') === '1' })
+    return success(c, {
+      ...registry.describe(),
+      shelves: shelves.map((shelf) => ({
+        source: shelf.source,
+        fetchedAt: shelf.fetchedAt?.toISOString() ?? null,
+        // The reason is carried, not swallowed. One registry being unreachable renders as one
+        // shelf saying why, never as a shop that looks empty.
+        failure: shelf.failure ? { kind: shelf.failure.kind, reason: shelf.failure.reason } : null,
+        packs: shelf.packs.map((pack) => ({
+          ...pack,
+          /** So the UI offers "Reinstall" rather than "Install" and nobody is surprised. */
+          installed: installedIds.has(pack.packId),
+        })),
+      })),
+    })
+  })
+
+  /**
+   * A pack's full disclosure, fetched and verified but NOT installed.
+   *
+   * This is the screen an operator reads before consenting. It carries every install and setup
+   * script verbatim, plus the two derived facts hardest to see in a long file — which steps run
+   * as root, and every URL the scripts fetch. `summaryIsComplete` is false and must be shown:
+   * the URL list is a pattern match over shell and a script can build a URL the match will not
+   * see. The scripts are the ground truth; the summary is a reading aid.
+   */
+  routes.get('/api/v1/admin/pack-registry/:sourceName/:packId', async (c) => {
+    if (!registry) return notFound(c, 'No pack registry is configured')
+    const fetched = await registry.getPack(c.req.param('sourceName'), c.req.param('packId'))
+    if (!fetched.ok) {
+      return fetched.kind === 'not-found' ? notFound(c, fetched.reason) : badRequest(c, fetched.reason)
+    }
+
+    // The local catalog, so the disclosure describes what THIS installation would run rather
+    // than only what the file happens to carry. A pack referencing `claude-code` runs that
+    // tool's script too, and an operator consenting to the install is consenting to that.
+    const known = new Map<string, ToolDefinition>(
+      listTools(db).map((t) => [
+        t.id,
+        {
+          toolId: t.id,
+          name: t.name,
+          description: t.description,
+          category: t.category as 'agent' | 'base',
+          url: t.url,
+          installScript: t.installScript,
+          ...(t.setupScript ? { setupScript: t.setupScript } : {}),
+          enabled: t.enabled,
+          installOrder: t.installOrder,
+          bootstrap: t.bootstrap,
+          runAs: t.runAs as 'root' | 'rocky',
+        },
+      ]),
     )
+
+    return success(c, {
+      entry: fetched.entry,
+      yaml: fetched.yaml,
+      disclosure: describePack({ file: fetched.file, knownTools: known }),
+    })
+  })
+
+  routes.post('/api/v1/admin/pack-registry/:sourceName/:packId/install', async (c) => {
+    if (!registry) return notFound(c, 'No pack registry is configured')
+    const sourceName = c.req.param('sourceName')
+
+    // Refetched and re-verified here rather than trusting anything the browser sends back from
+    // the disclosure screen. An install that took its YAML from the client would let whatever
+    // reached the disclosure decide what actually runs as root, which is the whole point of
+    // having verified it.
+    const fetched = await registry.getPack(sourceName, c.req.param('packId'))
+    if (!fetched.ok) {
+      return fetched.kind === 'not-found' ? notFound(c, fetched.reason) : badRequest(c, fetched.reason)
+    }
+
+    const source = registry.describe().sources.find((s) => s.name === sourceName)
+    const installed = installPackFile(fetched.file, {
+      source: sourceName,
+      url: source?.url ?? '',
+      sha256: fetched.entry.sha256,
+      // Snapshotted from the operator's config as it is NOW: this records what they believed
+      // when they consented, which is the question an audit asks — not what the config says
+      // later.
+      trust: fetched.entry.trust,
+      installedAt: new Date().toISOString(),
+    })
+    if (!installed.ok) return badRequest(c, installed.problem)
+
+    return created(c, adminPack(installed.pack))
   })
 
   return routes
