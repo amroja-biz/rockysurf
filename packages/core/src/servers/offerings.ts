@@ -131,3 +131,32 @@ export function allowedOfferings(
   const permitted = new Set(allowlist)
   return offerings.filter((o) => permitted.has(o.id))
 }
+
+/** How many ids a refusal names before it stops being a sentence. */
+const NAMED_IN_REFUSAL = 10
+
+/**
+ * The ids a caller could have passed, for a refusal that would otherwise only say "not that
+ * one" (rockysurf-oeay).
+ *
+ * The missing-PROVIDER refusal has named the configured clouds since rockysurf-va2l, and that
+ * is the prompt an agent needs — one that guessed wrong has nothing better to try otherwise.
+ * The offering refusal had no equivalent.
+ *
+ * Capped and counted rather than exhaustive: a cloud's allowlist can hold dozens of types and
+ * an error that scrolls off the screen is one nobody reads. Whoever needs all of them has a
+ * surface for it now (`rockysurf offerings`, and the `list_offerings` MCP tool), which the
+ * message points at instead of trying to be it.
+ *
+ * Sold-out types are named too, deliberately: they ARE creatable ids, they are simply out of
+ * stock this afternoon, and the caller gets a different, honest refusal if they pick one.
+ */
+export function describeCatalogue(catalogue: readonly Offering[], limit = NAMED_IN_REFUSAL): string {
+  if (catalogue.length === 0) return 'This installation allows none of its machine types.'
+  const named = catalogue.slice(0, limit).map((o) => o.id)
+  const rest = catalogue.length - named.length
+  return (
+    `It offers ${named.join(', ')}${rest > 0 ? `, and ${rest} more` : ''}. ` +
+    'Run `rockysurf offerings` for the full list with prices.'
+  )
+}

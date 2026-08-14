@@ -18,7 +18,7 @@ import {
   type LifecycleService,
 } from './lifecycle.js'
 import type { ProviderRegistry } from '../providers/registry.js'
-import { allowedOfferings, resolveOffering, SIZE_REQUIREMENTS } from './offerings.js'
+import { allowedOfferings, describeCatalogue, resolveOffering, SIZE_REQUIREMENTS } from './offerings.js'
 import type { Context } from 'hono'
 
 /**
@@ -457,9 +457,24 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       }
       const offering = catalogue.find((o) => o.id === body.offeringId)
       if (!offering) {
-        return badRequest(c, `provider ${providerId} has no offering "${body.offeringId}"`, [
-          { path: 'offeringId', message: 'not an offering this installation can create' },
-        ])
+        // NAME WHAT THERE IS, the way the missing-provider refusal does (rockysurf-va2l,
+        // rockysurf-oeay). "provider X has no offering Y" told a caller only that it had
+        // guessed wrong, and an agent that guessed wrong once has nothing better to try.
+        //
+        // THIS IS THE NO-ALLOWLIST CASE, which is the default and was the silent one. An
+        // installation that HAS set `providers.<cloud>.sizes` was already answered above,
+        // against the operator's list, before the catalogue was even fetched. Reaching here
+        // means the id is simply not something this cloud sells — and the catalogue is in
+        // hand, so saying what it does sell costs nothing.
+        //
+        // Capped, because this is a sentence rather than a catalogue: a cloud sells dozens of
+        // types and an error that scrolls is one nobody reads. The full list has its own
+        // surface now — `rockysurf offerings`, and the `list_offerings` MCP tool.
+        return badRequest(
+          c,
+          `provider ${providerId} has no offering "${body.offeringId}". ${describeCatalogue(catalogue)}`,
+          [{ path: 'offeringId', message: 'not an offering this installation can create' }],
+        )
       }
       if (!offering.available) {
         return c.json({ error: `offering "${offering.id}" is sold out right now`, code: 'capacity' }, 503)

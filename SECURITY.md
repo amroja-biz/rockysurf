@@ -466,7 +466,7 @@ into setting; config is where an operator reviews it.
 
 | Tool | Scope | Reversible? |
 |---|---|---|
-| `list_servers`, `get_server`, `get_ssh_command` | `read` | reads only |
+| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings` | `read` | reads only |
 | `stop_server` | `stop` | yes — disk preserved, start it again |
 | `create_server` | `create` | spends money until stopped or terminated |
 | `terminate_server` | `terminate` | **no** — the disk goes with it |

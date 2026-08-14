@@ -31,7 +31,7 @@ export {
   type ProviderCompositionContext,
 } from './server.js'
 
-export { runCli, type CliIo, type RunCliOptions } from './cli.js'
+export { runCli, usage, type CliIo, type CliSubcommand, type RunCliOptions } from './cli.js'
 
 /**
  * The single-core guarantee (rockysurf-utjq): `boot()` takes an advisory lock on the data
