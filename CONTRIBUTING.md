@@ -142,8 +142,14 @@ non-interactive, `runAs`-honest — each have a section there with worked exampl
 wrong way, and the mechanical ones are enforced by `packages/core/src/packs/packs.test.ts` on
 every test run.
 
-Reference the shared base toolchain by tool id rather than redefining it. A `toolId` defined in
-two files is rejected by the loader.
+**A pack defines whatever tools it installs** — a tool is an id, a description and a script the
+author wrote, and nothing has to be registered anywhere first. The only cross-file rules are that
+a reference must resolve and an id must not be defined twice.
+
+So: reference the shared base toolchain (`curl`, `git`, `nodejs`, …) by tool id rather than
+redefining it, because a reviewer should not have to work out whether a pack's `curl` is the real
+one. Anything else your pack needs, it declares. `lint.test.ts` has the worked case — a pack
+introducing a tool nothing has ever heard of, linting clean with no core involvement.
 
 Two commands run the contract, and both are published, so a pack that does not live in this
 repository is held to the same standard:

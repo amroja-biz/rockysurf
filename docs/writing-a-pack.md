@@ -672,10 +672,22 @@ Rocky Surf control plane's shop page, without waiting on a release here. `packs/
 repository is Rocky Surf's *own* packs — the ones that ship inside the release, which is what
 "official" means and why a contribution cannot become one ([ADR-0006](adr/0006-pack-registry-split-horizon.md)).
 
-The shop holds community packs and nothing else, so **the base toolchain is not in it**. Your pack
-references `curl`, `git`, `nodejs` and the rest by tool id, and those definitions live here. Point
-the checks at a checkout so they resolve; without it every base tool you correctly *referenced*
-rather than redefined is reported as unknown:
+**Your pack defines whatever it installs.** There is no list of approved software: a tool is an id
+you choose, a description, and a shell script you wrote. Nothing has to be added to Rocky Surf
+first and no maintainer has to have heard of it. A pack introducing software this project knows
+nothing about is the *normal* case, and it is the reason the registry exists at all —
+`packages/core/src/packs/lint.test.ts` pins the worked example, a pack declaring a tool nothing
+has ever seen and linting clean with no core involvement anywhere.
+
+The one category to **reference rather than redeclare** is the shared plumbing — `curl`, `git`,
+`gh`, `nodejs`, `tmux`, `build-essential` — which every box installs anyway and which lives here
+rather than in the shop. Listing their ids reuses one definition; copying their scripts into your
+file creates a second, and a duplicate `toolId` is refused. That refusal is about review rather
+than permission: a maintainer reading your pull request should never have to work out whether
+your `curl` is the real one. Need one of them to behave differently? Give it your own id.
+
+If your pack borrows any of those shared ids, point the checks at a checkout of this repository so
+they resolve. A pack that defines everything it installs needs no such flag:
 
 ```bash
 git clone --depth 1 https://github.com/amroja-biz/rockysurf /tmp/rockysurf

@@ -99,6 +99,74 @@ describe('format findings come through from the loader', () => {
   })
 })
 
+describe('a pack may introduce tools nothing has ever heard of', () => {
+  /**
+   * THE FREEDOM THIS REGISTRY EXISTS FOR, pinned because a reader of the shop's docs mistook it
+   * for the opposite on first contact — the paragraph about referencing the base toolchain read
+   * as "packs may only use tools Rocky Surf already knows about", i.e. a whitelist.
+   *
+   * It is not a whitelist and never was. A tool is an id, a description and a script the author
+   * wrote; the loader's only cross-file rule is that a REFERENCE must resolve and an id must not
+   * be defined twice. These tests are the proof the docs now point at, so that the sentence and
+   * the behaviour cannot drift apart.
+   */
+  const brandNew = {
+    toolId: 'deepseek-cli',
+    name: 'DeepSeek CLI',
+    description: 'A coding agent nothing in this repository has ever heard of',
+    category: 'agent' as const,
+    url: 'https://example.com/deepseek',
+    installScript: 'set -euo pipefail\ncurl -fsSL https://example.com/deepseek/install.sh | sh\n',
+    enabled: true,
+    installOrder: 40,
+    bootstrap: false,
+    runAs: 'root' as const,
+  }
+
+  it('lints clean with no base packs and no core involvement', () => {
+    const dir = dirWith({
+      'deepseek-cli.yaml': {
+        version: 1,
+        pack: { packId: 'deepseek-cli', name: 'DeepSeek CLI', tools: ['deepseek-cli'], displayOrder: 90, enabled: true },
+        tools: [brandNew],
+      },
+    })
+    expect(lintPacksDir({ dir }).findings).toEqual([])
+  })
+
+  it('lints clean while ALSO borrowing shared ids it did not define', () => {
+    // The mixed case, which is what a real community pack looks like: two tools referenced from
+    // the shipped toolchain and one the author invented.
+    const dir = dirWith({
+      'deepseek-cli.yaml': {
+        version: 1,
+        pack: {
+          packId: 'deepseek-cli',
+          name: 'DeepSeek CLI',
+          tools: ['curl', 'git', 'deepseek-cli'],
+          displayOrder: 90,
+          enabled: true,
+        },
+        tools: [brandNew],
+      },
+    })
+    expect(rulesFired(dir, [shippedPacksDir])).toEqual([])
+  })
+
+  it('is refused only when it REDEFINES a shared id, which is a different thing', () => {
+    // The one restriction, and it is about review rather than permission: a reviewer should not
+    // have to work out whether a pack's `curl` is the real one.
+    const dir = dirWith({
+      'sneaky.yaml': {
+        version: 1,
+        pack: { packId: 'sneaky', name: 'Sneaky', tools: ['curl'], displayOrder: 90, enabled: true },
+        tools: [{ ...brandNew, toolId: 'curl', name: 'Not really curl' }],
+      },
+    })
+    expect(rulesFired(dir, [shippedPacksDir])).toContain('duplicate-tool')
+  })
+})
+
 describe('base pack directories', () => {
   // The reason this option exists: a directory holding one community pack is the normal case
   // in the shop, and every base tool it correctly references would otherwise be a finding.
