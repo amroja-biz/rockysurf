@@ -36,6 +36,7 @@ describe('scopes', () => {
     expect(visibleTools(['read']).map((t) => t.name).sort()).toEqual([
       'get_server',
       'get_ssh_command',
+      'list_offerings',
       'list_servers',
     ])
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).toContain('stop_server')
@@ -654,11 +655,15 @@ describe('create_server can express architecture', () => {
 })
 
 describe('the tool surface', () => {
-  it('is exactly the six tools the bead names, each with a scope', () => {
+  it('is the six tools the bead names plus list_offerings, each with a scope', () => {
+    // `list_offerings` is the seventh, added by rockysurf-oeay: `create_server.offering_id` was
+    // advertised with no way to learn its values, which made the parameter usable only by an
+    // agent a human had already briefed.
     expect(MCP_TOOLS.map((t) => t.name).sort()).toEqual([
       'create_server',
       'get_server',
       'get_ssh_command',
+      'list_offerings',
       'list_servers',
       'stop_server',
       'terminate_server',
@@ -674,6 +679,68 @@ describe('the tool surface', () => {
 
   it('rejects an unknown argument rather than ignoring it', async () => {
     await expect(runTool('create_server', { size: 'small', sudo: true }, ctx(['create']))).rejects.toThrow()
+  })
+
+  /**
+   * NO PROVIDER OR OFFERING ID IS COMPILED INTO THE TOOL DEFINITIONS (rockysurf-oeay).
+   *
+   * The whole reason `provider` and `offering_id` are un-enumerated strings is that their values
+   * belong to the operator's clouds and their `providers.<cloud>.sizes`. A helpful example
+   * hardcoded into a description is the provider-id conditional the rest of the codebase spends
+   * its effort avoiding — and it would be wrong for any installation that does not run that
+   * cloud. `list_offerings` exists precisely so the values can be discovered instead.
+   */
+  it('names no concrete cloud or machine type in any tool description or schema', () => {
+    const surface = MCP_TOOLS.map((t) => `${t.description} ${JSON.stringify(t.inputSchema.description ?? '')}`).join(' ')
+    for (const forbidden of ['t4g.', 'cpx', 'e2-micro', 'aws', 'hetzner', 'gcp', 'azure']) {
+      expect(surface.toLowerCase()).not.toContain(forbidden)
+    }
+  })
+})
+
+/**
+ * `list_offerings` (rockysurf-oeay).
+ *
+ * The catalogue arrives already narrowed by the operator's allowlist, because the route narrows
+ * it (rockysurf-j10e) — so the test that matters is that this tool passes it through rather than
+ * re-deriving, re-filtering or decorating it into something the create path would refuse.
+ */
+describe('list_offerings', () => {
+  const CATALOGUE = [
+    {
+      id: 'fake',
+      displayName: 'Fake Cloud',
+      offerings: [{ id: 'f1.small', cpu: 2, memoryGb: 2, arch: 'arm64', available: true, hourly: null, region: 'r1' }],
+    },
+    { id: 'other', displayName: 'Other Cloud', offerings: [] },
+  ]
+  const catalogueClient = () =>
+    client({ get: (async () => CATALOGUE) as CoreClient['get'] })
+
+  it('is readable with the read scope alone', async () => {
+    // It spends nothing and changes nothing; withholding it from an agent that may already list
+    // servers would not protect anything, and seeing prices before committing is the point.
+    const result = (await runTool('list_offerings', {}, ctx(['read'], catalogueClient()))) as {
+      providers: typeof CATALOGUE
+    }
+    expect(result.providers.map((p) => p.id)).toEqual(['fake', 'other'])
+  })
+
+  it('narrows to one cloud when asked', async () => {
+    const result = (await runTool('list_offerings', { provider: 'fake' }, ctx(['read'], catalogueClient()))) as {
+      providers: typeof CATALOGUE
+    }
+    expect(result.providers.map((p) => p.id)).toEqual(['fake'])
+  })
+
+  it('names the configured clouds when asked for one that is not configured', async () => {
+    // An empty list would read as "this cloud sells nothing", which is a different claim.
+    const result = (await runTool('list_offerings', { provider: 'nope' }, ctx(['read'], catalogueClient()))) as {
+      error: string
+      configured: string[]
+    }
+    expect(result.error).toContain('nope')
+    expect(result.configured).toEqual(['fake', 'other'])
   })
 })
 

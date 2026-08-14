@@ -241,6 +241,31 @@ describe('an explicitly named offering', () => {
     await build()
     expect((await create({ size: 'small', offeringId: 'no-such-type' })).status).toBe(400)
   })
+
+  /**
+   * AND THE REFUSAL SAYS WHAT IT DOES SELL (rockysurf-oeay).
+   *
+   * The allowlist case was already answered by name, earlier and against the operator's own
+   * list. This is the DEFAULT case — no allowlist set — where the message was
+   * `provider aws has no offering "..."` and nothing else, so a caller that guessed wrong had
+   * nothing better to try. It matters most for an agent: `offering_id` is un-enumerated in the
+   * MCP schema by design, so a refusal is one of the few places it can learn a real id.
+   */
+  it('names the ids the cloud does sell, so a wrong guess is recoverable', async () => {
+    await build()
+    const { error } = await create({ size: 'small', offeringId: 'no-such-type' })
+    expect(error).toContain('fake-small')
+    expect(error).toContain('fake-medium')
+    // Points at the surface that holds the whole list rather than trying to be it.
+    expect(error).toContain('rockysurf offerings')
+  })
+
+  it('names a sold-out type too, because it is still a real id', async () => {
+    // Sold out and non-existent need different answers — picking it gets the 503 that says so,
+    // which is more use than being told it does not exist.
+    await build()
+    expect((await create({ size: 'small', offeringId: 'no-such-type' })).error).toContain('fake-sold-out')
+  })
 })
 
 /* ---------------------------------------------------- the operator's size allowlist */

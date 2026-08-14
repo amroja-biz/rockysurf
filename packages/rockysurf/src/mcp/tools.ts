@@ -4,7 +4,7 @@ import { packRequiresRdp, RDP_MIN_LENGTH } from '../rdp.js'
 import { CoreApiError, type CoreClient } from './client.js'
 
 /**
- * The six MCP tools, and the scope each one needs (rockysurf-ftl9.1).
+ * The MCP tools, and the scope each one needs (rockysurf-ftl9.1).
  *
  * WHAT THIS FILE IS FOR, stated plainly: it is a translation layer, not a second copy of the
  * business logic. Every tool is an HTTP call to a route a browser also uses, so limits,
@@ -25,6 +25,31 @@ import { CoreApiError, type CoreClient } from './client.js'
 export interface ToolContext {
   client: CoreClient
   scopes: readonly McpScope[]
+}
+
+/**
+ * One cloud, as `GET /api/v1/providers` reports it (rockysurf-oeay).
+ *
+ * Declared as the shape this file READS rather than imported from core, which the dependency
+ * rule would not allow anyway: `offerings` is already narrowed by the operator's allowlist by
+ * the time it arrives, and `offeringsError` is how one cloud having a bad day is reported
+ * without failing the others.
+ */
+export interface ProviderCatalogue {
+  id: string
+  displayName: string
+  offerings: Array<{
+    id: string
+    cpu: number
+    memoryGb: number
+    arch: string
+    /** `false` means the cloud is out of this type right now — a price is not an offer. */
+    available: boolean
+    /** `null` means the provider quotes no price. Never render it as free. */
+    hourly: { amount: number; currency: string } | null
+    region: string
+  }>
+  offeringsError?: string
 }
 
 export interface McpToolDefinition {
@@ -109,6 +134,59 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       const query = args['include_terminated'] ? '?includeTerminated=true' : ''
       const servers = await client.get<unknown[]>(`/api/v1/servers${query}`)
       return { servers, ...(await costContext(client)) }
+    },
+  },
+
+  {
+    /**
+     * THE CATALOGUE, because `create_server.offering_id` was advertised with no way to learn
+     * its values (rockysurf-oeay).
+     *
+     * `provider` is discoverable — omit it on a multi-cloud installation and the control plane
+     * refuses and names the configured ids (rockysurf-va2l). `offering_id` had no equivalent:
+     * the six tools were create/get/list/ssh/stop/terminate, none of which exposes a catalogue,
+     * so an agent could use the parameter only if a human had already told it an id.
+     *
+     * Read scope, and that is the whole of the risk assessment: this returns what a cloud sells
+     * and what it costs, spends nothing, and changes nothing. Withholding it from an agent that
+     * may already list servers and read the spend cap would not protect anything — and seeing
+     * prices BEFORE committing is the same argument the spend-cap context won (rockysurf-dec8).
+     *
+     * Nothing here is hardcoded. The ids come back from `GET /api/v1/providers`, which narrows
+     * them by the operator's `providers.<cloud>.sizes` (rockysurf-j10e) — the same allowlist the
+     * create path applies — so this cannot advertise a machine the create would refuse.
+     */
+    name: 'list_offerings',
+    title: 'List the machine types a cloud sells',
+    description:
+      'The machine types this installation can actually create, per configured cloud, with ' +
+      'vCPU, memory, architecture and hourly price. Use it to pick an offering_id for ' +
+      'create_server, or to compare prices before spending. `available: false` means the cloud ' +
+      'is out of that type right now — creating it would be refused. The list is already ' +
+      'narrowed to what the operator allows, so anything absent here cannot be created.',
+    scope: 'read',
+    inputSchema: z.strictObject({
+      provider: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Only this cloud. Omit for every configured cloud.'),
+    }),
+    run: async (args, { client }) => {
+      const wanted = args['provider'] === undefined ? undefined : String(args['provider'])
+      const providers = await client.get<ProviderCatalogue[]>('/api/v1/providers')
+      const matching = wanted ? providers.filter((p) => p.id === wanted) : providers
+
+      // A named provider that does not exist gets the same treatment the create refusal gets:
+      // say so, and name what there is, rather than answering with an empty list that reads
+      // like a cloud with nothing to sell.
+      if (wanted && matching.length === 0) {
+        return {
+          error: `no configured cloud called "${wanted}"`,
+          configured: providers.map((p) => p.id),
+        }
+      }
+      return { providers: matching }
     },
   },
 
