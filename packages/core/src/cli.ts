@@ -66,10 +66,41 @@ export function nodeVersionError(version: string, minMajor = MIN_NODE_MAJOR): st
   ].join('\n')
 }
 
-const USAGE = `rockysurf — self-hosted persistent cloud dev boxes for coding agents
+/**
+ * One subcommand, as the help text needs to describe it (rockysurf-3w2u).
+ *
+ * CORE DOES NOT KNOW ITS OWN CLI'S SUBCOMMANDS, and that is the dependency direction the
+ * project wants rather than an oversight. Every one of them is dispatched in
+ * `packages/rockysurf/src/cli.ts` before `runCli` is ever reached, and several of them —
+ * `mcp`, `pack` — exist precisely because they must NOT boot a control plane. Core cannot
+ * import that package to ask, so the composition root tells it, the same way it already
+ * supplies `version` and `providers`.
+ */
+export interface CliSubcommand {
+  /** What the user types: `rockysurf <name>`. */
+  name: string
+  /** One line, present tense, no trailing period — it is rendered in a column. */
+  summary: string
+}
+
+/** The `Commands` block, or nothing at all when the caller supplied no subcommands. */
+function commandsSection(subcommands: readonly CliSubcommand[]): string {
+  if (subcommands.length === 0) return ''
+  const width = Math.max(...subcommands.map((c) => c.name.length))
+  return [
+    '',
+    'Commands',
+    ...subcommands.map((c) => `  rockysurf ${c.name.padEnd(width)}   ${c.summary}`),
+  ].join('\n')
+}
+
+export function usage(subcommands: readonly CliSubcommand[] = []): string {
+  return `rockysurf — self-hosted persistent cloud dev boxes for coding agents
 
 Usage
   rockysurf [options]              start the control plane (default)
+  rockysurf <command> [options]    run one of the commands below
+${commandsSection(subcommands)}
 
 Options
   --config <path>    configuration file. Without it, the first of these that exists:
@@ -86,6 +117,7 @@ Environment
                              (default: <dataDir>/secret.key, created on first boot)
 
 Docs: https://github.com/amroja-biz/rockysurf`
+}
 
 export interface ParsedArgs {
   command: 'serve' | 'help' | 'version'
@@ -188,6 +220,15 @@ export interface RunCliOptions {
    * Defaults to core's own version, so `runCli` on its own still reports something true.
    */
   version?: string
+  /**
+   * The subcommands to advertise in `--help` (rockysurf-3w2u).
+   *
+   * Supplied rather than discovered for the reason on `CliSubcommand`: they are dispatched in
+   * the composition root before `runCli` is reached, and core may not import that package.
+   * Omitted, the help simply has no `Commands` block — which is the truth for a caller that
+   * dispatches nothing.
+   */
+  subcommands?: readonly CliSubcommand[]
 }
 
 /**
@@ -209,11 +250,11 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
   if (args.error) {
     io.err(args.error)
     io.err('')
-    io.err(USAGE)
+    io.err(usage(options.subcommands))
     return 2
   }
   if (args.command === 'help') {
-    io.out(USAGE)
+    io.out(usage(options.subcommands))
     return 0
   }
   if (args.command === 'version') {

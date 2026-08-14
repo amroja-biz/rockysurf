@@ -107,6 +107,29 @@ describe('the rockysurf binary', () => {
     expect(run.stdout).toContain('--config')
   })
 
+  /**
+   * AND THE HELP NAMES THE COMMANDS (rockysurf-3w2u), from the shipped binary.
+   *
+   * It named none of them. The help text lives in core, every subcommand is dispatched in the
+   * composed package before core is reached, and core may not import that package — so an
+   * operator who had not read `docs/self-hosting.md` could not discover `mcp`, `token` or any
+   * of the others from the thing they had just installed.
+   *
+   * Asserted against the real process rather than the `usage()` function because the seam being
+   * proved is a composition: core renders what the composition root passes it, and a unit test
+   * on either half would pass with the wiring missing.
+   */
+  it('lists every subcommand it dispatches, from the shipped binary', () => {
+    const run = spawnSync(process.execPath, [binPath, '--help'], { encoding: 'utf8' })
+    expect(run.stdout).toContain('Commands')
+    for (const command of ['mcp', 'token', 'list', 'create', 'stop', 'ssh', 'ssh-config', 'offerings', 'pack']) {
+      expect(run.stdout, `--help does not mention \`rockysurf ${command}\``).toContain(`rockysurf ${command}`)
+    }
+    // The floor, which appears in no document in this repository — this line IS create's
+    // documentation (rockysurf-zaqs).
+    expect(run.stdout).toMatch(/--size is a floor/)
+  })
+
   it('exits 2 with usage on an unknown option', () => {
     const run = spawnSync(process.execPath, [binPath, '--nope'], { encoding: 'utf8' })
     expect(run.status).toBe(2)

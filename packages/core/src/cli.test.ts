@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DATA_DIR_MODE, ensureDataDir } from './boot/data-dir.js'
-import { MIN_NODE_MAJOR, nodeVersionError, parseArgs, readVersion, runCli } from './cli.js'
+import { MIN_NODE_MAJOR, nodeVersionError, parseArgs, readVersion, runCli, usage } from './cli.js'
 
 /**
  * Core's half of the CLI: the pure units it owns.
@@ -150,5 +150,66 @@ describe('the data directory', () => {
     const dir = join(tempDir(), 'a', 'b', 'c')
     ensureDataDir(dir)
     expect(existsSync(dir)).toBe(true)
+  })
+})
+
+/**
+ * The `Commands` block, which core renders but does not own (rockysurf-3w2u).
+ *
+ * Core cannot know its own CLI's subcommands — they are dispatched in `packages/rockysurf`
+ * before `runCli` is reached, and the dependency rule forbids core from importing that package
+ * to ask. So the composition root supplies them, exactly as it already supplies `version` and
+ * `providers`, and this is the seam that carries them into the help.
+ */
+describe('the subcommands the help advertises', () => {
+  const SUBCOMMANDS = [
+    { name: 'mcp', summary: 'serve the MCP tools over stdio' },
+    { name: 'ssh-config', summary: 'write an ssh config include' },
+  ]
+
+  it('lists each one under a Commands heading', () => {
+    const text = usage(SUBCOMMANDS)
+    expect(text).toContain('Commands')
+    expect(text).toContain('rockysurf mcp')
+    expect(text).toContain('serve the MCP tools over stdio')
+    expect(text).toContain('rockysurf ssh-config')
+  })
+
+  it('aligns the summaries, so the block reads as a table', () => {
+    // `mcp` is padded to the width of `ssh-config`; without that the column wanders and the
+    // longest name pushes every summary out of line.
+    const lines = usage(SUBCOMMANDS).split('\n')
+    const columnOf = (name: string, summary: string) =>
+      lines.find((l) => l.includes(`rockysurf ${name}`))!.indexOf(summary)
+    expect(columnOf('mcp', 'serve the MCP tools')).toBe(columnOf('ssh-config', 'write an ssh config'))
+  })
+
+  it('omits the whole block when the caller dispatches nothing', () => {
+    // Core on its own really has no subcommands, and an empty `Commands` heading would be a
+    // promise of something to come.
+    expect(usage()).not.toContain('Commands')
+    expect(usage([])).not.toContain('Commands')
+  })
+
+  it('still describes the default, so `rockysurf` with no command is not a mystery', () => {
+    expect(usage(SUBCOMMANDS)).toContain('start the control plane (default)')
+  })
+
+  it('reaches --help through runCli, not only through the usage function', async () => {
+    // The seam is only worth having if `runCli` actually passes it on: this is the whole path
+    // an operator takes, minus the dispatch that happens before it.
+    const out: string[] = []
+    const code = await runCli(['--help'], { io: { out: (m) => out.push(m), err: () => {} }, subcommands: SUBCOMMANDS })
+    expect(code).toBe(0)
+    expect(out.join('\n')).toContain('rockysurf ssh-config')
+  })
+
+  it('shows them on a usage error too, which is where a mistyped command lands', async () => {
+    // `rockysurf lst` is not a subcommand, so it falls through to core and parses as an
+    // unknown option — the moment a list of the real commands is most useful.
+    const err: string[] = []
+    const code = await runCli(['lst'], { io: { out: () => {}, err: (m) => err.push(m) }, subcommands: SUBCOMMANDS })
+    expect(code).toBe(2)
+    expect(err.join('\n')).toContain('rockysurf mcp')
   })
 })

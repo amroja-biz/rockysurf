@@ -6,6 +6,7 @@ import {
   loadConfigLenientlyOrExit,
   openDatabase,
   runCli,
+  type CliSubcommand,
   type OpenedDatabase,
   type RunCliOptions,
 } from '@rockysurf/core'
@@ -15,6 +16,7 @@ import { createCoreClient } from './mcp/client.js'
 import {
   createCommand,
   listCommand,
+  offeringsCommand,
   rdpPasswordFlag,
   sshCommand,
   sshConfigCommand,
@@ -35,13 +37,6 @@ import { ttySecretPrompt } from './cli/secret-prompt.js'
 
 /** A year. Long enough that an agent's connection outlives the human's browser session. */
 const MCP_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000
-
-/**
- * Commands that talk to a RUNNING control plane over HTTP rather than opening its database
- * (rockysurf-ftl9.2). They need a token, exactly as the MCP server does — one authorization
- * story, one set of limits, nothing for a second code path to drift from.
- */
-const CLIENT_COMMANDS = new Set(['list', 'create', 'stop', 'ssh', 'ssh-config'])
 
 /**
  * THIS package's version — the one `npx rockysurf --version` has to print (rockysurf-aor6).
@@ -65,29 +60,83 @@ export function readCliVersion(): string {
   }
 }
 
+/**
+ * ONE ROW PER SUBCOMMAND, and the row is both the dispatch and the help (rockysurf-3w2u).
+ *
+ * `--help` used to list none of these. The cause was structural rather than forgetfulness:
+ * the help text lives in core's `runCli`, every command here is dispatched before `runCli` is
+ * reached, and core may not import this package to find out what it missed. So an operator who
+ * had not read `docs/self-hosting.md` could not discover a single command from the binary.
+ *
+ * Fixing it by writing the list into core's usage string would have made the two drift on the
+ * next command added — which is exactly what happened when `pack` arrived and joined a help
+ * text that already named none of its siblings. Instead the table below is the ONLY place a
+ * command is declared, `runRockysurfCli` dispatches from it, and `summary` is what core prints.
+ * Adding a command in one place and forgetting the other is no longer a thing that can be done.
+ *
+ * That property depends on nothing bypassing this table. A `if (command === 'x')` added above
+ * the lookup would dispatch a command the help does not know about, and no test can see that;
+ * put the row here instead.
+ *
+ * APPEND-ONLY (rockysurf-ftl9.2): `bin.js` and this table are shared with concurrent work, so
+ * new commands go at the end and two agents touch different lines.
+ */
+interface Subcommand extends CliSubcommand {
+  /** `pack` is synchronous — it never awaits a network or a database — so both are accepted. */
+  run: (argv: string[]) => Promise<number> | number
+}
+
+const SUBCOMMANDS: readonly Subcommand[] = [
+  { name: 'mcp', summary: 'serve the MCP tools over stdio, for an agent client', run: runMcpCommand },
+  { name: 'token', summary: 'mint a token for an MCP client, printed once', run: runTokenCommand },
+  { name: 'list', summary: 'list your servers, with status, address and cost', run: (a) => runClientCommand('list', a) },
+  {
+    name: 'create',
+    // Says the floor, because nothing else does: `create` appears in no document in this
+    // repository, so this line is the whole of its documentation (rockysurf-zaqs, and the
+    // reason rockysurf-3w2u mattered). Same wording as the MCP tool's `size` description.
+    summary: 'create a server — --size is a floor, or name --arch / --offering exactly',
+    run: (a) => runClientCommand('create', a),
+  },
+  { name: 'stop', summary: 'stop a server, keeping its disk', run: (a) => runClientCommand('stop', a) },
+  { name: 'ssh', summary: 'connect to a server over SSH', run: (a) => runClientCommand('ssh', a) },
+  {
+    name: 'ssh-config',
+    summary: 'write an ssh config include, so plain `ssh <name>` works',
+    run: (a) => runClientCommand('ssh-config', a),
+  },
+  {
+    name: 'offerings',
+    summary: 'list what each configured cloud sells, and what it costs',
+    run: (a) => runClientCommand('offerings', a),
+  },
+  {
+    name: 'pack',
+    // `pack` opens no database and boots no core — it is a pure function of a directory of
+    // files, which is what lets somebody else's CI run it (rockysurf-arym.2).
+    summary: 'lint or smoke-test a directory of surge packs',
+    run: (a) =>
+      runPackCommand(a, {
+        out: (line) => process.stdout.write(`${line}\n`),
+        err: (line) => process.stderr.write(`${line}\n`),
+      }),
+  },
+]
+
 export async function runRockysurfCli(argv: string[], options: RunCliOptions = {}): Promise<number> {
   const [command, ...rest] = argv
 
-  if (command === 'mcp') return runMcpCommand(rest)
-  if (command === 'token') return runTokenCommand(rest)
-  // APPEND-ONLY subcommand table (rockysurf-ftl9.2). `bin.js` and this dispatch are shared
-  // with concurrent work; new commands go at the end so two agents touch different lines.
-  if (command && CLIENT_COMMANDS.has(command)) return runClientCommand(command, rest)
-  // `pack` opens no database and boots no core — it is a pure function of a directory of
-  // files, which is what lets somebody else's CI run it (rockysurf-arym.2).
-  if (command === 'pack') {
-    return runPackCommand(rest, {
-      out: (line) => process.stdout.write(`${line}\n`),
-      err: (line) => process.stderr.write(`${line}\n`),
-    })
-  }
+  const subcommand = command ? SUBCOMMANDS.find((c) => c.name === command) : undefined
+  if (subcommand) return await subcommand.run(rest)
 
   // The seam wants a registry; compose also returns notes, which boot already logged. The
-  // version is this package's, not core's — see readCliVersion. `options` still wins, so a
-  // test or an embedder can override either.
+  // version is this package's, not core's — see readCliVersion. `subcommands` is what makes
+  // `--help` able to name the table above. `options` still wins, so a test or an embedder can
+  // override any of them.
   return runCli(argv, {
     version: readCliVersion(),
     providers: (context) => composeRegistry(context).registry,
+    subcommands: SUBCOMMANDS.map(({ name, summary }) => ({ name, summary })),
     ...options,
   })
 }
@@ -281,10 +330,13 @@ function flagValues(argv: string[], flag: string): string[] {
 }
 
 /**
- * The thin CLI commands.
+ * The thin CLI commands: the ones that talk to a RUNNING control plane over HTTP rather than
+ * opening its database (rockysurf-ftl9.2).
  *
- * Deliberately does NOT open the database: these run against a control plane someone else is
- * serving, from a laptop that may not be the one running it.
+ * They need a token, exactly as the MCP server does — one authorization story, one set of
+ * limits, nothing for a second code path to drift from. Deliberately does NOT open the
+ * database: these run against a control plane someone else is serving, from a laptop that may
+ * not be the one running it.
  */
 async function runClientCommand(command: string, argv: string[]): Promise<number> {
   const token = process.env[MCP_TOKEN_ENV]
@@ -322,6 +374,12 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
           ...(flagValue(argv, '--size') ? { size: flagValue(argv, '--size')! } : {}),
           ...(flagValue(argv, '--pack') ? { packId: flagValue(argv, '--pack')! } : {}),
           ...(flagValue(argv, '--provider') ? { provider: flagValue(argv, '--provider')! } : {}),
+          // `--arch` is a closed choice and `--offering` is not, for the reason on `CreateArgs`:
+          // the architectures are the SDK's frozen list, the offering ids are the operator's
+          // cloud's (rockysurf-zaqs). Validation of the first lives in `createCommand`, beside
+          // the message, rather than here beside the parsing.
+          ...(flagValue(argv, '--arch') ? { arch: flagValue(argv, '--arch')! } : {}),
+          ...(flagValue(argv, '--offering') ? { offeringId: flagValue(argv, '--offering')! } : {}),
           // Repeatable: `rockysurf create --pack p --repo <url> --repo <url>` (rockysurf-81wo).
           // Until this existed the CLI could not name a repository at all, so a `requiresRepos`
           // pack provisioned an empty box and the create route's preflight — which lives in the
@@ -341,6 +399,10 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
       }
       case 'ssh-config':
         return await sshConfigCommand(deps, { write: argv.includes('--write') })
+      case 'offerings':
+        return await offeringsCommand(deps, {
+          ...(flagValue(argv, '--provider') ? { provider: flagValue(argv, '--provider')! } : {}),
+        })
       default:
         return usage(command)
     }
