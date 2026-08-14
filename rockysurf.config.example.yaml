@@ -264,3 +264,41 @@ limits:
 
   # Most servers that may be created per hour. Blunts terminate-and-recreate loops.
   createRatePerHour: 4
+
+registry:
+  # The Surge Pack shops — where the admin UI browses community packs and installs them without a
+  # restart. Nothing here is read at boot; a registry is fetched when you open the shop.
+  #
+  # Fetches are plain file GETs: `<url>/index.json` for the listing, then the paths that listing
+  # names. Not the GitHub API, whose unauthenticated quota is 60 requests an hour shared across
+  # everything on one source IP — a control plane behind a corporate NAT would spend that before
+  # it had listed the shop once.
+  #
+  # OFFICIAL PACKS ARE NOT HERE. They ship in the Rocky Surf tarball, in `packs/`, and no
+  # registry can supply one. That is why `trust:` below has no `official` value: a registry
+  # labelled official would be a third party dressed as first party.
+
+  # Set false for an air-gapped installation. The shop then says it is switched off, which is a
+  # different message from a registry it could not reach — and nothing else changes: packs in
+  # `packs/` and packs you create in the admin UI are unaffected.
+  enabled: true
+
+  # The registries to browse, in order. The default is the community shop and nothing else. Add
+  # your own to serve packs internally; every URL goes through the same SSRF guard as pack
+  # import, so one resolving to a private address is refused.
+  #
+  # `trust` is YOUR label for a registry, and it is the only place a registry's trustworthiness
+  # is recorded — deliberately not a field the registry itself publishes, which would be a claim
+  # about trustworthiness written by the party being trusted. One of: community, internal.
+  # sources:
+  #   - name: Rocky Surf Pack Shop
+  #     url: https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main
+  #     trust: community
+  #   - name: Acme internal
+  #     url: https://packs.acme.example/shop
+  #     trust: internal
+
+  # How long a fetched index is reused before the next request refetches it. Browsing the shop is
+  # several requests over a minute or two; one HTTP call per page view would be rude to a CDN and
+  # slow for you. There is a refresh button for when this is too long.
+  cacheTtlSeconds: 300

@@ -2,14 +2,12 @@ import { existsSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   RegistryIndexError,
-  TRUST_TIERS,
   buildRegistryIndex,
   formatFindings,
   lintPacksDir,
   renderRegistryIndex,
   type IndexSourceDir,
   type LintReport,
-  type TrustTier,
 } from '@rockysurf/core'
 import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './pack-smoke.js'
 
@@ -25,8 +23,13 @@ import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './p
  *
  * So the shop pins a version of this package and runs:
  *
- *   npx rockysurf@<version> pack lint  packs/community --base-packs packs/official
- *   npx rockysurf@<version> pack check packs/community --base-packs packs/official --pack <id>
+ *   npx rockysurf@<version> pack lint  packs --base-packs <the Rocky Surf tarball's packs/>
+ *   npx rockysurf@<version> pack check packs --base-packs <same> --pack <id>
+ *
+ * `--base-packs` is not optional there. The shop is purely community (owner's ruling on issue
+ * #9): the shared base toolchain a pack is told to REFERENCE rather than redefine ships in the
+ * Rocky Surf tarball and does not exist in the registry, so without it every well-behaved
+ * contribution fails on every tool it correctly did not define.
  *
  * NEITHER COMMAND OPENS A DATABASE OR BOOTS CORE. They are pure functions of a directory of
  * files, which is what makes them safe to run in somebody else's CI and against a data
@@ -42,8 +45,8 @@ import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './p
  *
  * Neither is a security scan and the help text says so. An `installScript` is arbitrary
  * root-privileged shell; a pattern match over it cannot decide whether it is benign. What
- * carries that weight is the registry's trust label and the disclosure an operator reads
- * before installing — see ADR-0006 and `docs/writing-a-pack.md`.
+ * carries that weight is the label the OPERATOR's own configuration puts on a registry, and the
+ * disclosure they read before installing — see ADR-0006 and `docs/writing-a-pack.md`.
  */
 
 export interface PackCommandIo {
@@ -61,12 +64,15 @@ const USAGE = `usage: rockysurf pack <lint|check|index> [options]
                 idempotency. Needs a Docker daemon.
 
   index         Generate a pack registry's index.json from its pack directories. Run by the
-                registry's CI on merge, never by hand — the trust tier is written here, and a
-                tier a contributor can set on their own pack is not a tier.
+                registry's CI on merge, never by hand: it records a sha256 per pack, and a
+                hand-written index describes files it no longer matches.
 
-                  rockysurf pack index --source packs/official=official \\
-                                       --source packs/community=community \\
+                  rockysurf pack index --source packs --base-packs upstream/packs \\
                                        --out index.json
+
+                There is no trust label in the index. A pack's label comes from where the
+                OPERATOR got it — the tarball, or the registry entry in their own config —
+                never from a document the registry itself wrote.
 
 Options:
   --base-packs <dir>   A directory whose tools may be REFERENCED but which is not itself under
@@ -76,11 +82,11 @@ Options:
   --pack <id>          Check only this pack (check only).
   --arch <amd64|arm64> Architecture to run under (check only; defaults to this machine's).
   --keep               Leave the container and logs behind for inspection (check only).
-  --source <dir>=<tier>  A directory to index and the trust tier its packs get: one of
-                       ${TRUST_TIERS.join(', ')}. Repeatable (index only).
+  --source <dir>       A directory whose packs go into the index, recorded under that path.
+                       Repeatable (index only).
   --out <path>         Where to write the index. Omit to print it (index only).
   --allow-empty        Treat a directory with no pack files as clean rather than as a mistyped
-                       path. For a registry tier that is legitimately empty (lint only).
+                       path. For a registry that is legitimately empty (lint only).
   --json               Machine-readable output on stdout.
 
 Neither command is a security scan: install scripts are arbitrary root-privileged shell and no
@@ -162,8 +168,8 @@ function runLint(argv: string[], io: PackCommandIo): number {
   // get a green lint you have not earned is to point it at the wrong path, and a check that
   // congratulates you for that is worse than no check — a registry's CI would merge on it.
   //
-  // `--allow-empty` is for the one caller that legitimately expects nothing: a registry whose
-  // community tier is empty until its first contribution. It is a FLAG rather than a default
+  // `--allow-empty` is for the one caller that legitimately expects nothing: a registry with no
+  // contributions in it yet. It is a FLAG rather than a default
   // because the two situations are indistinguishable from inside this function, and only the
   // caller knows which one it is in. A registry says so once, in its workflow; a pack author who
   // mistyped a path still gets told.
@@ -198,46 +204,41 @@ function summarize(report: LintReport): string {
 /**
  * `rockysurf pack index` — render a registry's `index.json`.
  *
- * A `--source` is a directory and the tier its packs get: `packs/community=community`. The
- * DIRECTORY PATH ON DISK AND THE PATH RECORDED IN THE INDEX ARE THE SAME STRING, deliberately.
- * Core fetches `<registry base URL>/<path>`, so the index only describes a fetchable file if
- * the generator was run from the registry's root — and letting the two diverge would produce an
- * index that validates, commits cleanly, and 404s for every operator.
+ * THE DIRECTORY PATH ON DISK AND THE PATH RECORDED IN THE INDEX ARE THE SAME STRING,
+ * deliberately. Core fetches `<registry base URL>/<path>`, so the index only describes a
+ * fetchable file if the generator was run from the registry's root — and letting the two diverge
+ * would produce an index that validates, commits cleanly, and 404s for every operator.
+ *
+ * `--base-packs` names the shared base toolchain, which a registry does not itself contain: the
+ * shop is purely community, and the tools its packs reference ship in the Rocky Surf tarball.
  */
 function runIndex(argv: string[], io: PackCommandIo): number {
   const specs = flagValues(argv, '--source')
   if (specs.length === 0) {
-    io.err('pack index needs at least one --source <dir>=<tier>')
+    io.err('pack index needs at least one --source <dir>')
     io.err(USAGE)
     return 1
   }
 
   const sources: IndexSourceDir[] = []
   for (const spec of specs) {
-    const separator = spec.lastIndexOf('=')
-    if (separator < 1) {
-      io.err(`--source must be <dir>=<tier>, got "${spec}"`)
-      return 1
-    }
-    const prefix = spec.slice(0, separator).replace(/\/+$/, '')
-    const tier = spec.slice(separator + 1)
-    if (!(TRUST_TIERS as readonly string[]).includes(tier)) {
-      io.err(`--source tier must be one of ${TRUST_TIERS.join(', ')}, got "${tier}"`)
-      return 1
-    }
-    // A source that is not there is a mistake, not an empty tier. The way this command fails
+    const prefix = spec.replace(/\/+$/, '')
+    // A source that is not there is a mistake, not an empty one. The way this command fails
     // silently is a CI job that renames a directory and publishes an index missing half the
-    // registry — every operator's shop quietly loses its community packs and nothing errors.
+    // registry — every operator's shop quietly loses those packs and nothing errors.
     if (!existsSync(prefix)) {
       io.err(`--source directory "${prefix}" does not exist (run this from the registry root)`)
       return 2
     }
-    sources.push({ dir: resolve(prefix), prefix, tier: tier as TrustTier })
+    sources.push({ dir: resolve(prefix), prefix })
   }
+  const basePacksDirs = flagValues(argv, '--base-packs').map((d) => resolve(d))
 
   let rendered: string
   try {
-    rendered = renderRegistryIndex(buildRegistryIndex({ sources }))
+    rendered = renderRegistryIndex(
+      buildRegistryIndex({ sources, ...(basePacksDirs.length > 0 ? { basePacksDirs } : {}) }),
+    )
   } catch (err) {
     if (err instanceof RegistryIndexError) {
       io.err(err.message)

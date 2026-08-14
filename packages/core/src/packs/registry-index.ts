@@ -17,12 +17,19 @@ import { loadPacksFromDir, type LoadedPack } from './loader.js'
  * corporate NAT would exhaust it before it had listed the shop once. `raw.githubusercontent.com`
  * is a CDN with no such quota, and it serves files by path — so a listing has to BE a file.
  *
- * SECOND, AND THIS IS THE POINT: the index is where the trust labels live, and it is generated
- * by the registry's CI rather than written by hand. `tier` is therefore not a field a
- * contributor can set on their own pack in their own pull request. `official` means "the
- * upstream repository's CI wrote this here from its own `packs/`", which is a claim about
- * provenance that a contributor cannot make about themselves. A hand-editable index would make
- * the whole trust distinction decorative.
+ * SECOND, THERE IS NO TRUST LABEL IN THIS DOCUMENT, DELIBERATELY.
+ *
+ * An earlier draft gave each entry a `tier` of `official` or `community`. The owner's ruling on
+ * issue #9 removed the reason for it — the shop is purely community, official packs ship in the
+ * tarball and never appear here — and taking the field out is the sharper half of that decision
+ * rather than a consequence of it. A trust label inside a registry's own index is a claim about
+ * trustworthiness written by the party being trusted. It could only ever be as good as the
+ * document containing it, which is the thing in question.
+ *
+ * So a pack's label comes from where the OPERATOR got it, and an operator can always answer
+ * that: bundled packs are `official` because they arrived in the tarball, and a registry's packs
+ * carry the label the operator wrote next to that registry in their own config file. Nothing a
+ * registry publishes can promote itself.
  *
  * WHAT THE sha256 IS AND IS NOT. It pins a pack file to the index entry that describes it, so a
  * file swapped without regenerating the index fails closed rather than installing quietly. It is
@@ -34,14 +41,6 @@ import { loadPacksFromDir, type LoadedPack } from './loader.js'
 
 /** Bumped when the document shape changes. Core refuses a version it does not know. */
 export const REGISTRY_INDEX_VERSION = 1
-
-/**
- * `official` is provenance, `community` is everything else. Deliberately two values and not a
- * score: a third tier would need someone to define what it means, and an undefined middle is
- * worse than an honest binary.
- */
-export const TRUST_TIERS = ['official', 'community'] as const
-export type TrustTier = (typeof TRUST_TIERS)[number]
 
 const ID = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
 
@@ -65,7 +64,6 @@ export const registryEntrySchema = z.strictObject({
   name: z.string().min(1),
   /** The pack has no description field, so this is the registry's own one-line summary. */
   description: z.string().min(1),
-  tier: z.enum(TRUST_TIERS),
   path: REGISTRY_PATH,
   /** Lowercase hex, 64 chars. Verified after fetch; a mismatch is refused. */
   sha256: z.string().regex(/^[0-9a-f]{64}$/, { error: 'must be a lowercase hex sha256' }),
@@ -100,13 +98,24 @@ export type RegistryIndex = z.infer<typeof registryIndexSchema>
 export interface IndexSourceDir {
   /** Directory on disk to read. */
   dir: string
-  /** Path prefix recorded in the index, relative to the registry root — e.g. `packs/community`. */
+  /** Path prefix recorded in the index, relative to the registry root — e.g. `packs`. */
   prefix: string
-  tier: TrustTier
 }
 
 export interface BuildIndexOptions {
   sources: IndexSourceDir[]
+  /**
+   * Directories whose tools may be REFERENCED by an indexed pack but which are not themselves
+   * indexed — the shared base toolchain.
+   *
+   * Necessary because the shop holds no official tier to resolve against. A community pack is
+   * told to reference `claude-code`, `git` and the rest by id rather than redefine them, and
+   * those live in the main repository's `packs/` and ship in the tarball. The shop's CI fetches
+   * that directory and passes it here, so an index is only ever generated for packs whose
+   * references resolved against the toolchain as it currently is. A tool upstream later removes
+   * turns into a failed regeneration, which is a thing somebody should be told about.
+   */
+  basePacksDirs?: string[]
   /** Injectable so a test can assert a stable document. Defaults to now. */
   now?: () => Date
 }
@@ -130,13 +139,15 @@ export function buildRegistryIndex(options: BuildIndexOptions): RegistryIndex {
   const entries: RegistryEntry[] = []
   const seen = new Map<string, string>()
 
-  // Every directory is loaded before any is judged, because THE TIERS ARE NOT ISOLATED FROM
-  // EACH OTHER. A community pack is expected to reference the shared base toolchain rather than
-  // redefine it, and that toolchain lives in the official tier — so resolving each directory
-  // alone reports every correct reference as an unknown tool, which is the exact opposite of
-  // the behaviour the registry wants to encourage.
+  // Every directory is loaded before any is judged, and the base directories are folded in
+  // alongside them. A pack that correctly REFERENCES a tool rather than redefining it — which is
+  // what the contract asks for — resolves against a definition in some other file, and judging
+  // each directory in isolation reports every well-behaved pack as referencing unknown tools.
   const loadedBySource = options.sources.map((source) => ({ source, loaded: loadPacksFromDir(source.dir) }))
-  const knownTools = new Set(loadedBySource.flatMap(({ loaded }) => [...loaded.tools.keys()]))
+  const knownTools = new Set([
+    ...loadedBySource.flatMap(({ loaded }) => [...loaded.tools.keys()]),
+    ...(options.basePacksDirs ?? []).flatMap((dir) => [...loadPacksFromDir(dir).tools.keys()]),
+  ])
   const satisfiedElsewhere = (message: string): boolean => {
     const referenced = /references unknown tool "([^"]+)"/.exec(message)
     return referenced !== null && knownTools.has(referenced[1]!)
@@ -154,8 +165,8 @@ export function buildRegistryIndex(options: BuildIndexOptions): RegistryIndex {
     for (const pack of loaded.packs) {
       const previous = seen.get(pack.packId)
       if (previous) {
-        // Two tiers claiming one id is the shape of a community pack shadowing an official one,
-        // which would make `tier` meaningless at exactly the moment it matters most.
+        // A client resolves a pack by id. Two files claiming one id means whichever the client
+        // picks is arbitrary, and an operator who installed "the other one" has no way to tell.
         throw new RegistryIndexError(
           `packId "${pack.packId}" appears in both ${previous} and ${source.prefix} — ` +
             'one id, one home',
@@ -189,7 +200,6 @@ function entryFor(
     // a format change (ADR-0004). The honest summary available without one is what the pack
     // installs, which is also the thing a browser is actually choosing between.
     description: `Installs ${pack.tools.length} tool(s): ${pack.tools.join(', ')}`,
-    tier: source.tier,
     path: `${source.prefix}/${pack.sourceFile}`,
     sha256: sha256File(join(source.dir, pack.sourceFile)),
     definesTools: defines,

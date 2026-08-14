@@ -333,6 +333,37 @@ credentials — the classic SSRF shape. `packages/core/src/packs/safe-fetch.ts` 
 
 Its residual risk is documented in the module and repeated below.
 
+### The pack registry
+
+The same guard covers every configured pack registry (`registry.sources[].url`, defaulting to the
+community shop alone): each fetch of an `index.json` and of a pack file goes through
+`fetchPublicText`, so a registry URL resolving to a private address is refused however it is
+configured — including an internal registry on an RFC1918 address, because vouching for a host is
+a decision with its own design rather than a default to fall into. Nothing is fetched at boot,
+only when an admin opens the shop.
+
+A registry's packs carry the trust label the OPERATOR wrote next to that registry in their config
+file, never one the registry published about itself: a trust field inside a registry's own index
+would be a claim about trustworthiness written by the party being trusted. `official` is not a
+label a registry may be given, because it means "shipped in the tarball" and no registry can be
+that.
+
+Each index entry carries a SHA-256 of the pack file it names, verified after fetch; a mismatch is
+refused and named. **This is a pin, not a signature.** It proves the bytes served are the bytes
+the index describes, so a pack file changed without regenerating the index cannot install. It
+proves nothing about whether the index itself is honest, because whoever can write one can write
+both. The trust chain is therefore the shop repository's `main` branch and GitHub's account
+controls, and it is listed under residual risks for that reason.
+
+**Neither the registry's automated checks nor Rocky Surf's validation is a security review of a
+pack.** `rockysurf pack lint` checks the file format and the mechanical author rules;
+`rockysurf pack check` proves a pack survives being resumed. A pack's `installScript` is
+arbitrary shell executed as **root** on the operator's box, and no static check can decide
+whether it is benign. What stands in for that is disclosure: before an install the admin UI shows
+every script verbatim, which steps run as root, and every URL those scripts fetch. Installing a
+community pack is trusting its author, and the interface is built to make that an informed choice
+rather than a hidden one.
+
 ## The MCP server: threat model
 
 The MCP server (`rockysurf mcp`) lets a coding agent create, inspect, stop and destroy servers

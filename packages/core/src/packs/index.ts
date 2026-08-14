@@ -29,7 +29,6 @@ export {
 export {
   REGISTRY_INDEX_VERSION,
   RegistryIndexError,
-  TRUST_TIERS,
   buildRegistryIndex,
   registryEntrySchema,
   registryIndexSchema,
@@ -40,8 +39,18 @@ export {
   type IndexSourceDir,
   type RegistryEntry,
   type RegistryIndex,
-  type TrustTier,
 } from './registry-index.js'
+
+export {
+  createRegistryClient,
+  type FetchedPack,
+  type RegistryClient,
+  type RegistryClientDeps,
+  type RegistryFailure,
+  type RegistryListing,
+  type RegistryPackResult,
+  type ShelfResult,
+} from './registry.js'
 
 export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 
