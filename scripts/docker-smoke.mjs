@@ -16,21 +16,66 @@
  * So the test stores a credential through the wizard's own endpoint and reads it back after a
  * restart, which is the narrowest thing that can only pass if both files survived.
  *
- * ISOLATION. Runs under its own compose project name and its own host port, and tears down
- * with `down -v` on every exit path. It must never be able to delete the volume of a Rocky
- * Surf someone is actually using.
+ * ISOLATION. Runs under a compose project name and a host port that belong to THIS PROCESS —
+ * the project is suffixed with the pid and the port comes from the OS — and tears down with
+ * `down -v` on every exit path. Both halves matter and the project name matters more: teardown
+ * deletes volumes, so a shared name means the first run to finish destroys the other's data.
+ * It must never be able to delete the volume of a Rocky Surf someone is actually using
+ * (rockysurf-rt80).
  *
  * Usage: node scripts/docker-smoke.mjs [--keep]
  *   --keep   leave the stack up after a successful run, for poking at by hand
+ *
+ * Environment:
+ *   ROCKYSURF_SMOKE_PROJECT   pin the compose project name (default: rockysurf-smoke-<pid>)
+ *   ROCKYSURF_SMOKE_PORT      pin the host port (default: one the OS says is free)
  */
 import { execFileSync, spawnSync } from 'node:child_process'
+import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url))
-const PROJECT = 'rockysurf-smoke'
-const HOST_PORT = Number(process.env['ROCKYSURF_SMOKE_PORT'] ?? 3999)
-const BASE = `http://127.0.0.1:${HOST_PORT}`
+
+/**
+ * A PROJECT NAME AND A PORT THIS RUN OWNS ALONE (rockysurf-rt80).
+ *
+ * Both used to be constants — project `rockysurf-smoke`, port 3999 — and on a machine running
+ * more than one thing that produced three separate collisions in a single session: a run whose
+ * containers were adopted by a second run, a `up` that failed because another process held
+ * 3999, and a container left in `Created` state under the shared name for the next run to clean
+ * up by hand. The dangerous half is the project name rather than the port: teardown is
+ * `down -v`, so the first run to finish deletes the other's volume, which is a failure that
+ * looks like data loss rather than like a conflict.
+ *
+ * The pid makes the default unique per invocation, so a concurrent run cannot name the same
+ * project and `down -v` can only ever reach containers this process started. An operator who
+ * WANTS a stable name — to inspect a stack afterwards, or in CI — sets the variable, and then
+ * cleaning that project is precisely what they asked for.
+ */
+const PROJECT = process.env['ROCKYSURF_SMOKE_PROJECT'] ?? `rockysurf-smoke-${process.pid}`
 const KEEP = process.argv.includes('--keep')
+
+/** Resolved in `main`: an OS-assigned free port unless the operator named one. */
+let HOST_PORT = Number(process.env['ROCKYSURF_SMOKE_PORT'] ?? 0)
+let BASE = ''
+
+/**
+ * A free port from the OS, rather than a number we hope is free.
+ *
+ * The gap between closing this probe and Docker binding it is a race in principle. It is a much
+ * smaller one than a fixed 3999, which on this repository's own machines is also what
+ * `bin.e2e.test.ts` and a hand-started core reach for.
+ */
+async function freePort() {
+  const probe = createServer()
+  await new Promise((resolve, reject) => {
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', resolve)
+  })
+  const { port } = probe.address()
+  await new Promise((resolve) => probe.close(resolve))
+  return port
+}
 
 const steps = []
 let stackUp = false
@@ -135,9 +180,13 @@ function teardown() {
 }
 
 async function main() {
+  if (!HOST_PORT) HOST_PORT = await freePort()
+  BASE = `http://127.0.0.1:${HOST_PORT}`
   console.log(`docker smoke test — project ${PROJECT}, host port ${HOST_PORT}\n`)
 
-  // A leftover volume from an interrupted run would make "first boot" a lie.
+  // A leftover volume from an interrupted run would make "first boot" a lie. Safe to do
+  // unconditionally now: the project name is this process's own unless somebody asked for a
+  // shared one, and cleaning the one they named is what they asked for.
   compose(['down', '-v', '--remove-orphans'], { allowFailure: true, stdio: 'ignore' })
 
   console.log('building and starting…')

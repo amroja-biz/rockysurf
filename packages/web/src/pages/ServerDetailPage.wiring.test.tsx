@@ -1,6 +1,5 @@
+import { startStubServer, type StubServer } from '../test-server'
 import { readFileSync } from 'node:fs'
-import { createServer, type Server as HttpServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -75,9 +74,8 @@ const CAPABILITIES = {
 }
 
 /** Matches `environmentOptions.jsdom.url` in vitest.config.ts — see the note there. */
-const STUB_PORT = 34567
 
-let server: HttpServer
+let stub: StubServer
 let streams: Array<(chunk: string) => void> = []
 
 /**
@@ -94,7 +92,7 @@ beforeEach(async () => {
   row = { ...SERVER }
   accepted = []
   reads = 0
-  server = createServer((req, res) => {
+  stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
     if (url.pathname === '/api/v1/auth/me') {
@@ -145,17 +143,12 @@ beforeEach(async () => {
     res.writeHead(404).end()
   })
 
-  await new Promise<void>((resolve) => server.listen(STUB_PORT, '127.0.0.1', resolve))
-  expect((server.address() as AddressInfo).port).toBe(STUB_PORT)
 })
 
 afterEach(async () => {
   setAuthToken(null)
   streams = []
-  await new Promise<void>((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
+  await stub.close()
 })
 
 function renderPage() {
