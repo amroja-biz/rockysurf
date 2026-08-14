@@ -88,6 +88,13 @@ providers:
 **One provider instance manages one location.** `listManaged()` is scoped at construction, so two
 locations means two configured providers rather than one that spans both.
 
+**There is no `sizes` allowlist here, unlike the other three clouds.** `providers.aws.sizes`,
+`providers.azure.sizes` and `providers.gcp.sizes` restrict which machine types an installation
+will create — on the New Server page and through the API, CLI and MCP alike. The Hetzner section
+takes no such field, and because the section is a strict schema, writing one is a startup error
+rather than a setting that is quietly ignored. If you need that limit on Hetzner today, the
+budget caps are what you have.
+
 **`consoleProjectId` has to be typed in because the Cloud API never says it.** A token is scoped
 to one project without any response naming that project, and a console URL is
 `/projects/<id>/servers/<server id>/overview`. Leave it out and servers simply have no console
