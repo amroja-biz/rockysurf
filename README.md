@@ -71,18 +71,22 @@ spend money by accident.
 | **Hetzner** | Hetzner Cloud, plain REST — the cheapest way to start | yes, IP survives | minted before boot | [`packages/provider-hetzner`](packages/provider-hetzner/README.md) |
 | **AWS** | EC2 via `RunInstances`, no CloudFormation | yes, **public IP changes** | minted before boot | [`docs/providers/aws.md`](docs/providers/aws.md) |
 | **Azure** | ARM REST, no vendor SDK; one resource group you own | yes, IP survives | minted before boot* | [`docs/providers/azure.md`](docs/providers/azure.md) |
-| **GCP** | Compute Engine v1 REST, no vendor SDK | yes, **public IP changes** | minted before boot* | [`docs/providers/gcp.md`](docs/providers/gcp.md) |
+| **GCP** | Compute Engine v1 REST, no vendor SDK | yes, **public IP changes*** | minted before boot | [`docs/providers/gcp.md`](docs/providers/gcp.md) |
 | **BYO** | Machines you already have, managed over SSH | **no** — not our power state | trust-on-first-use, or pin it | [`docs/providers/byo.md`](docs/providers/byo.md) |
 
 The full table, with what each value was measured against, is in
 [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md). Writing your own is
 [`docs/writing-a-provider.md`](docs/writing-a-provider.md).
 
-**\* Azure and GCP are newer than the rest and say so.** They are the two columns with no run
-against real infrastructure behind them — their values are reasoned from the vendor's own
-documentation and enforced by tests against an in-memory cloud, and in both cases the host-key
-claim in particular is expected rather than measured. The capability matrix marks exactly which
-values those are.
+**\* Azure and GCP are newer than the rest, and they are no longer newer in the same way.**
+**GCP has now been run against real Compute Engine** — create, bootstrap and terminate on both
+architectures, with the host key core minted presented on first contact and no orphans left
+behind — so its host-key claim is measured. What that run never did is stop and start a box, so
+GCP's stop/start row and its "public IP changes" are still reasoned rather than observed.
+**Azure has had no run against real infrastructure at all**; its values are reasoned from
+Microsoft's documentation and enforced by tests against an in-memory cloud, and its host-key
+claim is expected rather than measured. The capability matrix marks exactly which values are
+which.
 
 **On BYO specifically:** claiming one of your machines creates a `rocky` account on it with
 passwordless sudo and appends Rocky Surf's key to that account's `authorized_keys`. Releasing the

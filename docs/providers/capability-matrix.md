@@ -16,21 +16,22 @@ and the two real-cloud capstone transcripts beside it.
 
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
-| `stop` | `true` | `true` | `true` | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** | `true` | `true` |
-| `canInjectHostKeys` | `true` | `true` † | `true` † | `true` | **`false`** |
+| `stop` | `true` | `true` | `true` † | `true` | **`false`** |
+| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` | `true` |
+| `canInjectHostKeys` | `true` | `true` † | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
-| `generatesUserData` | `true` | `true` | `true` † | `true` | **`false`** |
+| `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
-real infrastructure.
+real infrastructure. **`gcp` is now measured too, but not in every row**: a real Compute Engine
+run settled most of the column and deliberately never touched two of the values, which is why the
+daggers in it moved rather than disappeared.
 
-**† `azure` and `gcp` are the two columns with values that are REASONED RATHER THAN MEASURED.**
-Neither provider has been run against its cloud, and in both cases the daggered values are
-inferences from the vendor's documentation rather than observations. They are marked per value
-rather than per column because the undaggered entries in both columns are structural and safe to
-state.
+**† A daggered value is REASONED RATHER THAN MEASURED** — an inference from the vendor's
+documentation rather than an observation. Daggers are per value rather than per column, because a
+run can settle some values in a column while never exercising the others, and that is exactly
+what happened to `gcp`.
 
 **`azure`.** Built without an Azure subscription. Every value is derived from Microsoft's own
 documentation and from what the provider's code does, and the whole column is enforced by that
@@ -40,13 +41,25 @@ feature flag, and `userDataMaxBytes` is deliberately the conservative reading of
 document. The owner-gated run that settles both is **`rockysurf-ihtq.8`**, and this table is one
 of the things it updates.
 
-**`gcp`.** Built without credentials. Its two daggered values both rest on the same fact — that
-cloud-init's GCE datasource reads the `user-data` metadata key — and if it turns out not to hold on Google's Ubuntu images, both
-flip together. The other four are structural and safe to state: `stop` is `instances.stop`,
-`ipStableAcrossStop` follows from asking for an ephemeral external IP, and `userDataMaxBytes` is
-Google's documented per-metadata-value ceiling. Tracked as `rockysurf-ev41.8`; see
-[the status block in `gcp.md`](gcp.md#status-not-yet-run-against-real-google-cloud) for what a
-real run has to settle.
+**`gcp`.** Built without credentials, then **run against real Compute Engine on 2026-08-14**
+(`rockysurf-ev41.8`). That run measured the create/terminate lifecycle on both architectures
+(`e2-small` and `e2-micro` amd64, `t2a-standard-1` arm64), host-key injection, push bootstrap
+over SSH, maintenance of the shared SSH firewall rule, and a terminate leaving zero orphans —
+audited afterwards on Google's side as no instances and no disks left behind. The two values that
+used to carry daggers, `canInjectHostKeys` and `generatesUserData`, were the ones it settled:
+they rested on the same fact, that cloud-init's GCE datasource reads the `user-data` metadata
+key, and a box cannot present a host key core minted unless that holds.
+
+**What the run did not do is stop and start a box**, so `stop` and `ipStableAcrossStop` are the
+daggered pair now. No GCP instance has ever been stopped and restarted by this provider. Both
+values remain as well-founded as they were — `stop` is `instances.stop`, and
+`ipStableAcrossStop` follows from asking for an ephemeral external IP — and both are still
+reasoning rather than observation. A lifecycle run is not evidence for a power cycle it never
+performed, and flipping a whole column on the strength of one is the move this table exists to
+prevent. `userDataMaxBytes` is unchanged and undaggered: Google's documented
+per-metadata-value ceiling, structural and never approached. See
+[the status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) for
+the run in full.
 
 `byo` is now **implemented** (`@rockysurf/provider-byo`, `rockysurf-ftl9.3`) and its column is
 enforced by that package's tests rather than being a specification. Like `azure` it has no
@@ -58,8 +71,13 @@ rather than assertion, but nobody has yet pointed it at a rack.
 
 ### `stop` — can the instance be stopped and restarted with its disk intact?
 
-All three clouds can. BYO cannot: core does not own the machine's power state, so there is
+All four clouds can. BYO cannot: core does not own the machine's power state, so there is
 nothing to call.
+
+**No GCP box has ever been stopped and restarted**, which is the one gap left in that column.
+`rockysurf-ev41.8` drove create, bootstrap and terminate on real Compute Engine and deliberately
+not the power cycle, so everything this section says about GCE's vocabulary is still pinned by a
+test rather than by an observation.
 
 **Azure's `stop` is `deallocate`, not `powerOff`,** and the distinction is the whole value of the
 flag. Both preserve the disk; only one stops the bill. An Azure VM that is merely powered off is
@@ -97,7 +115,9 @@ measured.
 
 **GCP: no**, for the same reason and by the same choice. An ephemeral external IP is released
 on stop and a different one assigned on start; a reserved static address would be a per-server
-resource to create, tag and reap, which is the orphan class AWS declined too.
+resource to create, tag and reap, which is the orphan class AWS declined too. **Reasoned, not
+measured.** AWS's identical claim has a transcript behind it showing the address change; the
+real-GCE run never stopped a box, so nobody has watched this one happen.
 
 **Hetzner: yes.** The primary IPv4 survives a poweroff/poweron.
 
@@ -128,13 +148,12 @@ Renamed from `canPinHostKey` (ADR-0003, E4) because the old name hid what it dec
   than let the column read like the other two. If `rockysurf-ihtq.8` disproves it, the flag
   becomes `false`, this row changes, and Azure joins BYO in needing the provider-side
   trust-on-first-use path.
-- **`true` (GCP), UNVERIFIED.** Declared on the same mechanism — cloud-init's GCE datasource
-  documents that it reads the `user-data` metadata key, so `ssh_keys:` should place the key
-  before first boot — but nobody has watched a Google box present it. This is the one entry in
-  this table that is a claim rather than a measurement, and it is a security posture rather than
-  a feature flag: if GCE's guest agent regenerates host keys on boot, the honest value is
-  `false` and core falls back to trust-on-first-use for those hosts. It is the first thing
-  `rockysurf-ev41.8` must settle, and the provider's own docs lead with it.
+- **`true` (GCP) — MEASURED.** Declared on the same mechanism — cloud-init's GCE datasource
+  documents that it reads the `user-data` metadata key, so `ssh_keys:` places the key before
+  first boot — and `rockysurf-ev41.8` watched real Google boxes do exactly that, on both
+  architectures. The specific failure this row was written to be honest about did not happen:
+  GCE's guest agent does not regenerate the host key out from under a `ssh_keys:` block, so the
+  value stays `true` and it is now an observation. GCP has no trust-on-first-use window either.
 - **`false` (BYO)** — with no user-data there is no way to place a key before first contact, so
   the key has to be learned instead: recorded on first connection, refused on any change
   afterwards, and said plainly in the UI.
@@ -188,9 +207,11 @@ All four clouds do. AWS and Hetzner are measured: the capstone verified the docu
 first boot. Note that Azure has a *separate* `properties.userData` field which is **not** this
 one: it is readable from IMDS and mutable after boot, and cloud-init does not consume it.
 
-**GCP** delivers it through the `user-data` instance metadata key, which is the documented
-cloud-init path on Google's images — carrying the same caveat as the row above, that no run of
-ours has confirmed it.
+**GCP** delivers it through the `user-data` instance metadata key, the documented cloud-init
+path on Google's images, and `rockysurf-ev41.8` confirmed the delivery the same way it confirmed
+the row above: a box cannot present a host key core minted unless cloud-init consumed the
+document carrying it. Note the difference in strength, though — AWS and Hetzner were compared
+byte-for-byte against the file on the box, and no GCP run has done that.
 
 BYO does not. Core renders no document, and bootstrap is SSH push only — which is the same push
 path both clouds already use after first boot, so BYO is a subset rather than a separate

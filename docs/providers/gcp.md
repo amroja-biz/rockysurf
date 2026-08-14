@@ -12,7 +12,7 @@ boxes in your own project — and nothing beyond that.
 - [What it costs](#what-it-costs)
 - [Testing it](#testing-it)
 - [What is deliberately absent](#what-is-deliberately-absent)
-- [Status: not yet run against real Google Cloud](#status-not-yet-run-against-real-google-cloud)
+- [Status: proven on real Google Cloud, except stop/start](#status-proven-on-real-google-cloud-except-stopstart)
 
 ---
 
@@ -350,39 +350,45 @@ undercuts the point of a persistent dev box, and idle auto-stop is the cost leve
 
 ---
 
-## Status: not yet run against real Google Cloud
+## Status: proven on real Google Cloud, except stop/start
 
-**Nothing on this page has been proven by a launch.** This is the honest status block, and it is
-deliberately different from [the AWS one](aws.md#the-iam-policy), which describes a full
-lifecycle run under a restricted principal on real infrastructure.
+**This page has been proven by a launch — on 2026-08-14, against real Compute Engine**
+(`rockysurf-ev41.8`). It was written before that run, from Google's REST reference, and the run
+is what turned it from carefully derived into checked. One part of it is still derived, and this
+block says which.
 
-The GCP provider was built without Google Cloud credentials. What that does and does not mean:
+**What the run measured.** The full create → bootstrap → terminate lifecycle, on both
+architectures: `e2-small` and `e2-micro` on amd64, `t2a-standard-1` on arm64. The permission list
+above is *sufficient* — a box launched under it, which is the check the AWS policy failed the
+first time it was tried for real. The shared SSH firewall rule was created and maintained,
+including on a first launch in a project that had never had one, which is the only launch that
+exercises `firewalls.create` and `compute.networks.updatePolicy`. Bootstrap was pushed over SSH,
+so the SSH path is verified by the boxes having reached ready at all. Terminate left **zero
+orphans**: an audit on Google's side afterwards found no instances and no disks, with only the
+shared `rockysurf-ssh` rule persisting, which is what it is for.
 
-**What is verified.** Every one of the provider's nine methods is exercised against an in-memory
-Compute Engine driven through the real HTTP client, so request construction, error mapping,
-operation polling and the state machine are all tested. It passes
-`@rockysurf/provider-conformance`, including the `describe()` absence-grace probe. The permission
-list above is derived from the per-field authorization annotations on Compute Engine's REST
-reference, so every entry traces to a call the provider makes.
+**`canInjectHostKeys: true` is now measured, and it was the important one.** The provider
+declares that a core-minted SSH host key reaches the box through the `user-data` metadata key,
+which cloud-init's GCE datasource documents that it reads. Real Google boxes presented exactly
+the fingerprint core minted, on both architectures. GCE's guest agent does not regenerate the key
+out from under it — the failure that would have made the capability `false` and dropped the
+security posture to trust-on-first-use. It did not happen.
 
-**What is not.** That the list is *sufficient* — the AWS policy was published, reviewed, and
-still had a bug that failed every first launch until a real restricted-principal run found it.
-Nothing here has had that treatment.
+**What is still not measured: stop and start.** No GCP box has been stopped and restarted. The
+run created boxes, bootstrapped them and destroyed them, and deliberately never power-cycled one.
+So `compute.instances.stop` and `compute.instances.start` in the role above are the two
+permissions no launch has exercised, and `ipStableAcrossStop: false` — the claim that an
+ephemeral external IP is released on stop and a different one assigned on start — remains read
+from Google's documentation rather than watched. Treat that one row of
+[the capability matrix](capability-matrix.md) as reasoning, and the rest of this page as checked.
 
-Three specific claims a real run has to settle:
+Two smaller things the run did not settle, both harmless:
 
-1. **`canInjectHostKeys: true`.** The provider declares that a core-minted SSH host key reaches
-   the box through the `user-data` metadata key, which cloud-init's GCE datasource documents that
-   it reads. If GCE's guest agent regenerates host keys on boot, **that capability is false** and
-   the security posture changes: strict verification on the first connection becomes
-   trust-on-first-use. This is the most important open question on this page.
-2. **Whether `instances.get` ever reports not-found for a machine it just created.** Google
-   documents it as strongly consistent. The provider implements the full propagation grace
-   anyway, because the ADR permits lengthening it and never skipping it, and because the AWS
-   provider shipped without one while eighty-five tests were green.
-3. **That the firewall permissions work on a first launch in a fresh project** — the only launch
-   that exercises them.
-
-Tracked as `rockysurf-ev41.8`. Until it runs, treat this page as carefully derived rather than
-proven, and if you hit a `PERMISSION_DENIED`, the error names the permission it wanted and we
-would like to hear about it.
+1. **Whether `instances.get` ever reports not-found for a machine it just created.** Google
+   documents it as strongly consistent and nothing in the run contradicted that. The provider
+   implements the full propagation grace anyway, because the ADR permits lengthening it and never
+   skipping it, and because the AWS provider shipped without one while eighty-five tests were
+   green.
+2. **Anything about a project unlike the one it ran in** — a shared VPC, an org policy
+   constraining external IPs, a different image project. If you hit a `PERMISSION_DENIED`, the
+   error names the permission it wanted and we would like to hear about it.

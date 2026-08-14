@@ -88,9 +88,9 @@ Two things worth knowing before the first launch:
 
 | capability | value | what it costs you |
 |---|---|---|
-| `stop` | `true` | Boxes can be stopped and restarted with the disk intact. The disk keeps billing while stopped. |
-| `ipStableAcrossStop` | `false` | A stopped box comes back on a **different** external IP. Core re-reads it and tells you your SSH config is stale. |
-| `canInjectHostKeys` | `true` | The box comes up presenting a host key core minted, so the first connection is strictly verified with no trust-on-first-use window. **Not yet verified against real Google Cloud** — see below. |
+| `stop` | `true` | Boxes can be stopped and restarted with the disk intact. The disk keeps billing while stopped. **Not yet exercised on real Google Cloud** — see below. |
+| `ipStableAcrossStop` | `false` | A stopped box comes back on a **different** external IP. Core re-reads it and tells you your SSH config is stale. **Not yet exercised on real Google Cloud** — see below. |
+| `canInjectHostKeys` | `true` | The box comes up presenting a host key core minted, so the first connection is strictly verified with no trust-on-first-use window. Verified on real Google Cloud. |
 | `userDataMaxBytes` | `262144` | Google's per-metadata-value ceiling. Sixteen times AWS's, and nothing core renders comes close. |
 | `generatesUserData` | `true` | The cloud-config document reaches the box through the `user-data` metadata key, which cloud-init's GCE datasource reads. |
 
@@ -111,20 +111,25 @@ rather than silently omitted, so a size selector can explain itself.
 
 ## Verified
 
-**Nothing in this package has been run against real Google Cloud.**
+**A full create → bootstrap → terminate lifecycle on real Google Cloud, on 2026-08-14, on both
+architectures** (`e2-small` and `e2-micro` amd64, `t2a-standard-1` arm64), with zero orphans left
+behind — audited afterwards as no instances and no disks. The two claims that were previously
+inferences from documentation are now observations: the boxes presented exactly the host key core
+minted, so `canInjectHostKeys: true` holds on Google's Ubuntu images, and the published
+permission list is *sufficient* to launch under, including the first-launch-in-a-fresh-project
+path that creates the shared SSH firewall rule. That second one is the check the AWS policy
+failed the first time it was tried for real.
 
-Every method is exercised against an in-memory Compute Engine driven through the real HTTP
+Every method is also exercised against an in-memory Compute Engine driven through the real HTTP
 client, so request construction, error mapping, operation polling and the state machine are all
 under test, and the package passes `@rockysurf/provider-conformance` including the `describe()`
-absence-grace probe. The IAM permission list is derived from the per-field authorization
-annotations on Compute Engine's REST reference.
+absence-grace probe.
 
-None of that is the same as a launch. Two claims in particular are inferences from
-documentation: that `canInjectHostKeys` holds on Google's Ubuntu images, and that the published
-permission list is *sufficient*. The AWS policy was published, reviewed, and still had a bug
-that failed every first launch until a real restricted-principal run found it.
+**`stop` and `start` are the exception.** No box has been stopped and restarted on real GCE, so
+those two methods and `ipStableAcrossStop: false` are still read from Google's documentation
+rather than watched.
 
-See [the status block in `docs/providers/gcp.md`](../../docs/providers/gcp.md#status-not-yet-run-against-real-google-cloud).
+See [the status block in `docs/providers/gcp.md`](../../docs/providers/gcp.md#status-proven-on-real-google-cloud-except-stopstart).
 
 ## Writing your own provider
 
