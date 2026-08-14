@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -60,20 +60,19 @@ function packsIn(root: string, packIds: string[]): string {
   return dir
 }
 
-const BUILT = existsSync(BUNDLED_PACKS_DIR)
-
 describe('the bundled packs', () => {
-  // Skipped in an unbuilt checkout rather than failed: `packages/core/packs` is produced by this
-  // package's build, and a contributor running one test file before `pnpm -r build` should get a
-  // skip and not a mystery.
-  it.skipIf(!BUILT)('exist after a build and hold the repository’s packs', () => {
+  // NOT SKIPPED WHEN ABSENT, which was the earlier shape and the wrong one. `packages/core/packs`
+  // is a COMMITTED copy kept honest by `scripts/check-packs-bundle.mjs`, so its absence is a
+  // failure rather than a reason to sit the test out — a guard here would turn "this release
+  // ships no packs" into "those tests did not run", which reads as a pass.
+  it('exist and hold the repository’s packs', () => {
     const names = readdirSync(BUNDLED_PACKS_DIR).filter((n) => n.endsWith('.yaml'))
     expect(names.length).toBeGreaterThan(0)
     expect(names).toContain('ai-coding-agents.yaml')
     expect(bundledPacksDir()).toBe(BUNDLED_PACKS_DIR)
   })
 
-  it.skipIf(!BUILT)('resolve two levels below the package root, not inside dist', () => {
+  it('resolve two levels below the package root, not inside dist', () => {
     // The mistake this pins: `../packs` from `dist/packs/bundled.js` yields `dist/packs`, a
     // directory that plausibly exists, contains no pack, and fails silently.
     expect(BUNDLED_PACKS_DIR).not.toContain(`${'dist'}${'/'}packs`)
@@ -96,7 +95,7 @@ describe('resolvePacksDir', () => {
     expect(resolvePacksDir(data, tmp('nowhere'))).toMatchObject({ source: 'data-dir' })
   })
 
-  it.skipIf(!BUILT)('falls back to the bundle when there is no checkout and no operator set', () => {
+  it('falls back to the bundle when there is no checkout and no operator set', () => {
     // THE npx CASE, which is the bug. Before this, the answer was an empty data directory.
     expect(resolvePacksDir(tmp('data'), tmp('nowhere'))).toMatchObject({
       source: 'bundled',
@@ -104,7 +103,7 @@ describe('resolvePacksDir', () => {
     })
   })
 
-  it.skipIf(!BUILT)('does not let an EMPTY data directory shadow the bundle', () => {
+  it('does not let an EMPTY data directory shadow the bundle', () => {
     // The trap: the boot path creates `<dataDir>/packs` on every non-checkout start, so keying
     // on the directory's existence rather than its contents would make the bundle unreachable
     // after the very first boot — the fix would work exactly once, on a machine nobody has.
@@ -115,7 +114,7 @@ describe('resolvePacksDir', () => {
 })
 
 describe('a boot with no checkout around it', () => {
-  it.skipIf(!BUILT)('loads the shipped packs into the picker', () => {
+  it('loads the shipped packs into the picker', () => {
     // The whole bug, end to end through the real boot path: what a fresh `npx rockysurf` does.
     const { db } = openTestDatabase()
     const result = syncPacksAtBoot({ db, dataDir: tmp('data'), cwd: tmp('nowhere'), log: () => {} })
@@ -126,7 +125,7 @@ describe('a boot with no checkout around it', () => {
     expect(listPacks(db).map((p) => p.id)).toContain('ai-coding-agents')
   })
 
-  it.skipIf(!BUILT)('marks them file-backed, so a retired pack goes away on upgrade', () => {
+  it('marks them file-backed, so a retired pack goes away on upgrade', () => {
     // `sourceFile` is what makes the reconcile own these rows. It is also what makes "official
     // means shipped with the release you are RUNNING" true over time: upgrade to a version that
     // dropped a pack and the reconcile drops it too. Seeding copies into the data directory
@@ -136,7 +135,7 @@ describe('a boot with no checkout around it', () => {
     for (const pack of listPacks(db)) expect(pack.sourceFile).toBeTruthy()
   })
 
-  it.skipIf(!BUILT)('leaves a pack installed from the registry alone', () => {
+  it('leaves a pack installed from the registry alone', () => {
     // The two kinds coexist: the reconcile owns file-backed rows and never touches one whose
     // `sourceFile` is null, which is what a registry install writes (rockysurf-arym.4).
     const { db } = openTestDatabase()

@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import { openTestDatabase } from '../db/client.js'
 import { getPack, listPacks, listTools, upsertPack } from '../db/repositories/packs.js'
-import { bundledPacksDir } from '../packs/bundled.js'
 import { resolvePacksDir, syncPacksAtBoot } from './packs.js'
 
 /** The repository's own packs/ — the checkout case, and the shipped set gonw.8 authored. */
@@ -38,8 +37,7 @@ describe('choosing a packs directory', () => {
     // Was `data-dir`, and an empty one, which is the whole of rockysurf-io02: a published
     // install had no pack files anywhere and came up with an empty picker. `bundled-packs.test.ts`
     // covers the tiering; this asserts the case an `npx` user actually lands in.
-    const resolved = resolvePacksDir(join(tempDir(), 'data'), tempDir())
-    expect(resolved.source).toBe(bundledPacksDir() ? 'bundled' : 'data-dir')
+    expect(resolvePacksDir(join(tempDir(), 'data'), tempDir())).toMatchObject({ source: 'bundled' })
   })
 })
 
@@ -81,16 +79,9 @@ describe('syncing packs at boot', () => {
       log: (m) => messages.push(m),
     })
 
-    if (bundledPacksDir()) {
-      expect(result.source).toBe('bundled')
-      expect(result.packsSynced).toBeGreaterThan(0)
-      expect(listPacks(opened.db).length).toBeGreaterThan(0)
-    } else {
-      // An unbuilt checkout ships nothing, and an empty catalog is still a legitimate state —
-      // the admin UI and the pack shop can both fill it.
-      expect(result.packsSynced).toBe(0)
-      expect(readdirSync(result.dir)).toEqual([])
-    }
+    expect(result.source).toBe('bundled')
+    expect(result.packsSynced).toBeGreaterThan(0)
+    expect(listPacks(opened.db).length).toBeGreaterThan(0)
     opened.close()
   })
 
@@ -175,7 +166,7 @@ describe('syncing packs at boot', () => {
     // by the next test: a boot that loads NO pack at all still deletes nothing.
     const b = syncPacksAtBoot({ db: opened.db, dataDir, cwd: tempDir(), log })
     expect(listPacks(opened.db)).toHaveLength(shippedPackFiles().length + 1)
-    expect(b.reconciled).toBe(Boolean(bundledPacksDir()))
+    expect(b.reconciled).toBe(true)
 
     // Boot C — back in the checkout. Still the same set, no duplicates, no losses.
     const c = syncPacksAtBoot({ db: opened.db, dataDir, cwd: repoRoot, log })

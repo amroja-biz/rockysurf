@@ -25,7 +25,7 @@ reason.
 
 | step | what it is |
 |---|---|
-| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-npx-closure.mjs` |
+| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
 | `pnpm -r typecheck` | `tsc --noEmit` per package |
 | `pnpm -r test` | vitest per package |
 
@@ -154,8 +154,15 @@ rockysurf pack check packs/ --pack <id> --arch arm64         # the smoke harness
 ```
 
 `--base-packs` defaults to the packs bundled in the `rockysurf` you are running
-(`packages/core/packs`, produced by core's build from this directory — `rockysurf-io02`), which
-is what lets a community pack in the shop resolve the base toolchain with no flag and no clone.
+(`packages/core/packs` — `rockysurf-io02`), which is what lets a community pack in the shop
+resolve the base toolchain with no flag and no clone.
+
+**`packages/core/packs` is a committed copy of this directory, not a build artifact.** Core's
+build writes it and `check-packs-bundle.mjs` fails when the two disagree, so editing a pack means
+building and committing the copy alongside it. It is committed rather than generated-and-ignored
+because generated state that lives only in a working tree is invisible to everyone except the
+person who happens to have built — a fresh clone does not have it, and a test that guarded on its
+presence would report "did not run" as a pass.
 Linting this repository's own `packs/` is unaffected: a base pack whose `packId` the target also
 defines is the same pack seen twice and contributes nothing.
 
