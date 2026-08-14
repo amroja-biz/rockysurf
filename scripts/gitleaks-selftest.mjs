@@ -65,6 +65,8 @@ const MUST_DETECT = [
   { rule: 'rockysurf-legacy-github-app-id', sample: 'GitHubAppId: 2773473' },
   { rule: 'rockysurf-legacy-stripe-price-id', sample: "STRIPE_METER_PRICE_ID: 'price_1Synth3t1cV4lu3F0rT3st'" },
   { rule: 'rockysurf-legacy-operator-handle', sample: "AllowedGitHubUsers: 'jbdamask,someoneelse'" },
+  { rule: 'rockysurf-legacy-local-username', sample: 'binary /Users/johndamask/code/somewhere/dist/bin.js' },
+  { rule: 'rockysurf-legacy-private-worktree', sample: 'cwd /Users/someone/code/1-open-source-rocky-surf-v0-1/packages' },
 ]
 
 /**
@@ -187,7 +189,12 @@ try {
 
   /* --- 3: the fixture exemption must still have a subject -------------------------------- */
   const tracked = trackedPaths()
-  const fixturePaths = allowlistPaths('PEM banners and request fixtures in the test suites — no key material')
+  const fixturePaths = [
+    ...allowlistPaths('PEM banners and request fixtures in the test suites — no key material'),
+    // rockysurf-5ypc: the recorded-evidence exemption is the same shape of hole — a named-file
+    // pass on two identifier rules — so its paths get the same not-outlived-its-subject check.
+    ...allowlistPaths('Recorded evidence carrying the operator\'s local username or the private worktree name'),
+  ]
   const orphaned = fixturePaths.filter((p) => !tracked.some((f) => new RegExp(p).test(f)))
   if (orphaned.length === 0) pass('every fixture exemption still has files to excuse', `${fixturePaths.length} path pattern(s)`)
   else
