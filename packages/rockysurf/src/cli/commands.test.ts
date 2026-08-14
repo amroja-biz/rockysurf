@@ -8,6 +8,7 @@ import { defaultPaths } from './ssh-config.js'
 import {
   createCommand,
   listCommand,
+  offeringsCommand,
   rdpPasswordFlag,
   sshCommand,
   sshConfigCommand,
@@ -113,6 +114,120 @@ describe('create', () => {
     expect(d.stdout).toEqual(['fresh'])
     expect(d.stderr.join('\n')).toContain('rockysurf ssh fresh')
   })
+
+  /**
+   * ARCH AND OFFERING, which the CLI could not express at all (rockysurf-zaqs).
+   *
+   * The resolver has honoured `arch` since rockysurf-clf2 and the MCP tool has named it since
+   * rockysurf-0t2h; the CLI — the surface a human is most likely to be holding — took `size`
+   * and nothing else, so asking for an ARM box meant curl against the HTTP API.
+   */
+  it('passes --arch and --offering through under the names the API validates', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    expect(await createCommand(d, { size: 'small', arch: 'arm64', offeringId: 't4g.small' })).toBe(0)
+    expect(post).toHaveBeenCalledWith('/api/v1/servers', expect.objectContaining({ arch: 'arm64', offeringId: 't4g.small' }))
+  })
+
+  it('omits both when they were not asked for, rather than sending a default', async () => {
+    // A defaulted arch would be the resolver picking for the caller and then being told what to
+    // pick — the create route's "cheapest of either that meets the size" is the wanted behaviour.
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    await createCommand(d, { size: 'small' })
+    const body = post.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(body).not.toHaveProperty('arch')
+    expect(body).not.toHaveProperty('offeringId')
+  })
+
+  it('refuses an --arch that is not one of the two, before any request is made', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    expect(await createCommand(d, { size: 'small', arch: 'aarch64' })).toBe(1)
+    // Names both legal values: a closed choice mistyped should not need a second attempt to
+    // learn what the choices were.
+    expect(d.stderr.join('\n')).toContain('amd64, arm64')
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  // `--offering` is NOT validated locally, and that is the same discipline `--provider` follows:
+  // the ids belong to the operator's cloud and their allowlist, so the only honest validator is
+  // the control plane. It refuses by name, and now says what it does have (rockysurf-oeay).
+  it('sends an unknown --offering rather than guessing at a local allowlist', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    await createCommand(d, { size: 'small', offeringId: 'not-a-real-type' })
+    expect(post).toHaveBeenCalledWith('/api/v1/servers', expect.objectContaining({ offeringId: 'not-a-real-type' }))
+  })
+})
+
+/**
+ * `rockysurf offerings` (rockysurf-oeay).
+ *
+ * Shipping `--offering` without this would have recreated on the CLI the exact bug being fixed
+ * on the MCP surface in the same change: an id-shaped flag with nowhere to learn an id.
+ */
+describe('offerings', () => {
+  const CATALOGUE = [
+    {
+      id: 'fake',
+      displayName: 'Fake Cloud',
+      offerings: [
+        { id: 'f1.small', cpu: 2, memoryGb: 2, arch: 'arm64', available: true, hourly: { amount: 0.01, currency: 'USD' }, region: 'r1' },
+        { id: 'f1.big', cpu: 8, memoryGb: 16, arch: 'amd64', available: false, hourly: null, region: 'r1' },
+      ],
+    },
+  ]
+
+  const catalogueDeps = (body: unknown = CATALOGUE) =>
+    deps({
+      client: {
+        get: (async (path: string) => (path === '/api/v1/providers' ? body : SERVERS)) as CoreClient['get'],
+        post: (async () => ({})) as CoreClient['post'],
+        getText: (async () => PEM) as CoreClient['getText'],
+      } as CoreClient,
+    })
+
+  it('lists each type with its architecture, size and price', async () => {
+    const d = catalogueDeps()
+    expect(await offeringsCommand(d)).toBe(0)
+    const out = d.stdout.join('\n')
+    expect(out).toContain('f1.small')
+    expect(out).toContain('arm64')
+    expect(out).toContain('0.01 USD')
+  })
+
+  it('says a type is sold out rather than hiding it', async () => {
+    // A sold-out type and a type this cloud does not sell need different answers, which is the
+    // whole reason `Offering.available` exists (ADR-0003, B1).
+    const d = catalogueDeps()
+    await offeringsCommand(d)
+    expect(d.stdout.join('\n')).toMatch(/f1\.big.*sold out/s)
+  })
+
+  it('renders an unpriced type as unknown, never as free', async () => {
+    const d = catalogueDeps()
+    await offeringsCommand(d)
+    const row = d.stdout.find((l) => l.includes('f1.big')) ?? ''
+    expect(row).toContain('—')
+    expect(row).not.toMatch(/\b0\b/)
+  })
+
+  it('reports a cloud whose catalogue could not be read, instead of showing it as empty', async () => {
+    const d = catalogueDeps([{ id: 'fake', displayName: 'Fake Cloud', offerings: [], offeringsError: 'rate limited' }])
+    expect(await offeringsCommand(d)).toBe(0)
+    expect(d.stdout.join('\n')).toContain('rate limited')
+  })
+
+  it('names the configured clouds when asked for one that is not', async () => {
+    const d = catalogueDeps()
+    expect(await offeringsCommand(d, { provider: 'nope' })).toBe(1)
+    expect(d.stderr.join('\n')).toContain('fake')
+  })
 })
 
 /**
@@ -132,7 +247,7 @@ describe('create needs a desktop password for a desktop pack', () => {
   ]
 
   function rdpDeps(overrides: Partial<CliDeps> = {}) {
-    const post = vi.fn(async () => ({ serverId: 'srv-new', name: 'fresh' }))
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
     const client = {
       get: (async (path: string) => (path === '/api/v1/surge-packs' ? PACKS : SERVERS)) as CoreClient['get'],
       post: post as unknown as CoreClient['post'],
@@ -219,7 +334,7 @@ describe('create needs a desktop password for a desktop pack', () => {
     // The escape hatch: an unreachable or unknown pack list must not be able to talk the CLI
     // out of collecting a password the user asked to give.
     const promptSecret = vi.fn(async () => PASSWORD)
-    const post = vi.fn(async () => ({ serverId: 'srv-new', name: 'fresh' }))
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
     const client = {
       get: (async () => {
         throw new Error('pack list unavailable')

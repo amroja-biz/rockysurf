@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CoreApiError, type CoreClient } from '../mcp/client.js'
+import type { ProviderCatalogue } from '../mcp/tools.js'
 import { packRequiresRdp, RDP_MIN_LENGTH, RDP_PASSWORD_ENV } from '../rdp.js'
 import { SecretPromptCancelled, type SecretPrompt } from './secret-prompt.js'
 import {
@@ -80,13 +81,102 @@ export async function listCommand(deps: CliDeps): Promise<number> {
   return 0
 }
 
+/* -------------------------------------------------------------------------- offerings */
+
+/**
+ * `rockysurf offerings` — what each configured cloud can actually sell you (rockysurf-oeay).
+ *
+ * THE CLI NEEDED THIS FOR THE SAME REASON MCP DID, and shipping `--offering` without it would
+ * have recreated the bug on the surface being fixed in the same change: an id-shaped flag with
+ * nowhere to learn an id. `--provider` gets away with it because omitting it on a multi-cloud
+ * installation produces a refusal that names the configured clouds; there is no such prompt for
+ * an offering.
+ *
+ * Reads the same route the SPA's create page reads, so the catalogue is already narrowed by the
+ * operator's `providers.<cloud>.sizes` (rockysurf-j10e). Nothing here can advertise a machine
+ * `rockysurf create` would refuse.
+ */
+export async function offeringsCommand(deps: CliDeps, args: { provider?: string } = {}): Promise<number> {
+  const providers = unwrap<ProviderCatalogue[]>(await deps.client.get('/api/v1/providers'), 'providers')
+  const matching = args.provider ? providers.filter((p) => p.id === args.provider) : providers
+
+  if (args.provider && matching.length === 0) {
+    deps.err(
+      `No configured cloud called "${args.provider}". ` +
+        (providers.length ? `You have: ${providers.map((p) => p.id).join(', ')}.` : 'None is configured.'),
+    )
+    return 1
+  }
+  if (matching.length === 0) {
+    deps.err('No cloud is configured. Add one in Settings, or see docs/self-hosting.md.')
+    return 1
+  }
+
+  for (const provider of matching) {
+    deps.out(`${provider.id}  (${provider.displayName})`)
+    // A cloud whose catalogue could not be read says so instead of looking like a cloud with
+    // nothing to sell — the same distinction the route draws with `offeringsError`.
+    if (provider.offeringsError) {
+      deps.out(`  could not read the catalogue: ${provider.offeringsError}`)
+      continue
+    }
+    if (provider.offerings.length === 0) {
+      deps.out('  no machine types this installation allows')
+      continue
+    }
+
+    const width = Math.max(...provider.offerings.map((o) => o.id.length), 4)
+    deps.out(`  ${'TYPE'.padEnd(width)}  ${'ARCH'.padEnd(5)}  ${'CPU'.padStart(3)}  ${'RAM'.padStart(6)}  COST/HR`)
+    for (const offering of provider.offerings) {
+      // `null` is "the provider quotes no price", which must never be rendered as free.
+      const cost = offering.hourly ? `${offering.hourly.amount} ${offering.hourly.currency}` : '—'
+      // Said in the row rather than by omitting it: a sold-out type and a type this cloud does
+      // not have need different answers, which is why the SDK carries `available` at all.
+      const soldOut = offering.available ? '' : '   (sold out right now)'
+      deps.out(
+        `  ${offering.id.padEnd(width)}  ${offering.arch.padEnd(5)}  ${String(offering.cpu).padStart(3)}  ` +
+          `${`${offering.memoryGb} GB`.padStart(6)}  ${cost}${soldOut}`,
+      )
+    }
+    deps.out('')
+  }
+  deps.err('Create one with `rockysurf create --offering <type>`, or let --size and --arch choose.')
+  return 0
+}
+
 /* ----------------------------------------------------------------------------- create */
+
+/**
+ * The two architectures, which are the SDK's frozen list rather than anything an operator
+ * configures — so unlike `--provider` and `--offering` this one is a CLOSED choice, checked
+ * here before a request is made (rockysurf-zaqs).
+ */
+export const ARCHITECTURES = ['amd64', 'arm64'] as const
+export type CliArchitecture = (typeof ARCHITECTURES)[number]
 
 export interface CreateArgs {
   name?: string
   size?: string
   packId?: string
   provider?: string
+  /**
+   * Which CPU architecture, when the caller cares (rockysurf-zaqs).
+   *
+   * `rockysurf-clf2` made size and arch resolution real in core and `rockysurf-0t2h` gave the
+   * MCP tool an `arch`; the CLI — the surface a human is most likely to be holding — was left
+   * with `size` alone, so asking for an ARM box meant falling back to curl against the HTTP
+   * API. Passed through as `arch`, which the create route already validates.
+   */
+  arch?: string
+  /**
+   * A concrete machine type from the cloud's own catalogue, overriding `size`.
+   *
+   * Un-enumerated, on the same discipline as `--provider`: the ids belong to the operator's
+   * cloud and are narrowed further by their `providers.<cloud>.sizes`, so no list compiled into
+   * this binary could be right for two installations. `rockysurf offerings` is how a caller
+   * learns them (rockysurf-oeay).
+   */
+  offeringId?: string
   /**
    * Repository URLs to clone onto the box, from repeated `--repo` flags (rockysurf-81wo).
    *
@@ -128,6 +218,14 @@ export function rdpPasswordFlag(argv: string[]): NonNullable<CreateArgs['rdpPass
 }
 
 export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<number> {
+  // Before anything is sent, because a closed choice mistyped is a typo and the round trip
+  // teaches nothing the local check cannot (rockysurf-zaqs). The message names both values
+  // rather than only rejecting the one given.
+  if (args.arch !== undefined && !(ARCHITECTURES as readonly string[]).includes(args.arch)) {
+    deps.err(`--arch must be one of: ${ARCHITECTURES.join(', ')} — got "${args.arch}"`)
+    return 1
+  }
+
   // BEFORE the POST, always. A `requiresRdp` pack created without a password provisions
   // perfectly and then fails its last bootstrap step — an instance that costs money and
   // teaches nothing (rockysurf-kvkr).
@@ -144,6 +242,8 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
       size: args.size ?? 'small',
       ...(args.packId ? { packId: args.packId } : {}),
       ...(args.provider ? { provider: args.provider } : {}),
+      ...(args.arch ? { arch: args.arch } : {}),
+      ...(args.offeringId ? { offeringId: args.offeringId } : {}),
       ...(args.repositories?.length ? { repositories: args.repositories } : {}),
       ...(args.createAnyway ? { createAnyway: true } : {}),
       ...(rdp.password ? { rdpPassword: rdp.password } : {}),
