@@ -350,6 +350,13 @@ async function main() {
 
     /* ---- stop / start, both clouds support it ---- */
     if (provider.capabilities.stop) {
+      // The address BEFORE the stop, so `ipStableAcrossStop` can be checked rather than assumed
+      // (rockysurf-eanp). That flag was carried as measured on Hetzner for months on the
+      // strength of the rest of the column being measured — and nothing in this script or in any
+      // committed transcript had ever re-read the address after a restart. Captured here rather
+      // than derived from `previousIp` afterwards, because core only stamps `previousIp` when the
+      // address CHANGED: reading it back would prove the stable case by its own absence.
+      const addressBeforeStop = (await (await api(`/api/v1/servers/${serverId}`)).json()).publicIp
       // `stop` answers with what the PROVIDER has reached, not with the request being accepted
       // (rockysurf-55fx.15). On Hetzner that is `stopped` in this very response; on EC2 it is
       // still `running`, because an instance in `stopping` is up and billing. Both are correct,
@@ -373,9 +380,28 @@ async function main() {
       // optimistic `running` it has to retract. The assertion is that the server COMES BACK.
       check(started.status !== undefined, 'start accepted', `status=${started.status}`)
       check(await waitForStatus(serverId, 'running', 3 * 60_000), 'server came back up after start')
-      if (!provider.capabilities.ipStableAcrossStop) {
-        const after = await (await api(`/api/v1/servers/${serverId}`)).json()
-        log(`  address after restart: ${after.publicIp} (previous ${after.previousIp ?? '-'})`)
+      /*
+       * WHAT THE MATRIX CLAIMS, CHECKED (rockysurf-eanp).
+       *
+       * Both readings are asserted, not just the unstable one. The old code logged the new
+       * address when the flag was `false` and did nothing at all when it was `true` — so the
+       * claim that costs a user something, "your box keeps its address", was the one nothing
+       * watched. A cloud that changes this behaviour should turn the nightly red, because at
+       * that moment docs/providers/capability-matrix.md has become wrong.
+       */
+      const after = await (await api(`/api/v1/servers/${serverId}`)).json()
+      if (provider.capabilities.ipStableAcrossStop) {
+        check(
+          Boolean(after.publicIp) && after.publicIp === addressBeforeStop,
+          'address survived the restart, as ipStableAcrossStop claims',
+          `${addressBeforeStop} -> ${after.publicIp ?? '-'}`,
+        )
+      } else {
+        check(
+          Boolean(after.publicIp) && after.publicIp !== addressBeforeStop,
+          'address changed across the restart, as ipStableAcrossStop claims',
+          `${addressBeforeStop} -> ${after.publicIp ?? '-'} (previous ${after.previousIp ?? '-'})`,
+        )
       }
     }
   } finally {

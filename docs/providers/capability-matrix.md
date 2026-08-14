@@ -17,16 +17,20 @@ and the two real-cloud capstone transcripts beside it.
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
 | `stop` | `true` | `true` | `true` † | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` | `true` |
+| `ipStableAcrossStop` | **`false`** | `true` † | **`false`** † | `true` † | `true` |
 | `canInjectHostKeys` | `true` | `true` † | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
-real infrastructure. **`gcp` is now measured too, but not in every row**: a real Compute Engine
-run settled most of the column and deliberately never touched two of the values, which is why the
-daggers in it moved rather than disappeared.
+real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
+was never actually observed, and carrying it as measured because the rest of the column was is
+exactly the drift the daggers exist to prevent (`rockysurf-eanp`).
+
+**`gcp` is now measured too, but not in every row**: a real Compute Engine run settled most of the
+column and deliberately never touched two of the values, which is why the daggers in it moved
+rather than disappeared.
 
 **† A daggered value is REASONED RATHER THAN MEASURED** — an inference from the vendor's
 documentation rather than an observation. Daggers are per value rather than per column, because a
@@ -60,17 +64,29 @@ prevent. `userDataMaxBytes` is unchanged and undaggered: Google's documented
 per-metadata-value ceiling, structural and never approached.
 
 One difference in the *form* of the evidence, since this table is where people come to compare
-it: `aws` and `hetzner` have committed transcripts you can read, and `hetzner` is re-run nightly.
+it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `hetzner` is re-run
+nightly.
 The GCP run was driven by hand and through the MCP server, and no transcript of it was recorded
 into the repository — what backs the column is a report of a run rather than an artefact of one.
 [The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) has it
 in full.
 
 `byo` is now **implemented** (`@rockysurf/provider-byo`, `rockysurf-ftl9.3`) and its column is
-enforced by that package's tests rather than being a specification. Like `azure` it has no
-real-infrastructure run behind it, though for a different reason: the tests drive a real SSH
-client and a real in-process SSH server, which is what makes the host-key claims below evidence
-rather than assertion, but nobody has yet pointed it at a rack.
+measured against a real OpenSSH server rather than only against the package's own tests
+(`rockysurf-ftl9.10`). The shipped binary was driven through core's HTTP API against an
+`ubuntu:24.04` container running `openssh-server` on a non-22 port, and the transcript is
+committed at [`scripts/e2e/recordings/byo-container.log`](https://github.com/amroja-biz/rockysurf/blob/main/scripts/e2e/recordings/byo-container.log).
+What that settles, which no in-process SSH server could: a real `useradd` made the account and
+**sudo itself** parsed the sudoers drop-in; real sshd consulted `authorized_keys` and the first
+claim appended to it rather than replacing it; terminate is bookkeeping, shown by sshd's own
+connection count being unchanged across it; and after `ssh-keygen -A` gave the box new host keys,
+both a TOFU-learned pin and a configured fingerprint refused it inside a real handshake, with no
+credential reaching the changed host.
+
+**Nobody has pointed it at a rack**, and that half stands. A container on the same machine
+reached over loopback is a real sshd with a real PAM stack, and it is still not remote hardware
+on a real network. The run also needs Docker, so it gates a pull request but `pnpm run check`
+never sees it.
 
 ## Row by row
 
@@ -124,7 +140,17 @@ resource to create, tag and reap, which is the orphan class AWS declined too. **
 measured.** AWS's identical claim has a transcript behind it showing the address change; the
 real-GCE run never stopped a box, so nobody has watched this one happen.
 
-**Hetzner: yes.** The primary IPv4 survives a poweroff/poweron.
+**Hetzner: yes †.** The primary IPv4 survives a poweroff/poweron — a Hetzner Cloud primary IP is
+allocated to the server and released only when the server is deleted. **Reasoned from Hetzner's
+documentation, not measured** (`rockysurf-eanp`), which is a correction: this row read as measured
+for months on the strength of the rest of the column being measured. It was not. The committed
+transcript stops and starts the server and never re-reads the address, and the spike capstone says
+in as many words that neither box was stopped.
+
+`scripts/e2e/lifecycle.mjs` now asserts it — the address is captured before the stop and compared
+after the start, for both readings of the flag — so the next nightly that completes a Hetzner
+stop/start cycle will settle this row. **The dagger comes off when a run has carried it**, not
+when the assertion was written.
 
 **BYO: yes**, trivially — the address is whatever the operator configured, and core never
 changes it.

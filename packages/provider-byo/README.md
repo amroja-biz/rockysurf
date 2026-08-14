@@ -164,7 +164,7 @@ be reached is omitted rather than described with invented numbers.
 
 ## Verified
 
-**Against a real OpenSSH server, on 2026-08-12: 70 checks, no failures.**
+**Against a real OpenSSH server, on 2026-08-12: 75 checks, no failures.**
 [`scripts/e2e/byo-host.mjs`](https://github.com/amroja-biz/rockysurf/blob/main/scripts/e2e/byo-host.mjs)
 boots the shipped `rockysurf` binary from a real config file and drives everything through core's
 HTTP API against an `ubuntu:24.04` container running `openssh-server` on a non-22 port.

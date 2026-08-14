@@ -41,7 +41,21 @@ const discard = (path) => rmSync(path, { recursive: true, force: true })
 discard(staging)
 discard(previous)
 
-cpSync(source, staging, { recursive: true })
+/*
+ * WITHOUT THE SOURCE MAPS (rockysurf-sxbm).
+ *
+ * `vite.config.ts` builds the SPA with `sourcemap: true`, which is right for
+ * `packages/web/dist`: a developer has `packages/web/src` right there and the maps resolve. It
+ * is wrong for `packages/core/public`, because that directory is PUBLISHED — `core`'s `files`
+ * lists it — and the SPA's sources are not. A consumer would get a map whose `sources` name
+ * files that do not exist on their disk, which is the same defect the six `tsconfig.build.json`
+ * files were fixed for, arriving by a different route.
+ *
+ * Filtered here rather than by turning the Vite setting off, so local SPA debugging keeps
+ * working. `scripts/verify-tarballs.mjs` fails on a `.map` in any published tarball, which is
+ * what caught this one.
+ */
+cpSync(source, staging, { recursive: true, filter: (from) => !from.endsWith('.map') })
 if (existsSync(target)) renameSync(target, previous)
 renameSync(staging, target)
 discard(previous)
