@@ -187,7 +187,52 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     scope: 'create',
     inputSchema: z.strictObject({
       name: z.string().min(1).optional().describe('A name for the server. One is generated if omitted.'),
-      size: z.enum(['small', 'medium', 'large']).default('small'),
+      size: z
+        .enum(['small', 'medium', 'large'])
+        .default('small')
+        .describe(
+          'How big a machine, as a floor rather than an exact type: small is at least 2 vCPU and ' +
+            '2 GB, medium at least 2 and 4, large at least 4 and 8. The control plane picks the ' +
+            'cheapest machine the chosen cloud sells that meets it, and refuses — naming the ' +
+            'shortfall — rather than quietly handing back a smaller one.',
+        ),
+      /**
+       * ARCH, WHICH AN AGENT COULD NOT ASK FOR AT ALL UNTIL NOW (rockysurf-0t2h).
+       *
+       * The SPA has treated architecture as first-class since it was written; this schema had
+       * no way to say it, so an agent asking for an ARM box got whatever resolution landed on
+       * — in the confirming run, an amd64 e2-micro. Adding it here was only possible once
+       * rockysurf-clf2 fixed the resolver: before that, `arch` reached the API and came back
+       * `invalid_spec`, so this parameter would have been a new way to fail rather than a new
+       * thing to do.
+       *
+       * A closed enum, unlike `provider` and `offering_id` below, because the two
+       * architectures are the SDK's own frozen list rather than anything an operator
+       * configures — the same enum the HTTP API validates against.
+       */
+      arch: z
+        .enum(['amd64', 'arm64'])
+        .optional()
+        .describe(
+          'Which CPU architecture. arm64 is usually the cheaper and faster of the two, and is ' +
+            'what the packs are built for first. Omit to let the control plane take the cheapest ' +
+            'machine of either that meets the size — it will not silently substitute the other ' +
+            'architecture when one is named and unavailable.',
+        ),
+      // Un-enumerated for the same reason `provider` is: the ids are the cloud's own
+      // (`t4g.small`, `cpx12`, `e2-micro`) and narrowed further by the operator's
+      // `providers.<cloud>.sizes`, so no list belonging in this file could be right for two
+      // installations. Optional, and rarely needed — `size` plus `arch` is the surface meant
+      // for an agent, and this is the escape hatch for a human who already knows the type.
+      offering_id: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "A specific machine type from the cloud's own catalogue, if you already know which " +
+            'one you want. Overrides size. The create is refused if this installation does not ' +
+            'offer it.',
+        ),
       pack_id: z.string().min(1).optional().describe('Which surge pack to install.'),
       repositories: z
         .array(z.string().min(1))
@@ -255,6 +300,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       const server = await client.post<unknown>('/api/v1/servers', {
         ...(args['name'] ? { name: args['name'] } : {}),
         size: args['size'] ?? 'small',
+        ...(args['arch'] ? { arch: args['arch'] } : {}),
+        ...(args['offering_id'] ? { offeringId: args['offering_id'] } : {}),
         ...(packId ? { packId } : {}),
         ...(args['repositories'] ? { repositories: args['repositories'] } : {}),
         ...(args['create_anyway'] ? { createAnyway: true } : {}),
