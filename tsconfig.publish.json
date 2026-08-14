@@ -1,0 +1,33 @@
+{
+  // WHAT A PUBLISHED PACKAGE EMITS, in one place because four packages already forgot it
+  // (rockysurf-sxbm).
+  //
+  // `tsconfig.base.json` turns both maps on, which is right for local development: every
+  // workspace package has its `src/` next to its `dist/`, so go-to-definition works. It is wrong
+  // for the PUBLISHED artifact. Every package here ships `dist` and not `src`, so each map's
+  // `sources: ["../src/*.ts"]` dangles in a consumer's `node_modules` — a path that does not
+  // exist on their disk.
+  //
+  // That is not cosmetic. The dogfood run behind rockysurf-92nv had every `ConformanceError`
+  // stack pointing at `provider-conformance/src/index.ts`, which sent an out-of-tree author
+  // looking for a file nobody had shipped.
+  //
+  // MEASURED at the commit that added this file, with `npm pack --dry-run --json`: the maps were
+  // 28-31% of unpacked size in the four provider packages, and 3,525,083 bytes across 163 files
+  // in `@rockysurf/core` — 55% of it. Core is what `npx rockysurf` installs, so that share was
+  // being paid on every cold start. Re-measure rather than quoting these; they are a snapshot.
+  //
+  // The alternatives were considered and are worse. Shipping `src/` alongside makes the maps
+  // resolve but the tarball larger, and puts sources in consumers' `node_modules` that nobody
+  // reads. `inlineSources` embeds the source IN the maps, which is larger still. Doc comments
+  // survive either way: tsc copies them into the `.d.ts`, which is what an editor shows on hover,
+  // and anyone actually debugging a provider is doing it in this monorepo where `src/` is right
+  // there.
+  //
+  // `scripts/verify-tarballs.mjs` fails if any published tarball contains a `.map`, so this is a
+  // gate rather than a convention four packages can quietly drift from again.
+  "compilerOptions": {
+    "declarationMap": false,
+    "sourceMap": false
+  }
+}

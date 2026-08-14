@@ -96,6 +96,23 @@ describe('verify-tarballs', () => {
     expect(report).toContain('node_modules')
   })
 
+  /**
+   * A MAP WITHOUT ITS SOURCES (rockysurf-sxbm).
+   *
+   * The same rule as the `src/` ban above, from the other end: a tarball ships `dist` and not
+   * `src`, so every map's `sources: ["../src/*.ts"]` resolves to nothing on a consumer's disk
+   * and their stack traces name files they do not have. Seven packages shipped them — including
+   * `core`, at 55% of its unpacked size, on every `npx rockysurf`.
+   */
+  it('fails a tarball carrying source maps, which point at sources it does not ship', () => {
+    const entries = [...goodEntries, 'package/dist/index.js.map', 'package/dist/index.d.ts.map']
+    const report = details(checkTarball(goodManifest.name, entries, goodManifest))
+    expect(report).toContain('source map')
+    // Both kinds, because `declarationMap` and `sourceMap` are separate settings and a package
+    // that turned off only one would still ship the other.
+    expect(report.match(/source map/g)).toHaveLength(2)
+  })
+
   it('fails a manifest with no license field, since the file alone is not the claim', () => {
     const { license: _dropped, ...noLicense } = goodManifest
     expect(details(checkTarball(noLicense.name, goodEntries, noLicense))).toContain('no `license` field')

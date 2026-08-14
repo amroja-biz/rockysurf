@@ -40,6 +40,19 @@ const FORBIDDEN_ENTRIES = [
   { pattern: /\.(test|spec)\./, label: 'test file' },
   { pattern: /^package\/tsconfig/, label: 'tsconfig' },
   { pattern: /(^|\/)node_modules\//, label: 'node_modules' },
+  /*
+   * A SOURCE MAP, which is forbidden here precisely BECAUSE `src/` is forbidden above
+   * (rockysurf-sxbm). The two rules are the same rule: every map's `sources` points at
+   * `../src/*.ts`, so a tarball that ships maps but not sources hands a consumer stack traces
+   * naming paths that do not exist on their disk. That is how a dogfooding author ended up
+   * looking for `provider-conformance/src/index.ts` (rockysurf-92nv).
+   *
+   * Two packages had been fixed one at a time and four more had the identical defect — plus
+   * `core`, which nobody had checked and which was shipping 3,525,083 bytes of maps across 163
+   * files, 55% of its unpacked size, on every `npx rockysurf`. The settings now live in
+   * `tsconfig.publish.json`; this is what stops a package drifting back out of it.
+   */
+  { pattern: /\.map$/, label: 'source map pointing at a src/ this tarball does not ship' },
 ]
 
 /** Every publishable package: a workspace member that is not `private`. */
