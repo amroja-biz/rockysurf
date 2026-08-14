@@ -1742,3 +1742,148 @@ main.help section p {
   border-top: 1px solid var(--rs-border-subtle);
   line-height: 1.6;
 }
+
+/* ── Pack shop ─────────────────────────────────────────────────────────────────────────
+   The shop and the pre-install disclosure (rockysurf-arym.5). Reuses the existing tokens
+   and primitives — .badge, .button, .modal — rather than introducing a second vocabulary
+   for a page that is mostly a list and a long, readable block of shell.                 */
+
+.shop-section {
+  margin-bottom: 2rem;
+}
+
+.shop-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.shop-section-head h2 {
+  margin: 0;
+}
+
+.pack-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.pack-card {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pack-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pack-card-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* `official` is the only label meaning "this came from us", so it is the only one that reads
+   differently. Everything else shares one style deliberately: making `internal` look safer
+   than `community` would invent a ranking the trust model does not have — both are just what
+   the operator called a registry. */
+.badge.trust-official {
+  background: var(--rs-green);
+  color: #fff;
+  border-color: transparent;
+}
+
+.badge.trust-other {
+  background: var(--rs-raised);
+  color: var(--rs-muted);
+}
+
+/* Root steps are the ones worth a second look, so they are the ones that are not quiet. */
+.badge.run-as-root {
+  background: var(--rs-raised);
+  color: var(--rs-red);
+  border-color: var(--rs-red);
+}
+
+.badge.run-as-rocky {
+  background: var(--rs-raised);
+  color: var(--rs-muted);
+}
+
+.disclosure {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.disclosure h3 {
+  margin: 1.25rem 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.disclosure-summary ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.disclosure-urls {
+  margin: 0.3rem 0 0;
+}
+
+.disclosure-tool {
+  border-top: 1px solid var(--rs-border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.disclosure-tool h4 {
+  margin: 0 0 0.2rem;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The scripts are the thing being consented to, so they are readable rather than tucked away:
+   full text, wrapped, scrolling only when one is genuinely enormous. */
+.disclosure-script {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.6rem 0.75rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.disclosure-raw {
+  margin-top: 1.25rem;
+}
+
+.disclosure-raw pre {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 20rem;
+  overflow-y: auto;
+}

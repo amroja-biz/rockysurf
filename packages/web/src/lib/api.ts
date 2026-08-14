@@ -538,8 +538,30 @@ export interface AdminSurgePack {
    * File-backed rows are owned by the repository: the boot sync rewrites them from disk
    * (ADR-0004), so an edit made in this UI would silently disappear on the next start. The
    * admin UI shows those read-only for that reason.
+   *
+   * NON-NULL ALSO MEANS OFFICIAL. Under the split horizon (ADR-0006), the packs a release ships
+   * are exactly the ones backed by a file — a registry install lands as a database row with this
+   * null and its origin in `registry` below.
    */
   sourceFile?: string | null
+  /**
+   * Where a pack installed from a registry came from, or null.
+   *
+   * A SEPARATE FIELD from `sourceFile` rather than another spelling of it. Registry packs keep
+   * `sourceFile` null — that is what stops the boot reconcile from deleting them — so a UI
+   * reading provenance out of `sourceFile` would show every installed pack as "database" and
+   * lose where it came from entirely.
+   *
+   * `trust` is snapshotted at install: it records what the operator believed when they
+   * consented, not what their config says today.
+   */
+  registry?: {
+    source: string
+    url: string | null
+    sha256: string | null
+    trust: string | null
+    installedAt: string | null
+  } | null
 }
 
 export async function listAdminTools(): Promise<AdminTool[]> {
@@ -786,4 +808,123 @@ export async function importSurgePack(source: { yaml: string } | { url: string }
 
 export async function deleteAdminSurgePack(packId: string): Promise<void> {
   return request<void>(`/admin/surge-packs/${packId}`, { method: 'DELETE' })
+}
+
+/* --------------------------------------------------------------------------- pack shop */
+
+/**
+ * The pack registries (rockysurf-arym.5, issue #9).
+ *
+ * SPLIT HORIZON, which is the thing to hold on to while reading these types. Official packs
+ * ship inside the Rocky Surf release and never appear in a registry; a registry holds community
+ * packs, and the label on them is the one the OPERATOR wrote next to that registry in their own
+ * config file. Nothing a registry publishes says how far it should be trusted — see ADR-0006.
+ */
+
+/** What the operator's config says a registry is. `official` is deliberately not a value. */
+export type RegistryTrust = 'community' | 'internal'
+
+export interface RegistryPack {
+  packId: string
+  name: string
+  description: string
+  path: string
+  sha256: string
+  /** Tool ids this pack file introduces. */
+  definesTools: string[]
+  /** Tool ids it uses but does not define; they must resolve against the local catalogue. */
+  referencesTools: string[]
+  requiresRepos: boolean
+  requiresRdp: boolean
+  /** The configured source's name — how an installed pack is attributed. */
+  sourceName: string
+  trust: RegistryTrust
+  /** Whether a pack with this id is already in the catalogue, so the button can say so. */
+  installed: boolean
+}
+
+/** One configured registry: its packs, or its own reason for having none. */
+export interface RegistryShelf {
+  source: { name: string; url: string; trust: RegistryTrust }
+  packs: RegistryPack[]
+  fetchedAt: string | null
+  /**
+   * Present when this registry could not be read. Reported per shelf rather than for the whole
+   * request, because one registry being down must not render as a shop that looks empty — an
+   * operator needs to know WHICH shelf is empty and why.
+   */
+  failure: { kind: string; reason: string } | null
+}
+
+export interface PackRegistry {
+  enabled: boolean
+  sources: Array<{ name: string; url: string; trust: RegistryTrust }>
+  shelves: RegistryShelf[]
+}
+
+export async function getPackRegistry(options: { refresh?: boolean } = {}): Promise<PackRegistry> {
+  return request<PackRegistry>(`/admin/pack-registry${options.refresh ? '?refresh=1' : ''}`)
+}
+
+/** One tool's contribution to an install, as the operator will read it before consenting. */
+export interface ToolDisclosure {
+  toolId: string
+  name: string
+  description: string
+  url: string
+  runAs: string
+  installOrder: number
+  /** Rendered as TEXT, never as markup. This is arbitrary shell that will run on a box. */
+  installScript: string
+  setupScript?: string
+  fetchesUrls: string[]
+}
+
+export interface PackDisclosure {
+  packId: string
+  name: string
+  tools: ToolDisclosure[]
+  /** Tool ids this installation cannot resolve. A pack with any of these would half-install. */
+  referencesTools: string[]
+  rootStepCount: number
+  fetchesUrls: string[]
+  guide?: string
+  requiresRepos: boolean
+  requiresRdp: boolean
+  desktop?: string
+  /**
+   * ALWAYS FALSE, and the UI must render the caveat rather than the value.
+   *
+   * The URL list is a pattern match over shell, so a script that builds a URL from variables
+   * contributes nothing to it. The scripts above are the ground truth; the summary is a reading
+   * aid. A page that shows the summary without saying this is telling the operator they have
+   * seen everything, and they have not.
+   */
+  summaryIsComplete: false
+}
+
+export interface RegistryPackDetail {
+  entry: RegistryPack
+  /** The exact bytes whose sha256 was verified against the registry's index. */
+  yaml: string
+  disclosure: PackDisclosure
+}
+
+export async function getRegistryPack(sourceName: string, packId: string): Promise<RegistryPackDetail> {
+  return request<RegistryPackDetail>(
+    `/admin/pack-registry/${encodeURIComponent(sourceName)}/${encodeURIComponent(packId)}`,
+  )
+}
+
+/**
+ * Install a pack from a registry.
+ *
+ * Sends only the ADDRESS of the pack, never its bytes. Core refetches and re-verifies the
+ * digest, so what reached the disclosure screen cannot decide what actually runs as root.
+ */
+export async function installRegistryPack(sourceName: string, packId: string): Promise<AdminSurgePack> {
+  return request<AdminSurgePack>(
+    `/admin/pack-registry/${encodeURIComponent(sourceName)}/${encodeURIComponent(packId)}/install`,
+    { method: 'POST' },
+  )
 }

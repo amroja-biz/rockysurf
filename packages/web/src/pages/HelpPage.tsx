@@ -211,6 +211,19 @@ export function HelpPage() {
           — or hand that contract to your agent via the <code>creating-surge-packs</code> skill
           above.
         </p>
+        <p>
+          <strong>Pack Shop</strong> is where community packs come from. Packs marked{' '}
+          <em>official</em> shipped with the release you are running; everything else carries the
+          label you gave its registry in your config file, and no registry can call itself
+          official. Installing one takes effect immediately — no restart.
+        </p>
+        <p>
+          Before you install anything from a registry, that page shows you{' '}
+          <strong>every script the pack will run, verbatim</strong>, which of them run as root, and
+          every URL they download from. Read it. The registry&rsquo;s automated checks prove a pack
+          is well-formed and survives being resumed; they cannot prove it is safe, because an
+          install script is arbitrary shell running as root on your box.
+        </p>
       </section>
 
       <section id="settings">

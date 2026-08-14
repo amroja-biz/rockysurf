@@ -55,6 +55,7 @@ export function AppShell({
           <Link to="/costs">Costs</Link>
           <Link to="/admin/tools">Tools</Link>
           <Link to="/admin/surge-packs">Surge Packs</Link>
+          <Link to="/admin/pack-shop">Pack Shop</Link>
           <Link to="/settings">Settings</Link>
           <Link to="/help">Help</Link>
         </nav>

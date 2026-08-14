@@ -15,6 +15,7 @@ import { SetupGate, WizardPage } from './pages/WizardPage'
 import { AdminSurgePacksPage } from './pages/AdminSurgePacksPage'
 import { HomePage } from './pages/HomePage'
 import { HelpPage } from './pages/HelpPage'
+import { AdminPackShopPage } from './pages/AdminPackShopPage'
 
 export const APP_NAME = 'Rocky Surf'
 
@@ -116,6 +117,16 @@ export function App() {
               element={
                 <AdminRoute>
                   <AdminSurgePacksPage />
+                </AdminRoute>
+              }
+            />
+            {/* Admin-only, because installing a pack means accepting shell that runs as root on
+                every box created with it — the same authority the import route needs. */}
+            <Route
+              path="/admin/pack-shop"
+              element={
+                <AdminRoute>
+                  <AdminPackShopPage />
                 </AdminRoute>
               }
             />
