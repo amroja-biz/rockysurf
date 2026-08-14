@@ -162,7 +162,15 @@ eventually mean two things. Add a rule to `lint.ts` with a fixture in `lint.test
 it, and both repositories get it.
 
 Neither command is a security check, and the help text for both says so. Install scripts are
-arbitrary root-privileged shell; what they prove is well-formedness and resume-safety.
+arbitrary root-privileged shell; what they prove is well-formedness and resume-safety. What
+carries the rest is disclosure — the control plane shows an operator every script before they
+consent — and that split is [ADR-0006](docs/adr/0006-pack-registry-split-horizon.md).
+
+**Community packs belong in the shop, not here.** `packs/` in this repository is Rocky Surf's own
+packs: they ship inside the release, and they are what "official" means. A pack you wrote goes to
+[`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop), where it is reviewed
+and published without waiting on a control-plane release. Adding a pack here is for the
+maintainers changing what the product itself ships.
 
 ## Documentation
 

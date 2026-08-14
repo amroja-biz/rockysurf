@@ -650,19 +650,32 @@ when something fails.
 
 **Neither is a security check.** An `installScript` is arbitrary shell that runs as root on
 somebody's box, and no amount of pattern matching over it can decide whether it is benign.
-What these two prove is that a pack is *well-formed and survives a resume*. What protects the
-person installing it is review, the registry's trust label, and the fact that the control plane
-shows them every script before they consent to it.
+What these two prove is that a pack is *well-formed and survives a resume*.
 
-If you are contributing to a pack in a directory of its own — a community pack in
-[`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop) rather than a pack in
-this repository — name the directory holding the shared base toolchain so your references to it
-resolve. Without this, every base tool your pack correctly *references* rather than redefines is
-reported as unknown:
+What protects the person installing it is review, the label their own configuration puts on the
+registry it came from, and — the one that does the real work — the fact that the control plane
+shows them **every script, verbatim**, along with which steps run as root and every URL those
+scripts fetch, before they consent. Write your scripts as though someone will read them line by
+line, because the interface is built so that they can.
+
+### Publishing to the shop
+
+Most packs belong in [`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop),
+not in this repository. It is the community registry: a pack merged there is installable from any
+Rocky Surf control plane's shop page, without waiting on a release here. `packs/` in this
+repository is Rocky Surf's *own* packs — the ones that ship inside the release, which is what
+"official" means and why a contribution cannot become one ([ADR-0006](adr/0006-pack-registry-split-horizon.md)).
+
+The shop holds community packs and nothing else, so **the base toolchain is not in it**. Your pack
+references `curl`, `git`, `nodejs` and the rest by tool id, and those definitions live here. Point
+the checks at a checkout so they resolve; without it every base tool you correctly *referenced*
+rather than redefined is reported as unknown:
 
 ```bash
-rockysurf pack lint  packs/community --base-packs packs/official
-rockysurf pack check packs/community --base-packs packs/official --pack my-pack --arch arm64
+git clone --depth 1 https://github.com/amroja-biz/rockysurf /tmp/rockysurf
+
+rockysurf pack lint  packs --base-packs /tmp/rockysurf/packs
+rockysurf pack check packs --base-packs /tmp/rockysurf/packs --pack my-pack --arch arm64
 ```
 
 From a checkout of this repository, `node scripts/pack-smoke.mjs` is the same harness pointed at
