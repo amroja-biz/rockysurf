@@ -15,6 +15,34 @@ export {
   type PackIssue,
 } from './loader.js'
 
+export {
+  formatFindings,
+  isClean,
+  lintLoaded,
+  lintPacksDir,
+  type LintFinding,
+  type LintOptions,
+  type LintReport,
+  type LintRule,
+} from './lint.js'
+
+export {
+  REGISTRY_INDEX_VERSION,
+  RegistryIndexError,
+  TRUST_TIERS,
+  buildRegistryIndex,
+  registryEntrySchema,
+  registryIndexSchema,
+  renderRegistryIndex,
+  sha256File,
+  sha256Text,
+  type BuildIndexOptions,
+  type IndexSourceDir,
+  type RegistryEntry,
+  type RegistryIndex,
+  type TrustTier,
+} from './registry-index.js'
+
 export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 
 export {

@@ -90,15 +90,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # The harness resolves the pack with core's OWN resolver, imported from the built package,
-      # so the plan under test is the plan a release renders rather than a re-implementation of
-      # it that could agree with the pack while disagreeing with production.
-      - name: Build core (the harness imports its resolver)
-        # `...` builds core's workspace DEPENDENCIES first (provider-sdk resolves through its
-        # dist/, which a fresh runner has never built). Filtering core alone compiled against a
-        # missing package and failed every leg of this matrix on the first real run — the
+      # The harness resolves the pack with core's OWN resolver and runs core's OWN agent.sh, both
+      # out of built packages, so the plan under test is the plan a release renders rather than a
+      # re-implementation of it that could agree with the pack while disagreeing with production.
+      - name: Build the CLI (the harness lives in it now)
+        # `rockysurf`, not `@rockysurf/core`: the harness moved into
+        # `packages/rockysurf/src/cli/pack-smoke.ts` (rockysurf-arym.2) so that
+        # `amroja-biz/rockysurf-shop` can run the identical check as `rockysurf pack check`.
+        # `scripts/pack-smoke.mjs` imports the BUILT CLI, and building core alone leaves it
+        # absent — every leg of this matrix would exit 2 with "rockysurf is not built".
+        #
+        # `...` builds workspace DEPENDENCIES first (provider-sdk resolves through its dist/,
+        # which a fresh runner has never built). Filtering a package alone compiled against a
+        # missing one and failed every leg of this matrix on the first real run — the
         # rockysurf-7mdh fresh-clone lesson, found in one more hiding place (PR #6).
-        run: pnpm --filter '@rockysurf/core...' build
+        run: pnpm --filter 'rockysurf...' build
 
       # Only needed when the runner's architecture differs from the target's. Left in place, and
       # conditional, so switching the arm64 leg back to an amd64 runner is a one-line change.

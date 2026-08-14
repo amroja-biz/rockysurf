@@ -21,6 +21,7 @@ import {
   stopCommand,
   type CliDeps,
 } from './cli/commands.js'
+import { runPackCommand } from './cli/pack.js'
 import { ttySecretPrompt } from './cli/secret-prompt.js'
 
 /**
@@ -72,6 +73,14 @@ export async function runRockysurfCli(argv: string[], options: RunCliOptions = {
   // APPEND-ONLY subcommand table (rockysurf-ftl9.2). `bin.js` and this dispatch are shared
   // with concurrent work; new commands go at the end so two agents touch different lines.
   if (command && CLIENT_COMMANDS.has(command)) return runClientCommand(command, rest)
+  // `pack` opens no database and boots no core — it is a pure function of a directory of
+  // files, which is what lets somebody else's CI run it (rockysurf-arym.2).
+  if (command === 'pack') {
+    return runPackCommand(rest, {
+      out: (line) => process.stdout.write(`${line}\n`),
+      err: (line) => process.stderr.write(`${line}\n`),
+    })
+  }
 
   // The seam wants a registry; compose also returns notes, which boot already logged. The
   // version is this package's, not core's — see readCliVersion. `options` still wins, so a

@@ -16,6 +16,8 @@
  * exported here is deliberately part of that contract.
  */
 
+import { fileURLToPath } from 'node:url'
+
 /** Package identity, so the scaffold has something real to assert on. */
 export const CORE_PACKAGE_NAME = '@rockysurf/core'
 
@@ -83,6 +85,70 @@ export {
   type SecretKind,
   type SecretRef,
 } from './secrets/index.js'
+
+/* ------------------------------------------------------------------------------ packs */
+
+/**
+ * The pack contract, exported so the composition root can offer it as a command and the pack
+ * registry (rockysurf-arym) can validate what it fetches with the same code that validates
+ * `packs/`. One definition of the format, one definition of the author rules.
+ */
+export {
+  PACKS_DIR_NAME,
+  REGISTRY_INDEX_VERSION,
+  RegistryIndexError,
+  TRUST_TIERS,
+  buildRegistryIndex,
+  formatFindings,
+  isClean,
+  registryEntrySchema,
+  registryIndexSchema,
+  renderRegistryIndex,
+  sha256File,
+  sha256Text,
+  type BuildIndexOptions,
+  type IndexSourceDir,
+  type RegistryEntry,
+  type RegistryIndex,
+  type TrustTier,
+  lintLoaded,
+  lintPacksDir,
+  loadPacksFromDir,
+  parsePackFile,
+  renderPackFile,
+  type LintFinding,
+  type LintOptions,
+  type LintReport,
+  type LintRule,
+  type LoadResult,
+  type LoadedPack,
+  type LoadedTool,
+  type PackDefinition,
+  type PackFile,
+  type PackIssue,
+  type ToolDefinition,
+} from './packs/index.js'
+
+/**
+ * The plan resolver, exported for the same reason: `rockysurf pack check` runs a pack through
+ * the plan a real create would render, not through an approximation of one. A harness that
+ * builds its own plan is testing the harness.
+ */
+export {
+  resolveInstallPlan,
+  type ResolvablePack,
+  type ResolveInstallPlanInput,
+} from './bootstrap/resolver.js'
+export type { InstallPlan, InstallStep } from './bootstrap/plan.js'
+/** The resolver's tool shape. The loader speaks the file format; this is the database's. */
+export type { ToolRow } from './db/schema.js'
+
+/**
+ * `packages/core/bootstrap/agent.sh` — the on-box executor, resolved from wherever the package
+ * was installed. `rockysurf pack check` copies this exact file into its container, because a
+ * harness running a different agent than production does is not evidence about production.
+ */
+export const AGENT_SCRIPT_PATH = fileURLToPath(new URL('../bootstrap/agent.sh', import.meta.url))
 
 /* ---------------------------------------------------------------------- the app itself */
 
