@@ -50,9 +50,10 @@ Once v0.1.0 is on npm, the same thing without a checkout:
 npx rockysurf
 ```
 
-> **Not yet published.** The `npx` path needs the eight packages on the public registry, which
+> **Not yet published.** The `npx` path needs the nine packages on the public registry, which
 > happens at the v0.1.0 launch — see [`docs/RELEASING.md`](docs/RELEASING.md). Until then, use
-> the Compose path or run from source.
+> the Compose path above, or run `pnpm -r build` in a checkout and start
+> `node packages/rockysurf/dist/bin.js` — the same binary `npx` will fetch.
 
 Requires Node 24 or newer for the `npx` path; the Compose image brings its own. With no cloud
 configured it still comes up on an in-memory provider, so you can create a server, watch it boot

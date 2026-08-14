@@ -115,9 +115,10 @@ back. It tears its own stack down on every exit path and never touches a volume 
 npx rockysurf
 ```
 
-> **Not published yet.** This path needs the six packages on the public npm registry, which
-> happens at the v0.1.0 launch ([`RELEASING.md`](RELEASING.md)). Until then, use Compose or run
-> from a checkout.
+> **Not published yet.** This path needs the nine packages on the public npm registry, which
+> happens at the v0.1.0 launch ([`RELEASING.md`](RELEASING.md)). Until then, use Compose, or run
+> `pnpm -r build` in a checkout and start `node packages/rockysurf/dist/bin.js` — the same binary
+> `npx` will fetch.
 
 Requires Node 24 or newer; the binary checks and says so if not. Nothing else: with no config
 file anywhere it starts on defaults, says where a config file would go, and offers the
@@ -234,7 +235,7 @@ migrations run on boot, are recorded in the database, and are idempotent.
 git pull
 docker compose up --build -d
 
-# npx
+# npx — once v0.1.0 is on npm; from a checkout it is `git pull && pnpm -r build` instead
 npx rockysurf@latest
 ```
 

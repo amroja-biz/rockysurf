@@ -47,8 +47,14 @@ providers:
 
 ```bash
 export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_CLIENT_SECRET=...
-npx rockysurf
+node packages/rockysurf/dist/bin.js
 ```
+
+**That second line is the `rockysurf` command until v0.1.0 is on npm.** The published form is
+`npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
+you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
+Docker Compose path in the [README](../../README.md#quickstart) works today too. See
+[`docs/RELEASING.md`](../RELEASING.md).
 
 **Rocky Surf does not create the resource group, and that is deliberate.** A role cannot be
 scoped to a resource group that does not exist yet, so a provider that created its own scope

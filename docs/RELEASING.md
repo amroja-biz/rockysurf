@@ -166,3 +166,22 @@ npx rockysurf@0.2.0 --version
 
 From a machine that has never seen this repository, against the real registry. Anything less is
 checking the tarball, not the release.
+
+### Retire the pre-publish notes, once, after v0.1.0
+
+Until `rockysurf` is on the registry, `npx rockysurf` is advice npm cannot honour, so several
+documents carry a note saying so and pointing at `node packages/rockysurf/dist/bin.js` instead
+(`rockysurf-lsi1`, `rockysurf-emfu`). **They become false at the first successful publish**, and
+a stale honesty note is worse than none — it tells a reader the thing they are holding does not
+exist. Grep the tree and delete them in one commit:
+
+```bash
+grep -rn "on npm\|before the v0.1.0 release\|Not yet published\|Not published yet" \
+  --include='*.md' --include='*.tsx' . | grep -v node_modules
+```
+
+At the time of writing that finds `README.md`, `docs/self-hosting.md`, the three provider pages
+under `docs/providers/`, four package READMEs, and the help page in
+`packages/web/src/pages/HelpPage.tsx` — whose test pins the wording, so the test changes with it.
+The provider pages should keep `node packages/rockysurf/dist/bin.js` working as an alternative;
+what goes is the claim that it is the *only* thing that works.

@@ -11,6 +11,10 @@ compute providers into this control plane:
 npx rockysurf
 ```
 
+Reading this in a git checkout, before the v0.1.0 release? Then `npx` has no `rockysurf` to
+fetch yet. Run `pnpm -r build` once and use `node packages/rockysurf/dist/bin.js`, which is the
+same binary `npx` will fetch.
+
 Install `@rockysurf/core` directly only when you are building your own composition root — a
 distribution with a different set of providers, or one that embeds the control plane in a larger
 process.

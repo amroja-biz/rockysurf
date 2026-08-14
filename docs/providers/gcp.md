@@ -365,8 +365,14 @@ Start Rocky Surf and let it validate:
 
 ```bash
 gcloud auth application-default login
-npx rockysurf
+node packages/rockysurf/dist/bin.js
 ```
+
+**That second line is the `rockysurf` command until v0.1.0 is on npm.** The published form is
+`npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
+you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
+Docker Compose path in the [README](../../README.md#quickstart) works today too. See
+[`docs/RELEASING.md`](../RELEASING.md).
 
 `validateCredentials()` reads the configured zone and fails with a plain message if the
 credential, the project, the API or the zone is wrong.

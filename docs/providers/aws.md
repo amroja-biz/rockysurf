@@ -372,8 +372,15 @@ There is no key pair in your account to manage or leak.
 The quickest real check is to start Rocky Surf and let it validate:
 
 ```bash
-AWS_PROFILE=my-profile npx rockysurf
+AWS_PROFILE=my-profile node packages/rockysurf/dist/bin.js
 ```
+
+**That is the `rockysurf` command until v0.1.0 is on npm.** The published form is
+`AWS_PROFILE=my-profile npx rockysurf`, but npm cannot supply a package that has not been
+published yet; from a checkout you have run `pnpm -r build` in,
+`packages/rockysurf/dist/bin.js` is the identical binary. The Docker Compose path in the
+[README](../../README.md#quickstart) works today too. See
+[`docs/RELEASING.md`](../RELEASING.md).
 
 `validateCredentials()` runs during the first provider call and fails with a plain message if
 the credentials or region are wrong.
