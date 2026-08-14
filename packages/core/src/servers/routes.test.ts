@@ -112,6 +112,52 @@ describe('the routes the SPA already calls', () => {
     expect(((await terminated.json()) as { status: string }).status).toBe('terminated')
   })
 
+  /**
+   * A RETRIED TERMINATE ANSWERS 200, NOT 409 (rockysurf-nimu).
+   *
+   * At the route this is the whole bug: an MCP client whose terminate response was lost retries
+   * it, and the answer it sees is what it reports to the model. `409 illegal server status
+   * transition: terminated → terminated` for a box that is gone makes an agent — which
+   * SECURITY.md contracts to report a refusal and stop — announce a failure that did not happen
+   * and send a human looking for an instance nobody is billing for.
+   *
+   * Driven through the route rather than the service because the route is where the answer gets
+   * its status code, and the 409 is the artifact the caller acted on.
+   */
+  it('answers a retried terminate with 200, including one sent while the first is still running', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+
+    const sequential = [
+      await post(`/api/v1/servers/${serverId}/terminate`),
+      await post(`/api/v1/servers/${serverId}/terminate`),
+    ]
+    expect(sequential.map((r) => r.status)).toEqual([200, 200])
+
+    // And the overlapping case, on a fresh box with a provider held open mid-terminate — the
+    // one the sequential retry above cannot reach. See lifecycle.test.ts for why it is the
+    // shape a lost response really has.
+    let release!: () => void
+    const insideTerminate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const realTerminate = fake.terminate.bind(fake)
+    vi.spyOn(fake, 'terminate').mockImplementation(async (data) => {
+      await insideTerminate
+      await realTerminate(data)
+    })
+
+    const second = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+    const inFlight = post(`/api/v1/servers/${second.serverId}/terminate`)
+    const retry = post(`/api/v1/servers/${second.serverId}/terminate`)
+    release()
+
+    const answers = await Promise.all([inFlight, retry])
+    expect(answers.map((r) => r.status)).toEqual([200, 200])
+    for (const answer of answers) {
+      expect(((await answer.json()) as { status: string }).status).toBe('terminated')
+    }
+  })
+
   it('accepts and ignores spotInstance, which the existing client still sends', async () => {
     expect((await post('/api/v1/servers', { ...CREATE, spotInstance: true })).status).toBe(201)
   })
