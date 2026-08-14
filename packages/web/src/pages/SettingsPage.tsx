@@ -94,6 +94,7 @@ const SECTION_ORDER = [
   'providers.hetzner',
   'providers.aws',
   'providers.azure',
+  'providers.gcp',
   'providers.byo',
   'providers.byo.hosts',
   'limits',
@@ -1083,6 +1084,20 @@ export function SettingsPage() {
           {textField(['providers', 'azure', 'location'], 'Location')}
           {textField(['providers', 'azure', 'sshAllowedCidr'], 'SSH allowed from')}
           {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
+        </section>
+
+        <section>
+          {sectionHeader('providers.gcp')}
+          {boolField(['providers', 'gcp', 'enabled'], 'Enabled')}
+          {/*
+            No credential field here either, for the same reason as Azure. GCP credentials come
+            from Application Default Credentials — the same chain `gcloud` uses — and the config
+            file has no field that can hold key material, so there is no box inviting a paste.
+          */}
+          {textField(['providers', 'gcp', 'projectId'], 'Project id')}
+          {textField(['providers', 'gcp', 'zone'], 'Zone')}
+          {textField(['providers', 'gcp', 'sshAllowedCidr'], 'SSH allowed from')}
+          {readOnlyField(['providers', 'gcp', 'sizes'], 'Offered machine types')}
         </section>
 
         <section>
