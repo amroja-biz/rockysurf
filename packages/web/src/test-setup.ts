@@ -16,7 +16,7 @@ class RelativeAwareEventSource extends EventSource {
   // Same relative-URL gap as `fetch` below: the browser resolves against `location`, the
   // Node implementation cannot. Resolving here keeps the SPA's same-origin URL under test.
   constructor(url: string | URL, init?: ConstructorParameters<typeof EventSource>[1]) {
-    super(typeof url === 'string' && url.startsWith('/') ? new URL(url, globalThis.location.origin) : url, init)
+    super(typeof url === 'string' && url.startsWith('/') ? new URL(url, testOrigin()) : url, init)
   }
 }
 
@@ -24,6 +24,30 @@ globalThis.EventSource = RelativeAwareEventSource as unknown as typeof globalThi
 
 if (typeof globalThis.fetch !== 'function') {
   throw new Error('Node 18+ is required: these tests use the platform fetch')
+}
+
+/**
+ * Where a relative URL resolves to, when a stub server has claimed one (rockysurf-t215).
+ *
+ * Normally this is `location.origin` and nothing here has to think about it. But a stub server
+ * that binds an EPHEMERAL port cannot be the document's origin, because jsdom fixes that before
+ * the suite starts — and an ephemeral port is what stops five test files from fighting over one
+ * hardcoded number. So `startStubServer` registers its origin here, and relative URLs resolve
+ * to it for the life of that server.
+ *
+ * What this does NOT change is the thing the same-origin arrangement was protecting: the SPA
+ * still writes relative `/api/v1/...` URLs and is never handed a base URL, so the production
+ * code path under test is the same one. Only the address the shim maps them onto moves.
+ */
+let stubOrigin: string | undefined
+
+export function useStubOrigin(origin: string | undefined): void {
+  stubOrigin = origin
+}
+
+/** The origin a relative URL belongs to: the running stub server, else the document's. */
+export function testOrigin(): string {
+  return stubOrigin ?? globalThis.location.origin
 }
 
 /**
@@ -38,7 +62,7 @@ if (typeof globalThis.fetch !== 'function') {
 const platformFetch = globalThis.fetch
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const resolved =
-    typeof input === 'string' && input.startsWith('/') ? new URL(input, globalThis.location.origin) : input
+    typeof input === 'string' && input.startsWith('/') ? new URL(input, testOrigin()) : input
 
   // REALM MISMATCH. jsdom installs its own `AbortController`, so any `AbortSignal` made
   // inside the page — including the one `EventSource` creates to cancel its request — is not

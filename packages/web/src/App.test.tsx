@@ -1,5 +1,4 @@
-import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { startStubServer, type StubServer } from './test-server'
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { App, APP_NAME } from './App'
@@ -47,9 +46,8 @@ const SERVER = {
 }
 
 /** Matches `environmentOptions.jsdom.url` in vitest.config.ts — see the note there. */
-const STUB_PORT = 34567
 
-let server: Server
+let stub: StubServer
 /** Held so a test can push an event down the open stream at the moment it chooses. */
 let streams: Array<(chunk: string) => void> = []
 
@@ -70,7 +68,7 @@ beforeEach(async () => {
   streams = []
   let signedIn = false
 
-  server = createServer((req, res) => {
+  stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
     if (req.method === 'POST' && url.pathname === '/api/v1/auth/login') {
@@ -118,19 +116,14 @@ beforeEach(async () => {
     res.writeHead(404).end()
   })
 
-  await new Promise<void>((resolve) => server.listen(STUB_PORT, '127.0.0.1', resolve))
   // No base-URL override: jsdom's document origin is this server, so the SPA's same-origin
   // default is what the requests actually use.
-  expect((server.address() as AddressInfo).port).toBe(STUB_PORT)
 })
 
 afterEach(async () => {
   setAuthToken(null)
   streams = []
-  await new Promise<void>((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
+  await stub.close()
 })
 
 /** Push one message down every open stream, the way core's broadcast does. */

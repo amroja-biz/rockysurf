@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http'
+import { startStubServer, type StubServer } from '../test-server'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -17,7 +17,6 @@ import type { AdminSurgePack, AdminTool } from '../lib/api'
  * either — the PUT body is captured and compared against the original bytes.
  */
 
-const STUB_PORT = 34567
 
 const tool = (over: Partial<AdminTool> & { toolId: string }): AdminTool => ({
   name: over.toolId,
@@ -54,7 +53,7 @@ const PACKS: AdminSurgePack[] = [
   },
 ]
 
-let server: Server
+let stub: StubServer
 /** Bodies the page PUT or POSTed, so the test can inspect exactly what left the browser. */
 let writes: Array<{ method: string; path: string; body: string }> = []
 
@@ -72,7 +71,7 @@ function renderPage() {
 
 beforeEach(async () => {
   writes = []
-  server = createServer((req, res) => {
+  stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     let body = ''
     req.on('data', (chunk) => (body += chunk))
@@ -107,14 +106,10 @@ beforeEach(async () => {
       res.writeHead(404).end()
     })
   })
-  await new Promise<void>((resolve) => server.listen(STUB_PORT, '127.0.0.1', resolve))
 })
 
 afterEach(async () => {
-  await new Promise<void>((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
+  await stub.close()
 })
 
 describe('the tools table', () => {

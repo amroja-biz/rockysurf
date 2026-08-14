@@ -1,5 +1,4 @@
-import { createServer, type Server as HttpServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { startStubServer, type StubServer } from '../test-server'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -24,7 +23,6 @@ import { SettingsPage } from './SettingsPage'
 
 const USER = { id: 'u1', username: 'admin', email: null, avatarUrl: null, isAdmin: true }
 /** Matches `environmentOptions.jsdom.url` in vitest.config.ts — see the note there. */
-const STUB_PORT = 34567
 
 /** A token nobody should be able to make this page display, or resend. */
 const LITERAL_TOKEN = 'hcloud-LITERALtokenSHOULDneverLEAK'
@@ -149,7 +147,7 @@ const VIEW: SettingsView = {
   restartHint: 'Changes apply after a restart: stop the process with Ctrl-C and run ./start.sh again.',
 }
 
-let server: HttpServer
+let stub: StubServer
 /** Every PUT body the page sent, in order. */
 let saves: { mtimeMs: number | null; changes: { path: (string | number)[]; value?: unknown; unset?: true }[] }[]
 /** What the next PUT answers with. `null` means "accept it and echo the view back". */
@@ -165,7 +163,7 @@ beforeEach(async () => {
   served = structuredClone(VIEW)
   setAuthToken('test-token')
 
-  server = createServer((req, res) => {
+  stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
     if (url.pathname === '/api/v1/auth/me') {
@@ -210,16 +208,11 @@ beforeEach(async () => {
     res.writeHead(404).end()
   })
 
-  await new Promise<void>((resolve) => server.listen(STUB_PORT, '127.0.0.1', resolve))
-  expect((server.address() as AddressInfo).port).toBe(STUB_PORT)
 })
 
 afterEach(async () => {
   setAuthToken(null)
-  await new Promise<void>((resolve) => {
-    server.closeAllConnections?.()
-    server.close(() => resolve())
-  })
+  await stub.close()
 })
 
 function renderPage() {

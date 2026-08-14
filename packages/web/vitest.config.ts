@@ -2,10 +2,14 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 /**
- * Fixed rather than ephemeral because jsdom's document origin has to be known before the
- * suite starts, and the SPA resolves its API URLs against that origin.
+ * The port jsdom's document origin carries. Fixed because an environment's URL has to be known
+ * before the suite starts.
+ *
+ * NOTHING LISTENS HERE any more (rockysurf-t215). Stub servers take an ephemeral port from the
+ * OS and register it with the relative-URL shims; this only gives the document a plausible
+ * same-origin base, and is what those shims fall back to when no stub server is running.
  */
-export const STUB_PORT = 34567
+export const DOCUMENT_ORIGIN_PORT = 34567
 
 /**
  * THE TEST-RUNNER DECISION, recorded because it was an open question.
@@ -31,10 +35,10 @@ export default defineConfig({
     globals: false,
     setupFiles: ['./src/test-setup.ts'],
     environmentOptions: {
-      // The document's origin IS the stub server's, so the SPA's same-origin `/api/v1`
-      // default resolves to it. That means the tests exercise the production configuration
-      // — no base URL override — rather than the dev-only escape hatch.
-      jsdom: { url: `http://127.0.0.1:${STUB_PORT}` },
+      // A loopback origin, so the SPA's same-origin `/api/v1` default is a legal relative URL
+      // and the tests exercise the production configuration rather than a base-URL override.
+      // Which port actually serves is decided per test file — see src/test-server.ts.
+      jsdom: { url: `http://127.0.0.1:${DOCUMENT_ORIGIN_PORT}` },
     },
     // A component test that hangs is almost always a stream or a timer nobody closed, and a
     // short timeout surfaces that as a failure instead of a stalled suite.
@@ -42,11 +46,17 @@ export default defineConfig({
     /**
      * One file at a time.
      *
-     * Suites that exercise real HTTP bind STUB_PORT, because jsdom's document origin is fixed
-     * at that port and the SPA resolves its API URLs against it — which is the whole point,
-     * since it means the same-origin production path is what gets tested. Two such files in
-     * parallel fight over the socket, and the loser hangs until the timeout rather than
-     * failing with anything that names the cause.
+     * THE ORIGINAL REASON IS GONE AND THIS IS DELIBERATELY STILL HERE (rockysurf-t215).
+     * Suites that exercise real HTTP used to bind one hardcoded port, so two files in parallel
+     * fought over the socket. They now take an ephemeral one from the OS (`test-server.ts`),
+     * which is what made the suite stop failing under a loaded machine — and serialising the
+     * files never prevented that anyway, because a socket is not released the instant
+     * `server.close()` returns.
+     *
+     * So this setting no longer protects anything known. It is left on because turning it off
+     * is a change with its own risk — every other piece of module-level state these files share
+     * would suddenly be concurrent — and that deserves its own measurement rather than riding
+     * along with a flake fix.
      */
     fileParallelism: false,
   },
