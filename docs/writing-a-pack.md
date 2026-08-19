@@ -409,7 +409,23 @@ So for these tools the pin is not a freshness policy, it is the price of not tou
 rate-limited API — and bypassing the vendor's installer means you own the version bump, which
 is the trade being made.
 
-### 3. Agent tools ride latest; base plumbing may stay pinned
+### 3. No registry channel at all: pin and verify, for case 2's reason
+
+A few agents ship through neither. Cursor's CLI is the one in tree: no npm package, no apt
+line in its own signed repository (which carries the desktop IDE and nothing else), a Homebrew
+cask that is `depends_on :macos`, and no repository to cut releases from. What it has is a
+vendor CDN, `downloads.cursor.com`, serving a versioned tarball — and `/latest/` and
+`/stable/` on it both return 403, so the only way to learn the current version is to read it
+out of the installer the vendor would rather you piped into a shell.
+
+Every clause of case 2 transfers: the endpoint is a CDN, it has no quota, and it lets you
+check a digest — but it needs a version in the path, and a version in a path is a pin. So
+`cursor-cli` is pinned with both `sha256` digests in the script for the same reason `beads`
+is, and it is not the "latest scares me" pin this section rejects: case 1 is not available to
+it, because there is no registry to ask. As with case 2, bypassing the installer means you own
+the bump, so write where the next version comes from into the script.
+
+### 4. Agent tools ride latest; base plumbing may stay pinned
 
 The ruling above is about the **agent** — the thing in `category: agent` that the pack exists
 to deliver. Base plumbing is a different risk: Node, the Go toolchain, `gh`, Playwright and
@@ -838,9 +854,10 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 - [ ] No `sudo` anywhere in a `runAs: rocky` script.
 - [ ] No root-owned files left in `/home/rocky`.
 - [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
-- [ ] The agent installs **unversioned** from its registry channel; anything fetched from
-      GitHub releases is pinned to a tag and verified against a `sha256`. Nothing resolves a
-      version through `api.github.com`. See [Which version to install](#which-version-to-install).
+- [ ] The agent installs **unversioned** from its registry channel — or, if it has no registry
+      channel, is pinned to a version and verified against a `sha256`, the same treatment
+      anything fetched from GitHub releases or a vendor CDN gets. Nothing resolves a version
+      through `api.github.com`. See [Which version to install](#which-version-to-install).
 - [ ] Each script ends with a command that verifies the install actually worked.
 - [ ] `installOrder` uses the bands above and leaves gaps of 10.
 - [ ] `requiresRepos`, `requiresRdp` and `desktop` describe what your pack actually needs.
