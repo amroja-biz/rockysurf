@@ -112,7 +112,7 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 2 | Pack tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base tools before agents; that is a consequence of the numbers, not a second rule |
 | 3 | Repository clones | `repo:<basename>` | One step per repository the user chose |
 | 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS` |
-| 5 | Branding | `branding` | MOTD, prompt, server-info |
+| 5 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
 | 6 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
 
 **Ties MUST be broken deterministically.** Two tools with equal `installOrder` are ordered by

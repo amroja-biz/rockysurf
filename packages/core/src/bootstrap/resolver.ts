@@ -1,5 +1,7 @@
 import type { ToolRow } from '../db/schema.js'
+import { brandingScript } from './branding.js'
 import { PLAN_VERSION, type BootstrapMode, type InstallPlan, type InstallStep } from './plan.js'
+import { shellQuote } from './shell.js'
 
 /**
  * Rendering an InstallPlan from pack data.
@@ -150,11 +152,6 @@ export function repoDirName(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, '')
   const last = trimmed.slice(trimmed.lastIndexOf('/') + 1)
   return last.replace(/\.git$/, '') || 'repo'
-}
-
-/** Single-quote for bash, the only form with no escape sequences to reason about. */
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`
 }
 
 function exportRepos(repositories: string[]): string {
@@ -344,17 +341,6 @@ function cloneScript(url: string): string {
     '  esac',
     'fi',
     'exit "$rc"',
-    '',
-  ].join('\n')
-}
-
-/** Whole-file writes, so a re-run converges rather than appending. */
-function brandingScript(serverId: string): string {
-  return [
-    'set -euo pipefail',
-    `printf '%s\\n' ${shellQuote(`Rocky Surf — ${serverId}`)} > /etc/motd`,
-    'install -d -m 0755 /etc/rockysurf',
-    `printf 'serverId=%s\\n' ${shellQuote(serverId)} > /etc/rockysurf/server-info`,
     '',
   ].join('\n')
 }
