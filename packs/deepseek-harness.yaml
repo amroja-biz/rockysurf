@@ -1,0 +1,210 @@
+# DeepSeek Harness — DeepSeek's plugin-based coding harness, on the shared base toolchain.
+#
+# The one thing that makes this pack unlike every other pack here: `dsh` is a WEB UI, not a
+# terminal app. It serves http://127.0.0.1:3080 and the CLI refuses to bind anything else, so
+# on a headless box the user reaches it by forwarding the port over SSH from their own laptop.
+# That is the first thing the guide says, because a pack that ships a server nobody can open
+# has shipped nothing. It is also the right posture: an unauthenticated agent UI on a public
+# port would be a hole. No desktop, no RDP — the forward is the answer.
+#
+# Upstream calls this a developer preview and says there will be compatibility-breaking
+# changes. The guide says so too, so a user knows before they pick the card.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# Only `deepseek-harness` is defined in this file.
+version: 1
+
+pack:
+  packId: deepseek-harness
+  name: DeepSeek Harness
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - deepseek-harness
+  displayOrder: 9
+  enabled: true
+  imageUrl: /images/surge-packs/deepseek-harness.png
+  # dsh takes the directory it was invoked in as the workspace root, and the Web UI makes you
+  # choose a workspace before the composer unlocks — so a box with no checkout is a box it has
+  # nothing to work on. Same reasoning as grok-build.
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    DeepSeek Harness is a web UI, not a terminal app
+
+      It serves http://127.0.0.1:3080 and only ever listens on loopback, so you reach
+      it by forwarding that port over SSH. Run this line on YOUR OWN machine:
+
+        ssh -L 3080:127.0.0.1:3080 rocky@<ip>
+
+      Leave it open. Everything else below runs on the box, as `rocky`, in that session.
+
+      Then on the box, start the server inside tmux:
+
+        tmux new -s dsh
+        dsh web --no-open
+
+      and open http://127.0.0.1:3080 in the browser on your own machine.
+
+      tmux is not optional here. `dsh web` is a long-running foreground server, so
+      without it a dropped SSH connection takes the server down too. Detach with
+      ctrl-b d; come back with `tmux attach -t dsh`.
+
+      --no-open tells dsh not to try to hand the URL to a local browser. Over SSH it
+      would not try anyway, and this box has no browser to hand it to.
+
+    No browser? Ask it one question instead
+
+      dsh --profile headless "explain what this repo does"
+
+      One fresh session in the directory you are standing in, the final answer on
+      stdout, then it exits. It opens no port, so it needs no forwarding.
+
+    Signing in
+
+      dsh ships with no credentials. Mint a key at https://platform.deepseek.com/ and
+      give it to dsh either way — both work:
+
+        echo 'export DEEPSEEK_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+          then start dsh from that shell and it inherits the key
+
+        Settings -> Models in the web UI
+          paste the key, save. The model route works immediately, no restart
+
+      Credentials resolve in this order: the environment dsh inherited, then
+      ~/.dsh/.credentials.yaml, then the .env of the directory you started dsh in,
+      then ~/.dsh/.env. Profiles live under ~/.dsh/profiles, written on first use.
+
+    Before you rely on it
+
+      Upstream calls DeepSeek Harness a DEVELOPER PREVIEW and says plainly that there
+      WILL be compatibility-breaking changes. Read that as: your workflow may not
+      survive an upgrade.
+
+      This box has whatever version was current the day it booted, and nothing on the
+      box moves it forward on its own. `dsh --version` says where you are. To move:
+
+        npm install -g @deepseek-ai/dsh
+
+      which installs into ~/.local, which is yours — no root needed.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      agent-deck    session manager
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  - toolId: deepseek-harness
+    name: DeepSeek Harness
+    description: DeepSeek's plugin-based coding harness, served as a local web UI (developer preview)
+    category: agent
+    url: https://github.com/deepseek-ai/deepseek-harness
+    # Band 40, alongside the other agents: after the base toolchain, before any setup step.
+    # Node is band 20, and this one needs a recent Node — see the floor check below.
+    installOrder: 40
+    # npm needs no privilege once it is pointed at a prefix inside this user's home, so
+    # claiming root would be the rule-4 dishonesty the smoke container is built to catch.
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # npm's global prefix, for this user. The base toolchain installed npm system-wide as
+      # root, so a bare `npm install -g` would try to write under /usr and fail here exactly
+      # as it fails on a real box — `rocky` has no privilege escalation on either. A prefix
+      # under $HOME needs none and leaves nothing root-owned in /home/rocky.
+      export NPM_CONFIG_PREFIX="$HOME/.local"
+      export PATH="$HOME/.local/bin:$PATH"
+      #
+      # THE NODE FLOOR, ASSERTED HERE BECAUSE NOBODY ELSE ASSERTS IT. The harness repo's
+      # package.json declares engines ^22.19.0 || >=24.0.0 and its CI runs that matrix, but
+      # the PUBLISHED @deepseek-ai/dsh package carries NO engines field at all. So npm will
+      # not refuse an older Node — it installs happily and then fails at runtime, which is
+      # the worst of both. The base `nodejs` tool tracks the latest 22.x patch, comfortably
+      # past 22.19.0 today, so this passes by construction; "passes by luck" is not a check.
+      node_version="$(node -v 2>/dev/null || true)"
+      node_version="${node_version#v}"
+      node_major="${node_version%%.*}"
+      node_ok=0
+      if [ -n "$node_version" ]; then
+        if [ "$node_major" -ge 24 ] 2>/dev/null; then
+          node_ok=1
+        elif [ "$node_major" -eq 22 ] 2>/dev/null &&
+             [ "$(printf '%s\n%s\n' 22.19.0 "$node_version" | sort -V | head -n1)" = "22.19.0" ]; then
+          node_ok=1
+        fi
+      fi
+      if [ "$node_ok" -ne 1 ]; then
+        echo "deepseek-harness: DeepSeek Harness requires Node ^22.19.0 or >=24.0.0; this box has ${node_version:-no node at all}." >&2
+        echo "deepseek-harness: the published npm package declares no engines range, so npm will not catch this — refusing to install a dsh that cannot run." >&2
+        exit 1
+      fi
+      #
+      # UNVERSIONED, and this is the policy-compliant form rather than a shortcut. Per
+      # docs/writing-a-pack.md § Which version to install, npm is a quota-free channel, so a
+      # bare name costs nothing and hands the user the harness they actually read about,
+      # where a pin would hand them a stale one. The bare name resolves the `latest`
+      # dist-tag, and that is what makes it safe here rather than merely convenient: this
+      # package also publishes a `next` tag that runs AHEAD of latest, and an unversioned
+      # install does not pick that up. Do not add a version and do not reach for that tag.
+      #
+      # Every published version so far is a release candidate — upstream has shipped no
+      # stable yet. That is upstream's release channel, not ours to second-guess, and it is
+      # why the guide leads with the developer-preview warning.
+      #
+      # NO ARCHITECTURE BRANCH, and that is deliberate rather than forgotten. Verified
+      # against the registry while writing this: the package has no `os`, no `cpu`, no
+      # `optionalDependencies` and no `scripts` — no preinstall, no postinstall, nothing
+      # that fetches a vendor binary. It is pure JavaScript, ~117 KB unpacked, and its
+      # dependencies are ordinary plugin packages. Re-check those four fields before you
+      # conclude this script is missing a platform case.
+      #
+      # A presence guard rather than a version stamp, because there is no version to stamp:
+      # the second run finds the binary and does nothing, which is the half of rule 1 the
+      # run-twice gate measures. What that costs is written in the guide — the box keeps
+      # whatever was current the day it booted, and moving forward is the user's own
+      # `npm install -g`, not a re-bootstrap.
+      if ! command -v dsh >/dev/null 2>&1; then
+        npm install -g --no-fund --no-audit @deepseek-ai/dsh
+      fi
+      # NOT PRE-WARMED, on purpose. The web and headless profiles auto-initialize under
+      # $DSH_HOME (~/.dsh) on first use, and `dsh plugin` forwards to pnpm — so a pre-warm
+      # here would do network work that has to converge byte-for-byte across the journal
+      # discard, and would slow every boot for a step the user's first command does anyway.
+      # Measured: a cold `dsh web` serves its UI about two seconds after it is started, so
+      # there is nothing here worth paying for at boot.
+      #
+      # The user's own `npm install -g` shells out to npm from an interactive login shell,
+      # which does not have the prefix exported above. Without this line their upgrade
+      # writes to the system prefix, is refused, and they are stranded with no way off that
+      # does not involve reading this file. Appended under a guard rather than written
+      # whole: an .npmrc may already hold settings that are none of this pack's business.
+      touch "$HOME/.npmrc"
+      grep -qF 'prefix=' "$HOME/.npmrc" || echo "prefix=$HOME/.local" >> "$HOME/.npmrc"
+      # Guarded for the same reason: an unguarded append puts the line in twice on a resumed
+      # install, and the smoke harness hashes .bashrc either side of the journal discard.
+      touch "$HOME/.bashrc"
+      grep -qF '.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+      dsh --version >/dev/null
