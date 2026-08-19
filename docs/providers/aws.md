@@ -113,7 +113,8 @@ the tag conditions to match.
       "Resource": [
         "arn:aws:ec2:REGION:ACCOUNT_ID:instance/*",
         "arn:aws:ec2:REGION:ACCOUNT_ID:volume/*",
-        "arn:aws:ec2:REGION:ACCOUNT_ID:security-group/*"
+        "arn:aws:ec2:REGION:ACCOUNT_ID:security-group/*",
+        "arn:aws:ec2:REGION:ACCOUNT_ID:network-interface/*"
       ],
       "Condition": {
         "StringEquals": {

@@ -155,6 +155,14 @@ Resources:
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:instance/*'
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:volume/*'
                   - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                  # Tagging the primary network interface at launch needs BOTH halves: the
+                  # network-interface ARN in the RunInstances statement above, and this one —
+                  # ec2:CreateTags at CreateAction time. The first landed without the second
+                  # (rockysurf-b14y), and the published policy failed every real launch for
+                  # five nightlies while every in-repo check stayed green: the drift lint
+                  # holds docs and template together, and only a restricted-principal run
+                  # measures either against AWS.
+                  - !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:network-interface/*'
                 Condition:
                   StringEquals:
                     'ec2:CreateAction':
