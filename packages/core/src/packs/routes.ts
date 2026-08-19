@@ -105,6 +105,26 @@ const packFields = (p: Pack) => ({
   desktop: p.desktop ?? undefined,
 })
 
+/**
+ * WHERE A PACK CAME FROM, in three words and nothing else (rockysurf-jn71).
+ *
+ * THREE VALUES, NOT TWO. A pack the operator wrote here is not "community" — nobody outside
+ * this installation has ever seen it — so a two-valued field would make core assert something
+ * false, and would bake one screen's tab labels into the API's vocabulary. Core states the
+ * fact; a view decides what to call it. The Surge Pack picker groups `registry` and `local`
+ * together under "Community", and that grouping is the view's business, reversible without a
+ * change to this route.
+ *
+ * The precedence is `describeInstalled`'s in the admin Pack Shop, and it is that way round
+ * because a `sourceFile` is what the boot sync will enforce on the next start (ADR-0004): what
+ * is on disk wins over what a registry once said.
+ *
+ * `official` still means only "arrived in the tarball", still computed here from `sourceFile`,
+ * which no registry writes — so no registry can claim it (ADR-0006).
+ */
+const packProvenance = (p: Pack): 'official' | 'registry' | 'local' =>
+  p.sourceFile ? 'official' : p.registrySource ? 'registry' : 'local'
+
 /** Public packs carry their tools expanded — the SPA renders names, not ids. */
 const publicPack = (p: Pack, byId: Map<string, ToolRow>) => ({
   ...packFields(p),
@@ -112,13 +132,17 @@ const publicPack = (p: Pack, byId: Map<string, ToolRow>) => ({
     const tool = byId.get(id)
     return tool ? [publicTool(tool)] : []
   }),
+  provenance: packProvenance(p),
 })
 
 /**
- * The admin view adds PROVENANCE. `sourceFile` is deliberately absent from the public
- * projection and present here: an operator editing packs needs to know which rows are backed
- * by a YAML file — those are owned by the repository and an edit here would be overwritten on
- * the next boot sync (ADR-0004) — and an end user choosing a pack does not.
+ * The admin view adds the RAW provenance. `sourceFile` and the registry object are deliberately
+ * absent from the public projection and present here: an operator editing packs needs to know
+ * which rows are backed by a YAML file — those are owned by the repository and an edit here
+ * would be overwritten on the next boot sync (ADR-0004) — and an end user choosing a pack does
+ * not. What the public list gets instead is `packProvenance`, one derived word that discloses
+ * no filesystem path, no registry URL, no digest and no trust label, because that route is
+ * served to every logged-in user and those four are operator infrastructure detail.
  */
 const adminPack = (p: Pack) => ({
   ...packFields(p),

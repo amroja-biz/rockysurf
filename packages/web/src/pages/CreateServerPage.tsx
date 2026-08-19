@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router'
 import { Link } from 'react-router'
@@ -31,6 +31,7 @@ import {
 } from '../lib/requirements'
 import { AppShell } from '../components/AppShell'
 import { ProvisioningFeed } from '../components/ProvisioningFeed'
+import { useAuth } from '../contexts/AuthContext'
 
 /**
  * Create a server.
@@ -302,8 +303,100 @@ function RepositoryPicker({
   )
 }
 
+/**
+ * A tab list, written to the WAI-ARIA tabs pattern by hand (rockysurf-jn71).
+ *
+ * THE FIRST ONE IN THIS APP, which is why it is a component and not a pair of buttons inline:
+ * `role="tab"` without the roving tabindex and the arrow keys is a control that looks like tabs
+ * and does not behave like them, and the next screen that wants tabs should copy something that
+ * already works. It is deliberately generic — it knows about keys and labels, nothing about
+ * packs — so moving it into `components/` the day a second page needs it is a cut and paste.
+ *
+ * NO DEPENDENCY. The repo has no UI kit, `App.css` is hand-written, and the one widget library
+ * anybody has proposed is deferred to v0.2 (rockysurf-57zw); forty lines is not worth a package.
+ *
+ * AUTOMATIC ACTIVATION — selection follows focus, so an arrow key both moves and switches. The
+ * pattern recommends it when the panels are cheap to render, and these are: the panel is a list
+ * of radio cards already in memory. Manual activation would mean arrowing then pressing Enter,
+ * which is two keystrokes for a control with two positions.
+ *
+ * ONE PANEL, and both tabs point `aria-controls` at it. There is genuinely one region here whose
+ * contents change, so this is a truer description than two panels of which one is unmounted —
+ * and it means no tab ever carries an `aria-controls` that resolves to nothing.
+ */
+function Tabs<K extends string>({
+  label,
+  panelId,
+  tabs,
+  active,
+  onSelect,
+}: {
+  label: string
+  /** The id of the single `role="tabpanel"` the caller renders below this list. */
+  panelId: string
+  tabs: readonly { key: K; label: string }[]
+  active: K
+  onSelect: (key: K) => void
+}) {
+  const buttons = useRef(new Map<K, HTMLButtonElement | null>())
+
+  // Wraps, because the pattern says a tab list wraps: End-to-Home by arrowing off the edge is
+  // the behaviour a keyboard user already has everywhere else.
+  const moveTo = (index: number) => {
+    const next = tabs[(index + tabs.length) % tabs.length]
+    if (!next) return
+    onSelect(next.key)
+    buttons.current.get(next.key)?.focus()
+  }
+
+  return (
+    <div className="tablist" role="tablist" aria-label={label}>
+      {tabs.map((tab, index) => (
+        <button
+          key={tab.key}
+          type="button"
+          role="tab"
+          id={`${panelId}-tab-${tab.key}`}
+          className={`tab ${tab.key === active ? 'selected' : ''}`}
+          aria-selected={tab.key === active}
+          aria-controls={panelId}
+          // Roving tabindex: one stop for the whole list, so Tab moves past the control rather
+          // than through every tab in it.
+          tabIndex={tab.key === active ? 0 : -1}
+          ref={(el) => {
+            buttons.current.set(tab.key, el)
+          }}
+          onClick={() => onSelect(tab.key)}
+          onKeyDown={(event) => {
+            const to =
+              event.key === 'ArrowRight'
+                ? index + 1
+                : event.key === 'ArrowLeft'
+                  ? index - 1
+                  : event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? tabs.length - 1
+                      : null
+            if (to === null) return
+            event.preventDefault()
+            moveTo(to)
+          }}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Which tab a pack belongs on. Core's three words, grouped into this screen's two. */
+type PackTab = 'official' | 'community'
+const tabFor = (pack: SurgePack): PackTab => (pack.provenance === 'official' ? 'official' : 'community')
+
 export function CreateServerPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   /* ---------------------------------------------------------------- catalogue */
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -320,6 +413,12 @@ export function CreateServerPage() {
   const [size, setSize] = useState<ServerSize>('small')
   const [arch, setArch] = useState<Architecture | undefined>(undefined)
   const [packId, setPackId] = useState('')
+  /**
+   * Which shelf of the picker is showing (rockysurf-jn71). NOT part of the request — it decides
+   * what is on screen and nothing else, which is the whole point: switching it must never move
+   * `packId`.
+   */
+  const [packTab, setPackTab] = useState<PackTab>('official')
   const [repoInput, setRepoInput] = useState('')
   const [sshKeyOption, setSshKeyOption] = useState<'generate' | 'provide'>('generate')
   const [sshPublicKey, setSshPublicKey] = useState('')
@@ -372,7 +471,15 @@ export function CreateServerPage() {
 
         const enabled = packList.filter((p) => p.enabled).sort((a, b) => a.displayOrder - b.displayOrder)
         setPacks(enabled)
-        if (enabled[0]) setPackId(enabled[0].packId)
+        if (enabled[0]) {
+          setPackId(enabled[0].packId)
+          // Open on whichever tab HOLDS the preselection, rather than on Official by rule. The
+          // selection rule is untouched — lowest displayOrder, exactly as before — and this only
+          // follows it, so an installation whose only enabled packs are contributed ones opens
+          // on Community instead of on an Official shelf that does not contain the checked
+          // radio (rockysurf-jn71).
+          setPackTab(tabFor(enabled[0]))
+        }
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load options')
       } finally {
@@ -387,6 +494,13 @@ export function CreateServerPage() {
 
   const provider = useMemo(() => providers.find((p) => p.id === providerId), [providers, providerId])
   const pack = useMemo(() => packs.find((p) => p.packId === packId), [packs, packId])
+
+  /**
+   * The two shelves (rockysurf-jn71). The same partition the admin Pack Shop already performs —
+   * `official` on one side, everything else on the other — kept in the VIEW, where the naming
+   * decision belongs, rather than pushed into core's vocabulary.
+   */
+  const shelved = useMemo(() => packs.filter((p) => tabFor(p) === packTab), [packs, packTab])
 
   const architectures = useMemo(() => availableArchitectures(provider?.offerings ?? []), [provider])
 
@@ -727,37 +841,95 @@ export function CreateServerPage() {
               in Admin → Surge Packs, then reload.
             </p>
           )}
-          {packs.map((option) => (
-            <label key={option.packId} className={`radio-option ${option.packId === packId ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="pack"
-                value={option.packId}
-                checked={option.packId === packId}
-                onChange={() => setPackId(option.packId)}
+          {/*
+            OFFICIAL AND COMMUNITY (rockysurf-jn71). Both tabs are always here once there is a
+            pack to show — including on the fresh install with nothing contributed, where hiding
+            the empty shelf would remove the feature from exactly the people who have not yet
+            learned that a Pack Shop exists, and would make the control grow a tab under them the
+            first time their operator installs one.
+
+            The zero-packs case keeps the sentence above and no tabs: there is nothing to sort
+            into shelves, and the message a user needs there is the one that says so.
+          */}
+          {packs.length > 0 && (
+            <>
+              <Tabs
+                label="Surge Pack source"
+                panelId="pack-tabpanel"
+                active={packTab}
+                onSelect={setPackTab}
+                tabs={[
+                  { key: 'official', label: 'Official' },
+                  { key: 'community', label: 'Community' },
+                ]}
               />
               {/*
-                The card image, when the pack names one. Shipped packs point `imageUrl` at a
-                bundled asset; a pack that names none — which is every third-party pack until its
-                author adds one — simply has no image here, and the row still reads correctly.
-                `onError` covers the other half: an imageUrl pointing at something that is not
-                there would otherwise leave a broken-image glyph in the list.
+                WHAT IS ACTUALLY CHOSEN, on both tabs, always. The selected pack can be on the
+                shelf you are not looking at — switching tabs deliberately does not move it — so
+                without this line the checked radio simply vanishes and the form reads as though
+                nothing is selected. Stated rather than implied, because the alternative designs
+                both lose: auto-selecting the new tab's first pack changes which software gets
+                installed on the box by list order (the failure rockysurf-va2l fixed for the
+                provider picker), and clearing the selection makes a tab click destructive.
               */}
-              {option.imageUrl && (
-                <img
-                  className="pack-icon"
-                  src={option.imageUrl}
-                  alt=""
-                  loading="lazy"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none'
-                  }}
-                />
-              )}
-              <span>{option.name}</span>
-              <span className="size-detail">{option.tools.map((t) => t.name).join(', ')}</span>
-            </label>
-          ))}
+              <p className="hint pack-selected" data-testid="pack-selected">
+                Selected: <strong>{pack ? pack.name : 'none yet'}</strong>
+              </p>
+              <div role="tabpanel" id="pack-tabpanel" aria-labelledby={`pack-tabpanel-tab-${packTab}`}>
+                {shelved.length === 0 &&
+                  (packTab === 'community' ? (
+                    <p className="hint" data-testid="community-empty">
+                      No community packs are installed.{' '}
+                      {/* Admin-aware, because `/admin/pack-shop` is behind `AdminRoute` — a link
+                          offered to a member is a link that bounces them back to the dashboard.
+                          The member gets the fact instead: somebody else does this. */}
+                      {user?.isAdmin ? (
+                        <Link to="/admin/pack-shop">Browse the Pack Shop</Link>
+                      ) : (
+                        <>Your Rocky Surf operator installs packs for this installation.</>
+                      )}
+                    </p>
+                  ) : (
+                    // The mirror case, and it is reachable: an operator can disable the packs
+                    // that shipped. An empty box under a tab says less than a sentence does.
+                    <p className="hint" data-testid="official-empty">
+                      No packs from this Rocky Surf release are enabled.
+                    </p>
+                  ))}
+                {shelved.map((option) => (
+                  <label key={option.packId} className={`radio-option ${option.packId === packId ? 'selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="pack"
+                      value={option.packId}
+                      checked={option.packId === packId}
+                      onChange={() => setPackId(option.packId)}
+                    />
+                    {/*
+                      The card image, when the pack names one. Shipped packs point `imageUrl` at a
+                      bundled asset; a pack that names none — which is every third-party pack until
+                      its author adds one — simply has no image here, and the row still reads
+                      correctly. `onError` covers the other half: an imageUrl pointing at something
+                      that is not there would otherwise leave a broken-image glyph in the list.
+                    */}
+                    {option.imageUrl && (
+                      <img
+                        className="pack-icon"
+                        src={option.imageUrl}
+                        alt=""
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    )}
+                    <span>{option.name}</span>
+                    <span className="size-detail">{option.tools.map((t) => t.name).join(', ')}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
         </fieldset>
 
         {/* Conditional on what the PACK declares, never on which pack it is. */}

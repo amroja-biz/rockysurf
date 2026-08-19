@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { readFileSync } from 'node:fs'
 import type { ReactNode } from 'react'
@@ -18,8 +18,14 @@ vi.mock('react-router', () => ({
 vi.mock('../contexts/EventsContext', () => ({
   useEvents: () => ({ subscribe: () => () => {}, status: 'open', connectionStatus: 'connected' }),
 }))
+/**
+ * Admin by default, and switchable per case (rockysurf-jn71). The empty Community shelf offers a
+ * Pack Shop link to an admin and a sentence to everybody else, because `/admin/pack-shop` is
+ * behind `AdminRoute` — so this mock has to be able to be both.
+ */
+const auth = vi.hoisted(() => ({ isAdmin: true }))
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'admin', isAdmin: true }, logout: vi.fn() }),
+  useAuth: () => ({ user: { id: 'u1', username: 'admin', isAdmin: auth.isAdmin }, logout: vi.fn() }),
 }))
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
 
@@ -50,8 +56,22 @@ const packWith = (over: Partial<api.SurgePack>): api.SurgePack => ({
   tools: [{ toolId: 'claude-code', name: 'Claude Code', description: '', category: 'agent', url: '' }],
   requiresRepos: false,
   requiresRdp: false,
+  // Shipped with the release, which is what every other case in this file is about — a pack the
+  // picker files under Official (rockysurf-jn71).
+  provenance: 'official',
   ...over,
 })
+
+/** A pack the operator installed from a registry: the Community shelf's inhabitant. */
+const communityPack = (over: Partial<api.SurgePack> = {}): api.SurgePack =>
+  packWith({
+    packId: 'aider',
+    name: 'Aider',
+    displayOrder: 2,
+    provenance: 'registry',
+    tools: [{ toolId: 'aider', name: 'Aider', description: '', category: 'agent', url: '' }],
+    ...over,
+  })
 
 function renderPage() {
   return render(<CreateServerPage />)
@@ -88,6 +108,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  auth.isAdmin = true
 })
 
 describe('resolving a size to a concrete offering before submit', () => {
@@ -287,6 +308,173 @@ describe('pack metadata drives the conditional fields', () => {
     await user.type(screen.getByLabelText(/confirm password/i), 'different-password')
     await user.click(screen.getByRole('button', { name: /create server/i }))
     expect(await screen.findByText(/do not match/i)).toBeTruthy()
+  })
+})
+
+/**
+ * OFFICIAL AND COMMUNITY (rockysurf-jn71).
+ *
+ * The picker used to be one flat list mixing the packs that shipped in the tarball with the ones
+ * the operator installed from a registry, because the public pack list carried nothing that told
+ * them apart — `provenance` is the field this bead added to say so, derived in core.
+ *
+ * The case that matters most here is the third one. A tab control over a radio group is a way to
+ * lose a selection quietly: switch shelf, and either the checked radio disappears or the new
+ * shelf's first card takes its place, and the server gets built from software nobody chose. So
+ * the selection is asserted through the `createServer` argument rather than through the DOM.
+ *
+ * Every case settles on a `findBy*` for a specific element and then asserts synchronously. No
+ * `waitFor` around a mock's call count and no timeouts — the shape that made
+ * `SettingsPage.wiring.test.tsx` flaky (rockysurf-zn33).
+ */
+describe('the Surge Pack picker splits official packs from contributed ones', () => {
+  const bothPacks = () => vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({}), communityPack()])
+
+  /** Renders with both shelves populated and waits for the tabs to exist. */
+  async function renderTabs() {
+    const user = userEvent.setup()
+    bothPacks()
+    renderPage()
+    await screen.findByRole('tab', { name: 'Official' })
+    return user
+  }
+
+  it('renders exactly two tabs, with the active one marked and the other off the tab order', async () => {
+    await renderTabs()
+
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Official', 'Community'])
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true')
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('false')
+    // Roving tabindex: Tab moves past the control, not through it.
+    expect(tabs[0]!.getAttribute('tabindex')).toBe('0')
+    expect(tabs[1]!.getAttribute('tabindex')).toBe('-1')
+    // Both tabs drive the one panel, and it names the tab it is currently showing.
+    const panel = screen.getByRole('tabpanel')
+    expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([panel.id, panel.id])
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0]!.id)
+  })
+
+  it('shows only the official pack on the Official tab', async () => {
+    await renderTabs()
+
+    expect(screen.getByRole('radio', { name: /AI Agents/ })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: /Aider/ })).toBeNull()
+  })
+
+  it('shows only the contributed pack once Community is chosen', async () => {
+    const user = await renderTabs()
+
+    await user.click(screen.getByRole('tab', { name: 'Community' }))
+
+    expect(screen.getByRole('radio', { name: /Aider/ })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: /AI Agents/ })).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Community' }).getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('submits the pack that was chosen, even from the other tab', async () => {
+    // THE anti-silent-loss criterion. A tab switch must move what is on screen and nothing else:
+    // it is the same failure rockysurf-va2l fixed for the provider picker, except here the thing
+    // decided by list order would be which software gets installed on the box.
+    const user = await renderTabs()
+
+    await user.click(screen.getByRole('tab', { name: 'Community' }))
+    await user.click(screen.getByRole('radio', { name: /Aider/ }))
+    await user.click(screen.getByRole('tab', { name: 'Official' }))
+
+    // Back on Official, the community card is not even rendered — and the choice still stands.
+    expect(screen.queryByRole('radio', { name: /Aider/ })).toBeNull()
+    expect((screen.getByRole('radio', { name: /AI Agents/ }) as HTMLInputElement).checked).toBe(false)
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    // The feed replacing the form is the settle point; the argument is the assertion.
+    await screen.findByText(/launching the machine/i)
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].packId).toBe('aider')
+  })
+
+  it('names the selected pack on the tab that does not contain it', async () => {
+    const user = await renderTabs()
+
+    await user.click(screen.getByRole('tab', { name: 'Community' }))
+    await user.click(screen.getByRole('radio', { name: /Aider/ }))
+    expect(screen.getByTestId('pack-selected').textContent).toContain('Aider')
+
+    await user.click(screen.getByRole('tab', { name: 'Official' }))
+    expect(screen.getByTestId('pack-selected').textContent).toContain('Aider')
+  })
+
+  it('opens on the tab holding the preselected pack, not on Official by rule', async () => {
+    // An installation whose only enabled pack is a contributed one. Opening on Official would
+    // paint a shelf that does not contain the checked radio.
+    const user = userEvent.setup()
+    vi.mocked(api.listSurgePacks).mockResolvedValue([communityPack()])
+    renderPage()
+
+    const community = await screen.findByRole('tab', { name: 'Community' })
+    expect(community.getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('radio', { name: /Aider/ })).toBeTruthy()
+
+    // ...and the Official shelf is still offered, saying why it is empty rather than showing a gap.
+    await user.click(screen.getByRole('tab', { name: 'Official' }))
+    expect(screen.getByTestId('official-empty')).toBeTruthy()
+  })
+
+  describe('with nothing contributed installed', () => {
+    it('still offers the Community tab, and points an admin at the shop', async () => {
+      // Hiding the empty shelf would remove the feature from the installs that most need it: on
+      // a fresh install nobody ever learns the Pack Shop exists.
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByRole('tab', { name: 'Official' })
+
+      await user.click(screen.getByRole('tab', { name: 'Community' }))
+
+      const empty = screen.getByTestId('community-empty')
+      expect(empty.textContent).toContain('No community packs are installed')
+      expect(within(empty).getByRole('link').getAttribute('href')).toBe('/admin/pack-shop')
+    })
+
+    it('tells a member their operator does it, and offers no link they cannot follow', async () => {
+      // `/admin/pack-shop` is wrapped in `AdminRoute`, so a link offered here would bounce a
+      // member back to the dashboard — an invitation to a door that is locked.
+      auth.isAdmin = false
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByRole('tab', { name: 'Official' })
+
+      await user.click(screen.getByRole('tab', { name: 'Community' }))
+
+      const empty = screen.getByTestId('community-empty')
+      expect(empty.textContent).toContain('operator installs packs')
+      expect(within(empty).queryByRole('link')).toBeNull()
+    })
+  })
+
+  it('moves between tabs with the arrow keys, activating as it goes', async () => {
+    const user = await renderTabs()
+
+    await user.click(screen.getByRole('tab', { name: 'Official' }))
+    await user.keyboard('{ArrowRight}')
+
+    expect(screen.getByRole('tab', { name: 'Community' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('radio', { name: /Aider/ })).toBeTruthy()
+    // Focus follows the activation, which is what makes the next arrow press work.
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Community' }))
+
+    await user.keyboard('{ArrowLeft}')
+    expect(screen.getByRole('tab', { name: 'Official' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('radio', { name: /AI Agents/ })).toBeTruthy()
+  })
+
+  it('shows no tabs at all when the installation has no packs', async () => {
+    // Nothing to sort into shelves, and the sentence that says how to get one is the message
+    // that belongs here.
+    vi.mocked(api.listSurgePacks).mockResolvedValue([])
+    renderPage()
+
+    expect(await screen.findByText(/No Surge Packs are available yet/)).toBeTruthy()
+    expect(screen.queryByRole('tablist')).toBeNull()
   })
 })
 
