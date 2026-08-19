@@ -71,9 +71,12 @@ else, and infer what you reasonably can from what the user already said.
 - **How much of the shared base toolchain do they want?** See below. This is the highest-leverage
   question in the whole file and the easiest one to skip: it decides both what the box can do and
   how long every smoke run takes.
-- **For anything you will pin, how does it get bumped?** You will pin versions and checksums.
-  Note in the file where the next person finds the new ones — the upstream release page, a
-  `checksums.txt`, a version JSON endpoint. A pin with no bump instructions rots.
+- **Where does each tool come from — a registry, or GitHub releases?** It decides the version
+  question for you. Anything on a quota-free registry (npm, PyPI via `pipx`) installs
+  **unversioned**, so there is no pin and nothing to bump. Anything that ships only as a GitHub
+  release asset is pinned to a tag and checked against a `sha256`, and that pin needs bump
+  instructions in the file — the upstream release page, a `checksums.txt`. A pin with no bump
+  instructions rots. See `docs/writing-a-pack.md` § Which version to install.
 - **Headless or a graphical desktop?** A desktop means `desktop: xfce` and almost always
   `requiresRdp: true` (Rocky Surf then asks for a remote-desktop password at create time).
 - **Where is this pack going?** Three destinations, and they shape the file differently — a pull
@@ -81,7 +84,8 @@ else, and infer what you reasonably can from what the user already said.
   with other people. See `references/shipping.md`; the short version is in step 6.
 
 **If you cannot reach the user**, do not stall — these defaults are defensible, and say which ones
-you took: pin every version you download and note where a bump comes from; take the base subset
+you took: install registry-served tools unversioned, pin what comes from GitHub releases and note
+where a bump comes from; take the base subset
 your pack's purpose actually implies (below); `requiresRepos: true` for a pack aimed at working on
 code and `false` for a pack that is a workstation; headless unless a GUI was named; and assume the
 pack is for the user's own instance rather than a pull request.
@@ -177,8 +181,14 @@ Four things to get right while writing, in the order they bite:
   out. Verify **the name the user will type**: `apt-get install -y fd-find` gives them a binary
   called `fdfind`, and a script that checks `fdfind --version` passes while `fd` does not exist.
 
-Pin what you download, and when you cannot, say so in a comment saying why. `@latest` means the
-thing CI tested is not the thing the user gets.
+Get the version question right, and say in a comment which of the two rules you are under. A tool
+on a quota-free registry (npm, PyPI via `pipx`) installs **unversioned** — users expect the current
+agent and most agents update themselves anyway, so a pin bought staleness for a reproducibility it
+could not keep. A tool that ships only as a GitHub release asset stays **pinned to a tag with a
+`sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API that took the
+trunk down once already. Neither rule licenses piping a vendor's `install.sh` to `bash`. Full
+reasoning, and the narrow case where an agent may still be pinned, in `docs/writing-a-pack.md`
+§ Which version to install.
 
 Two mechanical traps, both of which fail your file rather than merely advising you:
 

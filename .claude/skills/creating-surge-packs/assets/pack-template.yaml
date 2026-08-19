@@ -102,7 +102,12 @@ tools:
         *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
       esac
 
-      # PIN what you download. If you deliberately stay unpinned, say why here.
+      # A release asset downloaded by URL is PINNED to a tag, and ideally checked against a
+      # sha256 — the only endpoint that would tell you what "latest" is here is the
+      # rate-limited GitHub API. Note beside the pin where a bump comes from.
+      # (A tool on a registry — npm, pipx — is the other case entirely: install it
+      # UNVERSIONED and delete this whole block. See docs/writing-a-pack.md § Which version
+      # to install.)
       TOOL_VERSION=1.2.3
       if [ "$(my-tool --version 2>/dev/null | awk 'NR==1{print $2}')" != "$TOOL_VERSION" ]; then
         tmp=$(mktemp)
