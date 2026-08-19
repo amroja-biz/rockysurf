@@ -20,13 +20,15 @@
  * an operator's typo (`tokenn:`) is still a key holding a token, and the redaction should not
  * hand it back merely because no schema field claims it.
  *
- * WHAT A SECRET FIELD'S BOX TAKES, since rockysurf-4o3o: the NAME of an environment variable, and
- * nothing else. The GUI refuses a literal, so its help text is written as an instruction about a
- * variable name rather than about a token — `fields.test.ts` holds every `kind: 'secret'` entry to
- * that, so the wording cannot drift back to inviting a paste. The FILE is unchanged: the schema
- * still accepts a literal, a hand-written one still loads, and it is still masked on the way out.
- * The policy is about what this product writes into a file it asks people to back up, not about
- * what the format can express.
+ * WHAT A SECRET FIELD'S BOX TAKES is now a property of the FIELD — `accepts`, below. Since
+ * rockysurf-4o3o the answer was "the NAME of an environment variable, and nothing else", and it
+ * still is for every credential except the two GitHub PATs, which rockysurf-7fyf.2 turned into
+ * paste boxes on the owner's ruling. `fields.test.ts` holds both halves to their own wording, so
+ * neither the env-var instruction nor the paste instruction can drift into the other's fields.
+ * The FILE is unchanged in both cases: the schema still accepts a literal and still expands
+ * `${VAR}`, a hand-written reference still loads, and both are masked on the way out. The policy
+ * is about what this product writes into a file it asks people to back up, not about what the
+ * format can express.
  */
 
 /**
@@ -80,6 +82,29 @@ export interface FieldSpec {
    * destination, because the mode it would select does not exist.
    */
   hidden?: true
+  /**
+   * WHAT A CREDENTIAL BOX TAKES — the variable name, or the token (rockysurf-7fyf.2).
+   *
+   * `'envVarName'` is the default and is rockysurf-4o3o's standing rule: the box takes the NAME
+   * of an environment variable, the file gets `${VAR}`, and a copy of the file carries nothing.
+   * That reasoning is unchanged and still governs `providers.hetzner.token` and the BYO fields.
+   *
+   * `'literal'` is set on the two GitHub PAT paths ONLY, on the owner's ruling that for those
+   * two the indirection costs more than it buys: three steps, two of them off-screen, and the
+   * middle one is the part operators get wrong. Those boxes take a pasted token, which is
+   * written into the config file — so the file may now hold a credential, and the docs say to
+   * treat it as one.
+   *
+   * PER FIELD, NOT PER KIND, which is what keeps this a narrowing rather than a repeal.
+   * `kind: 'secret'` still means exactly what it meant — redact this field — and the redaction
+   * path is untouched: a pasted literal reads back as `state: 'set'` and is never displayed.
+   *
+   * THE FILE IS UNCHANGED EITHER WAY. `config/interpolate.ts` still expands `${VAR}`, a
+   * hand-edited `pat: "${GITHUB_PAT}"` still loads and still round-trips through this editor,
+   * and it is still the right shape for anyone who wants the file to carry nothing. What this
+   * flag decides is what the GUI ASKS FOR. See ADR-0007.
+   */
+  accepts?: 'literal' | 'envVarName'
 }
 
 /**
@@ -189,14 +214,39 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
    * `repo: "acme/widgets"` in the one-string form (ly2n) or `owner: acme` on its own — the two
    * halves of a scope are not two questions to an operator, who thinks in repository names.
    */
+  /**
+   * The Connect GitHub button's OAuth App (rockysurf-7fyf.1).
+   *
+   * `kind: 'string'`, NOT `'secret'`, and that is a classification rather than an oversight. A
+   * device-flow client id is public — the flow needs no `client_secret` — so marking it secret
+   * would mask it in `redactTree` and hide from the operator the one value they need to be able
+   * to proof-read against the app's own settings page.
+   *
+   * WHEN IT IS UNSET THE BUTTON STILL RENDERS, disabled, with these two steps. That is the
+   * opposite of the `auth.mode` rule above, and the difference is where the edit goes: `hidden`
+   * is for a control whose only message is "you cannot use this" and whose edit has NO
+   * destination. This edit has one — register an app, paste the id, the button works — so
+   * hiding it would hide the cure along with the disease.
+   */
+  {
+    path: 'github.oauth.clientId',
+    kind: 'string',
+    writable: true,
+    help:
+      'The client ID of an OAuth App, which is what the Connect GitHub button signs in against. ' +
+      'Register one at github.com/settings/applications/new, tick "Enable Device Flow" in its ' +
+      'settings, and leave token expiration off. A client ID is public: it is safe in this file ' +
+      'and safe to commit.',
+  },
   {
     path: 'github.pat',
     kind: 'secret',
     writable: true,
+    accepts: 'literal',
     help:
-      'The NAME of an environment variable holding the token used to clone private repositories ' +
-      'that no scoped entry below matches — `GITHUB_PAT`, not the token itself. The token needs ' +
-      '`repo` scope, and every box created here receives it, whoever created it.',
+      'The token used to clone private repositories that no scoped entry below matches. Paste the ' +
+      'token itself: it is stored in the configuration file, so treat that file as a credential. ' +
+      'The token needs `repo` scope, and every box created here receives it, whoever created it.',
   },
   {
     path: 'github.tokens.*.host',
@@ -227,10 +277,11 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.tokens.*.pat',
     kind: 'secret',
     writable: true,
+    accepts: 'literal',
     help:
-      'The NAME of an environment variable holding the token this scope uses — `ACME_WIDGETS_PAT`, ' +
-      'not the token itself. It is read from the environment at startup, so the file holds only the ' +
-      'reference.',
+      'The token this scope uses. Paste the token itself: it is stored in the configuration file, ' +
+      'so treat that file as a credential. A fine-grained PAT covering only the repositories named ' +
+      'above is the narrowest thing that works here.',
   },
 
   /* ----------------------------------------------------------------------- providers */

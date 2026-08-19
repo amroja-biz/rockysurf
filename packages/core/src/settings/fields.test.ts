@@ -223,14 +223,46 @@ describe('every setting on the page explains itself', () => {
    * The page refuses a literal; this is what stops the sentence under the box drifting back to
    * describing the field as somewhere a token goes, which would leave the refusal arriving as a
    * surprise after somebody had typed one.
+   *
+   * NARROWED, NOT DELETED (rockysurf-7fyf.2). The rule now covers the secrets that still take a
+   * variable name — Hetzner and the BYO fields — because the owner reversed it for the two
+   * GitHub PATs and nothing else. Deleting this case along with the reversal would have let the
+   * Hetzner wording rot unwatched, which is why the literal fields get their own case below
+   * rather than an exemption from this one.
    */
-  it('tells every credential box that it takes a variable name rather than a token', () => {
-    for (const field of SETTINGS_FIELDS.filter((f) => f.kind === 'secret')) {
+  it('tells every env-var credential box that it takes a variable name rather than a token', () => {
+    const envVarSecrets = SETTINGS_FIELDS.filter((f) => f.kind === 'secret' && f.accepts !== 'literal')
+    expect(envVarSecrets.length, 'the rule has no fields left to govern, which makes this vacuous').toBeGreaterThan(
+      0,
+    )
+    for (const field of envVarSecrets) {
       expect(field.help, `${field.path}'s help does not say it takes a variable NAME`).toContain(
         'NAME of an environment variable',
       )
       expect(field.help, `${field.path}'s help does not say what not to put in it`).toContain(
         'not the token itself',
+      )
+    }
+  })
+
+  /**
+   * AND THE OTHER HALF: a box that takes a pasted token has to SAY it takes a pasted token.
+   *
+   * The failure this guards against is the mirror image of the one above — a `accepts: 'literal'`
+   * field left with wording that still tells an operator to type a variable name, so the page
+   * accepts the paste and the sentence under it calls that a mistake.
+   */
+  it('tells every paste box what to paste, and where it ends up', () => {
+    const literalSecrets = SETTINGS_FIELDS.filter((f) => f.accepts === 'literal')
+    expect(literalSecrets.map((f) => f.path)).toEqual(['github.pat', 'github.tokens.*.pat'])
+    for (const field of literalSecrets) {
+      expect(field.kind, `${field.path} accepts a literal but is not classified secret`).toBe('secret')
+      expect(field.help, `${field.path}'s help still asks for a variable name`).not.toContain(
+        'NAME of an environment variable',
+      )
+      expect(field.help, `${field.path}'s help does not say to paste the token`).toContain('Paste the token')
+      expect(field.help, `${field.path}'s help does not say where the token ends up`).toContain(
+        'configuration file',
       )
     }
   })

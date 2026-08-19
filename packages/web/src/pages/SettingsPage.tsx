@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import toast from 'react-hot-toast'
 import { AppShell } from '../components/AppShell'
 import { ConfirmModal } from '../components/ConfirmModal'
+import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
 import {
   ApiError,
+  disconnectGithub,
+  getGithubConnection,
   getSettings,
   saveSettings,
+  type GithubConnection,
   type SecretView,
   type SettingsChange,
   type SettingsField,
@@ -143,11 +147,22 @@ export function SettingsPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  /**
+   * ONE CONFIRMATION ON THIS PAGE, over two kinds of destructive act. Most of them are a change
+   * to the config file, so they carry a `change` and go through `submit`. Disconnecting GitHub
+   * is not a file edit at all — it deletes a row from the encrypted store — so it carries a
+   * `confirm` instead. A second modal for it would have been a second set of words about the
+   * same interaction.
+   */
   const [pendingRemoval, setPendingRemoval] = useState<{
+    title?: string
     label: string
     message?: string
-    change: SettingsChange
+    confirmLabel?: string
+    change?: SettingsChange
+    confirm?: () => void | Promise<void>
   } | null>(null)
+  const [connection, setConnection] = useState<GithubConnection | null>(null)
   const [draft, setDraft] = useState<TokenDraft | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
 
@@ -160,9 +175,24 @@ export function SettingsPage() {
     }
   }, [])
 
+  /**
+   * The GitHub connection, read separately from the config file because it IS separate: the
+   * connected token lives in the encrypted store, not in `rockysurf.config.yaml`. A failure here
+   * leaves `connection` null and the card simply does not draw — the config editor below it is
+   * unaffected, which is the right blast radius for a feature that is not about the file.
+   */
+  const loadConnection = useCallback(async () => {
+    try {
+      setConnection(await getGithubConnection())
+    } catch {
+      setConnection(null)
+    }
+  }, [])
+
   useEffect(() => {
     void load()
-  }, [load])
+    void loadConnection()
+  }, [load, loadConnection])
 
   const specs = useMemo(() => {
     const map = new Map<string, SettingsField>()
@@ -217,7 +247,11 @@ export function SettingsPage() {
     const refused: string[] = []
 
     const convert = (path: (string | number)[], value: unknown): unknown => {
-      if (specs.get(patternOf(path))?.kind === 'secret') {
+      const spec = specs.get(patternOf(path))
+      // A paste box sends what was pasted, verbatim (rockysurf-7fyf.2). Converting it would
+      // write `${ghp_…}` into the file — a reference to a variable named after a token.
+      if (spec?.kind === 'secret' && spec.accepts === 'literal') return value
+      if (spec?.kind === 'secret') {
         const reference = envVarReference(String(value ?? ''))
         if (reference !== null) return reference
         refused.push(keyOf(path))
@@ -436,21 +470,34 @@ export function SettingsPage() {
     )
   }
 
+  /** True when this field's box takes a pasted token rather than a variable name. */
+  const acceptsLiteral = (specPath: string) => specs.get(specPath)?.accepts === 'literal'
+
   /**
-   * A credential box — which, since rockysurf-4o3o, is a box for the NAME of an environment
-   * variable.
+   * A credential box, in one of the two shapes `FieldSpec.accepts` allows.
    *
-   * PLAIN TEXT, DELIBERATELY. `type=password` over a variable name is theatre: the content is not
-   * key material, masking it stops the operator proof-reading the one thing they have to get
+   * `'envVarName'` — the default, rockysurf-4o3o, and still what Hetzner and the BYO hosts get.
+   * PLAIN TEXT, DELIBERATELY: `type=password` over a variable name is theatre, the content is
+   * not key material, masking it stops the operator proof-reading the one thing they have to get
    * right, and hiding it would suggest that pasting a token here is what the box is for. The
    * policy is enforced instead of implied — `envVarReference` refuses anything that is not a
    * name, in words, before anything is sent.
    *
-   * THE THREE STATES ARE THREE SITUATIONS. A reference shows as its bare name and is text to
-   * edit; an unset field is an empty box with an example in it; a literal the file already holds
-   * shows as a STATE and never as a value, with the way out of it — move it to a variable, name
-   * the variable here — said under the box. What they share is that typing nothing changes
-   * nothing.
+   * `'literal'` — the two GitHub PATs, since rockysurf-7fyf.2. `type=password`, and that INVERTS
+   * the sentence above rather than contradicting it: masking a variable name is theatre, masking
+   * key material is not. No live refusal, because there is nothing left to refuse.
+   *
+   * ── THE PREFILL TRAP, WHICH IS WHY THE `reference` CASE SPLITS ────────────────────────
+   * An env-var box prefills a `${VAR}` state with the bare name, as editable text — correct,
+   * because the name is exactly what that box wants. Doing the same in a PASTE box would put
+   * `GITHUB_PAT` in a box that now takes tokens, where the operator's first keystroke turns a
+   * working reference into a literal nobody meant to write.
+   *
+   * So for a paste box a `reference` renders the way `set` already does: a STATE LINE and an
+   * EMPTY input. Blank means keep, which the hint says in as many words, and the file is
+   * preserved by rule 2 of `settings/routes.ts` — a save carries only what changed, and an
+   * untouched secret is not in the payload.
+   * ──────────────────────────────────────────────────────────────────────────────────────
    */
   function secretInput(
     path: (string | number)[],
@@ -461,31 +508,32 @@ export function SettingsPage() {
     const state = secretAt(values, path)
     const edit = edits[key]
     const cleared = edit?.unset === true
+    const literal = acceptsLiteral(specPath)
 
     const typed = edit && !cleared ? String(edit.value ?? '') : undefined
-    const fromFile = !cleared && typed === undefined && state.state === 'reference' ? envVarDisplay(state.reference) : ''
+    const fromFile =
+      !cleared && typed === undefined && !literal && state.state === 'reference'
+        ? envVarDisplay(state.reference)
+        : ''
     const shown = cleared ? '' : (typed ?? fromFile)
     // Live, because a refusal that waited for the Save button would let an operator type a whole
     // token before being told the box never wanted one. An empty box is not a refusal: blank
-    // means keep.
-    const refusal = typed !== undefined && typed.trim() !== '' && envVarReference(typed) === null ? ENV_VAR_ONLY : null
+    // means keep. A paste box refuses nothing.
+    const refusal =
+      !literal && typed !== undefined && typed.trim() !== '' && envVarReference(typed) === null
+        ? ENV_VAR_ONLY
+        : null
 
     const input = (
       <input
         id={key}
-        type="text"
+        type={literal ? 'password' : 'text'}
         spellCheck={false}
         autoComplete="off"
         disabled={cleared}
         value={shown}
         aria-describedby={helpId(specPath, key)}
-        placeholder={
-          cleared
-            ? 'Will be removed when you save'
-            : state.state === 'set'
-              ? 'A token is stored in the file — name a variable to replace it'
-              : example
-        }
+        placeholder={placeholderFor(state, { cleared, literal, example })}
         onChange={(e) => {
           // Blank means KEEP — the one kind of field on this page where it does. Removing a
           // credential is a labelled button, so a half-finished edit can never delete one.
@@ -497,19 +545,46 @@ export function SettingsPage() {
     return { input, state, cleared, refusal }
   }
 
-  /** What the file currently says about a credential, in a sentence. */
-  function secretStateHint(state: SecretView): string {
+  /**
+   * What the file currently says about a credential, in a sentence.
+   *
+   * The `literal` half is not the same sentence with a word changed. For a paste box, a stored
+   * token is the NORMAL state rather than something to migrate out of, and a `${VAR}` reference
+   * is a working configuration this page must not talk anyone out of — the file still supports
+   * it, and a hand-edited one keeps loading forever.
+   */
+  function secretStateHint(state: SecretView, literal: boolean): string {
     if (state.state === 'set') {
-      return (
-        'A literal token is stored in the configuration file, and cannot be displayed here. Move it ' +
-        'into an environment variable and name that variable here; the file will then hold only the ' +
-        'reference. '
-      )
+      return literal
+        ? 'A token is stored in the configuration file and cannot be displayed here. Paste a new one ' +
+            'to replace it. '
+        : 'A literal token is stored in the configuration file, and cannot be displayed here. Move it ' +
+            'into an environment variable and name that variable here; the file will then hold only the ' +
+            'reference. '
     }
     if (state.state === 'reference') {
-      return 'Read from this environment variable at startup. The file holds the reference — never what it expands to. '
+      return literal
+        ? 'This entry names an environment variable, which Rocky Surf reads at startup — that still ' +
+            'works and the file is unchanged. Leave the box empty to keep it, or paste a token to ' +
+            'replace it. '
+        : 'Read from this environment variable at startup. The file holds the reference — never what it expands to. '
     }
     return 'Not set in the configuration file. '
+  }
+
+  /** The greyed text in a credential box, which differs by state and by what the box takes. */
+  function placeholderFor(
+    state: SecretView,
+    { cleared, literal, example }: { cleared: boolean; literal: boolean; example: string },
+  ): string {
+    if (cleared) return 'Will be removed when you save'
+    if (literal) {
+      if (state.state === 'set') return 'A token is stored in the file — paste a new one to replace it'
+      if (state.state === 'reference') return 'Leave empty to keep the environment variable this names'
+      return example
+    }
+    if (state.state === 'set') return 'A token is stored in the file — name a variable to replace it'
+    return example
   }
 
   /** The live refusal under a token box, when what is in it is not a variable name. */
@@ -535,7 +610,7 @@ export function SettingsPage() {
         {input}
         {refusalLine(key, refusal)}
         <p className="hint">
-          {secretStateHint(state)}
+          {secretStateHint(state, acceptsLiteral(pattern))}
           Leave this blank to keep it as it is.
         </p>
         {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
@@ -673,7 +748,9 @@ export function SettingsPage() {
     const patKey = tokenKey(entry.target, 'pat')
     const patSpec = tokenSpecPath(entry.target, 'pat')
     const patPath = patKey.split('.')
-    const { input, state, refusal } = secretInput(patPath, patSpec, isFallback ? 'GITHUB_PAT' : 'ACME_WIDGETS_PAT')
+    // Token-shaped, because these boxes take tokens now — a variable name here would be an
+    // instruction the box no longer follows.
+    const { input, state, refusal } = secretInput(patPath, patSpec, isFallback ? 'ghp_…' : 'github_pat_…')
     const scopeEdit = edits[tokenKey(entry.target, 'scope')]
     const hostEdit = edits[tokenKey(entry.target, 'host')]
     const heading = describeScope(
@@ -697,9 +774,24 @@ export function SettingsPage() {
       <div className="settings-entry" data-token={cardId} key={cardId}>
         <h3>{heading}</h3>
         {isFallback ? (
-          <p className="field-help">
-            The entry with no scope. Every clone that no entry below matches uses this token.
-          </p>
+          <>
+            <p className="field-help">
+              The entry with no scope. Every clone that no entry below matches uses this token.
+            </p>
+            {/*
+              TWO CATCH-ALLS CAN BOTH EXIST, and only one of them is used. The stored token wins
+              (`bootstrap/server-secrets.ts`), so the page says which — this is rockysurf-0rw3's
+              open question answered as "warn, do not refuse". `configFallbackSet` comes from the
+              connection route precisely so this needs no guessing.
+            */}
+            {connection?.connected && connection.configFallbackSet && (
+              <p className="warning settings-field-warning" data-fallback-superseded>
+                You are connected as @{connection.login ?? 'your GitHub account'}, and a connected
+                account takes precedence over this entry. Boxes you create use that token, not this
+                one.
+              </p>
+            )}
+          </>
         ) : (
           <>
             {scopeBox(entry, 'scope', 'Repository or account', 'acme/widgets')}
@@ -708,12 +800,12 @@ export function SettingsPage() {
         )}
 
         <div className="form-group" data-field={patKey}>
-          <label htmlFor={patKey}>Token Environment Variable</label>
+          <label htmlFor={patKey}>Token</label>
           {helpFor(patSpec, patKey)}
           {input}
           {refusalLine(patKey, refusal)}
           <p className="hint">
-            {secretStateHint(state)}
+            {secretStateHint(state, acceptsLiteral(patSpec))}
             Leave this blank to keep it as it is.
           </p>
         </div>
@@ -792,10 +884,16 @@ export function SettingsPage() {
      */
     const draftPrefix = draft.scope.trim() === '' && draft.host.trim() === '' ? 'github.pat' : `github.tokens.${rawTokens.length}`
     const draftErrors = entryErrors(draftPrefix)
-    // The same live refusal the existing cards give, so the policy does not arrive only after the
-    // Add button has been pressed on a token that was never going to be written.
+    // The same live refusal the existing cards give — which, now that both GitHub PAT paths take
+    // a pasted token, fires for neither of them. It is kept rather than deleted because the
+    // draft's destination is decided by what is typed above it, and a future scoped field that
+    // still wants a variable name would need it back.
     const draftRefusal =
-      draft.pat.trim() !== '' && envVarReference(draft.pat) === null ? ENV_VAR_ONLY : null
+      !acceptsLiteral(draftPrefix === 'github.pat' ? 'github.pat' : 'github.tokens.*.pat') &&
+      draft.pat.trim() !== '' &&
+      envVarReference(draft.pat) === null
+        ? ENV_VAR_ONLY
+        : null
     const box = (field: 'scope' | 'host', label: string, placeholder: string, specPath: string) => {
       const id = `github.tokens.new.${field === 'scope' ? 'repo' : 'host'}`
       return (
@@ -822,15 +920,15 @@ export function SettingsPage() {
         {box('scope', 'Repository or account', 'acme/widgets', 'github.tokens.*.repo')}
         {box('host', 'Host', 'github.com', 'github.tokens.*.host')}
         <div className="form-group" data-field="github.tokens.new.pat">
-          <label htmlFor="github.tokens.new.pat">Token Environment Variable</label>
+          <label htmlFor="github.tokens.new.pat">Token</label>
           {helpFor('github.tokens.*.pat', 'github.tokens.new.pat')}
           <input
             id="github.tokens.new.pat"
-            type="text"
+            type={acceptsLiteral('github.tokens.*.pat') ? 'password' : 'text'}
             spellCheck={false}
             autoComplete="off"
             value={draft.pat}
-            placeholder="ACME_WIDGETS_PAT"
+            placeholder="github_pat_…"
             aria-describedby={helpId('github.tokens.*.pat', 'github.tokens.new.pat')}
             onChange={(e) => set({ pat: e.target.value })}
           />
@@ -1031,6 +1129,43 @@ export function SettingsPage() {
         */}
         <section>
           {sectionHeader('github')}
+          {/*
+            FIRST IN THE SECTION, because it is the catch-all and everything below it is the
+            exceptions. It is also the only thing in this section that does NOT need a restart:
+            its token goes to the encrypted store, which core reads live at server-create, while
+            the pasted PATs below go to the file and keep the restart notice they always had.
+          */}
+          <ConnectGitHubCard
+            connection={connection}
+            onChanged={loadConnection}
+            onDisconnect={() =>
+              setPendingRemoval({
+                title: 'Disconnect this GitHub account?',
+                label: `@${connection?.login ?? 'this account'}`,
+                confirmLabel: 'Disconnect',
+                message: DISCONNECT_CONFIRMATION,
+                confirm: async () => {
+                  try {
+                    await disconnectGithub()
+                    await loadConnection()
+                    toast.success('Rocky Surf has forgotten this GitHub token')
+                  } catch {
+                    setFormError('Could not disconnect the GitHub account.')
+                  }
+                },
+              })
+            }
+          />
+          {/*
+            The client ID the card above is disabled without. It renders here, in the same
+            section, because that is what makes the card's instruction actionable without
+            leaving the browser — and it is an ordinary text box rather than a credential box
+            because a device-flow client ID is public.
+
+            It DOES need a restart, unlike the token the button then obtains: this one goes to
+            the config file, which is read once at boot.
+          */}
+          {textField(['github', 'oauth', 'clientId'], 'OAuth App client ID')}
           {tokenEntries.map(tokenCard)}
           {draftCard()}
           {!draft && (
@@ -1214,18 +1349,19 @@ export function SettingsPage() {
 
       {pendingRemoval && (
         <ConfirmModal
-          title="Remove this entry?"
+          title={pendingRemoval.title ?? 'Remove this entry?'}
           message={
             pendingRemoval.message ??
             `${pendingRemoval.label} will be removed from the configuration file, along with any comment written above it. Everything else in the file is left alone.`
           }
-          confirmLabel="Remove"
+          confirmLabel={pendingRemoval.confirmLabel ?? 'Remove'}
           isDestructive
           onCancel={() => setPendingRemoval(null)}
           onConfirm={() => {
-            const { change } = pendingRemoval
+            const { change, confirm } = pendingRemoval
             setPendingRemoval(null)
-            void submit([change], [])
+            if (confirm) return void confirm()
+            if (change) void submit([change], [])
           }}
         />
       )}

@@ -726,6 +726,12 @@ export interface SettingsField {
    * cannot use this" (rockysurf-5qzg). A save that names it is still refused, with `reason`.
    */
   hidden?: true
+  /**
+   * What a credential box takes: a pasted token, or the NAME of an environment variable
+   * (rockysurf-7fyf.2). Absent means `'envVarName'`, which is rockysurf-4o3o's standing rule and
+   * still governs every credential except the two GitHub PATs.
+   */
+  accepts?: 'literal' | 'envVarName'
 }
 
 /** A section of the page, with the words for what the whole section is about. */
@@ -792,6 +798,68 @@ export async function saveSettings(
     method: 'PUT',
     body: JSON.stringify({ mtimeMs, changes }),
   })
+}
+
+/* ---------------------------------------------------------------------- connect github */
+
+/**
+ * The Connect GitHub device flow (rockysurf-7fyf.2), which is four calls to CORE and none to
+ * GitHub.
+ *
+ * THE BROWSER NEVER TALKS TO GITHUB. Core holds the device code — whoever has it can redeem the
+ * pending grant — and polls github.com itself, so the page only ever sees an opaque `flowId` and
+ * a status. That is also what makes these tests honest: mocking this module mocks the whole
+ * flow, because there is no second network path to forget about.
+ */
+export interface GithubConnection {
+  /** False when `github.oauth.clientId` is unset — the card renders disabled, not hidden. */
+  clientIdConfigured: boolean
+  connected: boolean
+  /** Null when GitHub would not say whose token it is; absent when not connected. */
+  login?: string | null
+  scopes?: string[]
+  connectedAt?: string
+  /** True when `github.pat` is also set in the file, so the page can name the winner. */
+  configFallbackSet: boolean
+}
+
+export interface GithubDeviceFlowStart {
+  flowId: string
+  /** What the operator types on github.com. */
+  userCode: string
+  verificationUri: string
+  expiresInSeconds: number
+  intervalSeconds: number
+}
+
+export type GithubPollResult =
+  | { status: 'pending'; intervalSeconds: number; slowDown?: boolean; message: string }
+  | { status: 'connected'; login: string | null; scopes: string[]; connectedAt: string; message?: string }
+  | { status: 'denied'; message: string }
+  | { status: 'expired'; message: string }
+  | { status: 'error'; githubCode?: string; message: string }
+
+export interface GithubDisconnected {
+  disconnected: true
+  /** False when there was nothing stored — disconnecting twice is not an error. */
+  removed: boolean
+  message: string
+}
+
+export async function getGithubConnection(): Promise<GithubConnection> {
+  return request<GithubConnection>('/github/connection')
+}
+
+export async function startGithubConnect(): Promise<GithubDeviceFlowStart> {
+  return request<GithubDeviceFlowStart>('/github/connect', { method: 'POST' })
+}
+
+export async function pollGithubConnect(flowId: string): Promise<GithubPollResult> {
+  return request<GithubPollResult>(`/github/connect/${encodeURIComponent(flowId)}/poll`, { method: 'POST' })
+}
+
+export async function disconnectGithub(): Promise<GithubDisconnected> {
+  return request<GithubDisconnected>('/github/connection', { method: 'DELETE' })
 }
 
 /** The rendered YAML for one pack, as the export route returns it. */

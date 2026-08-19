@@ -141,10 +141,42 @@ for a repository; it is this installation's general-purpose GitHub credential, i
 read as `$GITHUB_TOKEN`, and `docs/writing-a-pack.md` promises pack authors that `gh` works when
 it is configured. Shipping it only when some declared repository failed to match a scoped entry
 would make that promise depend on which repositories a user typed into a form. So every box gets
-it, whoever created it, and in `github-device` auth mode it reaches boxes other account holders
-have root on. **Scope the `pat` itself** to what is meant to travel everywhere, and use
+it, whoever created it, and on an installation where other people hold accounts it reaches boxes
+they have root on. **Scope the `pat` itself** to what is meant to travel everywhere, and use
 `github.tokens` for everything else — with narrowing, that advice now has real force, because a
 scoped entry reaches only the boxes that named its repository.
+
+**A connected GitHub account is per-user, and that makes it the narrower option for the
+catch-all** — even though its OAuth scope is broader. Connect GitHub (ADR-0007) stores the token
+it obtains in the encrypted store under the connecting user's id, and
+`bootstrap/server-secrets.ts` prefers that row over `github.pat`, so the token minted by one
+person's click reaches only the boxes that person creates. Both halves matter and neither should
+be read alone:
+
+- **narrower in custody** — it is not handed to everybody's boxes the way `github.pat` is;
+- **broader in scope** — the device flow requests the classic `repo` scope, which is read and
+  write across every repository the account can reach, and there is no narrower classic scope
+  that covers private repository contents. It also lands on every box that user creates. The
+  per-repository entries exist for anyone who wants less than that, and remain the tightest
+  option available.
+
+**Connect GitHub obtains a cloning credential; it is not a Rocky Surf login mode.** Signing in
+with GitHub (`auth.mode: github-device`) is still unimplemented. Two different uses of one OAuth
+mechanism, and conflating them would overstate what has shipped.
+
+**Disconnect forgets the token locally and does not revoke it at GitHub.** Revocation is an
+authenticated call needing a client secret the device flow deliberately does not use. Rocky Surf
+deletes the stored row and the connection metadata, and says so; to be certain a token can no
+longer be used, remove the app at github.com/settings/applications. Boxes already created keep
+whatever `secrets.env` was written with, here as everywhere else.
+
+**The config file may now hold a literal GitHub token.** The Settings page's two GitHub token
+boxes take a pasted token rather than the name of an environment variable (ADR-0007 clause 4;
+every other credential box still takes the name). `settings/routes.ts` creates the file at `0600`
+and preserves an existing mode across saves, so the tooling does not make it worse — but treat
+`rockysurf.config.yaml` as a credential once you have used those boxes. The `${VAR}` form is
+still supported by the file, still loads, and is still the shape to use if you want the file to
+carry nothing.
 
 And **there is no way to add a token to a running box**: `secrets.env` is written once, and core
 never pushes to a machine afterwards. A private repository cloned by hand later, that nobody
@@ -152,9 +184,13 @@ declared at create, has only whatever the `pat` covers. The remedy is to termina
 with the repository declared, or to authenticate that clone by hand; the server's detail page says
 so, and lists the scopes that box actually carries.
 
-Finally, a `github-token` row in the encrypted store, which nothing writes today, would take
-precedence over the config value for that user, because a stored token is per-user and deliberate
-while the config value is an instance default. Precedence overall is specificity first and
+Finally, a `github-token` row in the encrypted store takes precedence over the config value for
+that user, because a stored token is per-user and deliberate while the config value is an instance
+default. **Connect GitHub is what writes that row** (`POST /api/v1/github/connect/:flowId/poll`,
+session-authenticated, storing the CALLING user's token and never returning it —
+`secrets/route-inventory.test.ts` passes with no exemption for it, because the routes answer "is
+this user connected?" with `listSecretRefs`). The precedence rule itself did not change to
+accommodate it; it was written for exactly this. Precedence overall is specificity first and
 provenance second: a repo-scoped token beats an owner-scoped one beats a host-scoped one beats the
 unscoped fallback, and within one tier a stored token beats a configured one.
 

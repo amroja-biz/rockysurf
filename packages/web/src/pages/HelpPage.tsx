@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { AppShell } from '../components/AppShell'
 import { GITHUB_URL, repoDocUrl } from '../lib/links'
 
@@ -40,6 +41,7 @@ const SECTIONS = [
   ['connect', 'Connecting'],
   ['lifecycle', 'Start, stop, terminate'],
   ['repositories', 'Private repositories'],
+  ['git-auth', 'Git Auth'],
   ['costs', 'Costs and the caps'],
   ['packs', 'Surge Packs and tools'],
   ['settings', 'Settings'],
@@ -181,7 +183,102 @@ export function HelpPage() {
           to add a token to a running box. If you later need a private repository nobody declared at
           create, the options are to terminate and recreate with it declared, or to authenticate
           that one clone by hand. The create form resolves each URL as you type and says which
-          token will be used, or that nothing matches yet.
+          token will be used, or that nothing matches yet. How to give Rocky Surf a token in the
+          first place is <a href="#git-auth">Git Auth</a>, below.
+        </p>
+      </section>
+
+      {/*
+        GIT AUTH (rockysurf-7fyf.3, owner scope addition).
+
+        Written to the same rule as every other section here — summarize, link the normative doc,
+        promise nothing the code does not do — with one extra constraint the owner set: plain
+        sentences, no recommendations and no trade-off talk. What each approach IS and how to set
+        it up. The comparison between them belongs in SECURITY.md and ADR-0007, which are linked.
+
+        Every claim below is a fact about the shipped code rather than about the plan: the client
+        ID needs a restart (it lives in the config file, read once at boot) while the connected
+        token does not (it lives in the encrypted store, read at create). Both are stated.
+      */}
+      <section id="git-auth">
+        <h2>Git Auth</h2>
+        <p>
+          The repositories you list when creating a server are cloned onto the box during setup.
+          Public repositories clone with no credential. Private ones need a GitHub token, and there
+          are two ways to give Rocky Surf one — a connected account, or a token per repository. Both
+          are set up on the <Link to="/settings">Settings</Link> page, under{' '}
+          <em>GitHub access tokens</em>.
+        </p>
+        <p>
+          The catch-all token is also written onto the box as <code>GITHUB_TOKEN</code>, which is the
+          variable <code>gh</code> and most CI-aware scripts read with no further configuration.
+        </p>
+
+        <h3>Connect GitHub</h3>
+        <p>
+          One button, and the token covers every repository your GitHub account can reach. It takes
+          a one-time setup by whoever runs this installation, then a connect by each person using
+          it.
+        </p>
+        <p>
+          <strong>Setup, once.</strong> Register an OAuth App at{' '}
+          <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">
+            github.com/settings/applications/new
+          </a>
+          . Any callback URL will do — the device flow does not use one. In the app&rsquo;s settings,
+          tick <strong>Enable Device Flow</strong> and leave token expiration off. Copy the app&rsquo;s
+          Client ID into the <em>OAuth App client ID</em> box in Settings and restart Rocky Surf. The
+          Client ID is public and needs no client secret; the device flow uses none.
+        </p>
+        <p>
+          <strong>Connecting, per person.</strong> Press <strong>Connect GitHub</strong> in Settings.
+          Rocky Surf shows a short code and a link to github.com; enter the code there and approve.
+          The token comes back to Rocky Surf.
+        </p>
+        <p>
+          The token is user-level: it can reach every repository your account can, it does not
+          expire, and it is stored encrypted rather than in the configuration file. It applies
+          immediately — no restart — and is used by the servers you create. <strong>Disconnect</strong>{' '}
+          makes Rocky Surf forget it; revoking it at GitHub is a separate step, at{' '}
+          <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer">
+            github.com/settings/applications
+          </a>
+          . Connecting GitHub obtains a credential for cloning; it is not a way to sign in to Rocky
+          Surf.
+        </p>
+
+        <h3>A token per repository</h3>
+        <p>
+          Create a fine-grained personal access token on GitHub, scoped to the one repository, with
+          contents read and write. In Settings, press <strong>Add a token</strong>, enter the
+          repository as <code>owner/name</code>, and paste the token.
+        </p>
+        <p>
+          The token is written into the configuration file, so treat that file as a credential, and
+          it applies after Rocky Surf is restarted. The configuration file also accepts{' '}
+          <code>{'${GITHUB_PAT}'}</code>-style references to environment variables if you edit it by
+          hand.
+        </p>
+
+        <h3>Which token a clone uses</h3>
+        <p>
+          A token entered for a specific repository is used for that repository. Everything else
+          uses the catch-all — a connected account if there is one, otherwise the unscoped token in
+          the configuration file. A repository matched by neither is cloned anonymously, which works
+          for public repositories and fails for private ones.
+        </p>
+        <p>
+          <a href={repoDocUrl('docs/self-hosting.md')} target="_blank" rel="noreferrer">
+            Repositories and how private ones clone
+          </a>{' '}
+          &middot;{' '}
+          <a
+            href={repoDocUrl('docs/adr/0007-github-credentials-two-paths.md')}
+            target="_blank"
+            rel="noreferrer"
+          >
+            ADR-0007: where each credential lives
+          </a>
         </p>
       </section>
 

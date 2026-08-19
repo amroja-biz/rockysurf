@@ -56,11 +56,14 @@ const FIELDS: SettingsField[] = (
       hidden: true,
       reason: 'local is the only mode implemented in v0.1.',
     },
-    { path: 'github.pat', kind: 'secret', writable: true },
+    { path: 'github.oauth.clientId', kind: 'string', writable: true },
+    // The two paste boxes, and the only two: `accepts: 'literal'` is what rockysurf-7fyf.2
+    // narrowed rockysurf-4o3o to, and Hetzner below still has no `accepts` at all.
+    { path: 'github.pat', kind: 'secret', writable: true, accepts: 'literal' },
     { path: 'github.tokens.*.owner', kind: 'string', writable: true },
     { path: 'github.tokens.*.repo', kind: 'string', writable: true },
     { path: 'github.tokens.*.host', kind: 'string', writable: true },
-    { path: 'github.tokens.*.pat', kind: 'secret', writable: true },
+    { path: 'github.tokens.*.pat', kind: 'secret', writable: true, accepts: 'literal' },
     { path: 'providers.hetzner.enabled', kind: 'boolean', writable: true },
     { path: 'providers.hetzner.token', kind: 'secret', writable: true },
     { path: 'providers.hetzner.location', kind: 'string', writable: true },
@@ -147,7 +150,25 @@ const VIEW: SettingsView = {
   restartHint: 'Changes apply after a restart: stop the process with Ctrl-C and run ./start.sh again.',
 }
 
+/**
+ * The GitHub connection, as core's `/api/v1/github/connection` answers it (rockysurf-7fyf.2).
+ *
+ * Served from the stub rather than mocked at the module level, for the same reason the settings
+ * view is: the page's job is to render what the route says, and a mocked client would let the
+ * two drift. No device flow runs in this file — the card's own state machine is exercised in
+ * `components/ConnectGitHubCard.test.tsx` — so nothing here needs `/connect`.
+ */
+const CONNECTION_DISCONNECTED = {
+  clientIdConfigured: true,
+  connected: false,
+  configFallbackSet: true,
+}
+
 let stub: StubServer
+/** What `/api/v1/github/connection` answers with. */
+let githubConnection: Record<string, unknown>
+/** Every DELETE of the GitHub connection, so a disconnect can be asserted as a request. */
+let githubDisconnects: number
 /** Every PUT body the page sent, in order. */
 let saves: { mtimeMs: number | null; changes: { path: (string | number)[]; value?: unknown; unset?: true }[] }[]
 /** What the next PUT answers with. `null` means "accept it and echo the view back". */
@@ -161,10 +182,25 @@ beforeEach(async () => {
   nextSaveFailure = null
   getFailure = null
   served = structuredClone(VIEW)
+  githubConnection = { ...CONNECTION_DISCONNECTED }
+  githubDisconnects = 0
   setAuthToken('test-token')
 
   stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
+
+    if (url.pathname === '/api/v1/github/connection') {
+      if (req.method === 'DELETE') {
+        githubDisconnects += 1
+        githubConnection = { ...githubConnection, connected: false, login: null, scopes: [] }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ disconnected: true, removed: true, message: 'forgotten locally' }))
+        return
+      }
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(githubConnection))
+      return
+    }
 
     if (url.pathname === '/api/v1/auth/me') {
       res.writeHead(200, { 'content-type': 'application/json' })
@@ -253,15 +289,24 @@ async function onlySave(): Promise<(typeof saves)[number]> {
 /* --------------------------------------------------------------------------- the read */
 
 describe('what the page shows', () => {
-  it('shows a ${VAR} reference as the reference, and never a literal', async () => {
+  it('shows a ${VAR} reference as the reference in the boxes that take one', async () => {
+    served.values.providers = {
+      ...(served.values.providers as Record<string, unknown>),
+      hetzner: { enabled: true, token: { secret: true, state: 'reference', reference: '${HETZNER_TOKEN}' } },
+    }
     renderPage()
     await loaded()
 
-    // The file holds `${GITHUB_PAT}`; the box holds the variable's name. The braces belong to the
-    // file format (rockysurf-4o3o).
-    expect(control('github.pat').value).toBe('GITHUB_PAT')
-    expect(control('github.tokens.0.pat').value).toBe('ACME_PAT')
-    // The stored literal is a state, not a value: the box is empty and says so.
+    // The file holds `${HETZNER_TOKEN}`; the box holds the variable's name. The braces belong to
+    // the file format (rockysurf-4o3o).
+    expect(control('providers.hetzner.token').value).toBe('HETZNER_TOKEN')
+    expect(document.body.textContent).not.toContain(LITERAL_TOKEN)
+  })
+
+  it('shows a stored literal as a state, never as a value', async () => {
+    renderPage()
+    await loaded()
+
     expect(control('providers.hetzner.token').value).toBe('')
     expect(document.body.textContent).not.toContain(LITERAL_TOKEN)
     expect(document.body.textContent).toContain('A literal token is stored in the configuration file')
@@ -337,11 +382,13 @@ describe('the unified token list', () => {
 
     // The instance-wide token is an entry, identified by the scope it does not have.
     expect(tokenCard('fallback').textContent).toContain('All repositories (fallback)')
-    expect(control('github.pat').value).toBe('GITHUB_PAT')
     // And a scoped entry is an entry of the same list, named the way an operator names a repo.
     expect(tokenCard('0').textContent).toContain('acme/widgets')
     expect(control('github.tokens.0.repo').value).toBe('acme/widgets')
-    expect(control('github.tokens.0.pat').value).toBe('ACME_PAT')
+    // Both token boxes are empty: these are paste boxes, and the file's `${VAR}` is a state
+    // rather than something to edit in place. See the prefill case below.
+    expect(control('github.pat').value).toBe('')
+    expect(control('github.tokens.0.pat').value).toBe('')
     // There is no second section for per-repository tokens any more.
     expect(document.body.textContent).not.toContain('Per-repository tokens')
   })
@@ -355,7 +402,7 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    expect(tokenCard('fallback').textContent).toContain('A literal token is stored in the configuration file')
+    expect(tokenCard('fallback').textContent).toContain('A token is stored in the configuration file')
     expect(tokenCard('0').textContent).toContain('Not set in the configuration file')
     expect(tokenCard('0').textContent).toContain('acme')
     expect(document.body.textContent).not.toContain(LITERAL_TOKEN)
@@ -366,18 +413,18 @@ describe('the unified token list', () => {
     await loaded()
 
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
-    fireEvent.change(control('github.tokens.0.pat'), { target: { value: 'NEW_ACME_PAT' } })
+    fireEvent.change(control('github.tokens.0.pat'), { target: { value: 'github_pat_newacme' } })
 
     // The page-wide Save carries the port and nothing from the list.
     save()
     expect((await onlySave()).changes).toEqual([{ path: ['server', 'port'], value: 8080 }])
 
     // And the token edit survived that save rather than being swept up by it.
-    expect(control('github.tokens.0.pat').value).toBe('NEW_ACME_PAT')
+    expect(control('github.tokens.0.pat').value).toBe('github_pat_newacme')
     clickIn('0', 'Save this token')
     await waitFor(() => expect(saves).toHaveLength(2))
     expect(saves[1]!.changes).toEqual([
-      { path: ['github', 'tokens', 0, 'pat'], value: '${NEW_ACME_PAT}' },
+      { path: ['github', 'tokens', 0, 'pat'], value: 'github_pat_newacme' },
     ])
   })
 
@@ -385,10 +432,10 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    fireEvent.change(control('github.pat'), { target: { value: 'OTHER_PAT' } })
+    fireEvent.change(control('github.pat'), { target: { value: 'ghp_otherToken' } })
     clickIn('fallback', 'Save this token')
 
-    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: '${OTHER_PAT}' }])
+    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: 'ghp_otherToken' }])
   })
 
   it('rewrites a scope as one change set, never leaving two spellings of the owner', async () => {
@@ -415,11 +462,11 @@ describe('the unified token list', () => {
     expect(saves).toHaveLength(0)
 
     fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'acme/other' } })
-    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'OTHER_PAT' } })
+    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'github_pat_other' } })
     clickIn('new', 'Add this token')
 
     expect((await onlySave()).changes).toEqual([
-      { path: ['github', 'tokens', 1], value: { repo: 'acme/other', pat: '${OTHER_PAT}' } },
+      { path: ['github', 'tokens', 1], value: { repo: 'acme/other', pat: 'github_pat_other' } },
     ])
   })
 
@@ -430,10 +477,10 @@ describe('the unified token list', () => {
     await loaded()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
-    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'FALLBACK_PAT' } })
+    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'ghp_fallbackToken' } })
     clickIn('new', 'Add this token')
 
-    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: '${FALLBACK_PAT}' }])
+    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: 'ghp_fallbackToken' }])
   })
 
   it('refuses a second unscoped entry in a sentence, rather than as a schema error', async () => {
@@ -544,68 +591,86 @@ describe('the unified token list', () => {
  * Every credential box on the page is covered, because the policy is one policy: the two shapes
  * of the token list and the Hetzner token.
  */
-describe('a token box takes the name of an environment variable', () => {
-  const CREDENTIAL_BOXES = ['github.pat', 'github.tokens.0.pat', 'providers.hetzner.token']
+/* ------------------- the policy, narrowed: two kinds of credential box (7fyf.2) */
 
-  it('is plain text, and stays plain text while a name is being typed', async () => {
+/**
+ * BOTH HALVES, IN ONE FILE, ON PURPOSE.
+ *
+ * rockysurf-7fyf.2 reverses rockysurf-4o3o for the two GitHub PATs and upholds it everywhere
+ * else. A test file that only covered the new behaviour would let the old rule rot in the
+ * fields nobody was looking at, and one that only covered the old rule would go red the moment
+ * the new one shipped. So the env-var cases below name `providers.hetzner.token` and the paste
+ * cases name the GitHub paths, and neither set is allowed to widen quietly into the other's.
+ */
+describe('a token box takes the name of an environment variable — where it still does', () => {
+  it('is plain text for a variable name, and masked for a pasted token', async () => {
     renderPage()
     await loaded()
 
-    for (const path of CREDENTIAL_BOXES) {
-      expect(control(path).type, `${path} should not be masked — its content is a variable name`).toBe('text')
-    }
-    fireEvent.change(control('github.pat'), { target: { value: 'WIDGETS_PAT' } })
-    expect(control('github.pat').type).toBe('text')
+    // Masking a variable name is theatre; masking key material is not. Same page, two answers,
+    // because the two boxes hold two different kinds of thing.
+    expect(control('providers.hetzner.token').type).toBe('text')
+    expect(control('github.pat').type).toBe('password')
+    expect(control('github.tokens.0.pat').type).toBe('password')
   })
 
-  it('says what it is a box for, in its label, wherever it appears', async () => {
+  it('says what each box is for, in its label', async () => {
     renderPage()
     await loaded()
 
-    for (const path of CREDENTIAL_BOXES) {
-      const label = document.querySelector(`label[for="${path}"]`)
-      expect(label?.textContent, `${path} is not labelled as a variable`).toBe('Token Environment Variable')
+    expect(document.querySelector('label[for="providers.hetzner.token"]')?.textContent).toBe(
+      'Token Environment Variable',
+    )
+    for (const path of ['github.pat', 'github.tokens.0.pat']) {
+      expect(document.querySelector(`label[for="${path}"]`)?.textContent, `${path} is mislabelled`).toBe('Token')
     }
   })
 
   it('round-trips a reference: the file keeps its braces, the box does not', async () => {
+    served.values.providers = {
+      ...(served.values.providers as Record<string, unknown>),
+      hetzner: { enabled: true, token: { secret: true, state: 'reference', reference: '${HETZNER_TOKEN}' } },
+    }
     renderPage()
     await loaded()
 
-    expect(control('github.pat').value).toBe('GITHUB_PAT')
-    fireEvent.change(control('github.pat'), { target: { value: 'WIDGETS_PAT' } })
-    clickIn('fallback', 'Save this token')
+    expect(control('providers.hetzner.token').value).toBe('HETZNER_TOKEN')
+    fireEvent.change(control('providers.hetzner.token'), { target: { value: 'OTHER_HETZNER' } })
+    save()
 
-    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: '${WIDGETS_PAT}' }])
+    expect((await onlySave()).changes).toEqual([
+      { path: ['providers', 'hetzner', 'token'], value: '${OTHER_HETZNER}' },
+    ])
   })
 
   it('normalises the ${...} form, because copying the line out of the file is the obvious move', async () => {
     renderPage()
     await loaded()
 
-    fireEvent.change(control('github.pat'), { target: { value: '${WIDGETS_PAT}' } })
-    clickIn('fallback', 'Save this token')
+    fireEvent.change(control('providers.hetzner.token'), { target: { value: '${OTHER_HETZNER}' } })
+    save()
 
-    // Not `${${WIDGETS_PAT}}` — one normalisation, at one seam.
-    expect((await onlySave()).changes).toEqual([{ path: ['github', 'pat'], value: '${WIDGETS_PAT}' }])
+    // Not `${${OTHER_HETZNER}}` — one normalisation, at one seam.
+    expect((await onlySave()).changes).toEqual([
+      { path: ['providers', 'hetzner', 'token'], value: '${OTHER_HETZNER}' },
+    ])
   })
 
-  it('refuses anything that is not a variable name, with the policy and the reason', async () => {
+  /**
+   * THE REFUSAL STILL FIRES, AND ONLY WHERE IT SHOULD. Both assertions matter: the first is the
+   * rule surviving, the second is the reversal being a narrowing rather than a repeal.
+   */
+  it('refuses a literal in a variable-name box, and refuses nothing in a paste box', async () => {
     renderPage()
     await loaded()
 
-    fireEvent.change(control('github.pat'), { target: { value: 'ghp-live-abcdef' } })
-
-    // Live, rather than after the Save button: the point is not to let a whole token be typed.
-    const refusal = document.querySelector('[data-refusal="github.pat"]')!
+    fireEvent.change(control('providers.hetzner.token'), { target: { value: 'hcloud-live-abcdef' } })
+    const refusal = document.querySelector('[data-refusal="providers.hetzner.token"]')!
     expect(refusal.textContent).toContain('NAME of an environment variable')
     expect(refusal.textContent).toContain('holds only the reference')
 
-    clickIn('fallback', 'Save this token')
-    await waitFor(() => expect(document.body.textContent).toContain('Nothing was saved'))
-    expect(saves).toHaveLength(0)
-    // And what was typed is still there to be corrected rather than retyped.
-    expect(control('github.pat').value).toBe('ghp-live-abcdef')
+    fireEvent.change(control('github.pat'), { target: { value: 'ghp_liveTokenPastedOnPurpose' } })
+    expect(document.querySelector('[data-refusal="github.pat"]')).toBeNull()
   })
 
   it('refuses a literal in the bulk form too, and sends none of the save it was part of', async () => {
@@ -627,43 +692,23 @@ describe('a token box takes the name of an environment variable', () => {
     expect(saves).toHaveLength(0)
   })
 
-  it('refuses one in a new entry before it can be added', async () => {
-    renderPage()
-    await loaded()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
-    fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'acme/other' } })
-    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'ghp-live-abcdef' } })
-    expect(document.querySelector('[data-refusal="github.tokens.new.pat"]')).toBeTruthy()
-
-    clickIn('new', 'Add this token')
-    expect(tokenCard('new').textContent).toContain('NAME of an environment variable')
-
-    // NOTHING WAS SENT, proved by sending something that IS allowed and finding it is the first
-    // request to arrive. Asserting an empty array straight after the click would pass while a
-    // PUT was still in flight, which is how this case was green against a page that wrote the
-    // entry — a real hole, found by mutating the guard away.
-    fireEvent.change(control('server.port'), { target: { value: '8080' } })
-    save()
-    expect((await onlySave()).changes).toEqual([{ path: ['server', 'port'], value: 8080 }])
-  })
-
   /**
    * A new entry is ONE change carrying `{ repo, pat }`, so the credential in it is not at the
    * change's own path. This is the case that makes `asReferences` descend rather than look only
-   * at the path it was handed.
+   * at the path it was handed — and, now that the PAT inside is a literal, the case that proves
+   * descending did not start rewriting one.
    */
-  it('normalises the credential inside a whole new entry, not just a change that is one', async () => {
+  it('sends the credential inside a whole new entry verbatim, not as a reference', async () => {
     renderPage()
     await loaded()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
     fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'acme/other' } })
-    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'OTHER_PAT' } })
+    fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'github_pat_otherEntry' } })
     clickIn('new', 'Add this token')
 
     expect((await onlySave()).changes).toEqual([
-      { path: ['github', 'tokens', 1], value: { repo: 'acme/other', pat: '${OTHER_PAT}' } },
+      { path: ['github', 'tokens', 1], value: { repo: 'acme/other', pat: 'github_pat_otherEntry' } },
     ])
   })
 
@@ -694,6 +739,167 @@ describe('a token box takes the name of an environment variable', () => {
     expect((await onlySave()).changes).toEqual([
       { path: ['providers', 'hetzner', 'token'], value: '${HETZNER_TOKEN}' },
     ])
+  })
+})
+
+/* ------------------------------------------ the GitHub token boxes take a pasted token */
+
+describe('a GitHub token box takes the token itself', () => {
+  it('sends what was pasted, verbatim, with no ${...} anywhere near it', async () => {
+    renderPage()
+    await loaded()
+
+    fireEvent.change(control('github.pat'), { target: { value: 'ghp_pastedLiteralToken1234' } })
+    clickIn('fallback', 'Save this token')
+
+    const sent = await onlySave()
+    expect(sent.changes).toEqual([{ path: ['github', 'pat'], value: 'ghp_pastedLiteralToken1234' }])
+    expect(JSON.stringify(sent)).not.toContain('${')
+  })
+
+  /**
+   * THE PREFILL TRAP, WHICH IS THE BUG THIS CHANGE COULD MOST EASILY HAVE SHIPPED.
+   *
+   * The old box prefilled a `${GITHUB_PAT}` state with the bare name `GITHUB_PAT`, as editable
+   * text — correct while the box wanted a name. In a box that now takes tokens, that same
+   * prefill is a live grenade: the operator sees `GITHUB_PAT` sitting in a token box, types one
+   * character, and a working reference becomes a literal nobody meant to write.
+   *
+   * So a reference renders as a STATE LINE with an EMPTY input, and the file keeps it.
+   */
+  it('renders a ${VAR} reference as a state line and an EMPTY box, never as editable text', async () => {
+    renderPage()
+    await loaded()
+
+    // The file says `${GITHUB_PAT}` — see VIEW — and the box says nothing at all.
+    expect(control('github.pat').value).toBe('')
+    expect(control('github.pat').placeholder).toContain('Leave empty to keep')
+    expect(tokenCard('fallback').textContent).toContain('This entry names an environment variable')
+    expect(tokenCard('fallback').textContent).toContain('Leave the box empty to keep it')
+    // And the name is not sitting anywhere an operator could mistake for the box's contents.
+    expect(control('github.pat').value).not.toBe('GITHUB_PAT')
+  })
+
+  it('leaves the reference in the file when another field on the card is saved', async () => {
+    renderPage()
+    await loaded()
+
+    // Change the scope on the entry whose PAT is `${ACME_PAT}`, and save that card.
+    fireEvent.change(control('github.tokens.0.repo'), { target: { value: 'acme/other' } })
+    clickIn('0', 'Save this token')
+
+    // The PAT is simply not in the payload, so the file's reference is untouched — rule 2 of
+    // `settings/routes.ts`, relied on here rather than reimplemented.
+    const sent = await onlySave()
+    expect(sent.changes.some((c) => c.path.includes('pat'))).toBe(false)
+    expect(JSON.stringify(sent)).not.toContain('ACME_PAT')
+  })
+
+  it('never renders a token value from a settings read, in any state', async () => {
+    served.values.github = {
+      pat: { secret: true, state: 'set' },
+      tokens: [{ owner: 'acme', pat: { secret: true, state: 'reference', reference: '${ACME_PAT}' } }],
+    }
+    renderPage()
+    await loaded()
+
+    // The redacted view has no value to leak, which is the point: the page cannot display one
+    // because core never sent one.
+    expect(document.body.textContent).not.toContain(LITERAL_TOKEN)
+    expect(control('github.pat').value).toBe('')
+    expect(control('github.tokens.0.pat').value).toBe('')
+    expect(tokenCard('fallback').textContent).toContain('A token is stored in the configuration file')
+  })
+})
+
+/* ------------------------------------------------------- the Connect GitHub card's place */
+
+describe('the Connect GitHub card', () => {
+  const connectCard = () => document.querySelector('[data-github-connect]') as HTMLElement
+
+  it('sits at the top of the GitHub section, above the tokens it is the fallback for', async () => {
+    renderPage()
+    await loaded()
+
+    const card = await screen.findByText('Connect GitHub', { selector: 'h3' })
+    expect(card).toBeTruthy()
+    // Document order: the catch-all first, the exceptions below it.
+    const position = connectCard().compareDocumentPosition(tokenCard('fallback'))
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  /**
+   * The card is disabled without a client ID, so the box that fixes that has to be reachable
+   * from the same page — otherwise the instruction on the card sends the operator to a text
+   * editor for a value the Settings API already accepts.
+   */
+  it('offers the OAuth App client ID as an ordinary box, and saves it to the file', async () => {
+    renderPage()
+    await loaded()
+
+    const box = control('github.oauth.clientId')
+    expect(box).toBeTruthy()
+    // Public, so it is not masked and not classified secret.
+    expect(box.type).toBe('text')
+
+    fireEvent.change(box, { target: { value: 'Iv1.0123456789abcdef' } })
+    save()
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['github', 'oauth', 'clientId'], value: 'Iv1.0123456789abcdef' },
+    ])
+  })
+
+  it('says what covers everything no scoped entry matches', async () => {
+    renderPage()
+    await loaded()
+
+    const line = await screen.findByText(/^Everything else:/)
+    expect(line.textContent).toContain('the token in the configuration file')
+
+    githubConnection = { clientIdConfigured: true, connected: true, login: 'octocat', scopes: ['repo'], configFallbackSet: false }
+    renderPage()
+    expect((await screen.findAllByText('Everything else: connected as @octocat')).length).toBeGreaterThan(0)
+  })
+
+  it('names the winner when a connection and a config fallback both exist', async () => {
+    githubConnection = {
+      clientIdConfigured: true,
+      connected: true,
+      login: 'octocat',
+      scopes: ['repo'],
+      configFallbackSet: true,
+    }
+    renderPage()
+    await loaded()
+
+    const superseded = await screen.findByText(/takes precedence over this entry/)
+    expect(superseded.textContent).toContain('@octocat')
+    expect(superseded.textContent).toContain('not this one')
+  })
+
+  it('confirms a disconnect first, and says it is not a revocation at GitHub', async () => {
+    githubConnection = {
+      clientIdConfigured: true,
+      connected: true,
+      login: 'octocat',
+      scopes: ['repo'],
+      configFallbackSet: false,
+    }
+    renderPage()
+    await loaded()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toContain('NOT revoked at GitHub')
+    expect(dialog.textContent).toContain('github.com/settings/applications')
+    expect(githubDisconnects, 'the confirmation must come before the request').toBe(0)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+    await waitFor(() => expect(githubDisconnects).toBe(1))
+    // Nothing was written to the config file: this token never lived there.
+    expect(saves).toHaveLength(0)
   })
 })
 
@@ -1031,9 +1237,10 @@ describe('a reference to a variable the running core cannot see', () => {
 
     await waitFor(() => expect(document.querySelector('[data-unset-vars]')).not.toBeNull())
     expect(document.querySelector('.settings-field-error')).toBeNull()
-    // The pending edit is cleared, so the box is back to showing the file's own value — which is
-    // what every ACCEPTED save does here, and what a rejected one does not.
-    expect(control('github.tokens.0.pat').value).toBe('ACME_PAT')
+    // The pending edit is cleared, so the box is back to what the file's state renders as —
+    // empty, since a paste box never prefills. That is what every ACCEPTED save does here, and
+    // what a rejected one does not: a rejected save leaves the typed text in place to be fixed.
+    expect(control('github.tokens.0.pat').value).toBe('')
   })
 
   /** A reload is what loses a toast. This comes back with the file, so it comes back. */
