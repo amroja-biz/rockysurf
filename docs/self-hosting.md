@@ -330,7 +330,10 @@ relationship with. So you register one, and it takes about a minute:
    makes once.
 3. Leave **token expiration off**. An expiring token would need something phoning home to
    refresh it, which is not what this product is.
-4. Copy the **Client ID** into the config file, or into the same field on the Settings page:
+4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page, or write it
+   into the config file yourself, and restart — this one is an ordinary setting, read at startup
+   like everything else in the file. (The token the button later obtains is not, and needs no
+   restart.)
 
 ```yaml
 github:

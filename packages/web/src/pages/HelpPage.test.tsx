@@ -63,6 +63,52 @@ describe('HelpPage', () => {
     expect(container.textContent).toContain('cp -r .claude/skills/creating-surge-packs ~/.claude/skills/')
   })
 
+  /**
+   * GIT AUTH (rockysurf-7fyf.3). What is pinned is the setup an operator would otherwise get
+   * wrong, and the two facts about the shipped code that a reader plans around: the Client ID
+   * needs a restart and the connected token does not. Prose around them is free to improve.
+   */
+  describe('the Git Auth section', () => {
+    const gitAuth = () => {
+      const { container } = renderHelp()
+      return container.querySelector('section[id="git-auth"]')!.textContent ?? ''
+    }
+
+    it('names the setup step people miss, and the one they do not need a secret for', () => {
+      const text = gitAuth()
+      expect(text).toContain('Enable Device Flow')
+      expect(text).toContain('expiration off')
+      // The device flow uses no client secret, which is why the Client ID is safe in a file.
+      expect(text).toContain('public')
+      expect(text).toContain('no client secret')
+    })
+
+    it('says which half needs a restart and which does not', () => {
+      const text = gitAuth()
+      // The Client ID goes to the config file, read once at boot.
+      expect(text).toContain('restart Rocky Surf')
+      // The connected token goes to the encrypted store, read at create.
+      expect(text).toContain('immediately')
+      expect(text).toContain('stored encrypted')
+    })
+
+    it('states the precedence a reader plans their repositories around', () => {
+      const text = gitAuth()
+      expect(text).toContain('cloned anonymously')
+      expect(text).toContain('fails for private ones')
+    })
+
+    it('does not let Connect GitHub be read as a way to sign in', () => {
+      expect(gitAuth()).toContain('not a way to sign in to Rocky Surf')
+    })
+
+    it('says disconnecting is not revoking', () => {
+      const text = gitAuth()
+      expect(text).toContain('forget it')
+      expect(text).toContain('separate step')
+    })
+  })
+
   it('every table-of-contents entry lands on a section that exists', () => {
     const { container } = renderHelp()
     const tocLinks = [...container.querySelectorAll('.help-toc a')]
@@ -73,13 +119,39 @@ describe('HelpPage', () => {
     }
   })
 
-  it('doc links point into the repository, and external links do not leak an opener', () => {
+  /**
+   * Two claims, and they were one until the Git Auth section (rockysurf-7fyf.3) added the first
+   * off-repository links this page has: github.com's own OAuth App settings, which is where the
+   * setup it describes actually happens and cannot be linked anywhere else.
+   *
+   * So the rule splits rather than loosens. Every documentation link still points into the public
+   * repository; anything else must be on the short allowlist below, which is what keeps this from
+   * degrading into "any external link is fine".
+   */
+  const ALLOWED_NON_REPO_LINKS = [
+    'https://github.com/settings/applications/new',
+    'https://github.com/settings/applications',
+  ]
+
+  it('external links do not leak an opener', () => {
     const { container } = renderHelp()
     const external = [...container.querySelectorAll('main a[target="_blank"]')]
     expect(external.length).toBeGreaterThan(4)
     for (const link of external) {
-      expect(link.getAttribute('href')).toMatch(new RegExp(`^${GITHUB_URL}`))
-      expect(link.getAttribute('rel')).toContain('noreferrer')
+      expect(link.getAttribute('rel'), `${link.getAttribute('href')} has no rel`).toContain('noreferrer')
     }
+  })
+
+  it('leaves the repository the only place documentation is linked from', () => {
+    const { container } = renderHelp()
+    const external = [...container.querySelectorAll('main a[target="_blank"]')]
+    const offRepo = external
+      .map((link) => link.getAttribute('href')!)
+      .filter((href) => !href.startsWith(GITHUB_URL))
+    const unexpected = offRepo.filter((href) => !ALLOWED_NON_REPO_LINKS.includes(href))
+    expect(unexpected, 'a link left the repository without being on the allowlist').toEqual([])
+    // The repository links are still the bulk of them, so the allowlist cannot quietly become
+    // the rule.
+    expect(external.length - offRepo.length).toBeGreaterThan(4)
   })
 })

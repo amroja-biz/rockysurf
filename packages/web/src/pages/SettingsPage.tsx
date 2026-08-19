@@ -1156,6 +1156,16 @@ export function SettingsPage() {
               })
             }
           />
+          {/*
+            The client ID the card above is disabled without. It renders here, in the same
+            section, because that is what makes the card's instruction actionable without
+            leaving the browser — and it is an ordinary text box rather than a credential box
+            because a device-flow client ID is public.
+
+            It DOES need a restart, unlike the token the button then obtains: this one goes to
+            the config file, which is read once at boot.
+          */}
+          {textField(['github', 'oauth', 'clientId'], 'OAuth App client ID')}
           {tokenEntries.map(tokenCard)}
           {draftCard()}
           {!draft && (

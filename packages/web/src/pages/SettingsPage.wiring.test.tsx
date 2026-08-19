@@ -828,6 +828,28 @@ describe('the Connect GitHub card', () => {
     expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  /**
+   * The card is disabled without a client ID, so the box that fixes that has to be reachable
+   * from the same page — otherwise the instruction on the card sends the operator to a text
+   * editor for a value the Settings API already accepts.
+   */
+  it('offers the OAuth App client ID as an ordinary box, and saves it to the file', async () => {
+    renderPage()
+    await loaded()
+
+    const box = control('github.oauth.clientId')
+    expect(box).toBeTruthy()
+    // Public, so it is not masked and not classified secret.
+    expect(box.type).toBe('text')
+
+    fireEvent.change(box, { target: { value: 'Iv1.0123456789abcdef' } })
+    save()
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['github', 'oauth', 'clientId'], value: 'Iv1.0123456789abcdef' },
+    ])
+  })
+
   it('says what covers everything no scoped entry matches', async () => {
     renderPage()
     await loaded()
