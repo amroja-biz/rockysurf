@@ -171,9 +171,11 @@ the tag conditions to match.
 > `UnauthorizedOperation`. See [the note below](#three-things-that-trip-people-up).
 >
 > **The policy has since been tightened further** (`rockysurf-b14y`): the provider now tags the
-> ENI at launch, so that ARN has moved back under the tag condition. That change has NOT yet been
-> through a restricted-principal run — it rides the next one. Until then, treat the ENI line as
-> reasoned rather than re-verified; everything else above is as it was proved.
+> ENI at launch, so that ARN sits under the tag condition in the RunInstances statement AND in
+> `TagOnCreate` — it takes both halves, and the first shipped without the second, which failed
+> every real launch for five nightlies while every in-repo check stayed green. **Measured** on
+> 2026-08-19: a restricted-principal run under the corrected role passed the full lifecycle on
+> both architectures. Everything above stands as proved.
 >
 > **The verification is continuous, not dated.** A policy proved once is a policy that was true
 > once: add an API call to the provider and this document silently becomes wrong, every
