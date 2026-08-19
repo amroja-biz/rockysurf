@@ -72,6 +72,18 @@ const SSH_PORT = (() => {
 })()
 const KEEP = process.argv.includes('--keep')
 
+/**
+ * What the branding step is supposed to put on somebody's screen, as literals.
+ *
+ * Deliberately NOT imported from `@rockysurf/core`: the subject here is whether the bytes
+ * SURVIVED the trip through a JSON plan, a bash heredoc and PAM, and an assertion that reads
+ * the same constant the renderer read cannot fail when they do not. The first of these is the
+ * backslash-heavy art line — the one an unquoted heredoc silently strips to `____`.
+ */
+const LOGO_ART_LINE = '/_/ |_|\\____/\\___/_/|_|\\__, /   /____/\\__,_/_/  /_/'
+const LOGO_LAST_LINE = '                      /____/'
+const BRANDING_URL = 'https://github.com/amroja-biz/rockysurf'
+
 const READY_TIMEOUT_MS = 10 * 60_000
 const POLL_MS = 3_000
 
@@ -615,6 +627,27 @@ async function main() {
     check(box('head -1 /home/rocky/e2e-user-probe') === 'rocky', 'the unprivileged pack step ran as rocky')
     check(box('tail -1 /home/rocky/e2e-user-probe') === 'root', 'a pack step can sudo without a password')
     check(box('cat /etc/rockysurf/server-info 2>/dev/null || true') === `serverId=${serverId}`, 'the branding step named THIS server on the box')
+
+    // The banner itself, on disk. `/etc/motd` is the file PAM prints last, immediately above
+    // the prompt — the login below is what proves it actually reaches a screen.
+    const motd = box('cat /etc/motd')
+    check(motd.includes(LOGO_ART_LINE), 'the logo reached /etc/motd with its backslashes intact', LOGO_ART_LINE)
+    check(motd.includes(LOGO_LAST_LINE), "/etc/motd carries the logo's last art line")
+    check(motd.includes(BRANDING_URL), '/etc/motd carries the project URL the issue asks for')
+    // `present, not executable` and not merely `not executable`: an absent file would satisfy a
+    // bare `! -x` on any non-Ubuntu box and prove nothing about the step having done anything.
+    const motdScriptState = (name) =>
+      box(`if [ ! -f /etc/update-motd.d/${name} ]; then echo absent; elif [ -x /etc/update-motd.d/${name} ]; then echo executable; else echo quiet; fi`)
+    check(motdScriptState('00-header') === 'quiet', "Ubuntu's stock welcome header is present and no longer runs")
+    check(motdScriptState('50-motd-news') === 'quiet', 'the MOTD news fetch — a network call at login — no longer runs')
+
+    // CONVERGENCE, MEASURED. `agent.sh` re-runs any step it has not journalled `done`, so the
+    // branding step meets its own script a second time on every resume. Re-run the exact script
+    // from the plan the agent executed, and the file must not move a byte.
+    const motdBefore = box('sha256sum /etc/motd')
+    box("jq -r '.steps[] | select(.id == \"branding\") | .run' /var/lib/rockysurf/plan.json > /tmp/branding-rerun.sh && bash /tmp/branding-rerun.sh")
+    const motdAfter = box('sha256sum /etc/motd')
+    check(motdBefore === motdAfter, 'running the branding step twice leaves /etc/motd byte-identical', motdAfter)
     const agentStatus = box("grep -o '\"status\":\"[a-z]*\"' /var/lib/rockysurf/state.json | head -1")
     check(agentStatus.includes('done'), "the agent's own journal says the plan completed", agentStatus)
 
@@ -652,6 +685,42 @@ async function main() {
     const sshOut = (ssh.stdout ?? '').trim().split('\n').filter(Boolean)
     check(sshOut[0] === 'rocky', 'ssh rocky@host succeeds with the key core minted', sshOut[0] ?? (ssh.stderr ?? '').trim())
     check(sshOut[1] === 'root', 'that session can sudo without a password', sshOut[1] ?? '')
+    check(!sshOut.some((line) => line.includes(BRANDING_URL)), 'a non-interactive `ssh host cmd` prints no MOTD, which is why the login below forces a TTY')
+
+    // THE CLAIM ISSUE #33 ACTUALLY MAKES, asserted by OpenSSH and PAM rather than by us reading
+    // a file: somebody who logs in SEES the logo. `-tt` forces a pty and no remote command, so
+    // this is a login shell and `pam_motd` fires; the command form above deliberately does not.
+    const login = spawnSync(
+      'ssh',
+      [
+        '-tt',
+        '-i', keyPath,
+        '-p', String(SSH_PORT),
+        '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', `UserKnownHostsFile=${knownHosts}`,
+        '-o', 'IdentitiesOnly=yes',
+        '-o', 'ConnectTimeout=20',
+        `rocky@127.0.0.1`,
+      ],
+      { encoding: 'utf8', timeout: 60_000, input: 'exit\n' },
+    )
+    // A pty terminates lines with CRLF; the banner's own bytes are LF and unchanged.
+    const welcome = (login.stdout ?? '').replaceAll('\r', '')
+    log('--- what the login printed:')
+    for (const line of welcome.split('\n')) log(`      | ${line}`)
+    check(welcome.includes(LOGO_ART_LINE), 'an interactive login PRINTS the logo, backslashes and all', LOGO_ART_LINE)
+    check(welcome.includes(LOGO_LAST_LINE), "the logo's last art line reached the screen")
+    check(welcome.includes(BRANDING_URL), 'the login screen carries the project URL')
+    check(!welcome.includes('Welcome to Ubuntu'), "Ubuntu's stock welcome header did not print above it")
+    // Columns, not bytes. Bash's own prompt arrives wrapped in colour, bracketed-paste and
+    // xterm-title escapes, none of which occupy a column — measuring those would fail a banner
+    // that fits perfectly.
+    const columns = (line) =>
+      line
+        .replaceAll(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, '') // OSC — the window title
+        .replaceAll(/\u001B\[[0-9;?]*[ -/]*[@-~]/g, '').length // CSI — colour, bracketed paste
+    const tooWide = welcome.split('\n').filter((line) => columns(line) > 80)
+    check(tooWide.length === 0, 'nothing the login printed wraps an 80-column terminal', tooWide[0] ?? '')
 
     // The fingerprint OpenSSH recorded for the box, independently of the provider, is the one
     // the provider reported to core. Three parties now agree on one key.
