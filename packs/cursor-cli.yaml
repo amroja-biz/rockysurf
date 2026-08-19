@@ -1,0 +1,211 @@
+# Cursor CLI — Cursor's terminal coding agent, on the shared base toolchain.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# Only `cursor-cli` is defined in this file.
+version: 1
+
+pack:
+  packId: cursor-cli
+  name: Cursor CLI
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - cursor-cli
+  displayOrder: 8
+  enabled: true
+  imageUrl: /images/surge-packs/cursor-cli.png
+  # The agent runs anywhere, but it reads and edits a checkout — and its `--worktree` flag is
+  # git's, so a box with no repository is a box where it has nothing to work on.
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Cursor CLI
+      agent                   starts the terminal UI in the directory you are standing in
+      agent -p "..."          one prompt, answer to stdout, no UI — for scripts
+                              add --output-format text (or json, or stream-json)
+      cursor-agent            the same binary under its former name, if that is what your
+                              scripts already call
+
+      Sign in first. There is no device-code flow — Cursor has nothing like it — so on a box
+      with no desktop and no browser, use the API key:
+
+        echo 'export CURSOR_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+          keys are minted in the Cursor dashboard, https://cursor.com/dashboard, under
+          API Keys. This is Cursor's own documented path for automation and CI.
+
+        Do NOT use `agent --api-key ...`. Anything else on the box can read a command line
+        out of `ps`; an environment variable it cannot. Same key, one of the two spellings
+        is safe.
+
+        Rocky Surf does not deliver CURSOR_API_KEY to this box. The only two secrets it ever
+        hands a server are $GITHUB_TOKEN and $RDP_PASSWORD, and that list is closed — so the
+        key above is yours to export after boot, and it is not on the box until you do.
+
+      agent models            what to run to find out whether your key actually works. With no
+                              credential it prints "Authentication required"; with a bad one it
+                              says the key is invalid AND that it read it from CURSOR_API_KEY,
+                              which is how you know the variable reached it. Both of those were
+                              confirmed on this box; a good key lists your models instead.
+
+      agent status            reports on the STORED login — the credential `agent login` writes
+                              — and is not the check for an exported key. With CURSOR_API_KEY
+                              set it still printed "Not logged in" here. Our test key was a
+                              deliberately invalid one, so we cannot tell you whether it ignores
+                              the variable or was rejecting a bad key; either way `agent models`
+                              is the one that answers the question you are asking.
+
+      NO_OPEN_BROWSER=1 agent login
+          the browser path, made survivable without a browser: it prints a cursor.com URL
+          instead of trying to launch one, then waits. What we confirmed here: the URL is a
+          plain web link carrying its own challenge, and while it waits the CLI listens on NO
+          local port — it holds an outbound connection to Cursor and polls. So there is no
+          localhost callback for a second machine to be cut off from. What we could NOT
+          confirm, because it needs a Cursor account we do not have: that opening that URL on
+          your laptop finishes the login on this box. Try it if you prefer a login to a key,
+          but the key above is the path this guide stands behind.
+
+      agent edits files and runs shell commands in the directory you start it in, and asks
+      before each one. -f (--force) allows anything not explicitly denied, and --yolo is an
+      alias for it — on a box holding your repositories, be sure which of those you typed.
+      --auto-review is the middle setting: a classifier runs the safe calls and asks about the
+      rest. `agent --plan` is read-only. `agent -w NAME` works in a fresh git worktree under
+      ~/.cursor/worktrees instead of your checkout, which is the cheaper way to let it run
+      unattended.
+
+      This box has the Cursor CLI version this pack pins, which is the one that was current
+      the day the pack was written — a pin, not the presence guard most of these packs use, so
+      it does not even drift forward with the boot date. Nothing on the box moves it forward on
+      its own. `agent --version` says where you are; `agent update` moves you, and installs
+      into ~/.local, which is yours — no root needed. That subcommand is not listed in
+      `agent --help`, but it is real: it was run on this build and reported back.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      agent-deck    session manager
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  - toolId: cursor-cli
+    name: Cursor CLI
+    description: Cursor's coding agent, in your terminal
+    category: agent
+    url: https://cursor.com/cli
+    # Band 40, alongside the other agents: after the base toolchain, before any setup step.
+    # This tarball carries its own Node runtime, so it does not depend on the base `nodejs`.
+    installOrder: 40
+    # Everything lands under $HOME. Claiming root would be the rule-4 dishonesty the smoke
+    # container is built to catch.
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$HOME/.local/bin:$PATH"
+      #
+      # PINNED AND DIGEST-VERIFIED, and NOT installed through cursor.com/install, which is what
+      # Cursor advertises. Those are two decisions and it is worth not confusing them.
+      #
+      # HOW: not `curl https://cursor.com/install | bash`. Piping a vendor's installer runs code
+      # this repository never sees and the smoke gate cannot hold still. That installer does one
+      # download — the tarball fetched below — so bypassing it costs nothing but the symlinks and
+      # the layout, which this script reproduces.
+      #
+      # WHICH VERSION: pinned, per docs/writing-a-pack.md § Which version to install — the third
+      # case there, an agent with no registry channel at all. This is NOT the "latest scares me"
+      # pin the doc rightly rejects; every other channel was checked on 2026-08-19 and is shut:
+      #   npm    — Cursor publishes NO package. @cursor/cli, @cursor/cursor-agent, @cursor-ai/cli
+      #            and @cursorai/cli are all 404. The bare name `cursor-agent` is taken by an
+      #            unrelated third party, so installing it would ship a stranger's code.
+      #   apt    — downloads.cursor.com/aptrepo is real and signed, but ships only the desktop
+      #            IDE (cursor, cursor-nightly, cursor-sandbox-apparmor). Not the CLI.
+      #   brew   — the cursor-cli cask exists and is `depends_on :macos`. This pack is Ubuntu.
+      #   GitHub — no repository. The CLI is closed-source; there are no release assets.
+      # What is left is downloads.cursor.com, a plain CDN with no quota that lets you check a
+      # digest — but it needs a version in the path, and /lab/latest/ and /lab/stable/ both 403.
+      # So the version is a pin for exactly the reason the GitHub-releases case is: it is the
+      # price of not piping an installer, not a freshness judgement. Homebrew's own cask reached
+      # the same conclusion — it scrapes the version out of cursor.com/install and pins both
+      # sha256 digests.
+      #
+      # To bump: fetch https://cursor.com/install (fetch, do not execute), read the version
+      # literal it carries, and recompute both digests from the two URLs below.
+      cursor_version=2026.08.11-e8db854
+      case "$ARCH" in
+        amd64) cursor_arch=x64
+               cursor_sha=bfff4bf6f4e9dd30c1d0ef0a70b6077b074015dd2948e4c50685d53afdcfce5a ;;
+        arm64) cursor_arch=arm64
+               cursor_sha=ea13f92e295f523a99ce8d8f57d6894d21e5d1e2d030ffad718ccd5955ca2eed ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The vendor's own layout, reproduced rather than invented: a versioned directory under
+      # ~/.local/share/cursor-agent/versions with both bin symlinks pointing into it. The
+      # launcher inside resolves its own directory through realpath on $0 to find the Node
+      # runtime shipped beside it, so where this lands is load-bearing, not cosmetic.
+      versions="$HOME/.local/share/cursor-agent/versions"
+      dest="$versions/$cursor_version"
+      # The version is IN the stamp, so bumping the pin above reinstalls and leaving it alone is
+      # a no-op — the run-twice gate measures the second half of that. This one matters more
+      # than most: the download is ~84MB and unpacks to ~240MB.
+      stamp="$HOME/.rockysurf/installed-cursor-cli-$cursor_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        # Staged inside the versions directory so the final move is a rename on the same
+        # filesystem rather than a 240MB copy. A fixed name, not the vendor's timestamped one:
+        # an interrupted run leaves one predictable directory that the next run clears, instead
+        # of a new pile of litter every attempt.
+        staging="$versions/.incoming-$cursor_version"
+        trap 'rm -rf "$tmp" "$staging"' EXIT
+        mkdir -p "$versions"
+        rm -rf "$staging"
+        mkdir -p "$staging"
+        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
+        # Downloaded to a file rather than piped into tar — the digest has to be checked before
+        # anything is unpacked, and you cannot check a stream you have already extracted.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://downloads.cursor.com/lab/$cursor_version/linux/$cursor_arch/agent-cli-package.tar.gz" \
+          -o "$tmp/agent-cli-package.tar.gz"
+        echo "$cursor_sha  $tmp/agent-cli-package.tar.gz" | sha256sum -c - >/dev/null
+        # One top-level directory, dist-package/, which the vendor strips. Strip it too, or the
+        # launcher ends up a level below where its symlinks say it is.
+        tar --strip-components=1 -xzf "$tmp/agent-cli-package.tar.gz" -C "$staging"
+        rm -rf "$dest"
+        mv "$staging" "$dest"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      # Both names: `agent` is what current Cursor docs use, `cursor-agent` is the legacy name
+      # and upstream's installer still creates it. -f -n rather than rm-then-link, so the
+      # linking step is idempotent on its own.
+      mkdir -p "$HOME/.local/bin"
+      ln -sfn "$dest/cursor-agent" "$HOME/.local/bin/agent"
+      ln -sfn "$dest/cursor-agent" "$HOME/.local/bin/cursor-agent"
+      # Guarded: an unguarded append puts the line in twice on a resumed install, and the smoke
+      # harness hashes .bashrc either side of the journal discard.
+      touch "$HOME/.bashrc"
+      grep -qF '.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+      # Cursor's docs do not document a version flag; this binary has one, and it prints the
+      # pinned version. Verified against the real tarball before it was written here.
+      agent --version >/dev/null
