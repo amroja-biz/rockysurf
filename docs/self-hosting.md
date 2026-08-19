@@ -284,7 +284,86 @@ cloned into the home directory of the box during setup.
 **Public URLs work with no credentials at all.** The clone runs anonymously; nothing needs
 configuring, and this is the case the shipped packs are built around.
 
-**Private repositories need a GitHub token, and `github.pat` is where it goes:**
+**Private repositories need a GitHub token, and there are two ways to give Rocky Surf one.** The
+ordinary path is a button; the precise path is a token per repository. They layer — the most
+specific match wins — so you can use either or both. [ADR-0007](adr/0007-github-credentials-two-paths.md)
+records why each one lives where it does.
+
+### The ordinary path: Connect GitHub
+
+On the Settings page, under *GitHub access tokens*, the first card is **Connect GitHub**. Press
+it, and Rocky Surf shows a short code and a link to github.com; type the code there, approve, and
+the token comes back to Rocky Surf. That is the whole of it — nothing to export, no restart, and
+the next box you create carries the token.
+
+Two things to know before you press it:
+
+- **It asks for the `repo` scope**, which is read and write access to every repository your
+  account can reach. That is the price of one click; `repo` is the classic OAuth scope covering
+  private repository contents and there is no narrower one that does. If you want less than that,
+  use the per-repository tokens below instead — the card says so too, above the button.
+- **The token is stored encrypted, and it belongs to you** rather than to the installation. It
+  goes into Rocky Surf's encrypted secrets store under your account, not into this file, and it
+  lands on the boxes *you* create. Nothing needs restarting because that store is read at the
+  moment a box is created.
+
+**Disconnect forgets the token; it does not revoke it at GitHub.** Revoking needs a client secret
+the device flow does not use, so if you want to be certain a token can no longer be used, remove
+Rocky Surf at [github.com/settings/applications](https://github.com/settings/applications) as
+well. The confirmation says the same thing.
+
+**Connect GitHub is not a way to sign in to Rocky Surf.** It obtains a credential for cloning.
+Signing in with GitHub (`auth.mode: github-device`) is a different, unimplemented feature that
+happens to use the same OAuth mechanism — `local` is still the only login mode there is.
+
+#### Registering the OAuth App (once, before the button works)
+
+Rocky Surf ships no OAuth App of its own, deliberately: an app registered by someone else could
+have its tokens revoked by them, and the authorize screen would name an organisation you have no
+relationship with. So you register one, and it takes about a minute:
+
+1. Go to [github.com/settings/applications/new](https://github.com/settings/applications/new).
+   Name it whatever you like; the callback URL is not used by the device flow, so any URL will
+   do (`http://localhost:3000` is fine).
+2. Open the app's settings and tick **Enable Device Flow**. Without this, GitHub answers
+   `device_flow_disabled` and the button says exactly that — it is the mistake nearly everybody
+   makes once.
+3. Leave **token expiration off**. An expiring token would need something phoning home to
+   refresh it, which is not what this product is.
+4. Copy the **Client ID** into the config file, or into the same field on the Settings page:
+
+```yaml
+github:
+  oauth:
+    clientId: "Iv1.0123456789abcdef"
+```
+
+**A client ID is public.** It is safe in this file, safe in a screenshot and safe to commit — the
+device flow uses no client secret at all, which is exactly why this is an ordinary string rather
+than a credential. Until it is set, the Connect card still renders, disabled, showing these steps.
+
+**GitHub Enterprise Server is not supported by the button yet.** The per-repository entries below
+take a `host:`, so a self-hosted forge is not blocked — it just does not get a button.
+
+### The precise path: a token per repository
+
+Create a PAT on github.com and paste it into Settings, or write it into this file:
+
+```yaml
+github:
+  pat: "ghp_yourTokenHere"
+```
+
+`github.pat` is the instance-wide fallback used for anything no scoped entry below matches. The
+token needs whatever scope reads your repositories: `repo` on a classic PAT, or contents-read on
+a fine-grained one.
+
+**A pasted token is stored in this file, so treat this file as a credential** — the same way you
+would an SSH private key. Rocky Surf creates it at mode `0600` and preserves that mode across
+saves, but a backup, a copy to a second machine, or a paste into a bug report carries the token
+with it.
+
+**If you would rather the file carried nothing, it still supports that**, and always will:
 
 ```yaml
 github:
@@ -293,13 +372,12 @@ github:
 
 `${GITHUB_PAT}` is interpolated from the environment when the config is read, so the token does
 not sit in the file — export it in your shell, or put it in the `.env` you loaded before starting
-(`GITHUB_PAT=` is already in `.env.example`). **Write the reference rather than the token.** This
-file gets backed up, copied to a second machine and pasted into a bug report; a reference survives
-all of that and carries nothing, and a `${VAR}` that is not set is a boot error naming the variable
-rather than a silent empty token. The parser will accept a literal string if you hand-edit one in —
-the Settings page will not write one, and shows any literal it finds as *stored* with a note
-suggesting you move it out. The token needs whatever scope reads your repositories: `repo` on a
-classic PAT, or contents-read on a fine-grained one.
+(`GITHUB_PAT=` is already in `.env.example`). A `${VAR}` that is not set is a boot error naming
+the variable rather than a silent empty token. Hand-edited references keep working, keep
+round-tripping through the Settings page unchanged, and a token box holding one shows as *this
+entry names an environment variable* with an empty box beneath it — leave it empty and the
+reference stays exactly as you wrote it. What changed in the GUI is only what it asks you to
+type; the file format did not change at all.
 
 From there the path is already built: core hands the token to each box in `secrets.env`, a file
 written at mode `0600`, and the clone authenticates with it through a `git -c credential.helper`
@@ -371,11 +449,11 @@ detail page lists the scopes it carries and says the same thing.
 
 **The create form shows you all of this as you type.** Each repository URL is resolved live
 against the same rules, and the form says which token will be used — by scope, and by the
-environment variable it comes from — or that the repository is public and needs none, or that
-nothing matches it yet. If you have just added a token on the Settings page, it will also tell you
-that the entry exists but this process has not restarted into it, and whether the variable it
-names is exported (if it is not, that restart will refuse to start — see the note about `${VAR}`
-above).
+environment variable it comes from when it comes from one — or that the repository is public and
+needs none, or that nothing matches it yet. If you have just added a token on the Settings page,
+it will also tell you that the entry exists but this process has not restarted into it, and, for
+a `${VAR}` entry, whether the variable it names is exported (if it is not, that restart will
+refuse to start — see the note about `${VAR}` above).
 
 **And it offers what you have already configured, so you do not retype it.** Every entry above
 that names both an owner and a repository is a one-click chip on the create form: clicking it puts
@@ -434,35 +512,39 @@ is one token and the repositories it opens; the entry with no scope is `pat`, la
 repositories (fallback)*. Entries are added, changed and removed one at a time, each save going
 straight to the file above.
 
-**Every token box in the UI takes the name of an environment variable, not a token.** The box is
-labelled *Token Environment Variable* and holds `GITHUB_PAT`; the file gets `${GITHUB_PAT}`. Paste
-the `${GITHUB_PAT}` form if that is what you copied and it is normalised to the same thing;
-anything that is not a variable name — a token, a URL, two words — is refused where you typed it,
-with the reason. That keeps the GUI from putting key material into a file it also tells you to back
-up. Two consequences worth knowing:
+**The GitHub token boxes take the token itself.** They are labelled *Token*, they are masked as
+you type, and what you paste is written into the config file as you typed it. Three consequences
+worth knowing:
 
-- **A literal already in the file still works and is still never shown.** It loads as before, the
-  box reads *a literal token is stored in the configuration file*, and naming a variable replaces
-  it. Rocky Surf will not display it back to you — see [SECURITY.md](../SECURITY.md).
-- **The check is on the shape of what you typed.** A GitHub token is spelled like a legal variable
-  name (`ghp_A1b2c3`), so a paste of one passes the check and lands in the file as
-  `${ghp_A1b2c3}` — a variable nobody exported, which fails loudly at the next start naming that
-  "variable". Guessing at values instead would refuse real variable names, so the rule stays
-  syntactic and this is the honest cost of it.
+- **Whatever is already in the file keeps working, and is never shown back to you.** A stored
+  token reads as *a token is stored in the configuration file*; a `${VAR}` reference reads as
+  *this entry names an environment variable* — and in both cases the box beside it is EMPTY. An
+  empty box means *keep what is there*, so opening Settings and saving something else cannot
+  overwrite either one. See [SECURITY.md](../SECURITY.md).
+- **The file is now a credential when you use these boxes**, which is the trade the button above
+  avoids by never writing to the file at all.
+- **The other credential boxes are unchanged.** Hetzner's API token box still takes the NAME of
+  an environment variable, still refuses a literal where you typed it, and still writes
+  `${HETZNER_TOKEN}` into the file. Only the two GitHub token boxes changed.
 
 Three properties worth knowing before you set any of this, and they hold for `pat` and for every
 entry of `tokens` alike:
 
-- **Rotating a token is an edit and a restart.** Tokens are read from the config file at boot and
-  passed straight through; none is ever copied into the database. Change the value (or the
-  environment variable behind it), restart Rocky Surf, and the next box gets the new token.
-  Boxes already provisioned keep the tokens they were built with — `secrets.env` is on the box.
-- **Every token is instance-wide, so scope each one like it.** Every server created on this
-  installation gets all of them, whoever created it — a repo-scoped entry narrows which
+- **Rotating a token in this file is an edit and a restart.** Tokens written here are read from
+  the config file at boot and passed straight through; none is ever copied into the database.
+  Change the value (or the environment variable behind it), restart Rocky Surf, and the next box
+  gets the new token. Boxes already provisioned keep the tokens they were built with —
+  `secrets.env` is on the box. **A connected account needs no restart**: that token lives in the
+  encrypted store, which is read at the moment a box is created, so pressing Connect (or
+  Disconnect) takes effect on the very next one.
+- **Every token in this file is instance-wide, so scope each one like it.** Every server created
+  on this installation gets all of them, whoever created it — a repo-scoped entry narrows which
   repository a token is *used for*, not which people receive it. On a single-admin install that
-  is exactly what you want; in `github-device` auth mode, where other people can hold accounts,
-  understand that you are handing your tokens to boxes they have root on. A per-user token
-  stored through the UI does not exist yet.
+  is exactly what you want; on an installation where other people can hold accounts, understand
+  that you are handing your tokens to boxes they have root on. **A connected account is the
+  exception**, and the better answer for that case: the token the Connect button obtains is
+  stored per user and reaches only the boxes that user creates. When both exist, the connected
+  token wins, and the Settings page says so on the fallback card.
 - **Nothing reads a `GITHUB_TOKEN` from core's own environment.** Setting that variable where
   core runs does nothing; the config key is the mechanism. (`ROCKYSURF_SECRET_KEY` and
   `ROCKYSURF_ADMIN_PASSWORD` are, along with `ROCKYSURF_PUBLIC_DIR`, the only variables core

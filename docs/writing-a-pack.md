@@ -900,7 +900,7 @@ hardcode what they carry.
 | `DEBIAN_FRONTEND` | every step | `noninteractive`. See [Rule 3](#rule-3-non-interactive). |
 | `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
 | `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
-| `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. |
+| `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
 | `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
 
 ### The two secrets, and how to use them safely

@@ -25,6 +25,10 @@
 - [0004 Packs are PR-able YAML files; the database is a cache and edit layer](0004-packs-as-pr-able-yaml.md): [Accepted] `packs/*.yaml` become the source of truth for shipped packs, format frozen at v0.1, with a CI-enforced author contract (idempotent, $ARCH-aware, non-interactive, runAs-honest).
 - [0006 Packs come from two places, and only the operator says which is trusted](0006-pack-registry-split-horizon.md): [Accepted] Official packs ship in the tarball; `rockysurf-shop` is community-only with no mirror. The trust label lives in the operator's config, never in a registry's index. Scanning discloses (every script verbatim, root steps, fetched URLs) rather than certifying; provenance gets its own columns because `sourceFile` would make the boot reconcile delete the pack. Format unchanged, so ADR-0004 stands.
 
+## Credentials
+
+- [0007 Two ways to hand Rocky Surf a GitHub credential, and where each one lives](0007-github-credentials-two-paths.md): [Accepted] A Connect GitHub button runs the OAuth device flow against an OAuth App the operator registers (`github.oauth.clientId`, public, no default — an official app would couple every install to a third party's registration); OAuth App over GitHub App because its user tokens do not expire. The connected token goes to the encrypted store per user, where `server-secrets.ts` already prefers it over `github.pat` and reads it live, so no restart; pasted per-repo PATs stay in the config file. rockysurf-4o3o is reversed for `github.pat` and `github.tokens.*.pat` only, via a per-field `accepts` flag — the FILE still interpolates `${VAR}` and hand-edited references still load. Disconnect forgets locally and does not revoke at GitHub.
+
 ## Operations
 
 - [0005 The config file's home, and the order it is found in](0005-config-file-resolution.md): [Accepted] Three-tier resolution — explicit `--config` (fatal if absent), cwd file (workflow tier), `~/.rockysurf/config.yaml` (durable home, literal path, no dataDir circularity); first saves create the home file, never cwd litter; the boot notice names which loaded.

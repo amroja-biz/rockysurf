@@ -54,6 +54,22 @@ auth:
   mode: local
 
 github:
+  # The OAuth App the "Connect GitHub" button on the Settings page signs in against (ADR-0007).
+  #
+  # Register your own at https://github.com/settings/applications/new, tick "Enable Device Flow"
+  # in its settings, and leave token expiration off. Any callback URL will do — the device flow
+  # does not use one. Rocky Surf ships no app of its own on purpose: an app somebody else
+  # registered could have its tokens revoked by them.
+  #
+  # A client ID is PUBLIC and needs no client secret — the device flow uses none — so this line
+  # is safe to commit. Until it is set, the Connect card renders disabled with these steps on it.
+  #
+  # The token the button obtains does NOT land in this file. It goes into the encrypted secrets
+  # store, under the account that connected, and takes precedence over `pat` below for that
+  # user's boxes. No restart: that store is read when a box is created.
+  # oauth:
+  #   clientId: "Iv1.0123456789abcdef"
+
   # Personal access token used to clone private repositories onto your boxes.
   # Needs `repo` scope. Leave unset if you only clone public repos.
   #
@@ -74,8 +90,13 @@ github:
   # The settings page shows `pat` and `tokens` as ONE list of access tokens, in which the entry
   # naming no repository, account or host is `pat`. Written here they stay two keys, because an
   # unscoped entry in the list below would be `pat` spelled longer and is refused at startup.
-  # Its token boxes are labelled "Token Environment Variable" and hold the bare name — you type
-  # ACME_WIDGETS_PAT there and the line below is what gets written.
+  # Its token boxes are labelled "Token" and take the token ITSELF, which is then written into
+  # this file — so treat this file as a credential once you have used them.
+  #
+  # THE ${VAR} FORM BELOW IS STILL SUPPORTED AND ALWAYS WILL BE. It is interpolated when this
+  # file is read, so the file carries nothing; a variable that is not set is a startup error
+  # naming it. A hand-written reference keeps loading, and the settings page shows it as a state
+  # with an EMPTY box beside it — leave the box empty and the reference here is untouched.
   # tokens:
   #   - repo: "acme/widgets"
   #     pat: "${ACME_WIDGETS_PAT}"
