@@ -208,10 +208,34 @@ function splitOwnerSlashRepo(entry: unknown, ctx: z.core.$RefinementCtx): unknow
 /** An entry of `github.tokens`, in either the split form or the `owner/name` one (ly2n). */
 const githubTokenEntrySchema = z.preprocess(splitOwnerSlashRepo, githubTokenSchema)
 
+/**
+ * The OAuth App the "Connect GitHub" button runs its device flow against (rockysurf-7fyf.1).
+ *
+ * THE CLIENT ID IS PUBLIC, which is why it is an ordinary string in a plaintext file rather
+ * than a credential with a custody story. The device flow needs no `client_secret` — GitHub's
+ * own error taxonomy documents `incorrect_client_credentials` as "client_secret not needed" —
+ * so there is nothing here an attacker who reads the file gains: they can start a device flow
+ * that only the account holder, typing a code on github.com, can ever complete.
+ *
+ * NO DEFAULT, deliberately. Rocky Surf could ship a public client id for an app it owns, the
+ * way `gh` does, and that was rejected: it would make every self-hosted installation depend on
+ * an app registration a third party controls, with tokens that third party could revoke and an
+ * authorize screen naming an organisation the operator has no relationship with — in a product
+ * whose whole design (ADR-0001) is "runs on your box, phones nobody". Shipping an official app
+ * later is a `.default()` on this one line; unwinding one is not. See ADR-0007.
+ */
+const githubOauthSchema = section(
+  z.strictObject({
+    /** From an OAuth App with "Enable Device Flow" ticked. Public — safe to commit. */
+    clientId: z.string().trim().min(1).optional(),
+  }),
+)
+
 const githubSchema = section(
   z.strictObject({
     /** Personal access token for cloning private repos. Prefer `${GITHUB_PAT}` over a literal. */
     pat: z.string().min(1).optional(),
+    oauth: githubOauthSchema,
     /**
      * Per-repository tokens, most-specific match wins (rockysurf-ta7g).
      *

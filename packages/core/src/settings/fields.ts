@@ -189,6 +189,30 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
    * `repo: "acme/widgets"` in the one-string form (ly2n) or `owner: acme` on its own — the two
    * halves of a scope are not two questions to an operator, who thinks in repository names.
    */
+  /**
+   * The Connect GitHub button's OAuth App (rockysurf-7fyf.1).
+   *
+   * `kind: 'string'`, NOT `'secret'`, and that is a classification rather than an oversight. A
+   * device-flow client id is public — the flow needs no `client_secret` — so marking it secret
+   * would mask it in `redactTree` and hide from the operator the one value they need to be able
+   * to proof-read against the app's own settings page.
+   *
+   * WHEN IT IS UNSET THE BUTTON STILL RENDERS, disabled, with these two steps. That is the
+   * opposite of the `auth.mode` rule above, and the difference is where the edit goes: `hidden`
+   * is for a control whose only message is "you cannot use this" and whose edit has NO
+   * destination. This edit has one — register an app, paste the id, the button works — so
+   * hiding it would hide the cure along with the disease.
+   */
+  {
+    path: 'github.oauth.clientId',
+    kind: 'string',
+    writable: true,
+    help:
+      'The client ID of an OAuth App, which is what the Connect GitHub button signs in against. ' +
+      'Register one at github.com/settings/applications/new, tick "Enable Device Flow" in its ' +
+      'settings, and leave token expiration off. A client ID is public: it is safe in this file ' +
+      'and safe to commit.',
+  },
   {
     path: 'github.pat',
     kind: 'secret',

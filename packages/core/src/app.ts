@@ -35,6 +35,8 @@ import { createJobs, type Jobs } from './jobs/index.js'
 import { createLifecycleService, type LifecycleService } from './servers/lifecycle.js'
 import { preflightRepositories, preflightRepository } from './git/preflight.js'
 import { createGitRoutes } from './git/resolve.js'
+import { createGithubRoutes } from './github/routes.js'
+import type { FetchLike } from './github/device-flow.js'
 import { narrowTokensToRepositories } from './git/token-matching.js'
 import { githubTokenScope } from './bootstrap/server-secrets.js'
 import { createServerRoutes } from './servers/routes.js'
@@ -78,6 +80,11 @@ export interface AppDeps {
    * themselves; absent means the secrets endpoint serves an empty set rather than 500ing.
    */
   loadServerSecrets?: (server: ServerRow) => Promise<Record<string, string>>
+  /**
+   * The `fetch` the GitHub device flow uses (rockysurf-7fyf.1). Production leaves it unset and
+   * gets the platform one; the tests pass a stub, which is what keeps the suite offline.
+   */
+  githubFetch?: FetchLike
   /** Shared with the boot path and the job loop, so both can push to open streams. */
   events?: EventsService
   sessionTtlMs?: number
@@ -475,6 +482,34 @@ export function createApp(deps: AppDeps): CreatedApp {
   // applies its own ownership check. Not mounted without a secrets store, because there would
   // be nothing to decrypt.
   if (deps.secretsStore) app.route('/', createSshKeyRoutes({ db, secrets: deps.secretsStore }))
+
+  /* -------------------------------------------------------------------- connect github */
+
+  /**
+   * The device flow behind the Connect GitHub button (rockysurf-7fyf.1).
+   *
+   * Guarded on the secrets store for the same reason the key download is: the token it mints
+   * goes into the encrypted store, so without one there is nowhere to put it and the honest
+   * answer is a 404 rather than a route that discovers that at request time.
+   *
+   * The config's github block is passed rather than the whole config — the routes need the
+   * client id and one boolean, and reading `github.pat` itself here would put a credential in
+   * their reach for no purpose. `fetch` is injected so the tests script GitHub's answers.
+   */
+  if (deps.secretsStore) {
+    app.route(
+      '/',
+      createGithubRoutes({
+        db,
+        secrets: deps.secretsStore,
+        config: {
+          ...(config.github.oauth.clientId ? { clientId: config.github.oauth.clientId } : {}),
+          configFallbackSet: Boolean(config.github.pat),
+        },
+        ...(deps.githubFetch ? { fetch: deps.githubFetch } : {}),
+      }),
+    )
+  }
 
   /* ------------------------------------------------------------------------- the SPA */
 
