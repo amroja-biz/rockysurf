@@ -470,6 +470,54 @@ input[type='file']::file-selector-button:hover {
   font-size: 0.75rem;
 }
 
+/* The tab list, the app's first (rockysurf-jn71). Same tokens and the same `.selected` modifier
+   the radio card above already uses, so a shelf of packs under a tab reads as one control rather
+   than as two widgets stacked — the rule the pack-shop block further down states out loud.
+   The underline carries the state; the border does not, because a boxed tab beside a boxed radio
+   card is two competing rectangles. */
+.tablist {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--rs-border);
+  margin-bottom: 0.75rem;
+}
+
+.tab {
+  background: none;
+  border: none;
+  /* Sits ON the list's own border, so the active tab's underline replaces it rather than
+     doubling it. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.875rem;
+  color: var(--rs-muted);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--rs-text);
+}
+
+.tab.selected {
+  color: var(--rs-heading);
+  border-bottom-color: var(--rs-link);
+}
+
+/* Never removed, only moved inward — this control is arrow-key driven, and the focus ring is how
+   a keyboard user knows which shelf they are on. */
+.tab:focus-visible {
+  outline: 2px solid var(--rs-link);
+  outline-offset: -2px;
+}
+
+/* What is chosen, said on both tabs, because the checked radio may be on the other one. */
+.pack-selected {
+  margin: 0 0 0.75rem;
+}
+
 /* The resolved offering: the one number the create form exists to show. */
 .resolved-offering {
   background: var(--rs-surface);

@@ -338,6 +338,13 @@ describe('installing', () => {
     await install(routes)
     const packs = await json(await get(routes, '/api/v1/surge-packs'))
     expect(packs.map((p: { packId: string }) => p.packId)).toEqual(['rust-dev'])
+    // ...and it is choosable AS a contributed pack: the public list says where it came from, in
+    // the one derived word the Surge Pack picker files it under Community by (rockysurf-jn71).
+    expect(packs[0].provenance).toBe('registry')
+    // The rest of the provenance stays admin-only. `sourceFile` is what the boot reconcile reads
+    // and null is what keeps this row alive; the URL, the digest and the trust label are the
+    // operator's consent, disclosed on the Pack Shop page and not on the create-a-server one.
+    for (const withheld of ['sourceFile', 'registry']) expect(withheld in packs[0]).toBe(false)
   })
 
   it('404s when no registry is configured', async () => {
@@ -365,5 +372,11 @@ describe('a later YAML import over an installed pack', () => {
     const pack = getPack(db, 'rust-dev')!
     expect(pack.name).toBe('My Rust')
     expect(pack.registrySource).toBeNull()
+
+    // And the public list says so in its own vocabulary: `local`, the third value (rockysurf-jn71).
+    // This row is the reason there are three rather than two — it is neither shipped with the
+    // release nor somebody else's, and calling it either would be a claim about who wrote it.
+    const served = await json(await get(routes, '/api/v1/surge-packs'))
+    expect(served.find((p: { packId: string }) => p.packId === 'rust-dev').provenance).toBe('local')
   })
 })

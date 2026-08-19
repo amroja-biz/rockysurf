@@ -127,6 +127,16 @@ const expectServedPackShape = (pack: any) => {
     expect(typeof pack[field], `${pack.packId}.${field}`).toBe('string')
     expect(pack[field].length, `${pack.packId}.${field}`).toBeGreaterThan(0)
   }
+  // Where it came from, derived, on every pack (rockysurf-jn71). Not optional the way the four
+  // above are: a pack row is always in exactly one of these three states, so a pack served
+  // without the field would leave the picker unable to file it under either tab.
+  expect(['official', 'registry', 'local'], `${pack.packId}.provenance`).toContain(pack.provenance)
+  // ...and the derived word is ALL that crosses. The path on disk, the registry's URL, the
+  // digest and the trust label the operator consented to are operator infrastructure detail,
+  // and this route is served to every logged-in user, not only to admins.
+  for (const withheld of ['sourceFile', 'registry', 'registrySource', 'registryUrl', 'registrySha256', 'registryTrust']) {
+    expect(withheld in pack, `${pack.packId}.${withheld} is not the public list's to serve`).toBe(false)
+  }
 }
 
 describe('public shapes match the SPA client', () => {
@@ -159,6 +169,15 @@ describe('public shapes match the SPA client', () => {
     const claude = packs.find((p: any) => p.packId === 'ai-coding-agents')
     expect(claude).toMatchObject({ requiresRepos: true, requiresRdp: false })
     expect(claude.desktop).toBeUndefined()
+  })
+
+  it('calls every pack that shipped in the tarball official, and derives it from the file', async () => {
+    // What the Surge Pack picker's Official tab is (rockysurf-jn71), and what ADR-0006 says the
+    // word may mean: backed by a `packs/*.yaml`, which is the one field no registry writes.
+    const packs = await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))
+    for (const pack of packs.filter((p: any) => SHIPPED_PACK_IDS.includes(p.packId))) {
+      expect(pack.provenance, pack.packId).toBe('official')
+    }
   })
 
   it('carries the pack guide and its bundled image, which is what the server page renders', async () => {

@@ -475,13 +475,24 @@ export interface SurgePack {
   requiresRdp: boolean
   desktop?: 'xfce'
   /**
-   * The YAML file this pack came from, or null for a row created here.
+   * Where the pack came from, in core's words (rockysurf-jn71).
    *
-   * File-backed rows are owned by the repository: the boot sync rewrites them from disk
-   * (ADR-0004), so an edit made in this UI would silently disappear on the next start. The
-   * admin UI shows them read-only for that reason.
+   *  - `official` — shipped with this Rocky Surf release, i.e. backed by a `packs/*.yaml`;
+   *  - `registry` — the operator installed it from a pack registry;
+   *  - `local` — created or YAML-imported in this installation.
+   *
+   * Derived server-side and REQUIRED, because the public list computes it for every pack. The
+   * Surge Pack picker groups the last two under "Community"; that grouping is this app's, and
+   * core deliberately does not make it — a pack the operator wrote themselves is not somebody
+   * else's work, and `local` is the value that says so.
+   *
+   * This replaces a `sourceFile?: string | null` that used to be declared here. It was never
+   * populated on this route — the public projection has always withheld the path on disk — so
+   * anything branching on it typechecked, read `undefined` for every pack, and was silently
+   * wrong. There is no path, URL, digest or trust label on the public list; the Pack Shop page
+   * reads those off `AdminSurgePack`, which really does carry them.
    */
-  sourceFile?: string | null
+  provenance: 'official' | 'registry' | 'local'
 }
 
 export async function listSurgePacks(): Promise<SurgePack[]> {
