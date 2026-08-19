@@ -1,0 +1,135 @@
+# Grok Build — xAI's terminal coding agent, on the shared base toolchain.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# Only `grok-build` is defined in this file.
+version: 1
+
+pack:
+  packId: grok-build
+  name: Grok Build
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - grok-build
+  displayOrder: 7
+  enabled: true
+  imageUrl: /images/surge-packs/grok-build.png
+  # Grok Build will run in any directory, but it reads and edits a checkout, and its
+  # `--worktree` flag is git's — so a box with no repository is a box where it has
+  # nothing to work on.
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Grok Build
+      grok                    starts the terminal UI in the directory you are standing in
+      grok -p "..."           one prompt, answer to stdout, no UI — for scripts
+
+      Sign in first. Grok Build normally finishes signing in by opening a browser, and
+      this box has neither a desktop nor a browser, so use one of these two instead:
+
+        grok login --device-auth
+          prints a code you enter from a machine that does have a browser. This is the
+          one to use if your access comes with a SuperGrok or X Premium+ subscription.
+
+        echo 'export XAI_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+          bills the xAI API instead. Keys are minted at https://console.x.ai
+
+        grok models             tells you which of the two you are actually on
+
+      Grok edits files and runs shell commands in the directory you start it in, and
+      asks before each one. --always-approve, and --permission-mode bypassPermissions,
+      switch that asking off — on a box holding your repositories, be sure which of
+      those you typed. `grok --worktree NAME` works in a fresh git worktree instead of
+      your checkout, which is the cheaper way to let it run unattended.
+
+      This box pins Grok Build 1.0.5. `grok update` moves off it and installs into
+      ~/.local, which is yours — no root needed.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      agent-deck    session manager
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  - toolId: grok-build
+    name: Grok Build
+    description: xAI's coding agent, in your terminal
+    category: agent
+    url: https://x.ai/build
+    # Band 40, alongside the other agents: after the base toolchain, before any setup step.
+    # Node is band 20, and this package wants Node 20 or newer — the base toolchain's is 22.
+    installOrder: 40
+    # npm needs no privilege once it is pointed at a prefix inside this user's home, so
+    # claiming root would be the rule-4 dishonesty the smoke container is built to catch.
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # npm's global prefix, for this user. The base toolchain installed npm system-wide as
+      # root, so a bare `npm install -g` would try to write under /usr and fail here exactly
+      # as it fails on a real box — `rocky` is not in sudoers on either. A prefix under $HOME
+      # needs no privilege and leaves nothing root-owned in /home/rocky.
+      export NPM_CONFIG_PREFIX="$HOME/.local"
+      export PATH="$HOME/.local/bin:$PATH"
+      #
+      # PINNED, AND DELIBERATELY NOT WITH xAI'S OWN ONE-LINER. The install method x.ai
+      # advertises is `curl -fsSL https://x.ai/cli/install.sh | bash`: unpinned remote code,
+      # which is the shape docs/writing-a-pack.md warns about, because the thing CI tested is
+      # then not the thing a box built next month gets. The usual way out of that — fetch a
+      # pinned release asset and check its digest, as `beads` does — is not open here, since
+      # xai-org/grok-build publishes no releases to fetch.
+      #
+      # What xAI does publish is this npm package (maintainer security@x.ai, Apache-2.0), and
+      # a version there is exact. npm also resolves the right build for the machine without
+      # help: the published tarball is a small launcher, and the actual binaries arrive as
+      # per-platform optional dependencies pinned to this same version, selected from the
+      # package's own os/cpu metadata. So there is nothing left here to branch on, which is
+      # why this script reads no $ARCH — the same reason the shop's aider pack does not.
+      #
+      # To bump: change this one line, and the version in the guide above with it.
+      grok_version=1.0.5
+      #
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone makes
+      # a re-run a genuine no-op — the half of rule 1 the run-twice gate measures.
+      stamp="$HOME/.rockysurf/installed-grok-build-$grok_version"
+      if [ ! -f "$stamp" ]; then
+        npm install -g --no-fund --no-audit "@xai-official/grok@$grok_version"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      # `grok update` shells out to npm, and an interactive login shell does not have the
+      # prefix exported above. Without this the user's own update writes to the system prefix,
+      # is refused, and they are stranded on the pinned version with no way off it that does
+      # not involve reading this file. Appended under a guard rather than written whole: an
+      # .npmrc may already hold settings that are none of this pack's business.
+      touch "$HOME/.npmrc"
+      grep -qF 'prefix=' "$HOME/.npmrc" || echo "prefix=$HOME/.local" >> "$HOME/.npmrc"
+      # Guarded for the same reason: an unguarded append puts the line in twice on a resumed
+      # install, and the smoke harness hashes .bashrc either side of the journal discard.
+      touch "$HOME/.bashrc"
+      grep -qF '.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+      grok --version >/dev/null
