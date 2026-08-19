@@ -22,6 +22,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
   3. [Non-interactive](#rule-3-non-interactive)
   4. [`runAs`-honest](#rule-4-runas-honest)
 - [What you may not assume](#what-you-may-not-assume)
+- [Which version to install](#which-version-to-install)
 - [The file format](#the-file-format)
 - [A complete pack](#a-complete-pack)
 - [The CI smoke test](#the-ci-smoke-test)
@@ -317,7 +318,7 @@ following exist or are reachable.
 | The AWS CLI, or any cloud SDK | Nothing on the box is cloud-specific by design, and the box may not be on AWS at all | Bundle what you need, or don't need it |
 | Cloud credentials, instance roles, or `s3://` access | The box holds no cloud credentials. A pack that reaches for one is broken on every other provider | Fetch assets over plain HTTPS from a public URL |
 | The instance metadata service (`169.254.169.254`) | The bootstrap design has zero metadata coupling, and user-supplied boxes have no metadata service at all | Read `$ARCH` and the documented environment instead |
-| A GitHub API call to resolve "latest" | `api.github.com` allows 60 unauthenticated requests an hour **per source IP**, and a bootstrapping box never has a token. A shared CI runner or anything behind NAT is spending somebody else's quota too, and the 403 usually surfaces as an unrelated-looking failure in whichever tool is last in `installOrder` | Pin a version and fetch `https://github.com/OWNER/REPO/releases/download/TAG/ASSET`, which is CDN-served, has no quota, and lets you verify a `sha256` |
+| A GitHub API call to resolve "latest" | `api.github.com` allows 60 unauthenticated requests an hour **per source IP**, and a bootstrapping box never has a token. A shared CI runner or anything behind NAT is spending somebody else's quota too, and the 403 usually surfaces as an unrelated-looking failure in whichever tool is last in `installOrder` | Pin a version and fetch `https://github.com/OWNER/REPO/releases/download/TAG/ASSET`, which is CDN-served, has no quota, and lets you verify a `sha256`. This stays true for GitHub-released tools even though agents on a registry channel now install unversioned — see [Which version to install](#which-version-to-install) |
 | That the box can reach the control plane | The default topology is outbound-only: the control plane connects to the box, never the reverse, and it may sit behind NAT with no public address | Never phone home. Write to stdout; the agent captures it |
 | A desktop, an X server, or a display | Only packs that declare `desktop: xfce` get one | Declare it, or stay headless |
 | A login session for `rocky` — `systemctl --user`, `$XDG_RUNTIME_DIR`, a per-user D-Bus | The agent drops privilege without a PAM session, so no user systemd instance exists to install a user unit into. This is true on a real cloud box, not only in a container | From a `runAs: root` step, `loginctl enable-linger rocky` and wait for `/run/user/<uid>/bus`; the `rocky` step can then use `systemctl --user`. Guard both on `[ -d /run/systemd/system ]` |
@@ -327,14 +328,11 @@ following exist or are reachable.
 
 Two more, worth calling out separately:
 
-- **Pin what you download.** `@latest` and a `main`-branch install script mean the thing CI
-  tested is not the thing your users get. Prefer a version tag or a checksum. Cache-busting a
-  download URL (appending `?$(date +%s)`) guarantees this problem rather than avoiding it.
-  This applies to a vendor's own `install.sh` as much as to a binary: piping one to `bash`
-  runs code you did not pin and cannot check, and several of them resolve "latest" through the
-  quota above. `beads`, `agent-deck` and `beads-viewer` in `packs/ai-coding-agents.yaml` are the
-  worked examples — each fetches one pinned asset and verifies a digest per architecture.
-  Bypassing an installer means you own the version bump, which is the trade being made.
+- **How you fetch is not the same question as which version you fetch.** Never resolve a
+  version through a rate-limited API, never pipe an unpinned `main`-branch script to `bash`,
+  and never cache-bust a download URL with `?$(date +%s)` — that last one guarantees a
+  different payload on every run, which is the opposite of what rule 1 asks for. Which
+  *version* to ask for is a separate decision with its own section below.
 - **Secrets come from the environment, and only yours.** If a user supplies an API key for your
   tool, it arrives as an environment variable in your step. Control-plane credentials are never
   exported to install steps. Don't go looking for them, and never write a secret into a
@@ -352,6 +350,106 @@ Two more, worth calling out separately:
 
 Standard output and standard error are captured per step. Log freely; it is the only debugging
 signal a user gets when something fails on their box.
+
+---
+
+## Which version to install
+
+This page used to say "pin what you download", flatly, for everything. It no longer does, and
+the reason is worth stating rather than quietly editing away: pinning an **agent** bought a
+reproducibility it could not actually keep, and charged the user staleness for it.
+
+A pack exists to hand somebody a working coding agent. These tools ship constantly, users
+expect the one they read about this morning, and most of them update themselves the first time
+they run — so a pinned version is not really the version the box ends up on, it is only the
+version the box *starts* on, and the pin's whole promise evaporates the moment the tool
+updates itself. What the pin reliably did deliver was a box that arrives out of date, and a
+pack file that needs a pull request every time upstream ships.
+
+So the rule now depends on **where the tool comes from**, not on what it is.
+
+### 1. A quota-free registry channel: install latest, unversioned
+
+npm, PyPI (via `pipx`), and anything else that serves any version on demand with no
+per-IP request budget. Ask for the package and nothing else:
+
+```bash
+npm install -g --no-fund --no-audit @openai/codex
+pipx install aider-chat
+```
+
+A bare name resolves the registry's release channel — npm's `latest` dist-tag, PyPI's newest
+non-prerelease. That is deliberate and it is the behaviour to rely on: a package whose newest
+upload is a prerelease (npm `alpha`, `beta`, `next`) is **not** what a bare install returns, so
+"latest" here means latest *stable*, not latest *uploaded*.
+
+**The accepted risk, stated plainly:** a broken upstream release breaks provisioning of NEW
+boxes until upstream fixes it. Existing boxes are untouched — nothing re-runs an install
+script on a server that already booted. This was weighed and accepted: the failure is loud,
+it is upstream's to fix, and it is rarer than the guaranteed staleness a pin produced.
+
+### 2. GitHub release assets only: the pin and the digest stay
+
+`beads`, `agent-deck`, `beads-viewer` and `dolt` are pinned to a tag and verified against a
+`sha256`, and **they must stay that way.** This is not an oversight for somebody to tidy up
+later, so read this paragraph before you "fix" one of them.
+
+There is no quota-free way to ask GitHub what "latest" is. The only endpoint that answers is
+`api.github.com`, which allows 60 unauthenticated requests an hour **per source IP** — and a
+bootstrapping box never has a token, so every one of those calls is unauthenticated by
+construction. Resolving "latest" there is exactly the outage in `rockysurf-c6cm` and
+`rockysurf-pcma`: a shared CI runner drew an address whose quota another tenant had already
+spent, the call returned 403, upstream's installer did not fail on it but fell through to a
+source build, found no toolchain, and exited 1 — with the asset it wanted sitting on a CDN
+that has no quota at all.
+
+The download endpoint, `https://github.com/OWNER/REPO/releases/download/TAG/ASSET`, is that
+CDN. It has no quota, and it lets you check a digest. But it needs a TAG, and a tag is a pin.
+So for these tools the pin is not a freshness policy, it is the price of not touching the
+rate-limited API — and bypassing the vendor's installer means you own the version bump, which
+is the trade being made.
+
+### 3. Agent tools ride latest; base plumbing may stay pinned
+
+The ruling above is about the **agent** — the thing in `category: agent` that the pack exists
+to deliver. Base plumbing is a different risk: Node, the Go toolchain, `gh`, Playwright and
+the desktop are the substrate every pack stands on, and a bad one breaks all of them at once
+rather than breaking one pack for the people who chose it. Those keep their current treatment
+— `nodejs` pins the major and tracks the patch, `gh` tracks apt's stable — and a pack author
+changing that should say why in the script.
+
+### When an agent may still be pinned
+
+One case, and it is not a freshness judgement: **upstream's latest is known broken for what
+this pack promises.** `gt` in `packs/gas-town.yaml` is pinned at `v1.1.0` because `v1.2.1`
+cannot initialise the Beads-backed HQ that pack exists to deliver on a fresh box. A pin like
+that needs the reason written into the script, and an issue tracking its removal
+(`rockysurf-4zmx`). "Latest scares me" is not that reason.
+
+### Idempotency without a version in the stamp
+
+A pinned tool could put its version in a stamp file — `installed-aider-0.86.2` — so that
+bumping the pin reinstalled and leaving it alone was a no-op. Unversioned installs cannot do
+that, and rule 1 still applies: the run-twice gate discards the journal and requires the
+second run to change nothing.
+
+Two shapes that work:
+
+```bash
+# Presence guard. The second run finds the binary and does nothing.
+command -v amp >/dev/null 2>&1 || npm install -g --no-fund --no-audit @sourcegraph/amp
+
+# Or lean on an installer that is convergent by itself. `npm install -g` re-resolves the
+# registry, sees the version it already installed, and exits without rewriting anything —
+# which is a no-op in effect, though not a free one.
+npm install -g --no-fund --no-audit @openai/codex
+```
+
+A presence guard has a consequence worth knowing: it pins the box to whatever was current on
+the day it booted, because nothing reinstalls afterwards. That is the right default anyway —
+**updating a live box belongs to the tool's own updater, not to us.** A pack's install script
+runs once, at boot, and never again; a user who wants a newer agent three weeks later runs
+`grok update` or `npm update -g`, not a re-bootstrap. Say so in your `guide`.
 
 ---
 
@@ -740,7 +838,9 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 - [ ] No `sudo` anywhere in a `runAs: rocky` script.
 - [ ] No root-owned files left in `/home/rocky`.
 - [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
-- [ ] Downloads are pinned to a version or a checksum, not `latest` or `main`.
+- [ ] The agent installs **unversioned** from its registry channel; anything fetched from
+      GitHub releases is pinned to a tag and verified against a `sha256`. Nothing resolves a
+      version through `api.github.com`. See [Which version to install](#which-version-to-install).
 - [ ] Each script ends with a command that verifies the install actually worked.
 - [ ] `installOrder` uses the bands above and leaves gaps of 10.
 - [ ] `requiresRepos`, `requiresRdp` and `desktop` describe what your pack actually needs.

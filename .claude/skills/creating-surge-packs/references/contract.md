@@ -175,11 +175,14 @@ looked fine everywhere it was tested. If your pack needs it, your pack installs 
 
 Two more:
 
-- **Pin what you download.** `@latest` and a `main`-branch install script mean the thing CI
-  tested is not the thing your users get. Prefer a version tag or a checksum. Cache-busting a
-  download URL (`?$(date +%s)`) guarantees this problem rather than avoiding it, and is rejected
-  outright. When you deliberately stay unpinned — an agent CLI that must track its own API — put
-  the reason in a comment in the file.
+- **Which version you install depends on where it comes from.** A quota-free registry (npm, PyPI
+  via `pipx`) serves any version on demand, so install **unversioned** and let the user have the
+  current release — a bare name takes the registry's stable channel, not a prerelease. A tool
+  that ships only as a GitHub release asset stays **pinned to a tag with a `sha256`**, because
+  the only endpoint that answers "what is latest" is the rate-limited one above. Say in a comment
+  which rule you are under. Separately, and regardless of version: never pipe a vendor's
+  `install.sh` to `bash`, and never cache-bust a download URL (`?$(date +%s)`) — that one is
+  rejected outright, and it guarantees a different payload on every run.
 - **Secrets come from the environment, and only yours.** Control-plane credentials are never
   exported to install steps. Never write a secret into a world-readable file, and never pass one
   on a command line where `ps` can read it.

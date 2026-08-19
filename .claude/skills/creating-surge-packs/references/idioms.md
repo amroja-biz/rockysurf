@@ -28,8 +28,14 @@ their own reference: `desktops-and-daemons.md`. Skip it for a headless pack.
 
 ## Where versions and checksums come from
 
-You are required to pin, so budget a few minutes for this — it is reliably the slowest part of
-writing a pack, and plenty of projects publish no digest at all. The sources, in order: the
+**First check whether you need any of this.** A tool served by a quota-free registry — npm, PyPI
+via `pipx` — installs unversioned, so there is no version to look up and no digest to record.
+This section is for the other case: a tool that ships only as a GitHub release asset, which stays
+pinned to a tag and verified against a `sha256`. See `docs/writing-a-pack.md` § Which version to
+install for why the two are treated differently.
+
+For that case, budget a few minutes — it is reliably the slowest part of writing a pack, and
+plenty of projects publish no digest at all. The sources, in order: the
 project's own release page or download JSON (`https://go.dev/dl/?mode=json` gives version and
 per-tarball sha256 in one request); a `checksums.txt`/`SHA256SUMS`/`*.sha256` asset published
 beside the release; failing both, download the artifact once and hash it yourself, and say in a
@@ -193,10 +199,17 @@ version is a no-op.
 
 ```bash
 set -euo pipefail
+# Unversioned on purpose: npm is a quota-free registry, so the user gets the current release,
+# and a bare name takes the `latest` dist-tag rather than any prerelease the package publishes.
 # npm install -g is convergent, so a re-run is a no-op.
 npm install -g --no-fund --no-audit mytool
 mytool --version >/dev/null
 ```
+
+Where you would rather not re-resolve the registry on every resumed install, guard on presence
+instead — `command -v mytool >/dev/null 2>&1 || npm install -g --no-fund --no-audit mytool`. The
+trade is that the box then keeps whatever it installed at boot, so say in the `guide` that moving
+forward is the tool's own updater.
 
 **`runAs: root`.** A global install writes into `/usr/lib/node_modules`, which is root's — the
 single most common rule-4 violation is a `runAs: rocky` tool that runs `sudo npm install -g`.

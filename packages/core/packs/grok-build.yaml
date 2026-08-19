@@ -57,8 +57,9 @@ pack:
       those you typed. `grok --worktree NAME` works in a fresh git worktree instead of
       your checkout, which is the cheaper way to let it run unattended.
 
-      This box pins Grok Build 1.0.5. `grok update` moves off it and installs into
-      ~/.local, which is yours — no root needed.
+      This box has whatever Grok Build was current the day it booted, and nothing on the box
+      moves it forward on its own. `grok --version` says where you are; `grok update` moves
+      you, and installs into ~/.local, which is yours — no root needed.
 
     GitHub
       gh auth login           then: gh auth setup-git
@@ -97,29 +98,30 @@ tools:
       export NPM_CONFIG_PREFIX="$HOME/.local"
       export PATH="$HOME/.local/bin:$PATH"
       #
-      # PINNED, AND DELIBERATELY NOT WITH xAI'S OWN ONE-LINER. The install method x.ai
-      # advertises is `curl -fsSL https://x.ai/cli/install.sh | bash`: unpinned remote code,
-      # which is the shape docs/writing-a-pack.md warns about, because the thing CI tested is
-      # then not the thing a box built next month gets. The usual way out of that — fetch a
-      # pinned release asset and check its digest, as `beads` does — is not open here, since
-      # xai-org/grok-build publishes no releases to fetch.
+      # UNVERSIONED, AND DELIBERATELY NOT WITH xAI'S OWN ONE-LINER. Those are two separate
+      # decisions and it is worth not confusing them.
       #
-      # What xAI does publish is this npm package (maintainer security@x.ai, Apache-2.0), and
-      # a version there is exact. npm also resolves the right build for the machine without
-      # help: the published tarball is a small launcher, and the actual binaries arrive as
-      # per-platform optional dependencies pinned to this same version, selected from the
-      # package's own os/cpu metadata. So there is nothing left here to branch on, which is
-      # why this script reads no $ARCH — the same reason the shop's aider pack does not.
+      # WHICH VERSION: latest, per docs/writing-a-pack.md § Which version to install. npm is a
+      # quota-free channel, so asking for the current release costs nothing and hands the user
+      # the agent they actually read about — where a pin would have handed them a stale one and
+      # not even kept it, since `grok update` exists and users run it. A bare name resolves the
+      # `latest` dist-tag, which is the part that makes this safe here rather than merely
+      # convenient: this package publishes an `alpha` tag that currently runs AHEAD of latest,
+      # and an unversioned install does not pick that up.
       #
-      # To bump: change this one line, and the version in the guide above with it.
-      grok_version=1.0.5
+      # HOW: not `curl -fsSL https://x.ai/cli/install.sh | bash`, which is what x.ai advertises.
+      # That half of the old rule stands untouched — piping a vendor's installer runs code this
+      # repository never sees and the smoke gate cannot hold still. npm serves the same build:
+      # the published tarball is a small launcher, and the binaries arrive as per-platform
+      # optional dependencies selected from the package's own os/cpu metadata, so npm resolves
+      # the architecture itself and this script reads no $ARCH.
       #
-      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone makes
-      # a re-run a genuine no-op — the half of rule 1 the run-twice gate measures.
-      stamp="$HOME/.rockysurf/installed-grok-build-$grok_version"
-      if [ ! -f "$stamp" ]; then
-        npm install -g --no-fund --no-audit "@xai-official/grok@$grok_version"
-        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      # A presence guard rather than a version stamp, because there is no version to stamp: the
+      # second run finds the binary and does nothing, which is the half of rule 1 the run-twice
+      # gate measures. What that costs is written in the guide — the box keeps whatever was
+      # current the day it booted, and moving forward is `grok update`, not a re-bootstrap.
+      if ! command -v grok >/dev/null 2>&1; then
+        npm install -g --no-fund --no-audit @xai-official/grok
       fi
       # `grok update` shells out to npm, and an interactive login shell does not have the
       # prefix exported above. Without this the user's own update writes to the system prefix,
