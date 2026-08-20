@@ -314,6 +314,71 @@ describe('the providers endpoint feeds the create page', () => {
  * These cases pin the replacement: explicit wins, one provider needs no saying, and genuine
  * ambiguity is refused rather than guessed.
  */
+/**
+ * The list survives a provider that cannot be asked (rockysurf-gg9x).
+ *
+ * The report: the owner's GCP application-default credentials hit Google's periodic reauth,
+ * and GET /servers answered 500 over a list that was mostly healthy AWS and Hetzner rows —
+ * "Could not load your servers", with the one message that named the fix (`gcloud auth
+ * application-default login`) visible only in the response nobody rendered. An expired
+ * credential for one cloud is an ordinary event on a self-hosted laptop, so the read
+ * degrades: stored rows, the provider's own message beside the stale ones, verbatim.
+ */
+describe('a provider whose credentials have expired (rockysurf-gg9x)', () => {
+  const REAUTH = new ProviderError(
+    'auth',
+    'could not obtain Google Cloud credentials. Run `gcloud auth application-default login`.',
+  )
+
+  /** One broken cloud, one healthy one, one server on each. */
+  async function twoClouds(): Promise<{ broken: FakeProvider; staleId: string; freshId: string }> {
+    const a = makeFakeProvider({ id: 'cloud-a' })
+    const b = makeFakeProvider({ id: 'cloud-b' })
+    opened = openTestDatabase()
+    const secrets = new MemorySecretStore()
+    await ensureLocalAdmin({ db: opened.db, secrets, password: PASSWORD })
+    events = createEventsService()
+    app = createApp({
+      db: opened.db,
+      config,
+      secrets,
+      events,
+      providers: new ProviderRegistry([a, b]),
+    }).app
+    cookie = await login()
+
+    const stale = (await (await post('/api/v1/servers', { ...CREATE, provider: 'cloud-a' })).json()) as { serverId: string }
+    const fresh = (await (await post('/api/v1/servers', { ...CREATE, provider: 'cloud-b' })).json()) as { serverId: string }
+    vi.spyOn(a, 'describe').mockImplementation(async () => {
+      throw REAUTH
+    })
+    return { broken: a, staleId: stale.serverId, freshId: fresh.serverId }
+  }
+
+  it('serves every stored row with the provider message beside the stale ones, not a 500', async () => {
+    const { staleId, freshId } = await twoClouds()
+
+    const res = await get('/api/v1/servers')
+    expect(res.status).toBe(200)
+    const rows = (await res.json()) as { serverId: string; syncError?: string }[]
+    expect(rows).toHaveLength(2)
+    // The remedy the provider wrote into its message reaches the client verbatim...
+    expect(rows.find((r) => r.serverId === staleId)?.syncError).toContain('gcloud auth application-default login')
+    // ...and the healthy cloud's row is served as if nothing happened.
+    expect(rows.find((r) => r.serverId === freshId)?.syncError).toBeUndefined()
+  })
+
+  it('degrades the single-server read the same way, and an unknown id is still a 404', async () => {
+    const { staleId } = await twoClouds()
+
+    const res = await get(`/api/v1/servers/${staleId}`)
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { syncError?: string }).syncError).toContain('gcloud auth')
+    // Ownership is still a refusal, not a row with an excuse attached.
+    expect((await get('/api/v1/servers/srv-nope')).status).toBe(404)
+  })
+})
+
 describe('choosing the provider on create', () => {
   /** Like `build`, but with an arbitrary number of providers rather than exactly one. */
   async function buildWith(providers: FakeProvider[]): Promise<void> {

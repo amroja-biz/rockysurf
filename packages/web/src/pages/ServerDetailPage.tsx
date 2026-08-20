@@ -181,6 +181,17 @@ export function ServerDetailPage() {
             {TRANSITION_STALLED_HINT}
           </p>
         )}
+        {/*
+          Before the facts it qualifies: everything below — status, address, cost — is core's
+          last KNOWN state when this is set, and a page that renders the numbers first and the
+          caveat later has already been believed (rockysurf-gg9x). Core's message verbatim,
+          because the provider wrote the remedy into it.
+        */}
+        {server.syncError && (
+          <p role="alert" className="sync-error" data-testid="sync-error">
+            Could not refresh this server from its provider — showing its last known state. {server.syncError}
+          </p>
+        )}
         <dl>
           <div>
             <dt>Address</dt>

@@ -107,6 +107,16 @@ const FAILED_BUT_BILLING = {
   },
 }
 
+/**
+ * A row whose provider could not be asked (rockysurf-gg9x): core served what it last knew and
+ * put the provider's own message — remedy included — beside it. The status and address on this
+ * row are last-known state, not fresh facts.
+ */
+const STALE = {
+  ...RUNNING,
+  syncError: 'could not obtain Google Cloud credentials. Run `gcloud auth application-default login`.',
+}
+
 const CAPABILITIES = {
   stop: true,
   ipStableAcrossStop: true,
@@ -395,6 +405,47 @@ describe('a failed row whose machine is still running', () => {
  * a test — objecting, all the way to a dash on a card. Reading the key list out of `present()`
  * makes that a failure in the package that would otherwise render it.
  */
+/**
+ * The dashboard over a cloud that cannot be asked (rockysurf-gg9x).
+ *
+ * The report: expired GCP application-default credentials turned the whole page into "Could
+ * not load your servers" — healthy rows hidden, and the one message naming the fix visible
+ * only in a 500 body nobody rendered. Core now degrades the read; what these pin is the other
+ * half, that the SPA actually SHOWS the remedy instead of filing it away.
+ */
+describe('a provider whose credentials expired (rockysurf-gg9x)', () => {
+  it('shows one notice per provider with the remedy core relayed, and keeps the cards', async () => {
+    // Two stale rows on the same cloud: the cause is per-provider, so the explanation is too.
+    rows = [STALE, { ...STALE, ...UNPRICED, syncError: STALE.syncError }]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(screen.queryAllByTestId('sync-error-fake')).toHaveLength(1))
+    const notice = screen.getByTestId('sync-error-fake')
+    // The provider's displayName, from the same source every other page uses...
+    expect(notice.textContent).toContain('Fake')
+    // ...and the remedy verbatim — for an expired login, the exact command to run.
+    expect(notice.textContent).toContain('gcloud auth application-default login')
+    // The rows still render as cards: stale is a caveat, not a blank page.
+    expect(cardFor(container, 'dev-box')).toBeTruthy()
+    expect(cardFor(container, 'hz-claw')).toBeTruthy()
+  })
+
+  it('says nothing of the kind when every row is fresh', async () => {
+    rows = [RUNNING]
+    const { container } = renderPage()
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    expect(screen.queryByTestId('sync-error-fake')).toBeNull()
+  })
+
+  it('carries the same caveat on the detail page, above the facts it qualifies', async () => {
+    rows = [STALE]
+    renderDetail(SERVER_ID)
+    const notice = await screen.findByTestId('sync-error')
+    expect(notice.textContent).toContain('last known state')
+    expect(notice.textContent).toContain('gcloud auth application-default login')
+  })
+})
+
 describe("the row shape the SPA declares", () => {
   function corePresentKeys(): string[] {
     const relative = '../../../core/src/servers/routes.ts'
@@ -432,7 +483,7 @@ describe("the row shape the SPA declares", () => {
 
   it('and so are the fixtures in this file', () => {
     const sent = corePresentKeys()
-    for (const row of [STOPPED, RUNNING, UNPRICED, FAILED_BUT_BILLING]) {
+    for (const row of [STOPPED, RUNNING, UNPRICED, FAILED_BUT_BILLING, STALE]) {
       expect(Object.keys(row).filter((key) => !sent.includes(key))).toEqual([])
     }
   })

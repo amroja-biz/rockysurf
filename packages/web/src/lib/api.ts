@@ -217,6 +217,15 @@ export interface Server {
   carriesFallbackToken?: boolean
   provisioningStep?: ProvisioningStep
   errorMessage?: string
+  /**
+   * Why this row may be STALE: the provider could not be asked just now — expired cloud
+   * credentials, a cloud having a bad day — and core served what it last knew instead of
+   * failing the whole request (rockysurf-gg9x). The message is the provider's own and names
+   * the remedy; for an expired login it contains the exact command to run, so render it
+   * verbatim. Absent when the view is fresh. Distinct from `errorMessage`, which is about
+   * the SERVER failing, not about core's view of it going stale.
+   */
+  syncError?: string
   createdAt: string
   startedAt?: string
   stoppedAt?: string
