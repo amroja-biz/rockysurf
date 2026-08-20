@@ -71,6 +71,13 @@
       "when": 1787198635367,
       "tag": "0009_minor_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787244657929,
+      "tag": "0010_curved_young_avengers",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,8 @@ const nowIso = () => new Date().toISOString()
 export interface CreateServerInput {
   userId: string
   name: string
+  /** Optional free-text purpose, set at create or later via `setServerMetadata`. */
+  description?: string
   provider: string
   size: ServerSize
   offeringId: string
@@ -64,6 +66,7 @@ export function insertServer(db: Db, input: CreateServerInput): ServerRow {
     id,
     userId: input.userId,
     name: input.name,
+    description: input.description ?? null,
     provider: input.provider,
     size: input.size,
     offeringId: input.offeringId,
@@ -395,6 +398,36 @@ export function setNetworkAddress(db: Db, id: string, patch: NetworkAddressPatch
 }
 
 /** JSON list accessors, so callers never parse these columns by hand. */
+/** What a metadata edit may touch. Omitted means "leave it"; description `null` clears it. */
+export interface ServerMetadataPatch {
+  name?: string
+  description?: string | null
+}
+
+/**
+ * The display fields, and ONLY the display fields (issue #46).
+ *
+ * `name` and `description` are the two columns a user may rewrite at will because nothing
+ * downstream holds them: the provider identity is `id` (hostname-safe by construction, and on
+ * Hetzner the idempotency mechanism — see the column comment), the hostname on the box was
+ * stamped at create, and the pem download simply takes whatever the name is at download time.
+ * Everything else on the row is core's or the provider's to write, not this function's.
+ */
+export function setServerMetadata(db: Db, id: string, patch: ServerMetadataPatch): ServerRow {
+  const [updated] = db
+    .update(servers)
+    .set({
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      updatedAt: nowIso(),
+    })
+    .where(eq(servers.id, id))
+    .returning()
+    .all()
+  if (!updated) throw new Error(`setServerMetadata: no row ${id}`)
+  return updated
+}
+
 export function getServerTools(row: ServerRow): string[] {
   return parseStringArray(row.tools)
 }

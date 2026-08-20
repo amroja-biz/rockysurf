@@ -20,10 +20,11 @@ import {
   setKeyMaterial,
   setNetworkAddress,
   setProviderData,
+  setServerMetadata,
   updateServerStatus,
 } from '../db/repositories/servers.js'
 import { appendEvent } from '../db/repositories/users.js'
-import type { NetworkAddressPatch } from '../db/repositories/servers.js'
+import type { NetworkAddressPatch, ServerMetadataPatch } from '../db/repositories/servers.js'
 import type {
   BootstrapMode,
   Architecture,
@@ -235,6 +236,8 @@ export interface ServerKeyHalves {
 export interface CreateServerInput {
   userId: string
   name: string
+  /** Optional free-text purpose (issue #46). Display-only, like `name`. */
+  description?: string
   provider: string
   size: ServerSize
   offeringId: string
@@ -343,6 +346,14 @@ export interface LifecycleService {
   create(input: CreateServerInput): Promise<ServerRow>
   get(userId: string, serverId: string): Promise<SyncedServer>
   list(userId: string): Promise<SyncedServer[]>
+  /**
+   * Rewrite the display fields — name, description — and nothing else (issue #46).
+   *
+   * No provider call and no status rules: the provider identity is the row's `id`, the
+   * hostname was stamped at create, so a rename is a fact about the dashboard, not the box.
+   * Editing a stopped or even terminated row is legitimate for the same reason.
+   */
+  updateMetadata(userId: string, serverId: string, patch: ServerMetadataPatch): Promise<ServerRow>
   start(userId: string, serverId: string): Promise<ServerRow>
   stop(userId: string, serverId: string): Promise<ServerRow>
   terminate(userId: string, serverId: string): Promise<ServerRow>
@@ -661,6 +672,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       const row = insertServer(db, {
         userId: input.userId,
         name: input.name,
+        ...(input.description ? { description: input.description } : {}),
         provider: input.provider,
         size: input.size,
         offeringId: input.offeringId,
@@ -789,6 +801,11 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         }
       }
       return synced
+    },
+
+    async updateMetadata(userId: string, serverId: string, patch: ServerMetadataPatch): Promise<ServerRow> {
+      // Ownership is the only gate. No provider call and no status rule — see the interface.
+      return setServerMetadata(db, owned(userId, serverId).id, patch)
     },
 
     async start(userId: string, serverId: string): Promise<ServerRow> {
