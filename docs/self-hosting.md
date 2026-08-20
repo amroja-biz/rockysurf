@@ -323,13 +323,14 @@ have its tokens revoked by them, and the authorize screen would name an organisa
 relationship with. So you register one, and it takes about a minute:
 
 1. Go to [github.com/settings/applications/new](https://github.com/settings/applications/new).
-   Name it whatever you like; the callback URL is not used by the device flow, so any URL will
-   do (`http://localhost:3000` is fine).
-2. Open the app's settings and tick **Enable Device Flow**. Without this, GitHub answers
+   Name it whatever you like. The form requires a **Homepage URL** and a **callback URL**
+   (shown as "Redirect URI"); the device flow never visits either, so `http://localhost:3000`
+   satisfies both.
+2. On the same form, tick **Enable Device Flow**. Without this, GitHub answers
    `device_flow_disabled` and the button says exactly that — it is the mistake nearly everybody
    makes once.
-3. Leave **token expiration off**. An expiring token would need something phoning home to
-   refresh it, which is not what this product is.
+3. Leave **Expire user access tokens** unticked. An expiring token would need something phoning
+   home to refresh it, which is not what this product is.
 4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page, or write it
    into the config file yourself, and restart — this one is an ordinary setting, read at startup
    like everything else in the file. (The token the button later obtains is not, and needs no

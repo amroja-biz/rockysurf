@@ -196,8 +196,8 @@ export function ConnectGitHubCard({ connection, onChanged, onDisconnect }: Conne
       {!configured && connection && (
         <div data-github-setup>
           <p className="hint">
-            This installation has no GitHub OAuth App yet, so there is nothing to connect to. Two
-            steps, both on github.com:
+            This installation has no GitHub OAuth App yet, so there is nothing to connect to. Three
+            steps, all on github.com:
           </p>
           <ol className="hint">
             <li>
@@ -205,8 +205,14 @@ export function ConnectGitHubCard({ connection, onChanged, onDisconnect }: Conne
               <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">
                 github.com/settings/applications/new
               </a>
-              , and tick <strong>Enable Device Flow</strong> in its settings. Leave token expiration
-              off.
+              . Name it anything. The form requires a <strong>Homepage URL</strong> and a{' '}
+              <strong>callback URL</strong>, but the device flow never visits either —{' '}
+              <code>http://localhost:3000</code> satisfies both.
+            </li>
+            <li>
+              On the same form, tick <strong>Enable Device Flow</strong> and leave{' '}
+              <strong>Expire user access tokens</strong> unticked — an expiring token would strand
+              the servers that carry it.
             </li>
             <li>
               Paste its Client ID into the <strong>OAuth App client ID</strong> box below (it is{' '}
