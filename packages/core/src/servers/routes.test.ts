@@ -32,6 +32,12 @@ async function login(): Promise<string> {
 }
 
 const get = (path: string) => app.request(path, { headers: { cookie } })
+const patch = (path: string, body: unknown) =>
+  app.request(path, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 const post = (path: string, body?: unknown, headers: Record<string, string> = {}) =>
   app.request(path, {
     method: 'POST',
@@ -314,6 +320,59 @@ describe('the providers endpoint feeds the create page', () => {
  * These cases pin the replacement: explicit wins, one provider needs no saying, and genuine
  * ambiguity is refused rather than guessed.
  */
+/**
+ * The display fields, editable after create (issue #46).
+ *
+ * The report was a dashboard of `server-mt0nilwv`s: the auto-minted name is the only word on
+ * a card, and it says nothing. Name and description are core-side display facts — the
+ * provider identity is the row's `id` — so editing them is one PATCH, no cloud involved.
+ */
+describe('editing the display fields (issue #46)', () => {
+  async function created(): Promise<string> {
+    return ((await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }).serverId
+  }
+
+  it('renames and describes, and later clears the description with an empty string', async () => {
+    const serverId = await created()
+
+    const edited = await patch(`/api/v1/servers/${serverId}`, {
+      name: 'training-box',
+      description: 'DeepSeek eval rig',
+    })
+    expect(edited.status).toBe(200)
+    const row = (await edited.json()) as Record<string, unknown>
+    expect(row['name']).toBe('training-box')
+    expect(row['description']).toBe('DeepSeek eval rig')
+
+    // '' is an instruction — clear it — and the name, omitted, stays put.
+    const cleared = (await (await patch(`/api/v1/servers/${serverId}`, { description: '' })).json()) as Record<
+      string,
+      unknown
+    >
+    expect(cleared['name']).toBe('training-box')
+    expect(cleared['description']).toBeUndefined()
+
+    // The list serves the same edit — one present(), not two truths.
+    const listed = (await (await get('/api/v1/servers')).json()) as { name: string }[]
+    expect(listed[0]?.name).toBe('training-box')
+  })
+
+  it('refuses an empty patch, an empty name, and an unknown server', async () => {
+    const serverId = await created()
+    expect((await patch(`/api/v1/servers/${serverId}`, {})).status).toBe(400)
+    expect((await patch(`/api/v1/servers/${serverId}`, { name: '   ' })).status).toBe(400)
+    expect((await patch('/api/v1/servers/srv-nope', { name: 'ghost' })).status).toBe(404)
+  })
+
+  it('carries a description given at create straight through to the row', async () => {
+    const res = await post('/api/v1/servers', { ...CREATE, description: 'demo for the launch GIF' })
+    expect(res.status).toBe(201)
+    const { serverId } = (await res.json()) as { serverId: string }
+    const row = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+    expect(row['description']).toBe('demo for the launch GIF')
+  })
+})
+
 /**
  * The list survives a provider that cannot be asked (rockysurf-gg9x).
  *

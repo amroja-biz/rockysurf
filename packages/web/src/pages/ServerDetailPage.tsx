@@ -21,6 +21,7 @@ import {
   startServer,
   stopServer,
   terminateServer,
+  updateServer,
   type ProvisioningStep,
   type Server,
   type SurgePack,
@@ -47,6 +48,7 @@ export function ServerDetailPage() {
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'stop' | 'terminate' | null>(null)
+  const [editing, setEditing] = useState(false)
   const { byId: capabilities, providers } = useProviderCapabilities()
 
   const refresh = useCallback(async () => {
@@ -192,6 +194,29 @@ export function ServerDetailPage() {
             Could not refresh this server from its provider — showing its last known state. {server.syncError}
           </p>
         )}
+        {/*
+          The display fields, editable in place (issue #46). The auto-minted name
+          (`server-mt0nilwv`) was the whole report: a fleet of those is a fleet of boxes
+          nobody can tell apart. Rename and description are core-side display facts only —
+          the provider identity is the server id, so nothing on the cloud moves.
+        */}
+        {editing ? (
+          <EditDetailsForm
+            server={server}
+            onCancel={() => setEditing(false)}
+            onSaved={(next) => {
+              setServer(next)
+              setEditing(false)
+            }}
+          />
+        ) : (
+          <p className="server-description" data-testid="server-description">
+            {server.description ?? <span className="hint">No description.</span>}{' '}
+            <button type="button" className="link" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+          </p>
+        )}
         <dl>
           <div>
             <dt>Address</dt>
@@ -213,6 +238,14 @@ export function ServerDetailPage() {
               {server.size} · {server.offeringId} · {server.arch}
             </dd>
           </div>
+          {/* The pack this box was built from (issue #46) — by name when the pack list has
+              it, by id when it doesn't (a pack since deleted still built this box). */}
+          {server.packId && (
+            <div>
+              <dt>Surge Pack</dt>
+              <dd data-testid="server-pack">{pack?.name ?? server.packId}</dd>
+            </div>
+          )}
           <div>
             <dt>Uptime</dt>
             <dd>{formatUptime(server.totalUptimeSeconds)}</dd>
@@ -493,5 +526,63 @@ function ProvisioningTimeline({ current, logLines }: { current?: ProvisioningSte
         </details>
       )}
     </section>
+  )
+}
+
+/**
+ * Name and description, edited together (issue #46).
+ *
+ * One form rather than two pencils because they are the same kind of fact — the user's own
+ * words about the box — and a save is one PATCH either way. The response replaces the page's
+ * row wholesale, so the title, the pem-download label and this section all move at once.
+ */
+function EditDetailsForm({
+  server,
+  onCancel,
+  onSaved,
+}: {
+  server: Server
+  onCancel: () => void
+  onSaved: (next: Server) => void
+}) {
+  const [name, setName] = useState(server.name)
+  const [description, setDescription] = useState(server.description ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      // Description always travels: '' is a real instruction — "clear it" — not an omission.
+      onSaved(await updateServer(server.serverId, { name: name.trim(), description: description.trim() }))
+      toast.success('Details saved')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.detail : 'Could not save the details')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="server-edit" data-testid="edit-details" onSubmit={submit}>
+      <label>
+        Name
+        <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={63} />
+      </label>
+      <label>
+        Description
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={500}
+          placeholder="What is this box for?"
+        />
+      </label>
+      <button type="submit" disabled={saving || !name.trim()}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button type="button" onClick={onCancel} disabled={saving}>
+        Cancel
+      </button>
+    </form>
   )
 }

@@ -89,6 +89,8 @@ let packRow: Record<string, unknown>
 /** Every stop/start core accepted, and every read of the row, in order. */
 let accepted: string[]
 let reads: number
+/** Every metadata PATCH body the stub received, in order (issue #46). */
+let patched: Array<Record<string, unknown>>
 
 beforeEach(async () => {
   streams = []
@@ -96,6 +98,7 @@ beforeEach(async () => {
   packRow = { ...PACK }
   accepted = []
   reads = 0
+  patched = []
   stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
 
@@ -115,6 +118,23 @@ beforeEach(async () => {
       accepted.push(url.pathname.split('/').pop()!)
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(row))
+      return
+    }
+
+    // Before the GET matcher below, which checks only the path: a PATCH is the metadata
+    // edit, answered the way core answers it — the whole row, edited (issue #46).
+    if (req.method === 'PATCH' && url.pathname === `/api/v1/servers/${SERVER_ID}`) {
+      let raw = ''
+      req.on('data', (chunk: string) => {
+        raw += chunk
+      })
+      req.on('end', () => {
+        const body = JSON.parse(raw) as Record<string, unknown>
+        patched.push(body)
+        row = { ...row, ...body }
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(row))
+      })
       return
     }
 
@@ -279,6 +299,39 @@ describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
     expect(container.querySelector('script')).toBeNull()
     // Present as literal characters the user can read, not as an element.
     expect(screen.getByText(/<script>alert\(1\)<\/script>/)).toBeTruthy()
+  })
+})
+
+/**
+ * The display fields (issue #46): the pack that built the box, and the two words the user may
+ * rewrite. The report was a dashboard of `server-mt0nilwv`s — the auto-minted name is the only
+ * label a card has, and it says nothing about what the box is for.
+ */
+describe('the display fields (issue #46)', () => {
+  it('shows which Surge Pack built this box, by name rather than id', async () => {
+    renderPage()
+    // The id shows first — the row needs no second fetch to say SOMETHING — and the name
+    // replaces it when the pack list answers.
+    await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('A Pack'))
+  })
+
+  it('renames and describes the box in place, and the title follows the response', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('server-description')).toBeTruthy())
+    // Absent is stated, not blank — and the affordance sits right beside it.
+    expect(screen.getByTestId('server-description').textContent).toContain('No description.')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'training-box' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'DeepSeek eval rig' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    // One PATCH, carrying exactly what the form held.
+    await waitFor(() => expect(patched).toHaveLength(1))
+    expect(patched[0]).toEqual({ name: 'training-box', description: 'DeepSeek eval rig' })
+    // The response replaced the row: title, description — no refetch, no stale heading.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'training-box' })).toBeTruthy())
+    expect(screen.getByTestId('server-description').textContent).toContain('DeepSeek eval rig')
   })
 })
 

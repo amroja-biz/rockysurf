@@ -158,6 +158,8 @@ export interface Price {
 export interface Server {
   serverId: string
   name: string
+  /** The user's own words about what this box is for (issue #46). Absent until they say. */
+  description?: string
   /** Provider id — `'aws'`, `'hetzner'`, `'byo'`. The key for a capability lookup, never a
    *  thing to branch on directly. */
   provider: string
@@ -252,6 +254,8 @@ export type ServerSummary = Server
 
 export interface CreateServerRequest {
   name?: string
+  /** Optional free-text purpose, editable later from the server page. */
+  description?: string
   size: Server['size']
   packId: string
   /** Provider id. Omit to let core use its default. */
@@ -290,6 +294,14 @@ export async function listServers(includeTerminated = false): Promise<ServerSumm
 
 export async function getServer(serverId: string): Promise<Server> {
   return request<Server>(`/servers/${serverId}`)
+}
+
+/**
+ * Edit the display fields — name, description (issue #46). Omitted means "leave it";
+ * a description sent as `''` clears it. Returns the row as every other server read serves it.
+ */
+export async function updateServer(serverId: string, patch: { name?: string; description?: string }): Promise<Server> {
+  return request<Server>(`/servers/${serverId}`, { method: 'PATCH', body: JSON.stringify(patch) })
 }
 
 export async function createServer(data: CreateServerRequest): Promise<CreateServerResponse> {

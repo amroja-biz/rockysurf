@@ -116,6 +116,11 @@ export const servers = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    /**
+     * What this box is FOR, in the user's own words (issue #46). Display-only, like `name`:
+     * the provider identity is `id`, so both are freely editable after create.
+     */
+    description: text('description'),
 
     /* --- placement --- */
     /** Provider id, matching `ComputeProvider.id`: 'aws', 'hetzner', 'byo'. */

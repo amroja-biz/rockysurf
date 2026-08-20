@@ -69,8 +69,28 @@ const PROVIDER_ERROR_STATUS: Record<ProviderErrorCode, ContentfulStatusCode> = {
  */
 const UNSUPPORTED_STATUS: ContentfulStatusCode = 501
 
+/**
+ * The display fields, shared by create and the metadata PATCH (issue #46): the same rule in
+ * both places, so a name the create form accepts is a name the rename form accepts.
+ * Description is bounded because it renders on a card, not in a document — and an empty
+ * string on PATCH means "clear it", which is what backspacing a form field down to nothing
+ * says.
+ */
+const NAME = z.string().trim().min(1).max(63)
+const DESCRIPTION = z.string().trim().max(500)
+
+const updateBody = z
+  .object({
+    name: NAME.optional(),
+    description: DESCRIPTION.optional(),
+  })
+  .refine((body) => body.name !== undefined || body.description !== undefined, {
+    message: 'nothing to update: send name, description, or both',
+  })
+
 const createBody = z.object({
-  name: z.string().trim().min(1).max(63).optional(),
+  name: NAME.optional(),
+  description: DESCRIPTION.optional(),
   size: z.enum(['small', 'medium', 'large']),
   provider: z.string().trim().min(1).optional(),
   offeringId: z.string().trim().min(1).optional(),
@@ -158,6 +178,7 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * what every fresh row's JSON carries.
      */
     syncError: staleReason,
+    description: row.description ?? undefined,
     provider: row.provider,
     size: row.size,
     offeringId: row.offeringId,
@@ -523,6 +544,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       const row = await lifecycle.create({
         userId: user.id,
         name: body.name ?? `server-${Date.now().toString(36)}`,
+        ...(body.description ? { description: body.description } : {}),
         provider: providerId,
         size: body.size,
         offeringId,
@@ -563,6 +585,26 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     try {
       const { row, syncError } = await lifecycle.get(c.get('user').id, c.req.param('serverId'))
       return success(c, present(row, deps, syncError))
+    } catch (err) {
+      return fail(c, err)
+    }
+  })
+
+  /**
+   * Edit the display fields — name, description — and nothing else (issue #46).
+   *
+   * PATCH, because it is one: omitted means "leave it". A description sent as the empty
+   * string clears it — that is what backspacing the form field down to nothing says — while
+   * a name cannot be cleared, only replaced, because every row has one.
+   */
+  routes.patch('/api/v1/servers/:serverId', validate('json', updateBody), async (c) => {
+    const body = c.req.valid('json')
+    try {
+      const row = await lifecycle.updateMetadata(c.get('user').id, c.req.param('serverId'), {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.description !== undefined ? { description: body.description || null } : {}),
+      })
+      return success(c, present(row, deps))
     } catch (err) {
       return fail(c, err)
     }

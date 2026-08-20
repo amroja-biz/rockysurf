@@ -409,6 +409,7 @@ export function CreateServerPage() {
 
   /* ---------------------------------------------------------------- form */
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [providerId, setProviderId] = useState('')
   const [size, setSize] = useState<ServerSize>('small')
   const [arch, setArch] = useState<Architecture | undefined>(undefined)
@@ -628,6 +629,7 @@ export function CreateServerPage() {
         packId,
         provider: providerId,
         ...(name.trim() ? { name: name.trim() } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
         // The offering the user was shown a price for — not whatever core would pick now.
         ...(resolved ? { offeringId: resolved.id, arch: resolved.arch } : {}),
         ...(requiresRepos ? { repositories } : {}),
@@ -702,6 +704,19 @@ export function CreateServerPage() {
           Name <span className="hint">optional</span>
         </label>
         <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="dev-box" />
+
+        <label className="form-label" htmlFor="description">
+          Description <span className="hint">optional</span>
+        </label>
+        {/* The field that stops a fleet of `server-mt0nilwv`s (issue #46). Editable later
+            from the server page, so skipping it here costs nothing. */}
+        <input
+          id="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={500}
+          placeholder="What is this box for?"
+        />
 
         {/* Provider — a real choice when there is one, and a plain statement when there is not. */}
         {providers.length > 1 ? (
