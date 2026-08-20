@@ -42,6 +42,7 @@ export interface UpsertPackInput {
   requiresRepos: boolean
   requiresRdp: boolean
   desktop?: string | null
+  webPort?: number | null
   sourceFile?: string | null
   /**
    * Registry provenance (rockysurf-arym.4), and note what it is NOT: `sourceFile`.
@@ -152,6 +153,7 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
     theme: input.theme ?? null,
     guide: input.guide ?? null,
     desktop: input.desktop ?? null,
+    webPort: input.webPort ?? null,
     sourceFile: input.sourceFile ?? null,
     registrySource: input.registry?.source ?? null,
     registryUrl: input.registry?.url ?? null,
@@ -177,6 +179,7 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
         requiresRepos: values.requiresRepos,
         requiresRdp: values.requiresRdp,
         desktop: values.desktop,
+        webPort: values.webPort,
         sourceFile: values.sourceFile,
         // `registry` OMITTED means "leave the provenance alone", which is why these are spread
         // conditionally rather than always set. Every existing write path — the boot reconcile,

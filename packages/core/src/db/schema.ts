@@ -342,6 +342,8 @@ export const packs = sqliteTable('packs', {
   requiresRdp: integer('requires_rdp', { mode: 'boolean' }).notNull().default(false),
   /** 'xfce', or null for a headless box. */
   desktop: text('desktop'),
+  /** Loopback port of the pack's web UI, so Connect can render the tunnel. Null: none. */
+  webPort: integer('web_port'),
   sourceFile: text('source_file'),
   /**
    * Where a pack installed from a registry came from (rockysurf-arym.4).

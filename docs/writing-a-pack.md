@@ -544,10 +544,18 @@ away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-orde
 | `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The user must choose at least one Git repository before creating the server, and `$REPOS` is set for setup scripts |
 | `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
+| `webPort` | number (1–65535) | no | The loopback port of a web UI your pack serves on the box. The server page's Connect section renders the `ssh -L` forward and the `http://localhost:<port>` link from it. Omit if the pack has no web UI |
 
-`requiresRepos`, `requiresRdp` and `desktop` exist so that pack behaviour is described by the
-pack. If you find yourself wanting the application to special-case your `packId`, that is a bug
-in this format — please open an issue instead of working around it.
+`requiresRepos`, `requiresRdp`, `desktop` and `webPort` exist so that pack behaviour is
+described by the pack. If you find yourself wanting the application to special-case your
+`packId`, that is a bug in this format — please open an issue instead of working around it.
+
+Declare `webPort` whenever your pack's main interface is a web UI that binds loopback only
+(the right posture for an unauthenticated agent UI — do not bind `0.0.0.0` instead). Without
+it, the one command that changes how the user connects exists only inside your guide's prose,
+and a user who has already run the plain ssh command from Connect has no reason to reread it.
+The guide should still open with the forward, since it is also where you say how to start the
+UI; `packs/deepseek-harness.yaml` is the worked example.
 
 #### `guide` — what the user has to do themselves
 
@@ -860,7 +868,7 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
       through `api.github.com`. See [Which version to install](#which-version-to-install).
 - [ ] Each script ends with a command that verifies the install actually worked.
 - [ ] `installOrder` uses the bands above and leaves gaps of 10.
-- [ ] `requiresRepos`, `requiresRdp` and `desktop` describe what your pack actually needs.
+- [ ] `requiresRepos`, `requiresRdp`, `desktop` and `webPort` describe what your pack actually needs.
 - [ ] `guide` tells the user how to authenticate everything the pack installs, and admits
       anything the install could not finish.
 

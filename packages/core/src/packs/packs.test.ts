@@ -68,6 +68,15 @@ describe('the frozen format', () => {
     expect(issues.some((i) => i.message.includes('requiresRDP'))).toBe(true)
   })
 
+  it('accepts a declared web-UI port and rejects one no TCP port can have', () => {
+    const { file } = parsePackFile('a-pack.yaml', fileText({ ...MINIMAL_PACK, webPort: 3080 }))
+    expect(file?.pack.webPort).toBe(3080)
+    for (const bad of [0, 65536, 3080.5]) {
+      const { issues } = parsePackFile('a-pack.yaml', fileText({ ...MINIMAL_PACK, webPort: bad }))
+      expect(issues.length, `webPort: ${bad}`).toBeGreaterThan(0)
+    }
+  })
+
   it('rejects a wrong version, so a future format cannot be silently misread', () => {
     const { issues } = parsePackFile('a-pack.yaml', JSON.stringify({ version: 2, pack: MINIMAL_PACK, tools: [] }))
     expect(issues.some((i) => i.message.includes('version'))).toBe(true)
@@ -167,6 +176,12 @@ describe('the shipped packs', () => {
     const pack = loaded.packs.find((p) => p.packId === 'open-claw')
     expect(pack).toMatchObject({ requiresRepos: false, requiresRdp: true, desktop: 'xfce' })
   })
+
+  it('deepseek-harness declares its web UI as metadata, not only as guide prose', () => {
+    // The field the server page's Connect section renders the tunnel from (rockysurf-bbmi).
+    const pack = loaded.packs.find((p) => p.packId === 'deepseek-harness')
+    expect(pack).toMatchObject({ webPort: 3080 })
+  })
 })
 
 describe('rendering back to YAML', () => {
@@ -212,6 +227,7 @@ describe('syncing to the database', () => {
     expect(listPacks(db)).toHaveLength(shippedPackCount)
     expect(listTools(db).length).toBe(result.toolsUpserted)
     expect(getPack(db, 'open-claw')).toMatchObject({ requiresRdp: true, desktop: 'xfce' })
+    expect(getPack(db, 'deepseek-harness')).toMatchObject({ webPort: 3080 })
     expect(getTool(db, 'claude-code')?.sourceFile).toBe('ai-coding-agents.yaml')
   })
 

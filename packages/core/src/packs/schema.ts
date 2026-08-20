@@ -94,6 +94,14 @@ export const packSchema = z.strictObject({
   requiresRepos: z.boolean().default(false),
   requiresRdp: z.boolean().default(false),
   desktop: z.enum(DESKTOPS).optional(),
+  /**
+   * The loopback port of a web UI this pack serves on the box, e.g. 3080 for DeepSeek
+   * Harness. Declaring it makes the server page's Connect section render the `ssh -L`
+   * command and the localhost URL — the same metadata-not-name-check contract as
+   * `requiresRdp` (rockysurf-bbmi). Absent means the pack has no web UI to reach; it says
+   * nothing about ports the user's own processes may open later.
+   */
+  webPort: z.int().min(1).max(65535).optional(),
 })
 
 export const packFileSchema = z.strictObject({
