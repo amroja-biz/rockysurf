@@ -402,7 +402,7 @@ describe('address tracking is capability-driven', () => {
 
     await lifecycle.stop(userId, row.id)
     await lifecycle.start(userId, row.id)
-    const moved = await lifecycle.get(userId, row.id)
+    const moved = (await lifecycle.get(userId, row.id)).row
 
     expect(moved.publicIp).not.toBe(firstIp)
     expect(moved.previousIp).toBe(firstIp)
@@ -416,7 +416,7 @@ describe('address tracking is capability-driven', () => {
     await lifecycle.stop(userId, row.id)
     await lifecycle.start(userId, row.id)
 
-    expect((await lifecycle.get(userId, row.id)).previousIp).toBeNull()
+    expect((await lifecycle.get(userId, row.id)).row.previousIp).toBeNull()
   })
 })
 
@@ -502,10 +502,10 @@ describe('stop and start follow the provider, not the request (rockysurf-55fx.15
     // refusing to start. STATE_TO_STATUS already calls the provider's `stopping` a running
     // server; the bug was that stop() never let it have an opinion.
     expect((await lifecycle.stop(userId, row.id)).status).toBe('running')
-    expect((await lifecycle.get(userId, row.id)).status).toBe('running')
+    expect((await lifecycle.get(userId, row.id)).row.status).toBe('running')
 
     advance(30_000)
-    expect((await lifecycle.get(userId, row.id)).status).toBe('stopped')
+    expect((await lifecycle.get(userId, row.id)).row.status).toBe('stopped')
   })
 
   it('refuses a start during that window with a clear message, without asking the provider', async () => {
@@ -530,13 +530,13 @@ describe('stop and start follow the provider, not the request (rockysurf-55fx.15
     // already `stopped`. What was wrong was the write and the broadcast in between, which the
     // next test pins. This test pins the progression itself — stopped until the box is up.
     expect((await lifecycle.start(userId, row.id)).status).toBe('stopped')
-    expect((await lifecycle.get(userId, row.id)).status).toBe('stopped')
+    expect((await lifecycle.get(userId, row.id)).row.status).toBe('stopped')
 
     advance(2_000) // the ack window closes; the provider admits to `pending`
-    expect((await lifecycle.get(userId, row.id)).status).toBe('stopped')
+    expect((await lifecycle.get(userId, row.id)).row.status).toBe('stopped')
 
     advance(20_000) // and now it is actually up
-    expect((await lifecycle.get(userId, row.id)).status).toBe('running')
+    expect((await lifecycle.get(userId, row.id)).row.status).toBe('running')
   })
 
   it('never broadcasts a status the provider had not reached', async () => {
@@ -580,7 +580,7 @@ describe('stop and start follow the provider, not the request (rockysurf-55fx.15
     events.subscribe(userId, (payload) => seen.push(payload as { type: string; status?: string }))
 
     advance(22_000)
-    const settled = await lifecycle.get(userId, row.id)
+    const settled = (await lifecycle.get(userId, row.id)).row
 
     const confirmation = seen.find((e) => e.type === 'server-status' && e.status === 'running')
     expect(confirmation).toBeTruthy()

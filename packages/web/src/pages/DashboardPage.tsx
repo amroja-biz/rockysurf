@@ -45,7 +45,7 @@ export function DashboardPage() {
   const [servers, setServers] = useState<ServerSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { byId: capabilities } = useProviderCapabilities()
+  const { byId: capabilities, providers } = useProviderCapabilities()
 
   const refresh = useCallback(async () => {
     try {
@@ -91,6 +91,16 @@ export function DashboardPage() {
 
   const live = servers.filter((server) => server.status !== 'terminated')
 
+  /**
+   * One notice per provider whose view is stale, not one per row (rockysurf-gg9x): the cause
+   * — expired credentials, a cloud outage — is per-cloud, and a user with five boxes on it
+   * needs one explanation, not five copies. The message is core's verbatim, because the
+   * provider wrote the remedy into it: for an expired login, the exact command to run.
+   */
+  const staleProviders = [
+    ...new Map(live.filter((s) => s.syncError).map((s) => [s.provider, s.syncError!])).entries(),
+  ]
+
   return (
     <AppShell title="Servers">
       <div className="dashboard-actions">
@@ -101,6 +111,12 @@ export function DashboardPage() {
 
       {loading && <p>Loading your servers…</p>}
       {error && <p role="alert">{error}</p>}
+      {staleProviders.map(([providerId, message]) => (
+        <p key={providerId} role="alert" className="sync-error" data-testid={`sync-error-${providerId}`}>
+          Could not refresh your {providers.find((p) => p.id === providerId)?.displayName ?? providerId} servers —
+          showing their last known state. {message}
+        </p>
+      ))}
       {!loading && !error && live.length === 0 && (
         <p className="empty">
           No servers yet. <Link to="/servers/new">Create one</Link> to get started.

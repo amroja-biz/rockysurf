@@ -320,10 +320,29 @@ export interface LifecycleDeps {
   snapshotInstallPlan?: (row: ServerRow, mode: BootstrapMode) => void
 }
 
+/**
+ * A row plus the reason its provider view could not be refreshed just now, when it could not.
+ *
+ * `get` and `list` serve these instead of throwing (rockysurf-gg9x): the owner's GCP
+ * application-default credentials hit Google's periodic reauth, and the dashboard rendered
+ * "Could not load your servers" over a list that was mostly healthy AWS and Hetzner rows. An
+ * expired credential for ONE cloud is routine on a self-hosted laptop, so a read failure
+ * degrades to the stored row — and the provider's own message rides along because it names
+ * the remedy; for an expired login it contains the exact command to run.
+ *
+ * Reads only. Start, stop and terminate still throw: acting on a box the provider cannot be
+ * asked about is a refusal, not a degradation.
+ */
+export interface SyncedServer {
+  row: ServerRow
+  /** Absent when the provider answered and the row is fresh. */
+  syncError?: string
+}
+
 export interface LifecycleService {
   create(input: CreateServerInput): Promise<ServerRow>
-  get(userId: string, serverId: string): Promise<ServerRow>
-  list(userId: string): Promise<ServerRow[]>
+  get(userId: string, serverId: string): Promise<SyncedServer>
+  list(userId: string): Promise<SyncedServer[]>
   start(userId: string, serverId: string): Promise<ServerRow>
   stop(userId: string, serverId: string): Promise<ServerRow>
   terminate(userId: string, serverId: string): Promise<ServerRow>
@@ -742,16 +761,33 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       }
     },
 
-    async get(userId: string, serverId: string): Promise<ServerRow> {
-      return await sync(owned(userId, serverId))
+    async get(userId: string, serverId: string): Promise<SyncedServer> {
+      // `owned` throws OUTSIDE the guard below: a server this user does not have is still a
+      // 404, not a stored row with an excuse attached.
+      const row = owned(userId, serverId)
+      try {
+        return { row: await sync(row) }
+      } catch (err) {
+        return { row, syncError: isProviderError(err) ? err.message : String(err) }
+      }
     },
 
-    async list(userId: string): Promise<ServerRow[]> {
+    async list(userId: string): Promise<SyncedServer[]> {
       const rows = listServersByUser(db, userId)
       // Sequential rather than parallel: a user with twenty servers should not open twenty
       // simultaneous provider connections every time the dashboard polls.
-      const synced: ServerRow[] = []
-      for (const row of rows) synced.push(await sync(row))
+      const synced: SyncedServer[] = []
+      for (const row of rows) {
+        try {
+          synced.push({ row: await sync(row) })
+        } catch (err) {
+          // Same policy as GET /providers' `offeringsError`: one cloud having a bad day must
+          // not take the whole list down with it (rockysurf-gg9x). The stored row is still a
+          // fact worth serving, and the provider's message rides along because it names the
+          // remedy — for expired credentials, the exact command to run.
+          synced.push({ row, syncError: isProviderError(err) ? err.message : String(err) })
+        }
+      }
       return synced
     },
 

@@ -145,11 +145,19 @@ export interface ServerRoutesDeps {
 }
 
 /** The row as the SPA expects to see it. Legacy field names, no internal columns. */
-function present(row: ServerRow, deps: ServerRoutesDeps) {
+function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
   const repos = getServerRepositories(row)
   return {
     serverId: row.id,
     name: row.name,
+    /**
+     * Why this row may be STALE (rockysurf-gg9x): the provider could not be asked just now —
+     * expired credentials, a cloud outage — and the reads served what core last knew instead
+     * of failing. The provider's message travels verbatim because it names the remedy; for
+     * an expired login, the exact command to run. `undefined` serializes to ABSENT, which is
+     * what every fresh row's JSON carries.
+     */
+    syncError: staleReason,
     provider: row.provider,
     size: row.size,
     offeringId: row.offeringId,
@@ -308,7 +316,13 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
 
   routes.get('/api/v1/servers', async (c) => {
     try {
-      return success(c, (await lifecycle.list(c.get('user').id)).map((row) => present(row, deps)))
+      // `syncError` is additive and absent when the provider view is fresh, so every client
+      // that reads this as a plain array keeps working; the SPA surfaces it per provider
+      // (rockysurf-gg9x).
+      return success(
+        c,
+        (await lifecycle.list(c.get('user').id)).map(({ row, syncError }) => present(row, deps, syncError)),
+      )
     } catch (err) {
       return fail(c, err)
     }
@@ -547,7 +561,8 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
 
   routes.get('/api/v1/servers/:serverId', async (c) => {
     try {
-      return success(c, present(await lifecycle.get(c.get('user').id, c.req.param('serverId')), deps))
+      const { row, syncError } = await lifecycle.get(c.get('user').id, c.req.param('serverId'))
+      return success(c, present(row, deps, syncError))
     } catch (err) {
       return fail(c, err)
     }
