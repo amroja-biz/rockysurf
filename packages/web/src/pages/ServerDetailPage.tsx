@@ -146,6 +146,20 @@ export function ServerDetailPage() {
   const sshPort = server.sshPort ? `-p ${server.sshPort} ` : ''
   const sshCommand = `ssh ${sshPort}-i ${server.name}.pem ${server.sshUser}@${server.publicIp ?? '<address>'}`
 
+  /**
+   * The Installed card's two sources, in honesty order (rockysurf-idxd). `server.tools` is
+   * the row's own record of what this box was built with — but a create that names only a
+   * pack leaves it empty, which rendered the card as a heading over nothing. The pack's
+   * expanded tool list is the truthful fallback, caveat stated below where it is used. Names
+   * resolve through the pack where they can, and each keeps the url the pack declared — the
+   * same "see what you are installing" promise the create page makes.
+   */
+  const packToolById = new Map((pack?.tools ?? []).map((tool) => [tool.toolId, tool]))
+  const recordedTools = server.tools.map(
+    (id) => packToolById.get(id) ?? { toolId: id, name: id, url: undefined, description: undefined },
+  )
+  const installedTools = recordedTools.length > 0 ? recordedTools : (pack?.tools ?? [])
+
   async function run(action: TransitionAction | 'terminate', call: () => Promise<Server>, done: string) {
     setConfirming(null)
     setPending(action)
@@ -239,11 +253,14 @@ export function ServerDetailPage() {
             </dd>
           </div>
           {/* The pack this box was built from (issue #46) — by name when the pack list has
-              it, by id when it doesn't (a pack since deleted still built this box). */}
+              it, by id when it doesn't (a pack since deleted still built this box). Linked to
+              the catalogue page the nav already offers everyone (rockysurf-idxd). */}
           {server.packId && (
             <div>
               <dt>Surge Pack</dt>
-              <dd data-testid="server-pack">{pack?.name ?? server.packId}</dd>
+              <dd data-testid="server-pack">
+                <Link to="/admin/surge-packs">{pack?.name ?? server.packId}</Link>
+              </dd>
             </div>
           )}
           <div>
@@ -455,11 +472,30 @@ export function ServerDetailPage() {
 
       <section className="tools">
         <h2>Installed</h2>
-        <ul>
-          {server.tools.map((tool) => (
-            <li key={tool}>{tool}</li>
-          ))}
-        </ul>
+        {installedTools.length === 0 ? (
+          <p className="hint">Nothing recorded for this box.</p>
+        ) : (
+          <ul data-testid="installed-tools">
+            {installedTools.map((tool) => (
+              <li key={tool.toolId}>
+                {tool.url ? (
+                  <a href={tool.url} target="_blank" rel="noopener noreferrer">
+                    {tool.name}
+                  </a>
+                ) : (
+                  tool.name
+                )}
+                {tool.description ? <span className="hint"> — {tool.description}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {recordedTools.length === 0 && installedTools.length > 0 && pack && (
+          <p className="hint">
+            From the {pack.name} pack. A pack edited since this box booted describes the pack, not
+            necessarily the box.
+          </p>
+        )}
       </section>
 
       {confirming === 'stop' && (

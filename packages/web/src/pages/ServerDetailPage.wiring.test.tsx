@@ -308,11 +308,52 @@ describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
  * label a card has, and it says nothing about what the box is for.
  */
 describe('the display fields (issue #46)', () => {
-  it('shows which Surge Pack built this box, by name rather than id', async () => {
+  it('shows which Surge Pack built this box, by name, linked to the catalogue', async () => {
     renderPage()
     // The id shows first — the row needs no second fetch to say SOMETHING — and the name
     // replaces it when the pack list answers.
     await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('A Pack'))
+    // Linked to the same page the nav offers (rockysurf-idxd).
+    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('href')).toBe('/admin/surge-packs')
+  })
+
+  /** One pack tool, as the public list expands them — enough to pin name, link and caveat. */
+  const CURSOR_TOOL = {
+    toolId: 'cursor-cli',
+    name: 'Cursor CLI',
+    description: 'the agent this pack exists to deliver',
+    category: 'agent',
+    url: 'https://example.test/cursor',
+  }
+
+  it('fills the Installed card from the pack when the row recorded nothing (rockysurf-idxd)', async () => {
+    // The owner's screenshot: every SPA create names only a pack, so `server.tools` is [] and
+    // the card was a heading over nothing.
+    packRow = { ...PACK, tools: [CURSOR_TOOL] }
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('installed-tools')).toBeTruthy())
+    const link = screen.getByRole('link', { name: 'Cursor CLI' })
+    expect(link.getAttribute('href')).toBe('https://example.test/cursor')
+    // The fallback says where the list came from, and what that does and does not claim.
+    expect(screen.getByText(/From the A Pack pack/)).toBeTruthy()
+  })
+
+  it("prefers the row's own record, named through the pack where it can be", async () => {
+    row = { ...SERVER, tools: ['cursor-cli', 'mystery-tool'] }
+    packRow = { ...PACK, tools: [CURSOR_TOOL] }
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Cursor CLI' })).toBeTruthy())
+    // A tool the pack no longer defines still shows, as its id — the row's record is the row's.
+    expect(screen.getByText('mystery-tool')).toBeTruthy()
+    // No provenance caveat: this list IS the box's own record.
+    expect(screen.queryByText(/From the A Pack pack/)).toBeNull()
+  })
+
+  it('says nothing was recorded rather than rendering an empty card', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Nothing recorded for this box.')).toBeTruthy())
   })
 
   it('renames and describes the box in place, and the title follows the response', async () => {
