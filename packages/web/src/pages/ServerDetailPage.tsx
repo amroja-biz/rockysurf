@@ -261,6 +261,31 @@ export function ServerDetailPage() {
             <code> chmod 600 </code> it before use.
           </p>
 
+          {/*
+            The tunnel, IN CONNECT, for a pack that declares a web UI (rockysurf-bbmi). The
+            guide already opens with this command, but the owner's own test showed what a
+            wall of text does to it: they ran the plain command above, found no way to reach
+            the UI, and concluded the pack needed a GUI. The one line that changes how you
+            connect belongs where connecting is explained — gated on pack metadata, not on
+            the pack's name, exactly like the RDP block below.
+          */}
+          {pack?.webPort && (
+            <div className="web-ui-instructions">
+              <h3>Web UI</h3>
+              <p>
+                {pack.name} serves a web UI on the box's loopback only, so connect with the port
+                forwarded — use this instead of the plain command above:
+              </p>
+              <pre>
+                <code>{`ssh ${sshPort}-i ${server.name}.pem -L ${pack.webPort}:127.0.0.1:${pack.webPort} ${server.sshUser}@${server.publicIp ?? '<address>'}`}</code>
+              </pre>
+              <p className="hint">
+                Leave that session open, then open http://localhost:{pack.webPort} in the browser on
+                your own machine. The guide below says how to start the UI on the box.
+              </p>
+            </div>
+          )}
+
           {/* Gated on pack metadata, not on the pack's name. */}
           {pack?.requiresRdp && (
             <div className="rdp-instructions">
@@ -301,7 +326,15 @@ export function ServerDetailPage() {
       {server.status === 'running' && pack?.guide && (
         <section className="pack-guide">
           <h2>Getting started with {pack.name}</h2>
-          <p className="hint">Written by the pack. Run these on the box, once you are connected.</p>
+          {/*
+            Not "run these on the box": that claim was false for any pack whose first step is
+            an `ssh -L` from the user's laptop, and it contradicted the guide it was
+            introducing (rockysurf-bbmi).
+          */}
+          <p className="hint">
+            Written by the pack. Most steps run on the box once you are connected; where one runs
+            on your own machine instead, the guide says which.
+          </p>
           <pre className="pack-guide-text">{pack.guide}</pre>
         </section>
       )}

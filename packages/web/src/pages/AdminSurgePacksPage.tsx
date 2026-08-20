@@ -22,9 +22,9 @@ import { AppShell } from '../components/AppShell'
  * Those rows render read-only with a badge pointing at the file. Rows created here, or
  * imported, remain fully editable.
  *
- * The three fields the old app never had — `requiresRepos`, `requiresRdp`, `desktop` — get
- * real controls, because they are how a pack describes its own behaviour instead of the
- * application special-casing a pack id.
+ * The behaviour fields the old app never had — `requiresRepos`, `requiresRdp`, `desktop`,
+ * `webPort` — get real controls, because they are how a pack describes its own behaviour
+ * instead of the application special-casing a pack id.
  */
 
 interface PackFormState {
@@ -36,6 +36,8 @@ interface PackFormState {
   requiresRepos: boolean
   requiresRdp: boolean
   desktop: '' | 'xfce'
+  /** As typed: '' means "no web UI". Parsed to a number only when the payload is built. */
+  webPort: string
 }
 
 const emptyForm: PackFormState = {
@@ -47,6 +49,7 @@ const emptyForm: PackFormState = {
   requiresRepos: false,
   requiresRdp: false,
   desktop: '',
+  webPort: '',
 }
 
 const toForm = (pack: AdminSurgePack): PackFormState => ({
@@ -58,6 +61,7 @@ const toForm = (pack: AdminSurgePack): PackFormState => ({
   requiresRepos: pack.requiresRepos,
   requiresRdp: pack.requiresRdp,
   desktop: pack.desktop ?? '',
+  webPort: pack.webPort?.toString() ?? '',
 })
 
 const isFileBacked = (pack: AdminSurgePack): boolean => Boolean(pack.sourceFile)
@@ -93,6 +97,7 @@ function SurgePackFormModal({
         requiresRepos: form.requiresRepos,
         requiresRdp: form.requiresRdp,
         ...(form.desktop ? { desktop: form.desktop } : {}),
+        ...(form.webPort ? { webPort: Number(form.webPort) } : {}),
       }
       if (initial) await updateAdminSurgePack(initial.packId, payload)
       else await createAdminSurgePack({ ...payload, ...(form.packId ? { packId: form.packId } : {}) })
@@ -142,7 +147,7 @@ function SurgePackFormModal({
         ))}
       </fieldset>
 
-      {/* The three behaviour flags. They exist so pack behaviour is described BY the pack;
+      {/* The behaviour fields. They exist so pack behaviour is described BY the pack;
           if you find yourself wanting the app to special-case a packId, that is a bug in this
           format rather than a missing branch. */}
       <fieldset>
@@ -165,6 +170,17 @@ function SurgePackFormModal({
             <option value="">Headless</option>
             <option value="xfce">xfce</option>
           </select>
+        </label>
+        <label>
+          Web UI port
+          <input
+            type="number"
+            min={1}
+            max={65535}
+            value={form.webPort}
+            onChange={(e) => set('webPort', e.target.value)}
+          />
+          <small>— the loopback port of a web UI the pack serves, so Connect renders the tunnel. Blank for none</small>
         </label>
       </fieldset>
 
@@ -369,6 +385,7 @@ export function AdminSurgePacksPage() {
                     pack.requiresRepos ? 'repos' : null,
                     pack.requiresRdp ? 'rdp' : null,
                     pack.desktop ?? null,
+                    pack.webPort ? `web:${pack.webPort}` : null,
                   ]
                     .filter(Boolean)
                     .join(', ') || '—'}

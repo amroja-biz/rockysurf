@@ -42,6 +42,11 @@ pack:
   # nothing to work on. Same reasoning as grok-build.
   requiresRepos: true
   requiresRdp: false
+  # The whole reason this pack is unlike the others, stated as metadata so the server page's
+  # Connect section renders the `ssh -L` command instead of leaving it buried in the guide
+  # (rockysurf-bbmi — the owner ran the plain ssh command, found nothing to open, and
+  # concluded the pack needed a GUI).
+  webPort: 3080
   guide: |
     DeepSeek Harness is a web UI, not a terminal app
 

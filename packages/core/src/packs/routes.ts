@@ -103,6 +103,7 @@ const packFields = (p: Pack) => ({
   requiresRepos: p.requiresRepos,
   requiresRdp: p.requiresRdp,
   desktop: p.desktop ?? undefined,
+  webPort: p.webPort ?? undefined,
 })
 
 /**
@@ -329,6 +330,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           requiresRepos: body.requiresRepos,
           requiresRdp: body.requiresRdp,
           desktop: body.desktop ?? null,
+          webPort: body.webPort ?? null,
           sourceFile: null,
         }),
       ),
@@ -363,6 +365,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           requiresRepos: body.requiresRepos ?? existing.requiresRepos,
           requiresRdp: body.requiresRdp ?? existing.requiresRdp,
           desktop: body.desktop ?? existing.desktop,
+          webPort: body.webPort ?? existing.webPort,
           sourceFile: existing.sourceFile,
         }),
       ),
@@ -407,6 +410,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         requiresRepos: pack.requiresRepos,
         requiresRdp: pack.requiresRdp,
         ...(pack.desktop ? { desktop: pack.desktop as 'xfce' } : {}),
+        ...(pack.webPort != null ? { webPort: pack.webPort } : {}),
       },
       pack.tools.map((id) => {
         const t = byId.get(id)!
@@ -485,6 +489,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         requiresRepos: file.pack.requiresRepos,
         requiresRdp: file.pack.requiresRdp,
         desktop: file.pack.desktop ?? null,
+        webPort: file.pack.webPort ?? null,
         sourceFile: null,
         // `null` rather than `undefined` on the import path, deliberately: importing a YAML file
         // over a pack that came from a registry CLEARS the provenance, because the bytes now in

@@ -475,6 +475,12 @@ export interface SurgePack {
   requiresRdp: boolean
   desktop?: 'xfce'
   /**
+   * The loopback port of a web UI this pack serves on the box, or undefined for a pack with
+   * none. The server detail page renders the `ssh -L` command from it — same
+   * metadata-not-name-check contract as `requiresRdp` (rockysurf-bbmi).
+   */
+  webPort?: number
+  /**
    * Where the pack came from, in core's words (rockysurf-jn71).
    *
    *  - `official` — shipped with this Rocky Surf release, i.e. backed by a `packs/*.yaml`;
@@ -543,6 +549,8 @@ export interface AdminSurgePack {
   requiresRepos: boolean
   requiresRdp: boolean
   desktop?: 'xfce'
+  /** Loopback port of the pack's web UI. See `SurgePack.webPort`. */
+  webPort?: number
   /**
    * The YAML file this pack came from, or null for a row created here.
    *

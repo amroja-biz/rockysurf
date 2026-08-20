@@ -127,6 +127,8 @@ const expectServedPackShape = (pack: any) => {
     expect(typeof pack[field], `${pack.packId}.${field}`).toBe('string')
     expect(pack[field].length, `${pack.packId}.${field}`).toBeGreaterThan(0)
   }
+  // The one optional field that is a number, not a string (rockysurf-bbmi).
+  if ('webPort' in pack) expect(typeof pack.webPort, `${pack.packId}.webPort`).toBe('number')
   // Where it came from, derived, on every pack (rockysurf-jn71). Not optional the way the four
   // above are: a pack row is always in exactly one of these three states, so a pack served
   // without the field would leave the picker unable to file it under either tab.
@@ -169,6 +171,12 @@ describe('public shapes match the SPA client', () => {
     const claude = packs.find((p: any) => p.packId === 'ai-coding-agents')
     expect(claude).toMatchObject({ requiresRepos: true, requiresRdp: false })
     expect(claude.desktop).toBeUndefined()
+
+    // The web-UI port crosses to the SPA when declared and is absent otherwise — the field
+    // the server page renders the tunnel from (rockysurf-bbmi).
+    const deepseek = packs.find((p: any) => p.packId === 'deepseek-harness')
+    expect(deepseek).toMatchObject({ webPort: 3080 })
+    expect(claude.webPort).toBeUndefined()
   })
 
   it('calls every pack that shipped in the tarball official, and derives it from the file', async () => {

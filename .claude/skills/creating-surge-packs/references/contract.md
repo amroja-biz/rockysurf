@@ -58,8 +58,9 @@ password.
 | `requiresRepos` | boolean | defaults `false` | The user must pick at least one Git repository. **The install plan clones them for you** — you write no clone code — and `$REPOS` is set so your scripts can do extra work per repository |
 | `requiresRdp` | boolean | defaults `false` | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
+| `webPort` | number (1–65535) | no | Loopback port of a web UI the pack serves; Connect renders the `ssh -L` forward from it. Omit if none |
 
-`requiresRepos`, `requiresRdp` and `desktop` exist so behaviour is described by the pack. If you
+`requiresRepos`, `requiresRdp`, `desktop` and `webPort` exist so behaviour is described by the pack. If you
 find yourself wanting the application to special-case your `packId`, that is a bug in the format
 — open an issue instead of working around it.
 

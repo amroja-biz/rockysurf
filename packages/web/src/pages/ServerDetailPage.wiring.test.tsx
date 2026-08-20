@@ -83,6 +83,9 @@ let streams: Array<(chunk: string) => void> = []
  * stopped box, for the stop/start tests below. Everything else reads it as it always did.
  */
 let row: Record<string, unknown>
+/** The pack the stub serves, mutable the same way — the web-UI tests start from a pack that
+    declares `webPort`, everything else from one that does not. */
+let packRow: Record<string, unknown>
 /** Every stop/start core accepted, and every read of the row, in order. */
 let accepted: string[]
 let reads: number
@@ -90,6 +93,7 @@ let reads: number
 beforeEach(async () => {
   streams = []
   row = { ...SERVER }
+  packRow = { ...PACK }
   accepted = []
   reads = 0
   stub = await startStubServer((req, res) => {
@@ -129,7 +133,7 @@ beforeEach(async () => {
 
     if (url.pathname === '/api/v1/surge-packs') {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify([PACK]))
+      res.end(JSON.stringify([packRow]))
       return
     }
 
@@ -275,6 +279,43 @@ describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
     expect(container.querySelector('script')).toBeNull()
     // Present as literal characters the user can read, not as an element.
     expect(screen.getByText(/<script>alert\(1\)<\/script>/)).toBeTruthy()
+  })
+})
+
+/**
+ * The tunnel for a pack that declares a web UI (rockysurf-bbmi).
+ *
+ * The report was the owner's own DeepSeek test: the pack's guide OPENS with the `ssh -L`
+ * command, but Connect showed the plain one, the user ran that first, found nothing to open,
+ * and concluded the pack needed a GUI. What these assert is that the one line that changes how
+ * you connect is rendered where connecting is explained — from pack metadata, like the RDP
+ * block, never from a pack's name.
+ */
+describe('the web-UI tunnel (rockysurf-bbmi)', () => {
+  async function reachRunning() {
+    renderPage()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil(
+      { type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' },
+      () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
+    )
+  }
+
+  it('renders the forwarded ssh command and the localhost URL when the pack declares a port', async () => {
+    packRow = { ...PACK, webPort: 3080 }
+    await reachRunning()
+
+    expect(screen.getByRole('heading', { name: 'Web UI' })).toBeTruthy()
+    // The command itself, exactly the shape the pack's own guide teaches — and beside it the
+    // address to open, so neither lives only in guide prose.
+    expect(screen.getByText('ssh -i dev-box.pem -L 3080:127.0.0.1:3080 rocky@203.0.113.7')).toBeTruthy()
+    expect(screen.getByText(/localhost:3080/)).toBeTruthy()
+  })
+
+  it('renders nothing extra for a pack with no web UI', async () => {
+    await reachRunning()
+    expect(screen.queryByRole('heading', { name: 'Web UI' })).toBeNull()
+    expect(screen.queryByText(/127\.0\.0\.1/)).toBeNull()
   })
 })
 
