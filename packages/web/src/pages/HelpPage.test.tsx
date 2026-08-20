@@ -77,7 +77,9 @@ describe('HelpPage', () => {
     it('names the setup step people miss, and the one they do not need a secret for', () => {
       const text = gitAuth()
       expect(text).toContain('Enable Device Flow')
-      expect(text).toContain('expiration off')
+      // By the checkbox's own name, and the answer to the form's required-but-unused URLs.
+      expect(text).toContain('Expire user access tokens')
+      expect(text).toContain('http://localhost:3000')
       // The device flow uses no client secret, which is why the Client ID is safe in a file.
       expect(text).toContain('public')
       expect(text).toContain('no client secret')

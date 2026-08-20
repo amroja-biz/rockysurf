@@ -103,7 +103,7 @@ afterEach(() => {
 })
 
 describe('with no OAuth App configured', () => {
-  it('renders, disabled, with the two setup steps — it does not hide', () => {
+  it('renders, disabled, with the setup steps — it does not hide', () => {
     render(<Harness initial={{ ...DISCONNECTED, clientIdConfigured: false }} />)
 
     // VISIBLE is the assertion. A control whose edit has a destination must show the way there.
@@ -115,6 +115,10 @@ describe('with no OAuth App configured', () => {
     expect(setup.textContent).toContain('Enable Device Flow')
     expect(setup.textContent).toContain('github.oauth.clientId')
     expect(document.querySelector('a[href="https://github.com/settings/applications/new"]')).toBeTruthy()
+    // The steps answer the registration form's own questions: the required-but-unused URLs
+    // and the expire-tokens checkbox, by the names GitHub gives them.
+    expect(setup.textContent).toContain('http://localhost:3000')
+    expect(setup.textContent).toContain('Expire user access tokens')
   })
 
   it('says there is no catch-all key rather than implying one', () => {

@@ -225,8 +225,10 @@ export function HelpPage() {
           <a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">
             github.com/settings/applications/new
           </a>
-          . Any callback URL will do — the device flow does not use one. In the app&rsquo;s settings,
-          tick <strong>Enable Device Flow</strong> and leave token expiration off. Copy the app&rsquo;s
+          . The form requires a Homepage URL and a callback URL, but the device flow never visits
+          either — <code>http://localhost:3000</code> satisfies both. On the same form, tick{' '}
+          <strong>Enable Device Flow</strong> and leave <strong>Expire user access tokens</strong>{' '}
+          unticked. Copy the app&rsquo;s
           Client ID into the <em>OAuth App client ID</em> box in Settings and restart Rocky Surf. The
           Client ID is public and needs no client secret; the device flow uses none.
         </p>
