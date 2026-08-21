@@ -144,7 +144,13 @@ export function ServerDetailPage() {
   const providerName = providers.find((p) => p.id === server.provider)?.displayName
   // `-p` only when the box is not on 22, which is every server core provisioned itself.
   const sshPort = server.sshPort ? `-p ${server.sshPort} ` : ''
-  const sshCommand = `ssh ${sshPort}-i ${server.name}.pem ${server.sshUser}@${server.publicIp ?? '<address>'}`
+  const generatedKeyCommand = `ssh ${sshPort}-i ${server.name}.pem ${server.sshUser}@${server.publicIp ?? '<address>'}`
+  // When the user supplied a key at create time, it — not the generated `.pem` — is the
+  // primary way in (issue #41): Rocky Surf's key is appended alongside it, not substituted,
+  // so it stays authorized but is no longer the only path the page leads with.
+  const sshCommand = server.suppliedSshKey
+    ? `ssh ${sshPort}${server.sshUser}@${server.publicIp ?? '<address>'}`
+    : generatedKeyCommand
 
   /**
    * The Installed card's two sources, in honesty order (rockysurf-idxd). `server.tools` is
@@ -314,13 +320,53 @@ export function ServerDetailPage() {
           <pre>
             <code>{sshCommand}</code>
           </pre>
-          <button onClick={() => void downloadSshKey(server.serverId, server.name).catch(() => toast.error('No key available'))}>
-            Download {server.name}.pem
-          </button>
-          <p className="hint">
-            The key is served once per request and is the only copy you get; store it somewhere safe and
-            <code> chmod 600 </code> it before use.
-          </p>
+          {server.suppliedSshKey ? (
+            <>
+              <p className="hint" data-testid="supplied-key-hint">
+                Connects with the key you supplied at create time
+                {server.suppliedSshKey.comment ? ` (${server.suppliedSshKey.comment})` : ''}, fingerprint{' '}
+                <code>{server.suppliedSshKey.fingerprint}</code>.
+              </p>
+              {/*
+                Demoted, not removed (issue #41): Rocky Surf's own key stays authorized no
+                matter which SSH option was picked at create time, because push-mode bootstrap
+                installs everything over its own connection and needs it regardless. It is
+                also the recovery path if the user's own key is ever lost.
+              */}
+              <details className="own-key-disclosure">
+                <summary>Rocky Surf's own key</summary>
+                <p className="hint">
+                  Rocky Surf also authorizes a key of its own on this box — it installs everything over its own SSH
+                  connection, so it needs one whether or not you supplied your own. It works too, and it is the way
+                  back in if you ever lose your key:
+                </p>
+                <pre>
+                  <code>{generatedKeyCommand}</code>
+                </pre>
+                <button
+                  onClick={() => void downloadSshKey(server.serverId, server.name).catch(() => toast.error('No key available'))}
+                >
+                  Download {server.name}.pem
+                </button>
+                <p className="hint">
+                  Core keeps a copy and every download is recorded; re-downloading later is fine. Store it somewhere
+                  safe and <code>chmod 600</code> it before use.
+                </p>
+              </details>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => void downloadSshKey(server.serverId, server.name).catch(() => toast.error('No key available'))}
+              >
+                Download {server.name}.pem
+              </button>
+              <p className="hint">
+                Core keeps a copy and every download is recorded; re-downloading later is fine. Store it somewhere
+                safe and <code>chmod 600</code> it before use.
+              </p>
+            </>
+          )}
 
           {/*
             The tunnel, IN CONNECT, for a pack that declares a web UI (rockysurf-bbmi). The

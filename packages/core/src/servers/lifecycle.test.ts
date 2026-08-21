@@ -1044,6 +1044,79 @@ describe('ssh identity is provisioned before the provider is called', () => {
     expect(listServersByUser(db, userId).length).toBe(before)
   })
 
+  /**
+   * The row-persistence half of issue #41: the pasted key is stored on the row itself, not
+   * just injected on the box, so `present()` has something to build `suppliedSshKey` from.
+   */
+  describe('the pasted key is persisted on the row (issue #41)', () => {
+    it('stores the normalized line and hands the provider both keys, core\'s first', async () => {
+      const { service } = withSecrets()
+      const extra = generateServerKeys('extra').user.publicKey
+      let seenSpec: { sshPublicKeys: string[] } | undefined
+      const original = fake.provision.bind(fake)
+      vi.spyOn(fake, 'provision').mockImplementation(async (spec) => {
+        seenSpec = { sshPublicKeys: spec.sshPublicKeys }
+        return await original(spec)
+      })
+
+      const row = await service.create({
+        userId,
+        name: 'supplied-key-box',
+        provider: 'fake',
+        size: 'small',
+        offeringId: 'fake-small',
+        arch: 'arm64',
+        sshPublicKey: extra,
+      })
+
+      expect(getServer(db, row.id)!.userSuppliedPublicKey).toBe(extra)
+      expect(seenSpec?.sshPublicKeys).toHaveLength(2)
+      expect(seenSpec?.sshPublicKeys[0]).toContain(`rockysurf-core@${row.id}`)
+      expect(seenSpec?.sshPublicKeys[1]).toBe(extra)
+      // Normalization runs once: the value persisted and the value the provider saw agree
+      // exactly, character for character (child bead rockysurf-9fvy.1, criterion 4).
+      expect(getServer(db, row.id)!.userSuppliedPublicKey).toBe(seenSpec?.sshPublicKeys[1])
+    })
+
+    it('trims a pasted key before storing it', async () => {
+      const { service } = withSecrets()
+      const raw = generateServerKeys('padded').user.publicKey
+      const row = await service.create({
+        userId,
+        name: 'padded-key-box',
+        provider: 'fake',
+        size: 'small',
+        offeringId: 'fake-small',
+        arch: 'arm64',
+        sshPublicKey: `  ${raw}  `,
+      })
+
+      expect(getServer(db, row.id)!.userSuppliedPublicKey).toBe(raw.trim())
+    })
+
+    it('leaves the column null and passes exactly one key when none was supplied', async () => {
+      const { service } = withSecrets()
+      let seenSpec: { sshPublicKeys: string[] } | undefined
+      const original = fake.provision.bind(fake)
+      vi.spyOn(fake, 'provision').mockImplementation(async (spec) => {
+        seenSpec = { sshPublicKeys: spec.sshPublicKeys }
+        return await original(spec)
+      })
+
+      const row = await service.create({
+        userId,
+        name: 'no-key-box',
+        provider: 'fake',
+        size: 'small',
+        offeringId: 'fake-small',
+        arch: 'arm64',
+      })
+
+      expect(getServer(db, row.id)!.userSuppliedPublicKey).toBeNull()
+      expect(seenSpec?.sshPublicKeys).toHaveLength(1)
+    })
+  })
+
   it('reuses the identity rather than minting a second one', async () => {
     const { store, service } = withSecrets()
     const row = await service.create({

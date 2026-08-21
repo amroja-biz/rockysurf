@@ -151,10 +151,15 @@ export function HelpPage() {
       <section id="connect">
         <h2>Connecting</h2>
         <p>
-          Every running server shows its SSH command, and its private key can be downloaded as a{' '}
-          <code>.pem</code> — the one place in the system that hands out decrypted secret material,
-          and it is ownership-checked and audited. Packs that ship a desktop show remote-desktop
-          instructions instead of making you guess.
+          Every running server shows its SSH command. If you pasted your own public key when you
+          created the box, that command uses it directly — no key file to manage. Rocky Surf also
+          authorizes a key of its own on every box it provisions, whether or not you supplied one:
+          it installs everything over its own SSH connection, so it needs a way in that does not
+          depend on a key only you hold. That key can be downloaded as a <code>.pem</code> — the one
+          place in the system that hands out decrypted secret material, ownership-checked and
+          audited, and safe to re-download if you lose it — and it is your recovery path even when
+          you brought your own key. Packs that ship a desktop show remote-desktop instructions
+          instead of making you guess.
         </p>
       </section>
 

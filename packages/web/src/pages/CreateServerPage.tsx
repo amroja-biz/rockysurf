@@ -1055,13 +1055,22 @@ export function CreateServerPage() {
             <span>Use my own public key</span>
           </label>
           {sshKeyOption === 'provide' && (
-            <textarea
-              aria-label="SSH public key"
-              rows={3}
-              value={sshPublicKey}
-              onChange={(e) => setSshPublicKey(e.target.value)}
-              placeholder="ssh-ed25519 AAAA… you@laptop"
-            />
+            <>
+              <textarea
+                aria-label="SSH public key"
+                rows={3}
+                value={sshPublicKey}
+                onChange={(e) => setSshPublicKey(e.target.value)}
+                placeholder="ssh-ed25519 AAAA… you@laptop"
+              />
+              {/* Issue #41: the create form used to present these two options as mutually
+                  exclusive. They are not — Rocky Surf's key is appended, never substituted,
+                  because push-mode bootstrap installs everything over its own SSH connection. */}
+              <p className="hint">
+                Rocky Surf also authorizes a key of its own on this box — it installs everything over its own SSH
+                connection, so it needs one. Your key is added alongside it, and both will work.
+              </p>
+            </>
           )}
           {/*
             Capability-driven, not provider-driven. A provider that cannot carry a host key

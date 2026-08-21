@@ -276,6 +276,16 @@ rather than of Rocky Surf:
 `stop` and `start` are unsupported on BYO — core does not own the power state of a machine it did
 not create — and the UI hides those buttons rather than offering them and failing.
 
+## SSH access on a new server
+
+The create form's "Use my own public key" option pastes your key onto the box — but it does not
+replace Rocky Surf's own generated key, it joins it. Push-mode bootstrap installs everything over
+Rocky Surf's own SSH connection, so that key is always authorized, on every server, regardless of
+what you supplied. Both keys work; the server page's Connect panel leads with whichever one you
+gave, and keeps the generated `.pem` reachable as a recovery path. See
+[`SECURITY.md`](../SECURITY.md#managed-servers-pinned-with-no-trust-on-first-use-window) for
+exactly how the pasted key is parsed and appended.
+
 ## Repositories, and how private ones clone
 
 The Repositories field on the create-server form takes one git URL per line, and each one is

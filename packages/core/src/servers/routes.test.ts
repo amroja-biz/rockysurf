@@ -10,6 +10,7 @@ import { markBootstrapReady } from '../bootstrap/supervisor.js'
 import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
 import { ProviderRegistry } from '../providers/registry.js'
 import { createEventsService, type EventsService } from '../services/events.js'
+import { fingerprintPublicKey } from '../ssh/keys.js'
 
 const PASSWORD = 'correct-horse-battery-staple'
 
@@ -183,6 +184,30 @@ describe('the routes the SPA already calls', () => {
     const body = (await res.json()) as { error: string; code: string }
     expect(body.code).toBe('invalid_public_key')
     expect(body.error).toBeTruthy()
+  })
+
+  /**
+   * The API surface of issue #41: `suppliedSshKey` is present, with a real fingerprint, only
+   * for a server created with a pasted key — and ABSENT (not null) for one created without.
+   */
+  describe('the supplied key is exposed through the API (issue #41)', () => {
+    const USER_KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'
+
+    it('serves the fingerprint of the key the caller supplied', async () => {
+      const created = (await (await post('/api/v1/servers', { ...CREATE, sshPublicKey: USER_KEY })).json()) as {
+        serverId: string
+      }
+
+      const body = (await (await get(`/api/v1/servers/${created.serverId}`)).json()) as Record<string, unknown>
+      expect(body['suppliedSshKey']).toEqual({ fingerprint: fingerprintPublicKey(USER_KEY), comment: 'laptop' })
+    })
+
+    it('omits the field entirely for a server created without one', async () => {
+      const created = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
+
+      const body = (await (await get(`/api/v1/servers/${created.serverId}`)).json()) as Record<string, unknown>
+      expect('suppliedSshKey' in body).toBe(false)
+    })
   })
 
   /**

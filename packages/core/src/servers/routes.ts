@@ -11,6 +11,7 @@ import { getServerRepositories, getServerTools, isBillingRow } from '../db/repos
 import { badRequest, created, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import type { IndexedRefusal } from '../git/preflight.js'
+import { fingerprintPublicKey } from '../ssh/keys.js'
 import { InvalidPublicKeyError } from '../ssh/server-keys.js'
 import {
   ConflictError,
@@ -165,6 +166,21 @@ export interface ServerRoutesDeps {
   offeringAllowlist?: (providerId: string) => readonly string[] | undefined
 }
 
+/**
+ * Fingerprint and comment for a stored `authorized_keys` line (issue #41), degrading to
+ * `undefined` rather than throwing — the column could hold a line written before a future
+ * format change, and a `GET /servers/:id` must not 500 over a display detail.
+ */
+function describeSuppliedKey(line: string): { fingerprint: string; comment?: string } | undefined {
+  try {
+    const fingerprint = fingerprintPublicKey(line)
+    const comment = line.trim().split(/\s+/)[2]
+    return { fingerprint, ...(comment ? { comment } : {}) }
+  } catch {
+    return undefined
+  }
+}
+
 /** The row as the SPA expects to see it. Legacy field names, no internal columns. */
 function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
   const repos = getServerRepositories(row)
@@ -213,6 +229,15 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
     // Absent when it is 22, so every existing client keeps rendering `ssh user@host` unchanged
     // and only a host that really is somewhere else grows a `-p` (ADR-0003, E13).
     sshPort: row.sshPort && row.sshPort !== DEFAULT_SSH_PORT ? row.sshPort : undefined,
+    /**
+     * The key the user brought, when they brought one (issue #41). Fingerprint and comment
+     * only: enough for a client to say "connect with the key whose fingerprint is X" without
+     * pasting a key blob into a page. Absent means core's key is the only one authorized.
+     *
+     * Core's key is NOT optional and is always authorized too — a box authorized for the
+     * user's key alone could not be bootstrapped, resumed or recovered (ADR-0002, SECURITY.md).
+     */
+    suppliedSshKey: row.userSuppliedPublicKey ? describeSuppliedKey(row.userSuppliedPublicKey) : undefined,
     // Absent unless the provider reported one, which is the only way core ever gets a console
     // URL — it does not know what any provider's console looks like (ADR-0003, E16).
     consoleUrl: row.consoleUrl ?? undefined,

@@ -172,6 +172,15 @@ export interface Server {
   /** Absent unless sshd is somewhere other than 22 — a BYO machine core did not configure. */
   sshPort?: number
   /**
+   * The key the user brought, when they brought one (issue #41). Absent means Rocky Surf's own
+   * generated key is the only one authorized. Rocky Surf's key is ALWAYS authorized too — it
+   * installs everything over its own SSH connection, so it needs one regardless.
+   */
+  suppliedSshKey?: {
+    fingerprint: string
+    comment?: string
+  }
+  /**
    * This instance's page in the provider's own management console, when the PROVIDER reported
    * one (ADR-0003, E16). Absent for a provider with no console, and for Hetzner until
    * `providers.hetzner.consoleProjectId` is configured — so the link is rendered only when it

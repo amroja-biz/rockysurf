@@ -172,6 +172,17 @@ export const servers = sqliteTable(
      * written without checking that it hashes to `hostKeyFingerprint`, which stays the pin.
      */
     hostPublicKey: text('host_public_key'),
+    /**
+     * The public key the user pasted at create time, normalized (issue #41). Public material,
+     * so it lives on the row rather than in the secrets store — every client that renders "how
+     * do I connect" needs it, and routing it through the encrypted store would make that a
+     * custody exemption (`secrets/route-inventory.test.ts`) bought for a value that is not a
+     * secret.
+     *
+     * Null means the user supplied nothing and core's key is the only way in. Never
+     * substituted for core's own key — see `ssh/server-keys.ts` — only appended alongside it.
+     */
+    userSuppliedPublicKey: text('user_supplied_public_key'),
 
     /* --- callback-mode credentials (ADR-0002 Decision 5, amendments E8/E9) --- */
     /**

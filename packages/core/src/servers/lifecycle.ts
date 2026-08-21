@@ -651,7 +651,9 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // leaves nothing behind. The pasted key is validated here for the same reason (issue
       // #41 fallout, rockysurf-9fvy.1): `normalizeUserPublicKey` used to run in STEP 2, after
       // the row already existed, so a malformed paste threw past a `requested` row that no
-      // provider would ever hear about.
+      // provider would ever hear about. Normalizing once, here, means the trimmed value is
+      // what gets persisted onto the row below AND what gets handed to `provisionKeys` — one
+      // normalization, one value, two readers (issue #41).
       await deps.checkLimits?.(input, countActiveServersForUser(db, input.userId))
       const sshPublicKey = input.sshPublicKey ? normalizeUserPublicKey(input.sshPublicKey) : undefined
 
@@ -684,6 +686,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         idempotencyKey,
         bootstrapMode,
         hourlyCost,
+        ...(sshPublicKey ? { userSuppliedPublicKey: sshPublicKey } : {}),
         ...(input.packId ? { packId: input.packId } : {}),
         ...(input.tools ? { tools: input.tools } : {}),
         ...(input.repositories ? { repositories: input.repositories } : {}),

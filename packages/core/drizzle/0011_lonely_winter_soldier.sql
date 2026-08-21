@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `user_supplied_public_key` text;

@@ -414,6 +414,60 @@ describe('the web-UI tunnel (rockysurf-bbmi)', () => {
 })
 
 /**
+ * The Connect panel when a key was supplied at create time (issue #41).
+ *
+ * The report was the owner pasting their own public key and Connect still handing back a
+ * generated `.pem` as if it were the only way in. Both keys are authorized either way — core
+ * appends, never substitutes (ADR-0002) — so what changes here is which one the page leads
+ * with, not which ones work.
+ */
+describe('the connect panel when a key was supplied (issue #41)', () => {
+  async function reachRunning() {
+    renderPage()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil(
+      { type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' },
+      () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
+    )
+  }
+
+  it('leads with the plain ssh command and demotes the .pem into a disclosure', async () => {
+    row = { ...SERVER, suppliedSshKey: { fingerprint: 'SHA256:abc123', comment: 'me@laptop' } }
+    await reachRunning()
+
+    // No -i, no .pem, in the primary command — it is not nested in the disclosure.
+    const primary = screen.getByText('ssh rocky@203.0.113.7')
+    expect(primary.closest('details')).toBeNull()
+    // The fingerprint of the key that command actually uses is named.
+    expect(screen.getByText(/SHA256:abc123/)).toBeTruthy()
+    expect(screen.getByText(/me@laptop/)).toBeTruthy()
+
+    // The generated-key command still works and is still shown — demoted, not removed —
+    // but only inside the labelled disclosure, not as the primary command.
+    const demoted = screen.getByText('ssh -i dev-box.pem rocky@203.0.113.7')
+    expect(demoted.closest('details')).toBeTruthy()
+
+    // The download is still reachable, but only inside that same disclosure — not a
+    // top-level button a user would mistake for the way in.
+    const downloadButton = screen.getByRole('button', { name: /Download dev-box\.pem/ })
+    expect(downloadButton.closest('details')).toBeTruthy()
+    expect(screen.getByText("Rocky Surf's own key")).toBeTruthy()
+
+    expect(screen.queryByText(/the only copy you get/)).toBeNull()
+  })
+
+  it("renders today's generated-key command and top-level button when no key was supplied", async () => {
+    await reachRunning()
+
+    expect(screen.getByText('ssh -i dev-box.pem rocky@203.0.113.7')).toBeTruthy()
+    const downloadButton = screen.getByRole('button', { name: /Download dev-box\.pem/ })
+    expect(downloadButton.closest('details')).toBeNull()
+
+    expect(screen.queryByText(/the only copy you get/)).toBeNull()
+  })
+})
+
+/**
  * The stop/start affordance (rockysurf-4t8y).
  *
  * The report was the owner clicking Start on a stopped t4g.medium, watching the AWS console
