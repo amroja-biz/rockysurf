@@ -133,6 +133,11 @@ providers:
     # that would deep-link into somebody else's project.
     # consoleProjectId: 1234567
 
+    # Optional allowlist: the only server types this installation will create, on the New
+    # Server page and through the API, the CLI and MCP alike. Omit to offer everything the
+    # location sells. cax* are ARM (Ampere) and only sold in fsn1, nbg1 and hel1.
+    # sizes: [cpx11, cpx21, cpx31]
+
   aws:
     # Credentials come from the standard AWS chain (AWS_PROFILE, environment, instance role),
     # never from this file.
