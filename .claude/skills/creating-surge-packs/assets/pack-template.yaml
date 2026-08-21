@@ -5,11 +5,14 @@
 # is pinned, why something is unpinned, why a flag is passed) — those are the ones a reviewer and
 # your future self need.
 #
+# Extending an existing pack? Copy that pack's `pack.tools` list into this file verbatim, add
+# your ids, and define ONLY your new tools. See references/extending.md.
+#
 # Before naming anything, see what is taken — toolId must be unique across the WHOLE repository:
 #   grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u
 #
 # Validate after every edit, in ~2s and with no Docker (from the repo root):
-#   pnpm --filter @rockysurf/core exec vitest run src/packs/packs.test.ts
+#   pnpm --filter @rockysurf/core exec vitest run src/packs/
 # Then prove it, with Docker:
 #   node scripts/pack-smoke.mjs --pack <pack-id> --arch arm64
 #   node scripts/pack-smoke.mjs --pack <pack-id> --arch amd64

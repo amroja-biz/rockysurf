@@ -1,6 +1,6 @@
 ---
 name: creating-surge-packs
-description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "I want a Rocky Surf box with Rust and Neovim on it", "add ripgrep to the claude-code pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, and how to install and share the finished pack.
+description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "I want a Rocky Surf box with Rust and Neovim on it", "add ripgrep to the claude-code pack", "add OMP and an MCP server on top of the Claude Code pack", "add ripgrep and fzf on top of the opencode pack", "I want the opencode pack plus my own tools", "extend the ai-coding-agents pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, how to extend an existing pack without breaking it, and how to install and share the finished pack.
 ---
 
 # Creating a Surge Pack
@@ -53,6 +53,23 @@ Read `references/contract.md` now if you have not authored a pack in this sessio
 condensed contract: the field tables, the four rules, and the list of things you may not assume
 about the box. The normative source is `docs/writing-a-pack.md` in the checkout — when the two
 disagree, the checkout wins, and say so to the user.
+
+## Route first: new pack, or building on one that exists?
+
+Before Step 1, ask the question whose answer decides everything else: **does a pack that already
+exists get modified, or does it stay exactly as it is?**
+
+| The user wants | Mode | What changes on disk |
+|---|---|---|
+| their own variant — extra tooling on top of a pack that already works; the original stays in the picker, untouched | **Derive** (the default) | exactly one new file, `packs/<new-id>.yaml` |
+| everyone who already uses pack X to get the new tool too, and X is theirs to change | **Amend** | the one existing `packs/X.yaml` |
+| a new tool that several packs should share | one definition in whichever file owns it, referenced from each pack's `tools:` list | the owning file, plus each pack's `tools:` list |
+
+**Default to derive.** A derived pack cannot break anybody else's pack; an amend to a base file
+like `packs/ai-coding-agents.yaml` empties the entire pack picker at boot if it goes wrong (see
+`references/shipping.md`). If the user is only adding tools on top of something that already
+works — "add X on top of the Y pack" — that is a derive, and it is what Step 1E below covers. A
+pack with nothing existing to build on falls through to Step 1 unchanged.
 
 ## Step 1 — Interview
 
@@ -119,6 +136,75 @@ if you drop a tool that another one depends on, the dependent breaks:
 Anything you add yourself follows the same rule, so state its needs in a comment. Say out loud
 which base tools you dropped and why, so the user can push back.
 
+## Step 1E — Extending an existing pack
+
+Skip this step for a from-scratch pack. Read it when the user is deriving from, or amending, a
+pack that already ships — `packs/gas-town.yaml` is the in-repo proof this pattern already works:
+it lists the shared base toolchain plus three other packs' agents (`claude-code`, `amp`,
+`codex`) plus its own three tools. No format change is involved anywhere below; `pack.tools` is
+just a list of ids, and it already resolves across files.
+
+**The derive workflow:**
+
+1. **Read the base pack file end to end** — `packs/<base>.yaml`. Note its `pack.tools` list, its
+   `requiresRepos` / `requiresRdp` / `desktop` / `webPort`, and its `guide`. If it references an
+   agent defined elsewhere (`amp`, `codex`, `opencode`, `claude-code`, `gas-town` — see the table
+   further down in Step 2 for which file owns which), read that file too.
+2. **Take a new identity.** A free `packId` and `displayOrder` (`grep -h 'toolId:\|packId:\|
+   displayOrder:' packs/*.yaml | sort -u`, the same command Step 2 uses), filename equal to
+   `packId`. Never reuse the base's `packId` or `displayOrder` — that is amending, not deriving.
+3. **Copy `pack.tools` from the base verbatim, in the same order.** Do not re-sort, do not tidy.
+   List order does not affect execution — `installOrder` does — so reordering the copy only
+   destroys a reviewer's ability to diff it against the base. Trim afterwards only if the user
+   asked for a narrower box, and re-read the dependency table above first: dropping `nodejs`
+   breaks every npm-installed agent that needs it.
+4. **Carry the base's behaviour flags** (`requiresRepos`, `requiresRdp`, `desktop`, `webPort`)
+   unless something you are adding changes the answer — a loopback web UI needs `webPort`, a GUI
+   app needs `desktop: xfce` and `requiresRdp: true`.
+5. **Add only new ids to `pack.tools`, and define only those new tools under `tools:`.** Never
+   redefine a tool the base owns: the loader rejects a `toolId` defined in two files, `pack lint`
+   fires `duplicate-tool`, and on import a redefinition silently overwrites the shipped row for
+   every pack on that instance. A base tool that needs to behave differently gets your own id
+   instead (`acme-curl`), not the base's.
+6. **`installOrder` for the tools you add uses the gaps — never renumber the base's tools.** An
+   add-on that needs `nodejs` (band 20) sits at 40; one that needs an agent already installed sits
+   at 50. The bands are in the dependency table above and in `docs/writing-a-pack.md`; `pack lint`
+   rejects anything outside 10–60.
+7. **`guide`: start from the base's guide and append — do not replace it.** Every tool the base
+   installed is still on the box, so its instructions are all still true. Add one block per tool
+   you added.
+
+**Then verify as if it were a brand-new pack, because to the harness it is one.** Step 3
+(`pnpm --filter @rockysurf/core exec vitest run src/packs/`), then Step 4 (`node
+scripts/pack-smoke.mjs --pack <new-id> --arch arm64|amd64 --keep`). **The base pack's own green
+run does not transfer to the derived file** — this is the single most likely wrong assumption
+someone brings to "I only added one tool," so say it out loud before they find out the hard way.
+
+**The guardrail that makes "the base still works" checkable, and the whole point of deriving:**
+
+```bash
+git status --porcelain packs/         # a derive shows exactly one new file, nothing modified
+```
+
+If that shows `packs/<base>.yaml` as modified, the user is amending, not deriving — see below,
+and re-smoke that file specifically.
+
+**The amend path, when the base pack really is being changed:** add the tool under `tools:` and
+its id to `pack.tools`, same four rules and bands as any other tool, then re-run Step 3 and Step
+4 **on the amended pack**. If the file is `packs/ai-coding-agents.yaml`, that is the shared base
+toolchain for every pack in the repository — re-smoke everything (`node scripts/pack-smoke.mjs`
+with no `--pack`), because a pack file that fails validation is skipped at boot, taking every
+pack that references its tools out of the picker with it. On a running instance, a file-backed
+pack needs a restart to pick up the edit — there is no watcher — and an imported pack is edited
+in the admin UI or re-imported.
+
+`references/extending.md` has a worked derive example end to end, a symptom→fix table for what
+goes wrong, and the operator/import path for extending a pack without a checkout at all —
+including why **Export** is not a "fork this pack" button.
+
+Now rejoin at Step 2 for the writing rules and Step 3 for validation — a derived pack is verified
+as a new pack, because that is what it is.
+
 ## Step 2 — Write the file
 
 Copy `assets/pack-template.yaml` into `packs/<pack-id>.yaml` in the checkout and fill it in. The
@@ -155,6 +241,7 @@ these by what you are doing:
 | building from source with a compiler | `gas-town-toolchain` + `gas-town` in `packs/gas-town.yaml` |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
+| building on a pack that already exists | `packs/gas-town.yaml`, and Step 1E |
 
 `references/idioms.md` has the copyable shell for each of these, with the failure each guard
 prevents. **Use those idioms rather than inventing your own** — every one of them is there
@@ -347,7 +434,10 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
   file or fetching a URL. An imported pack becomes a database row that boot never overwrites and
   never restores. The URL fetch goes through an SSRF guard: public `http`/`https` only, 2 MB cap,
   no credentials sent, so a raw GitHub or raw gist URL works and anything private or on the
-  operator's LAN does not.
+  operator's LAN does not. **Do not use Export as a "fork this pack" button** — Export inlines
+  every referenced tool, so the result redefines the shared base ids, which the loader rejects
+  in-tree and which overwrites the shipped tool rows instance-wide on import. Deriving by hand
+  from the base's `pack.tools` id list (Step 1E) is the supported way to fork a pack.
 - **Drop the file into `packs/`** in their own deployment — loaded at **boot only**, there is no
   watcher, so it needs a restart. Warn them about the cascade: a broken pack file is skipped, and
   because tool definitions are shared, breaking `ai-coding-agents.yaml` takes every pack that
@@ -372,4 +462,7 @@ check, and anything the guide admits the box cannot do. That honesty is the whol
 - `references/shipping.md` — only when you are publishing the pack for someone else: the
   destinations in detail, the SSRF guard's real rules, and what import does to shared tool
   definitions. Step 6 above is enough for a pack that stays on the user's own instance.
+- `references/extending.md` — only when you are deriving from or amending a pack that already
+  exists: a worked derive example end to end, a symptom→fix table for what goes wrong, and the
+  amend and out-of-checkout/import paths. Step 1E above is enough for most cases.
 - `assets/pack-template.yaml` — a commented skeleton to copy into `packs/`.
