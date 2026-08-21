@@ -220,13 +220,15 @@ const SCRIPT_RULES: Array<{
     // Read against `commands` rather than `body`: the packs that were fixed carry paragraphs
     // naming this endpoint to explain why they no longer call it.
     //
-    // WHAT THIS DOES NOT CATCH, and it is the shape that actually broke the trunk: a script that
-    // pipes a VENDOR'S installer to bash, where the API call lives in the remote file. No regex
-    // over our own text can see inside that. Several shipped packs still pipe installers
-    // (nodesource, claude.ai, opencode), so a rule against the pipe itself would fail main on
-    // day one and is a judgement about trusting vendors rather than about this bug. This rule
-    // catches the direct call and the hand-rolled latest-release lookup, which is the form a new
-    // pack is most likely to write.
+    // WHAT THIS DOES NOT CATCH: a script that pipes a VENDOR'S installer to bash, where the API
+    // call would live in the remote file this lint never reads. No regex over our own text can
+    // see inside that. That used to be the shape that actually broke the trunk — nodesource,
+    // claude.ai and opencode all piped installers at one point — but rockysurf-hgz6 replaced the
+    // last of them, so "no shipped pack pipes an installer to bash" is not a fact this rule
+    // enforces; it is a fact that bead fixed by hand. The next pack that reaches for
+    // `curl | bash` slips past this check exactly the way the old ones did. This rule catches
+    // the direct call and the hand-rolled latest-release lookup, which is the form a new pack is
+    // most likely to write.
     when: (s) => s.commands.includes('api.github.com'),
   },
 ]

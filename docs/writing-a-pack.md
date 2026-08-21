@@ -270,13 +270,12 @@ running as `rocky`. That split is exactly what `setupScript` is for.
 ```
 
 ```yaml
-- toolId: claude-code
-  runAs: rocky                   # a per-user install, in the user's own home
+- toolId: beads
+  runAs: rocky                   # a per-user install, into the user's own $HOME
   installScript: |
-    curl -fsSL https://claude.ai/install.sh | bash
-    if ! grep -q '.claude/bin' "$HOME/.bashrc"; then
-      echo 'export PATH="$HOME/.claude/bin:$PATH"' >> "$HOME/.bashrc"
-    fi
+    curl -fsSL --retry 3 "$release_url" -o "$tmp/beads.tar.gz"
+    echo "$bd_sha  $tmp/beads.tar.gz" | sha256sum -c -
+    install -D -m 0755 "$tmp/bd" "$HOME/.local/bin/bd"
 ```
 
 #### Not this
@@ -387,6 +386,17 @@ upload is a prerelease (npm `alpha`, `beta`, `next`) is **not** what a bare inst
 boxes until upstream fixes it. Existing boxes are untouched — nothing re-runs an install
 script on a server that already booted. This was weighed and accepted: the failure is loud,
 it is upstream's to fix, and it is rarer than the guaranteed staleness a pin produced.
+
+**One exception, recorded in `claude-code` (`packs/ai-coding-agents.yaml`):** the paragraph
+above assumes a publisher's `latest` dist-tag IS their stable channel. `@anthropic-ai/claude-code`
+is a case where it is not — its `latest` runs *ahead* of a tag the publisher names `stable`
+(checked with `npm view @anthropic-ai/claude-code dist-tags`), so a bare install would not
+give you "latest stable" the way this section promises; it would give you whatever is
+currently rolling out. When a package's own dist-tags disagree with that assumption, install
+the named tag instead of the bare name — `@anthropic-ai/claude-code@stable` — rather than
+`@anthropic-ai/claude-code`. A dist-tag is still not a version pin: it still moves forward
+whenever the publisher re-points it, so this stays inside rule 1. Check a package's dist-tags
+before assuming a bare install does what this section says.
 
 ### 2. GitHub release assets only: the pin and the digest stay
 
@@ -696,19 +706,15 @@ tools:
     category: agent
     url: https://claude.com/claude-code
     installOrder: 40
-    runAs: rocky
+    runAs: root                    # a global npm install, into node's own prefix
     bootstrap: false
     enabled: true
     installScript: |
       set -euo pipefail
 
-      curl -fsSL https://claude.ai/install.sh | bash
+      npm install -g --no-fund --no-audit @anthropic-ai/claude-code@stable
 
-      if ! grep -q '.claude/bin' "$HOME/.bashrc"; then
-        echo 'export PATH="$HOME/.claude/bin:$PATH"' >> "$HOME/.bashrc"
-      fi
-
-      "$HOME/.claude/bin/claude" --version
+      claude --version >/dev/null
 ```
 
 Three things in there are worth copying into your own pack:
