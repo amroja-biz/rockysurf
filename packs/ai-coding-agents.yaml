@@ -15,6 +15,7 @@ pack:
     - gh
     - git
     - tmux
+    - tmux-mouse
     - unzip
     - python3-pip
     - python3-venv
@@ -226,6 +227,24 @@ tools:
       [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
       apt-get install -y tmux
       tmux -V >/dev/null
+
+  - toolId: tmux-mouse
+    name: tmux mouse mode
+    description: Turns on mouse support in tmux, since a virtual server's terminal never negotiates it on its own
+    category: base
+    url: https://github.com/tmux/tmux/wiki/FAQ#how-do-i-use-a-mouse-in-tmux
+    installOrder: 15
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # Whole-file write: converges on the same content every run, so a resume or a
+      # re-install can never leave a second "set -g mouse on" line behind.
+      install -D -m 0644 /dev/stdin "$HOME/.tmux.conf" <<'EOF'
+      set -g mouse on
+      EOF
+      grep -qxF 'set -g mouse on' "$HOME/.tmux.conf"
 
   - toolId: unzip
     name: unzip
