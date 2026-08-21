@@ -19,6 +19,10 @@
  *    AWS account, no SDK. It is the same JSON calculator.aws renders, so the numbers match what
  *    a customer sees on the page. Its `manifest.hawkFilePublicationDate` is recorded alongside
  *    the fetch time, because those are different facts: when AWS published, and when we looked.
+ *    The catalogue itself is built MECHANICALLY from that same feed rather than from a hand list
+ *    of families — see the comments on `AWS_EXCLUDED_FAMILIES`, `AWS_MAX_VCPU`/
+ *    `AWS_MAX_MEMORY_GIB` and `classifyAwsArch` below for what "mechanically" means and why a
+ *    hand list was rejected (it is the staleness failure mode this generator exists to escape).
  *
  *  - **Azure** — the public Retail Prices API, `https://prices.azure.com/api/retail/prices`.
  *    Also credential-free, so anyone can reproduce the numbers in this repository, which is why
@@ -51,13 +55,165 @@ const AWS_FEED = (regionLabel) =>
   'https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/' +
   `${encodeURIComponent(regionLabel)}/Linux/index.json`
 
-/** AWS region id → the label the feed is keyed by. Add a row to support another region. */
+/**
+ * AWS region id → the label the feed is keyed by.
+ *
+ * HAND-MAPPED, AND THAT IS DELIBERATE: there is no feed region index to read this from (every
+ * index path tried — `.../ec2-ondemand-without-sec-sel/index.json` and neighbours — 404s), so
+ * the only way to learn a label is to already know it. A wrong label here is a silent gap, not a
+ * loud one, unless something stops it — which is why `fetchJson` below treats a non-200 as fatal
+ * and this generator has no skip-and-continue path: one bad region label fails the whole run
+ * instead of quietly shipping eleven regions and calling it twelve.
+ *
+ * Before this list grew past `us-east-1`, every other region an operator configured was already
+ * an unpriced fleet — `AWS_HOURLY_USD` had one key, so `buildOfferings()` returned `hourly: null`
+ * for every offering anywhere else, and the spend cap could not see a single box in it. Add a row
+ * here to bundle another region; the generator will refuse to run rather than emit silence for it.
+ */
 const AWS_REGIONS = {
   'us-east-1': 'US East (N. Virginia)',
+  'us-east-2': 'US East (Ohio)',
+  'us-west-2': 'US West (Oregon)',
+  'eu-west-1': 'EU (Ireland)',
+  'eu-west-2': 'EU (London)',
+  'eu-west-3': 'EU (Paris)',
+  'eu-central-1': 'EU (Frankfurt)',
+  'ap-southeast-1': 'Asia Pacific (Singapore)',
+  'ap-southeast-2': 'Asia Pacific (Sydney)',
+  'ap-northeast-1': 'Asia Pacific (Tokyo)',
+  'ca-central-1': 'Canada (Central)',
+  'sa-east-1': 'South America (Sao Paulo)',
 }
 
-/** Families worth bundling. Everything else reports `hourly: null` — "unknown, never free". */
-const AWS_FAMILIES = ['t4g', 't3']
+/**
+ * Feed families excluded from the catalogue, by the feed's OWN `Instance Family` classification
+ * — mechanical, not a hand list of instance-type ids. Two things collapse into one rule:
+ *
+ *  - Selling one of these would be DISHONEST. `Offering.gpu` is reserved and unpopulated (this
+ *    provider never fills it in), and the bootstrap ships no GPU or accelerator drivers — a
+ *    customer who read the offering and got the box would have neither the field describing what
+ *    they bought nor the software to use it.
+ *  - It is SELF-UPDATING. AWS adding a new accelerator family next quarter is caught by the
+ *    feed's own classification the next time this generator runs; nothing here needs to learn
+ *    the new family's name.
+ *
+ * Checked directly against the live feed on 2026-08-21: these four values are the whole set of
+ * non-general-purpose-or-compute-or-memory-or-storage families it reports.
+ */
+export const AWS_EXCLUDED_FAMILIES = new Set([
+  'GPU instance',
+  'Machine Learning ASIC Instances',
+  'FPGA Instances',
+  'Media Accelerator Instances',
+])
+
+/**
+ * Ceiling on vCPU and memory, independent of family or generation. This is what excludes
+ * `.metal` giants and the multi-terabyte `u`/`u7i` "high memory" family WITHOUT naming either —
+ * a size-based rule survives AWS resizing or renaming a family in a way an id list would not.
+ *
+ * 128 vCPU / 1024 GiB is the chosen line: on the feed checked 2026-08-21 it keeps ≈994 types at
+ * a maximum of ≈$15.01/hr, comfortably covering the up-to-64xlarge sizes a dev box realistically
+ * wants while keeping the bundled table two orders of magnitude smaller than "everything". A
+ * maintainer who wants a tighter bootstrap catalogue can lower this to 64 vCPU / 512 GiB instead
+ * — that is a one-line edit here, not a design change, which is the point of it being a constant.
+ *
+ * SAME POLICY, SAME NUMBERS, DIFFERENT LAYER from `@rockysurf/provider-azure`'s `SIZE_CEILING`
+ * (`{ maxCpu: 128, maxMemoryGb: 1024 }` in `packages/provider-azure/src/offerings.ts`). AWS's
+ * feed carries `vCPU`/`Memory` columns on the same row as the price, so this ceiling is enforced
+ * HERE, once, at generation time. Azure's retail feed carries no shape data at all — vCPU and
+ * memory only exist as real numbers once read live from `Microsoft.Compute/skus` — so the
+ * identical rule has to live in that provider's `buildOfferings` instead, against the numbers
+ * Azure reports live. If this line ever moves, move `SIZE_CEILING` with it; the two are the same
+ * decision enforced where each provider's feed makes it possible to check.
+ */
+export const AWS_MAX_VCPU = 128
+export const AWS_MAX_MEMORY_GIB = 1024
+
+/** `.metal` (bare-metal, no hypervisor) instances sit in the SAME `Instance Family` as their
+ * virtualized siblings, so they are excluded by id rather than by family. The feed's own metal
+ * ids are `<family>.metal` or `<family>.metal-<size>` (e.g. `c8g.metal-48xl`); both match. */
+export function isAwsMetal(id) {
+  return id.split('.')[1]?.startsWith('metal') ?? false
+}
+
+/**
+ * Whether a feed row belongs in the bundled catalogue: not an excluded family, not bare-metal,
+ * and within the vCPU/memory ceiling. Applied BEFORE architecture classification, so a family
+ * the ceiling already drops (the `u`/`u7i` high-memory family, whose names do not fit the
+ * Graviton suffix rule at all) never reaches `classifyAwsArch` in the first place.
+ */
+export function isAwsCatalogued(row) {
+  const id = row['Instance Type']
+  if (!id) return false
+  if (AWS_EXCLUDED_FAMILIES.has(row['Instance Family'])) return false
+  if (isAwsMetal(id)) return false
+  const cpu = Number(row.vCPU)
+  const memoryGb = Number(String(row.Memory).replace(/\s*GiB$/i, ''))
+  if (!(cpu > 0) || !(memoryGb > 0)) return false
+  return cpu <= AWS_MAX_VCPU && memoryGb <= AWS_MAX_MEMORY_GIB
+}
+
+/**
+ * Families the mechanical Graviton-suffix rule below is KNOWN TO GET WRONG, seeded as hard
+ * errors rather than left to fail silently into `amd64`:
+ *
+ *  - `a1` is Graviton1 (arm64) with no `g` anywhere in the family name — the one Graviton family
+ *    that predates the suffix convention.
+ *  - `mac1` is Intel (amd64); `mac2` and its variants are Apple Silicon (arm64) — the same `mac`
+ *    prefix means different architectures depending on the generation digit, which the suffix
+ *    rule cannot see.
+ *
+ * NEITHER CAN APPEAR IN THIS FEED TODAY: it is Linux-only, Mac instances have no Linux "Instance
+ * Type" row to speak of, and `a1` is not present in the families it currently returns (verified
+ * 2026-08-21). This set exists purely so that IF one of them ever did appear, the generator
+ * refuses to guess rather than silently writing `amd64` onto an ARM box.
+ */
+export const AWS_ARCH_EXCEPTIONS = new Set(['a1', 'mac1', 'mac2'])
+
+/**
+ * Architecture from the family name alone, at GENERATION time — never a runtime guess, and never
+ * a silent default.
+ *
+ * THE RULE: an AWS instance family is `<letters><generation digit><letters>`, optionally
+ * followed by `-<suffix>` (`c7i-flex`, `p6-b200`, `u7in-16tb` — the part after the hyphen is
+ * ignored). A Graviton family has a `g` among the letters AFTER the digit (`c8g`, `m7gd`,
+ * `r8gn`, `x8g`, `i8g`, `im4gn`, `hpc7g`, `g5g`); no non-Graviton family does (`g4dn`, `g6`,
+ * `gr6`, `c7i-flex` — note the `g` in `gr6` and `g4dn` sits BEFORE the digit, in the product
+ * line letters, which is why it does not count). Pinned in both directions in
+ * `scripts/refresh-prices.test.mjs` against the real family list this feed returned on
+ * 2026-08-21.
+ *
+ * ERRORS on anything it cannot classify — via `AWS_ARCH_EXCEPTIONS` above or because the family
+ * does not fit the `<letters><digit><letters>` shape at all — rather than defaulting to amd64.
+ * A hand-maintained list goes stale silently; a generator that refuses to guess fails LOUDLY,
+ * the first time it runs against a family that breaks the convention. The escape hatch, if that
+ * ever happens: a maintainer runs `DescribeInstanceTypes` once with their own credentials against
+ * just the offending family and hardcodes that one result, rather than reintroducing a live call
+ * to this generator itself (which would need a TTL cache and reopen the questions ADR-0003 and
+ * the gyp1 design already closed against a live AWS catalogue).
+ */
+export function classifyAwsArch(id) {
+  const family = id.split('.')[0].split('-')[0]
+
+  if (AWS_ARCH_EXCEPTIONS.has(family)) {
+    throw new Error(
+      `aws: family '${family}' (from '${id}') is a known exception to the Graviton suffix rule and cannot be ` +
+        'classified mechanically — see AWS_ARCH_EXCEPTIONS in scripts/refresh-prices.mjs.',
+    )
+  }
+
+  const match = /^[a-z]+(\d+)([a-z]*)$/i.exec(family)
+  if (!match) {
+    throw new Error(
+      `aws: family '${family}' (from '${id}') does not match <letters><generation digit><letters> — the ` +
+        'Graviton suffix rule cannot classify it. Add it to AWS_ARCH_EXCEPTIONS and classify it by hand (see ' +
+        "the escape hatch on classifyAwsArch's comment), or fix the pattern if AWS changed the naming shape.",
+    )
+  }
+
+  return /g/i.test(match[2]) ? 'arm64' : 'amd64'
+}
 
 const AWS_OUTPUT = join(ROOT, 'packages/provider-aws/src/prices.generated.ts')
 const HETZNER_OUTPUT = join(ROOT, 'packages/provider-hetzner/src/prices.generated.ts')
@@ -123,15 +279,19 @@ async function refreshAws({ write = true } = {}) {
     const perRegion = {}
 
     for (const row of rows) {
+      if (!isAwsCatalogued(row)) continue
       const id = row['Instance Type']
-      if (!id || !AWS_FAMILIES.includes(id.split('.')[0])) continue
       perRegion[id] = Number(Number(row.price).toFixed(6))
-      // Shape comes from the same row as the price, so the two cannot disagree.
-      specs.set(id, {
-        cpu: Number(row.vCPU),
-        memoryGb: Number(String(row.Memory).replace(/\s*GiB$/i, '')),
-        arch: id.startsWith('t4g') ? 'arm64' : 'amd64',
-      })
+      // Shape comes from the same row as the price, so the two cannot disagree. A type seen in
+      // an earlier region keeps that spec — the shape is a fact about the hardware, not the
+      // region, so the first sighting across the whole run is as good as any other.
+      if (!specs.has(id)) {
+        specs.set(id, {
+          cpu: Number(row.vCPU),
+          memoryGb: Number(String(row.Memory).replace(/\s*GiB$/i, '')),
+          arch: classifyAwsArch(id),
+        })
+      }
     }
 
     hourly[regionId] = Object.fromEntries(Object.entries(perRegion).sort(([a], [b]) => a.localeCompare(b)))
@@ -141,16 +301,35 @@ async function refreshAws({ write = true } = {}) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([id, spec]) => ({ id, ...spec }))
 
+  // ONE LINE PER TYPE, deliberately not `JSON.stringify(types, null, 2)`: at ~994 types, a
+  // six-line pretty object per entry would make a nightly regen diff (one price moved, one
+  // family added) unreviewable — a reviewer would see hundreds of changed lines for one changed
+  // fact. One line per type means the diff IS the fact that changed.
+  const typesLiteral = [
+    '[',
+    ...types.map(
+      (t) => `  { id: ${JSON.stringify(t.id)}, cpu: ${t.cpu}, memoryGb: ${t.memoryGb}, arch: ${JSON.stringify(t.arch)} },`,
+    ),
+    ']',
+  ].join('\n')
+
+  const regionList = Object.keys(AWS_REGIONS).join(', ')
   const source = AWS_FEED(Object.values(AWS_REGIONS)[0])
   const contents = `// GENERATED by scripts/refresh-prices.mjs — do not edit by hand.
 //
-// Source: the public EC2 on-demand price feed that the AWS pricing page renders.
+// Source: the public EC2 on-demand price feed that the AWS pricing page renders, read once per
+// bundled region (${regionList}).
 //   ${source}
 // No credentials are needed to reproduce this: re-run \`node scripts/refresh-prices.mjs\`.
 //
 // \`fetchedAt\` is when WE read it. \`publishedAt\` is when AWS published that price file. Both
 // are recorded because they are different facts, and the second is the one that says how
 // current the numbers themselves are.
+//
+// THE CATALOGUE IS MECHANICAL, not a hand-picked family list: every type is included unless the
+// feed's own classification marks it GPU/ML-ASIC/FPGA/media-accelerator, its id is bare-metal,
+// or it exceeds the vCPU/memory ceiling. See AWS_EXCLUDED_FAMILIES, AWS_MAX_VCPU/
+// AWS_MAX_MEMORY_GIB and classifyAwsArch in scripts/refresh-prices.mjs for the exact rules.
 import type { Architecture } from '@rockysurf/provider-sdk'
 
 export const AWS_PRICES_FETCHED_AT = '${new Date().toISOString()}'
@@ -165,7 +344,7 @@ export interface AwsTypeSpec {
 }
 
 /** Shape read from the same feed row as the price, so the two cannot disagree. */
-export const AWS_TYPES: AwsTypeSpec[] = ${JSON.stringify(types, null, 2).replace(/"([a-zA-Z]+)":/g, '$1:')}
+export const AWS_TYPES: AwsTypeSpec[] = ${typesLiteral}
 
 /** region → instance type → USD/hour, on-demand Linux, VAT/tax exclusive. */
 export const AWS_HOURLY_USD: Record<string, Record<string, number>> = ${JSON.stringify(hourly, null, 2)}
@@ -494,9 +673,10 @@ async function reportGcp() {
   return { rows: rows.length, region }
 }
 
-// Guarded so the exported helpers above (`azureLinuxMeter`, `resolvePricedSizes`, …) can be
-// imported by a test without also firing off network calls or exiting the process — this file
-// is both the CLI entry point and, since rockysurf-o05s, a module other code imports from.
+// Guarded so the exported helpers above (`azureLinuxMeter`, `resolvePricedSizes`, the AWS
+// classification/filter functions) can be imported by a test without also firing off network
+// calls or exiting the process — this file is both the CLI entry point and, since rockysurf-o05s
+// and rockysurf-tzzw, a module other code imports from.
 if (import.meta.main) {
   const args = process.argv.slice(2)
   const check = args.includes('--check')

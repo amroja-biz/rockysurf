@@ -10,6 +10,7 @@ your own account — and nothing beyond that.
 - [Who can reach SSH](#who-can-reach-ssh)
 - [Testing the policy](#testing-the-policy)
 - [What is deliberately absent](#what-is-deliberately-absent)
+- [The machine catalogue and priced regions](#the-machine-catalogue-and-priced-regions)
 
 ---
 
@@ -466,3 +467,54 @@ This one needs **14**.
 
 That is not just a smaller policy. It is a smaller blast radius: nothing here can create an IAM
 role, mutate a resource it did not tag, or touch a stack.
+
+---
+
+## The machine catalogue and priced regions
+
+`listOfferings()` returns roughly a thousand EC2 instance types, generated mechanically by
+[`scripts/refresh-prices.mjs`](../../scripts/refresh-prices.mjs) from AWS's own public,
+credential-free EC2 on-demand pricing feed — the same JSON the pricing page itself renders. Every
+type is included unless it is a GPU / Machine Learning ASIC / FPGA / media-accelerator instance
+(this bootstrap ships no drivers for one, and `Offering.gpu` is reserved and unpopulated, so
+selling one would be dishonest), a bare-metal (`.metal`) id, or above the ceiling of 128 vCPU /
+1024 GiB. There is deliberately no "current generation" hand list — a family list goes stale
+silently; a mechanical rule regenerated from the live feed does not.
+
+**Twelve regions are bundled with real prices:**
+
+| | |
+|---|---|
+| `us-east-1` (N. Virginia) | `us-east-2` (Ohio) |
+| `us-west-2` (Oregon) | `eu-west-1` (Ireland) |
+| `eu-west-2` (London) | `eu-west-3` (Paris) |
+| `eu-central-1` (Frankfurt) | `ap-southeast-1` (Singapore) |
+| `ap-southeast-2` (Sydney) | `ap-northeast-1` (Tokyo) |
+| `ca-central-1` (Central Canada) | `sa-east-1` (São Paulo) |
+
+Point `providers.aws.region` at any of these and every offering's `hourly` field carries a real
+USD/hour number, stamped with `fetchedAt` (when the bundled table was last refreshed) and, where
+AWS reports it, `publishedAt` (when AWS itself published that price file).
+
+**Any other region is a documented degraded state, not a silent one.** EC2 will happily create an
+instance in `ap-south-1` or `eu-north-1` — Rocky Surf does not restrict `region` to this list —
+but every offering's `hourly` comes back `null`, which the SDK defines as "unknown, never free"
+rather than reusing another region's number. That has one binding consequence worth stating
+plainly: **the spend cap cannot see those boxes.** `hourlyCostAmount` is null for an unpriced
+offering, so a server in an unbundled region counts toward nobody's spend total — it is real,
+billing, and invisible to the one feature meant to bound cost. If you run in a region not in the
+table above, budget for it the way you would for a provider Rocky Surf could not price at all.
+
+**The table does not drift silently.** `node scripts/refresh-prices.mjs --check` re-reads the live
+feed and fails if the bundled table disagrees with what AWS reports today, and the nightly
+workflow (`.github/workflows/nightly-real-cloud.yml`, the `price-drift` job) runs exactly that
+check every morning, credential-free, against both AWS and Azure. That check runs on the
+maintainers' schedule, not yours: **the catalogue you run is as current as the release you
+installed.** A price AWS changed after that release shipped is not reflected until the next one —
+regenerating the table and cutting a release is the only thing that updates it for an operator
+already running Rocky Surf.
+
+To add a region yourself: add a row to `AWS_REGIONS` in `scripts/refresh-prices.mjs` (the region
+id and the exact label the pricing page uses for it — there is no feed index to read this from,
+so the generator hard-fails on a bad label rather than silently skipping the region) and re-run
+`node scripts/refresh-prices.mjs`.

@@ -94,7 +94,19 @@ export function assertFactoryShape<T>(factory: ProviderFactory<T>, validConfig: 
   assertProviderShape(provider)
 }
 
+/**
+ * Offering invariants, exercised against every provider's REAL `listOfferings()` result — not
+ * just the shape of the type. AWS's catalogue grew from 14 hand-picked types to roughly a
+ * thousand, generated mechanically (rockysurf-tzzw); a suite that only checked `listOfferings`
+ * was a function would have said nothing about whether that thousand-row table is internally
+ * consistent. These five checks are what would actually break if the generator or a provider's
+ * `buildOfferings()` went wrong: a duplicate id (two rows racing for the same offering), a
+ * non-positive cpu/mem (a parsing bug in the feed join), an architecture outside the frozen set,
+ * a malformed price where `null` was meant, or a blank region.
+ */
 export function assertOfferingsShape(offerings: readonly Offering[]): void {
+  const seenIds = new Set<string>()
+
   for (const offering of offerings) {
     const where = `offering '${offering.id}'`
     check(typeof offering.id === 'string' && offering.id.length > 0, `${where}: id required`)
@@ -104,10 +116,16 @@ export function assertOfferingsShape(offerings: readonly Offering[]): void {
     check(typeof offering.available === 'boolean', `${where}: available must be a boolean`)
     check(typeof offering.region === 'string' && offering.region.length > 0, `${where}: region required`)
 
+    // A duplicate id is two offerings a caller cannot tell apart — `validateSpec()` resolves a
+    // `ProvisionSpec.offeringId` by matching exactly one of these, and `find()` would silently
+    // pick whichever came first.
+    check(!seenIds.has(offering.id), `${where}: duplicate offering id — every id must be unique per listOfferings() call`)
+    seenIds.add(offering.id)
+
     // `hourly: null` means UNKNOWN and is legal. A malformed price is not.
     if (offering.hourly !== null) {
       const price = offering.hourly
-      check(Number.isFinite(price.amount) && price.amount >= 0, `${where}: price amount must be >= 0`)
+      check(Number.isFinite(price.amount) && price.amount > 0, `${where}: price amount must be > 0`)
       check(/^[A-Z]{3}$/.test(price.currency), `${where}: currency '${price.currency}' must be ISO 4217`)
       check(!Number.isNaN(Date.parse(price.fetchedAt)), `${where}: fetchedAt must be ISO 8601`)
     }

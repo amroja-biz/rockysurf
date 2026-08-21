@@ -43,9 +43,30 @@ const usd = (amount: number): Price => ({ amount, currency: 'USD', fetchedAt: AW
  * `capacity`, which is retryable, so the signal reaches core through the error path rather
  * than through this list.
  *
- * The whole t4g and t3 families are listed, including the nano and micro sizes that are far too
- * small to run an agent. `listOfferings()` is a CATALOGUE, not a recommendation: core resolves
- * a t-shirt size against `Requirements`, and a selector can only rule out a machine it can see.
+ * `listOfferings()` is a CATALOGUE, not a recommendation: core resolves a t-shirt size against
+ * `Requirements`, and a selector can only rule out a machine it can see. That is still true at
+ * ~1000 types across 12 regions, including nano/micro sizes far too small to run an agent — but
+ * at that breadth, `AWS_TYPES` (the UNION of every type any bundled region's feed reported) and
+ * "what one region actually sells" are no longer the same set. Outside `us-east-1`, AWS's own
+ * regional rollout leaves a large share of `AWS_TYPES` absent from a given region's feed
+ * entirely — not merely unpriced, genuinely not offered there (rockysurf-tzzw: `c8gb`/`c7gn`
+ * and similar recent families are missing from more than a third of the 12 bundled regions'
+ * feeds). So the two cases below are deliberately different, not the same "null means unknown"
+ * rule applied unevenly:
+ *
+ *  - A REGION THIS PROVIDER DOES NOT BUNDLE AT ALL (`forRegion` is `undefined`): every type is
+ *    still LISTED, with `hourly: null` — "this shape exists, we do not know its price here."
+ *    That is amendment B2's rule, and the whole reason a bundled-elsewhere table must not be
+ *    reused for a region it says nothing about.
+ *  - A BUNDLED REGION WHOSE OWN FEED SIMPLY DOES NOT CARRY A GIVEN TYPE: that type is OMITTED
+ *    from this region's list entirely, not listed unpriced. Showing it anyway would claim
+ *    something false about AVAILABILITY, not just about price — a customer who selected it would
+ *    hit RunInstances' `InstanceTypeNotAvailable` rather than get the box the picker showed them.
+ *
+ * The upshot, and the reason this distinction exists: every offering `buildOfferings()` returns
+ * for a bundled region carries a real price. `hourly: null` on a bundled-region result would be
+ * cap-blind by construction (jobs/limits.ts counts a `null`-priced row in `unpricedServers` and
+ * adds nothing to any bucket) — the same defect breadth was rejected for a live catalogue over.
  *
  * @param diskGb the root volume size this provider is configured to attach, so the offering
  *   describes the machine core will actually create rather than the AMI's default.
@@ -53,18 +74,23 @@ const usd = (amount: number): Price => ({ amount, currency: 'USD', fetchedAt: AW
 export function buildOfferings(region: string, diskGb: number): Offering[] {
   const forRegion = AWS_HOURLY_USD[region]
 
-  return AWS_TYPES.map((type) => {
+  return AWS_TYPES.flatMap((type) => {
     const amount = forRegion?.[type.id]
-    return {
-      id: type.id,
-      cpu: type.cpu,
-      memoryGb: type.memoryGb,
-      diskGb,
-      arch: type.arch,
-      hourly: amount === undefined ? null : usd(amount),
-      available: true,
-      region,
-    }
+    // `forRegion` present but this id absent from it: AWS's own feed for THIS region does not
+    // carry the type at all, so it is not offered here — see the long comment above.
+    if (forRegion && amount === undefined) return []
+    return [
+      {
+        id: type.id,
+        cpu: type.cpu,
+        memoryGb: type.memoryGb,
+        diskGb,
+        arch: type.arch,
+        hourly: amount === undefined ? null : usd(amount),
+        available: true,
+        region,
+      },
+    ]
   })
 }
 

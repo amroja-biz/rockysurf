@@ -118,6 +118,37 @@ jobs:
             note 'AWS ran WITHOUT the published policy (rockysurf-evo1): repository variable AWS_PROVIDER_ROLE_ARN is not set, so deploy/aws/iam-role.yaml is not being continuously verified. See this workflow header for the one command that fixes it.'
           fi
 
+  # CREDENTIAL-FREE, UNLIKE EVERY OTHER JOB IN THIS FILE — and that is the point of putting it
+  # here rather than in ci.yml. `scripts/refresh-prices.mjs --check` reads the same public,
+  # no-account feeds the generator itself reads (AWS's EC2 pricing feed, Azure's Retail Prices
+  # API), so it needs no secret and never depends on `preflight`. This is the "monitor" half of
+  # rockysurf-tzzw: the bundled catalogue is generated once, at release time, and frozen into
+  # whatever an operator installs — nobody re-fetches it at runtime — so drift between that
+  # frozen table and what the feeds say TODAY is invisible to every operator's own installation.
+  # This job is what notices FOR them, every morning, on the maintainers' behalf, whether or not
+  # anyone touched `prices.generated.ts` recently: a price moving, a type disappearing, a new
+  # family AWS added last night — anything that would make the bundled numbers wrong sits one
+  # scheduled run away from a red job, not from a bug report.
+  price-drift:
+    name: Bundled price drift (AWS + Azure, credential-free)
+    if: github.repository == 'amroja-biz/rockysurf'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: AWS — bundled prices vs. the live EC2 on-demand feed
+        run: node scripts/refresh-prices.mjs --check
+
+      - name: Azure — bundled prices vs. the live Retail Prices API
+        run: node scripts/refresh-prices.mjs --azure --check
+
   hetzner:
     name: Hetzner (cpx12, amd64)
     needs: preflight
