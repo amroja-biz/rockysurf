@@ -11,7 +11,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "node scripts/check-core-deps.mjs && node scripts/check-iam-policy.mjs && node scripts/check-azure-role.mjs && node scripts/check-gcp-role.mjs && node scripts/check-gitignore-anchors.mjs && node scripts/check-packs-bundle.mjs && node scripts/check-npx-closure.mjs && node scripts/check-size-table.mjs && node scripts/check-package-count.mjs && node scripts/e2e/audit-credentials-selftest.mjs",
+    "lint": "node scripts/check-core-deps.mjs && node scripts/check-iam-policy.mjs && node scripts/check-azure-role.mjs && node scripts/check-gcp-role.mjs && node scripts/check-gitignore-anchors.mjs && node scripts/check-packs-bundle.mjs && node scripts/check-npx-closure.mjs && node scripts/check-size-table.mjs && node scripts/check-package-count.mjs && node scripts/e2e/audit-credentials-selftest.mjs && node --test scripts/refresh-prices.test.mjs",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test"
   },
   "devDependencies": {
