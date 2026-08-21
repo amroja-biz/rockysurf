@@ -75,6 +75,7 @@ providers:
     token: "${HETZNER_TOKEN}"
     location: fsn1
     # consoleProjectId: 1234567       # optional; only adds a link to the Hetzner Console
+    # sizes: [cpx11, cpx21, cpx31]    # optional; restrict which server types can be created
 ```
 
 | field | default | what it does |
@@ -84,16 +85,10 @@ providers:
 | `image` | `ubuntu-24.04` | base image, overridable for another Ubuntu LTS |
 | `managedBy` | `rockysurf` | value of the `managed-by` label this provider owns. `listManaged()` filters on it, and `validateSpec()` refuses a spec that disagrees |
 | `consoleProjectId` | none | numeric project id, used only to link a server to its page in the console |
+| `sizes` | none — offers everything | allowlist of server types this installation will create, on the New Server page and through the API, CLI and MCP alike |
 
 **One provider instance manages one location.** `listManaged()` is scoped at construction, so two
 locations means two configured providers rather than one that spans both.
-
-**There is no `sizes` allowlist here, unlike the other three clouds.** `providers.aws.sizes`,
-`providers.azure.sizes` and `providers.gcp.sizes` restrict which machine types an installation
-will create — on the New Server page and through the API, CLI and MCP alike. The Hetzner section
-takes no such field, and because the section is a strict schema, writing one is a startup error
-rather than a setting that is quietly ignored. If you need that limit on Hetzner today, the
-budget caps are what you have.
 
 **`consoleProjectId` has to be typed in because the Cloud API never says it.** A token is scoped
 to one project without any response naming that project, and a console URL is

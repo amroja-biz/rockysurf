@@ -312,6 +312,8 @@ const hetznerProviderSchema = section(
        * importing the provider's own schema to do it.
        */
       consoleProjectId: z.coerce.number().int().positive().optional(),
+      /** Optional allowlist of server types offered to users. Omit to offer everything. */
+      sizes: z.array(z.string().trim().min(1)).nonempty().optional(),
     })
     // NO enabled-implies-token REFINE (rockysurf-55fx.12).
     //

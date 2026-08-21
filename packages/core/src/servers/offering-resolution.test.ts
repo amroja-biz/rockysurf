@@ -48,20 +48,24 @@ let cookie: string
 interface BuildOptions {
   /** Replaces the fake provider's whole catalogue. */
   offerings?: Offering[]
-  /** `providers.aws.sizes` — the operator's allowlist (rockysurf-j10e). */
+  /** `providers.<providerId>.sizes` — the operator's allowlist (rockysurf-j10e, rockysurf-aiqu). */
   sizes?: string[]
+  /** Which config section, and which registry id, the fake provider is registered under. Default `aws`. */
+  providerId?: string
 }
 
 /**
- * The fake provider is registered under the id `aws` on purpose.
+ * The fake provider is registered under the id `aws` by default, but any other section's id
+ * (e.g. `hetzner`) proves the same thing.
  *
  * The allowlist reaches the route from `config.providers.<id>.sizes`, looked up by registry
  * id, so a test that wants to prove the wiring — not just the filter function — needs a
- * provider whose id names a real section of the config file. Nothing AWS-specific is exercised
- * by it; `aws` is simply a section that exists.
+ * provider whose id names a real section of the config file. Nothing cloud-specific is
+ * exercised by it; the section just has to exist.
  */
 async function build(options: BuildOptions = {}): Promise<void> {
-  const provider = makeFakeProvider({ id: 'aws', ...(options.offerings ? { offerings: options.offerings } : {}) })
+  const providerId = options.providerId ?? 'aws'
+  const provider = makeFakeProvider({ id: providerId, ...(options.offerings ? { offerings: options.offerings } : {}) })
   opened = openTestDatabase()
 
   const secrets = new MemorySecretStore()
@@ -69,7 +73,7 @@ async function build(options: BuildOptions = {}): Promise<void> {
 
   const created = createApp({
     db: opened.db,
-    config: configSchema.parse(options.sizes ? { providers: { aws: { sizes: options.sizes } } } : {}),
+    config: configSchema.parse(options.sizes ? { providers: { [providerId]: { sizes: options.sizes } } } : {}),
     secrets,
     events: createEventsService(),
     providers: new ProviderRegistry([provider]),
@@ -306,5 +310,34 @@ describe('providers.<cloud>.sizes is applied, not merely displayed (rockysurf-j1
     // quietly handing over the undersized box the operator did allow is what this fixes.
     const { status } = await create({ size: 'large' })
     expect(status).toBe(400)
+  })
+})
+
+/**
+ * providers.hetzner.sizes SPECIFICALLY (rockysurf-aiqu).
+ *
+ * The enforcement above was already generic — it is keyed by registry id, not by a hardcoded
+ * list of cloud names — but the CONFIG SCHEMA was not: `hetznerProviderSchema` had no `sizes`
+ * field, and because that section is a `strictObject`, writing `providers.hetzner.sizes` was a
+ * startup error rather than a value this route could ever see. This proves the schema now
+ * accepts it AND that, once accepted, it is enforced through the same route the aws tests above
+ * exercise — not merely parsed and ignored.
+ */
+describe('providers.hetzner.sizes is accepted and applied, same as the other clouds (rockysurf-aiqu)', () => {
+  it('keeps a disallowed offering off the New Server page', async () => {
+    await build({ providerId: 'hetzner', sizes: ['fake-medium'] })
+    expect(await listedOfferings()).toEqual(['fake-medium'])
+  })
+
+  it('resolves a size only among the allowed offerings', async () => {
+    await build({ providerId: 'hetzner', sizes: ['fake-medium'] })
+    expect(row((await create({ size: 'small' })).serverId!).offeringId).toBe('fake-medium')
+  })
+
+  it('refuses a disallowed offering named directly, so the API cannot step over the limit', async () => {
+    await build({ providerId: 'hetzner', sizes: ['fake-medium'] })
+    const { status, error } = await create({ size: 'small', offeringId: 'fake-small' })
+    expect(status).toBe(400)
+    expect(error).toMatch(/fake-medium/)
   })
 })
