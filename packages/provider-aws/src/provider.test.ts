@@ -175,27 +175,59 @@ describe('offerings and prices', () => {
     expect(AWS_PRICES_FETCHED_AT).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
 
-  it('bundles the whole t4g and t3 families, priced, with nothing invented', async () => {
+  it('bundles catalogue breadth mechanically, not a hand-picked family list (rockysurf-tzzw)', async () => {
     const offerings = await provider.listOfferings()
     const ids = offerings.map((o) => o.id).sort()
 
+    // The old t4g/t3-only allowlist is gone; the generator now ships whatever the feed's own
+    // classification and the vCPU/memory ceiling allow, across every bundled region — hundreds
+    // of types, not fourteen.
+    expect(offerings.length).toBeGreaterThan(900)
     expect(ids).toContain('t4g.nano')
     expect(ids).toContain('t4g.2xlarge')
     expect(ids).toContain('t3.nano')
     expect(ids).toContain('t3.2xlarge')
-    expect(offerings).toHaveLength(14)
+    // Older generations the hand list would eventually have gone stale without — the whole
+    // point of replacing it with a mechanical rule.
+    expect(ids).toContain('m5.large')
+    expect(ids).toContain('c5.large')
 
-    // Every bundled type in the configured region has a real price, and Graviton is cheaper
-    // than the x86 equivalent at the same size — a sanity check on the join, not on AWS.
+    // GPU / ML-ASIC / FPGA / media-accelerator families are excluded (Offering.gpu is
+    // reserved-unpopulated and the bootstrap ships no drivers — see refresh-prices.mjs).
+    expect(ids.some((id) => /^(p2|p3|p4|p5|p6|g3|g4|g5|g6|g7|gr6|f1|f2|dl1|inf1|inf2|trn1|vt1)/.test(id))).toBe(false)
+    // Bare-metal is excluded by id.
+    expect(ids.some((id) => id.includes('.metal'))).toBe(false)
+    // The vCPU/memory ceiling excludes the multi-terabyte "u"/"u7i" high-memory family.
+    expect(ids.some((id) => id.startsWith('u-') || id.startsWith('u7i'))).toBe(false)
+
+    // Every offering listed for a BUNDLED region carries a real price — see buildOfferings()'s
+    // long comment for why this is asserted as an exact invariant rather than "most of them": a
+    // `hourly: null` row in a bundled region would be exactly the cap-blind defect breadth was
+    // rejected for a live catalogue over. Graviton being cheaper than the x86 equivalent at the
+    // same size is a sanity check on the join, not on AWS.
     expect(offerings.every((o) => o.hourly !== null)).toBe(true)
     const t4g = offerings.find((o) => o.id === 't4g.large')!.hourly!.amount
     const t3 = offerings.find((o) => o.id === 't3.large')!.hourly!.amount
     expect(t4g).toBeLessThan(t3)
   })
 
+  it('omits a type from a bundled region entirely when that region genuinely does not sell it', async () => {
+    // AWS_TYPES is the UNION of every bundled region's feed. Outside us-east-1, a large share of
+    // it is absent from any one region's OWN feed — not unpriced, genuinely not offered there
+    // (rockysurf-tzzw). Those types must not appear at all for that region, rather than showing
+    // up with `hourly: null` and implying AWS would sell them there for an unknown price.
+    const saoPaulo = build({ region: 'sa-east-1' })
+    const offerings = await saoPaulo.listOfferings()
+    expect(offerings.length).toBeGreaterThan(0)
+    expect(offerings.every((o) => o.hourly !== null)).toBe(true)
+    expect(offerings.length).toBeLessThan((await provider.listOfferings()).length)
+  })
+
   it('reports hourly null in a region the table does not cover, rather than a wrong number', async () => {
-    // Reusing a us-east-1 price for eu-west-1 would be silently wrong; null means "unknown".
-    const elsewhere = build({ region: 'eu-west-1' })
+    // eu-north-1 is a real AWS region that is deliberately NOT in the 12 bundled by
+    // scripts/refresh-prices.mjs's AWS_REGIONS. Reusing a us-east-1 price for it would be
+    // silently wrong; null means "unknown, never free" — see docs/providers/aws.md.
+    const elsewhere = build({ region: 'eu-north-1' })
     expect((await elsewhere.listOfferings()).every((o) => o.hourly === null)).toBe(true)
   })
 
