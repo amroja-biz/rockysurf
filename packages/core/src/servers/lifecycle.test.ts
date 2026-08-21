@@ -4,8 +4,8 @@ import { randomBytes } from 'node:crypto'
 import { openTestDatabase, type Db, type OpenedDatabase } from '../db/client.js'
 import { createSecretsStore } from '../secrets/store.js'
 import { generateServerKeys } from '../ssh/keys.js'
-import { getServerKeyMaterial } from '../ssh/server-keys.js'
-import { getServer, getServerByIdempotencyKey, recordProgress } from '../db/repositories/servers.js'
+import { getServerKeyMaterial, InvalidPublicKeyError } from '../ssh/server-keys.js'
+import { getServer, getServerByIdempotencyKey, listServersByUser, recordProgress } from '../db/repositories/servers.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { markBootstrapReady } from '../bootstrap/supervisor.js'
 import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
@@ -1017,6 +1017,31 @@ describe('ssh identity is provisioned before the provider is called', () => {
     const doc = JSON.parse(getServer(db, row.id)!.providerData ?? '{}') as Record<string, unknown>
     expect(doc['instanceId']).toBeTruthy()
     expect(material.userPublicKey).toBeTruthy()
+  })
+
+  /**
+   * The orphan-row regression guard (rockysurf-9fvy.1, issue #41 fallout). Before this fix,
+   * `normalizeUserPublicKey` ran in STEP 2, after `insertServer` — so a malformed paste threw
+   * past a `requested` row that no provider would ever hear about. Normalizing before the
+   * insert means a refusal here leaves nothing behind, same as the limits check beside it.
+   */
+  it('rejects a malformed pasted key and leaves no orphan row behind', async () => {
+    const { service } = withSecrets()
+    const before = listServersByUser(db, userId).length
+
+    await expect(
+      service.create({
+        userId,
+        name: 'bad-key-box',
+        provider: 'fake',
+        size: 'small',
+        offeringId: 'fake-small',
+        arch: 'arm64',
+        sshPublicKey: 'not a key',
+      }),
+    ).rejects.toBeInstanceOf(InvalidPublicKeyError)
+
+    expect(listServersByUser(db, userId).length).toBe(before)
   })
 
   it('reuses the identity rather than minting a second one', async () => {

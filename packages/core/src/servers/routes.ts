@@ -11,6 +11,7 @@ import { getServerRepositories, getServerTools, isBillingRow } from '../db/repos
 import { badRequest, created, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import type { IndexedRefusal } from '../git/preflight.js'
+import { InvalidPublicKeyError } from '../ssh/server-keys.js'
 import {
   ConflictError,
   ServerNotFoundError,
@@ -261,6 +262,12 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
  */
 function fail(c: Context, err: unknown) {
   if (err instanceof ServerNotFoundError) return notFound(c, 'Server not found')
+  // A pasted key that isn't one (issue #41 fallout). The message is already written for a
+  // human — "public key body is not base64; paste the contents of a .pub file" — so it rides
+  // straight through rather than being translated into something vaguer.
+  if (err instanceof InvalidPublicKeyError) {
+    return c.json({ error: err.message, code: 'invalid_public_key' }, 400)
+  }
   // A configured limit refused the request (rockysurf-55fx.6). 403 rather than 429: the
   // caller is not being throttled for going too fast, they are being told this installation
   // will not do it. `reason` lets the UI say WHICH limit without parsing prose.

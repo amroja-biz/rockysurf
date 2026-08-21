@@ -173,6 +173,19 @@ describe('the routes the SPA already calls', () => {
   })
 
   /**
+   * A pasted key that isn't one (issue #41 fallout, rockysurf-9fvy.1). Before this fix,
+   * `normalizeUserPublicKey` ran after the row was already written, so this was a 500 with an
+   * orphaned `requested` row behind it — see `lifecycle.test.ts` for the row-count guard.
+   */
+  it('maps a malformed sshPublicKey to 400 with a code, not a 500', async () => {
+    const res = await post('/api/v1/servers', { ...CREATE, sshPublicKey: 'not a key' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; code: string }
+    expect(body.code).toBe('invalid_public_key')
+    expect(body.error).toBeTruthy()
+  })
+
+  /**
    * The console deep link, end to end through the projection (ADR-0003, E16).
    *
    * The interesting half is the absence: a provider with no console must produce a row with no
