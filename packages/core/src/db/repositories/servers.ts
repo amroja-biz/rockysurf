@@ -41,6 +41,8 @@ export interface CreateServerInput {
   repositories?: string[]
   bootstrapMode?: BootstrapMode
   sshUser?: string
+  /** Normalized (trimmed) public key line the user pasted at create time, if any (issue #41). */
+  userSuppliedPublicKey?: string
   hourlyCost?: { amount: number; currency: string; fetchedAt: string } | null
   /** Test seam. Production always mints a fresh one. */
   id?: string
@@ -76,6 +78,7 @@ export function insertServer(db: Db, input: CreateServerInput): ServerRow {
     provisioningStep: 'requested' as const,
     bootstrapMode: input.bootstrapMode ?? ('push' as const),
     sshUser: input.sshUser ?? 'rocky',
+    userSuppliedPublicKey: input.userSuppliedPublicKey ?? null,
     packId: input.packId ?? null,
     tools: JSON.stringify(input.tools ?? []),
     repositories: JSON.stringify(input.repositories ?? []),

@@ -509,6 +509,32 @@ describe('capability flags drive provider-specific controls', () => {
 })
 
 /**
+ * The SSH key fieldset (issue #41).
+ *
+ * The two radios used to read as mutually exclusive — "Generate a key for me" versus "Use my
+ * own public key" — when picking the second option also gets the user the first: Rocky Surf's
+ * key is appended, never substituted, because push bootstrap installs everything over its own
+ * SSH connection. This checks the disclosure appears only where it is needed.
+ */
+describe('the SSH key fieldset explains itself when a key is provided (issue #41)', () => {
+  it('states that Rocky Surf also authorizes a key of its own once "Use my own public key" is picked', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+
+    expect(screen.queryByText(/Rocky Surf also authorizes a key of its own/)).toBeNull()
+
+    await userEvent.click(screen.getByRole('radio', { name: /Use my own public key/ }))
+    expect(await screen.findByText(/Rocky Surf also authorizes a key of its own/)).toBeTruthy()
+  })
+
+  it('says nothing extra while "Generate a key for me" is selected', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+    expect(screen.queryByText(/Rocky Surf also authorizes a key of its own/)).toBeNull()
+  })
+})
+
+/**
  * Choosing the cloud (rockysurf-va2l).
  *
  * The bug the owner reported was a create page with no cloud choice on a two-cloud config, and

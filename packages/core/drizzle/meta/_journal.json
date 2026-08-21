@@ -78,6 +78,13 @@
       "when": 1787244657929,
       "tag": "0010_curved_young_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787345600532,
+      "tag": "0011_lonely_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

@@ -38,7 +38,7 @@ import type { ProviderRegistry } from '../providers/registry.js'
 import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
 import { fingerprintPublicKey, generateServerKeys } from '../ssh/keys.js'
-import { ensureServerKeys } from '../ssh/server-keys.js'
+import { ensureServerKeys, normalizeUserPublicKey } from '../ssh/server-keys.js'
 import { bootstrapProgressEvent, serverStatusEvent } from '../bootstrap/progress-event.js'
 import { renderPushUserData } from '../bootstrap/user-data.js'
 
@@ -648,8 +648,14 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       }
 
       // Limits are checked BEFORE the row is written — the only point at which a refusal
-      // leaves nothing behind.
+      // leaves nothing behind. The pasted key is validated here for the same reason (issue
+      // #41 fallout, rockysurf-9fvy.1): `normalizeUserPublicKey` used to run in STEP 2, after
+      // the row already existed, so a malformed paste threw past a `requested` row that no
+      // provider would ever hear about. Normalizing once, here, means the trimmed value is
+      // what gets persisted onto the row below AND what gets handed to `provisionKeys` — one
+      // normalization, one value, two readers (issue #41).
       await deps.checkLimits?.(input, countActiveServersForUser(db, input.userId))
+      const sshPublicKey = input.sshPublicKey ? normalizeUserPublicKey(input.sshPublicKey) : undefined
 
       const idempotencyKey =
         input.idempotencyKey ??
@@ -680,6 +686,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         idempotencyKey,
         bootstrapMode,
         hourlyCost,
+        ...(sshPublicKey ? { userSuppliedPublicKey: sshPublicKey } : {}),
         ...(input.packId ? { packId: input.packId } : {}),
         ...(input.tools ? { tools: input.tools } : {}),
         ...(input.repositories ? { repositories: input.repositories } : {}),
@@ -699,7 +706,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // `provisionServerKeys` writes the fingerprint and the secret id ONTO it. And the host
       // keypair must exist before the document is rendered, because the private half is what
       // cloud-init installs — a box cannot be given a key that has not been generated yet.
-      const keys = provisionKeys(row, provider, input.sshPublicKey)
+      const keys = provisionKeys(row, provider, sshPublicKey)
 
       // The desktop password belongs to the same step for the same reason: it is server-scoped
       // secret material, and the row it is filed under has to exist first. It is written here
