@@ -54,8 +54,9 @@ export function AppShell({
               typing the URL — the other half of a page that was outside the shell. */}
           <Link to="/costs">Costs</Link>
           <Link to="/admin/tools">Tools</Link>
-          <Link to="/admin/surge-packs">Surge Packs</Link>
-          <Link to="/admin/pack-shop">Pack Shop</Link>
+          {/* One link where there used to be two (rockysurf-4d8h, issue #51): the consolidated
+              page at /packs is reachable by every signed-in user, not only admins. */}
+          <Link to="/packs">Surge Packs</Link>
           <Link to="/settings">Settings</Link>
           <Link to="/help">Help</Link>
         </nav>

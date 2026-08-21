@@ -5,14 +5,13 @@ import type { ComponentType } from 'react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AdminPackShopPage } from './pages/AdminPackShopPage'
-import { AdminSurgePacksPage } from './pages/AdminSurgePacksPage'
 import { AdminToolsPage } from './pages/AdminToolsPage'
 import { CostsPage } from './pages/CostsPage'
 import { CreateServerPage } from './pages/CreateServerPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { HelpPage } from './pages/HelpPage'
 import { HomePage } from './pages/HomePage'
+import { PacksPage } from './pages/PacksPage'
 import { ServerDetailPage } from './pages/ServerDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
 
@@ -107,12 +106,19 @@ const AUTHENTICATED_PAGES: Record<string, ComponentType> = {
   ServerDetailPage,
   SettingsPage,
   AdminToolsPage,
-  AdminSurgePacksPage,
-  AdminPackShopPage,
+  PacksPage,
   CostsPage,
   HomePage,
   HelpPage,
 }
+
+/**
+ * Redirect-only routes, exempted from the "finds a page component in every route element" scan
+ * below rather than loosening its regex (rockysurf-4d8h, issue #51): `/admin/surge-packs` and
+ * `/admin/pack-shop` are `<Navigate>` elements with no `*Page` component, kept only so an old
+ * bookmark or a stale doc link still lands somewhere real.
+ */
+const REDIRECT_ONLY = ['/admin/surge-packs', '/admin/pack-shop']
 
 /**
  * Pages that are routed but deliberately outside the shell, each with its reason.
@@ -168,8 +174,7 @@ describe('the navbar is on every authenticated page', () => {
       // Costs was reachable only by typing the URL until rockysurf-k72k.
       ['Costs', '/costs'],
       ['Tools', '/admin/tools'],
-      ['Surge Packs', '/admin/surge-packs'],
-      ['Pack Shop', '/admin/pack-shop'],
+      ['Surge Packs', '/packs'],
       ['Settings', '/settings'],
       ['Help', '/help'],
       // The brand mark, whose accessible name is its wordmark.
@@ -205,11 +210,24 @@ describe('the list above covers what App.tsx actually routes to', () => {
     expect(stale, `${stale.join(', ')} is checked here but no longer routed`).toEqual([])
   })
 
-  it('finds a page component in every route element, so none escapes the scan by naming', () => {
-    const elements = [...routes.matchAll(/element=\{([\s\S]*?)\}\s*\/>/g)].map((m) => m[1]!)
-    expect(elements.length).toBeGreaterThan(0)
-    for (const element of elements) {
-      expect(element, `no *Page component in route element: ${element.trim()}`).toMatch(/[A-Z][A-Za-z0-9]*Page/)
+  it('finds a page component in every route element, or a route named in REDIRECT_ONLY', () => {
+    // <Navigate> routes carry no *Page component by construction, so a loosened regex here
+    // would silently accept ANY component-free route. Naming the two paths in REDIRECT_ONLY
+    // keeps the exemption something a reviewer can see rather than something the pattern allows.
+    const entries = [...routes.matchAll(/<Route\s+path="([^"]+)"\s+element=\{([\s\S]*?)\}\s*\/>/g)]
+    expect(entries.length).toBeGreaterThan(0)
+    for (const [, path, element] of entries) {
+      if (REDIRECT_ONLY.includes(path!)) {
+        expect(element, `${path} is in REDIRECT_ONLY but is not a <Navigate>`).toMatch(/<Navigate\b/)
+        continue
+      }
+      expect(element, `no *Page component in route element for ${path}: ${element!.trim()}`).toMatch(/[A-Z][A-Za-z0-9]*Page/)
     }
+  })
+
+  it('names every redirect-only route in REDIRECT_ONLY, and nothing else', () => {
+    const entries = [...routes.matchAll(/<Route\s+path="([^"]+)"\s+element=\{([\s\S]*?)\}\s*\/>/g)]
+    const navigateOnly = entries.filter(([, , element]) => /^\s*<Navigate\b/.test(element!)).map(([, path]) => path!)
+    expect(navigateOnly.sort()).toEqual([...REDIRECT_ONLY].sort())
   })
 })

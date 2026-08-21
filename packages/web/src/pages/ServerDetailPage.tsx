@@ -6,6 +6,7 @@ import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { StatusBadge } from '../components/StatusBadge'
 import { StillBillingNotice } from '../components/StillBillingNotice'
+import { ToolList } from '../components/ToolList'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
 import {
   TRANSITION_STALLED_HINT,
@@ -260,12 +261,13 @@ export function ServerDetailPage() {
           </div>
           {/* The pack this box was built from (issue #46) — by name when the pack list has
               it, by id when it doesn't (a pack since deleted still built this box). Linked to
-              the catalogue page the nav already offers everyone (rockysurf-idxd). */}
+              the catalogue page the nav already offers everyone (rockysurf-idxd), which since
+              rockysurf-4d8h is the per-pack detail view rather than the admin table. */}
           {server.packId && (
             <div>
               <dt>Surge Pack</dt>
               <dd data-testid="server-pack">
-                <Link to="/admin/surge-packs">{pack?.name ?? server.packId}</Link>
+                <Link to={`/packs/${server.packId}`}>{pack?.name ?? server.packId}</Link>
               </dd>
             </div>
           )}
@@ -521,20 +523,7 @@ export function ServerDetailPage() {
         {installedTools.length === 0 ? (
           <p className="hint">Nothing recorded for this box.</p>
         ) : (
-          <ul data-testid="installed-tools">
-            {installedTools.map((tool) => (
-              <li key={tool.toolId}>
-                {tool.url ? (
-                  <a href={tool.url} target="_blank" rel="noopener noreferrer">
-                    {tool.name}
-                  </a>
-                ) : (
-                  tool.name
-                )}
-                {tool.description ? <span className="hint"> — {tool.description}</span> : null}
-              </li>
-            ))}
-          </ul>
+          <ToolList tools={installedTools} testId="installed-tools" />
         )}
         {recordedTools.length === 0 && installedTools.length > 0 && pack && (
           <p className="hint">

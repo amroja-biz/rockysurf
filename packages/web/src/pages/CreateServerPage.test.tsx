@@ -9,8 +9,14 @@ import { CreateServerPage } from './CreateServerPage'
 
 // `Link` arrived with the page moving inside `AppShell` (rockysurf-k72k) — the shell's nav is
 // the only thing here that routes, so an anchor is a faithful enough stand-in.
+//
+// `useSearchParams` arrived with the `?pack=` preselection (rockysurf-4d8h, issue #51). A
+// hoisted, per-test-settable search string keeps every existing case working unchanged — they
+// never set it, so `search.value` stays `''` and `searchParams.get('pack')` stays `null`.
+const search = vi.hoisted(() => ({ value: '' }))
 vi.mock('react-router', () => ({
   useNavigate: () => vi.fn(),
+  useSearchParams: () => [new URLSearchParams(search.value), vi.fn()],
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
 }))
 // The feed's subscription is exercised in the events tests; here it only has to exist, and
@@ -94,6 +100,7 @@ const setupWith = (providers: api.ProviderSetupState[]): api.SetupState => ({
 })
 
 beforeEach(() => {
+  search.value = ''
   vi.spyOn(api, 'listProviders').mockResolvedValue([FAKE_PROVIDER])
   vi.spyOn(api, 'listSurgePacks').mockResolvedValue([packWith({})])
   vi.spyOn(api, 'getSetupState').mockResolvedValue(setupWith([]))
@@ -421,9 +428,14 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
   })
 
   describe('with nothing contributed installed', () => {
-    it('still offers the Community tab, and points an admin at the shop', async () => {
+    /**
+     * `/packs` is member-reachable (rockysurf-4d8h, issue #51), unlike the admin-only
+     * `/admin/pack-shop` it replaced — so this link is offered to a member and an admin alike,
+     * a deliberate behaviour change from the admin-gated sentence it used to show.
+     */
+    it('still offers the Community tab, and points everyone at the Surge Packs page', async () => {
       // Hiding the empty shelf would remove the feature from the installs that most need it: on
-      // a fresh install nobody ever learns the Pack Shop exists.
+      // a fresh install nobody ever learns the catalogue exists.
       const user = userEvent.setup()
       renderPage()
       await screen.findByRole('tab', { name: 'Official' })
@@ -432,12 +444,10 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
 
       const empty = screen.getByTestId('community-empty')
       expect(empty.textContent).toContain('No community packs are installed')
-      expect(within(empty).getByRole('link').getAttribute('href')).toBe('/admin/pack-shop')
+      expect(within(empty).getByRole('link').getAttribute('href')).toBe('/packs')
     })
 
-    it('tells a member their operator does it, and offers no link they cannot follow', async () => {
-      // `/admin/pack-shop` is wrapped in `AdminRoute`, so a link offered here would bounce a
-      // member back to the dashboard — an invitation to a door that is locked.
+    it('offers the same link to a member, who can now reach it', async () => {
       auth.isAdmin = false
       const user = userEvent.setup()
       renderPage()
@@ -446,8 +456,7 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
       await user.click(screen.getByRole('tab', { name: 'Community' }))
 
       const empty = screen.getByTestId('community-empty')
-      expect(empty.textContent).toContain('operator installs packs')
-      expect(within(empty).queryByRole('link')).toBeNull()
+      expect(within(empty).getByRole('link').getAttribute('href')).toBe('/packs')
     })
   })
 
@@ -475,6 +484,80 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
 
     expect(await screen.findByText(/No Surge Packs are available yet/)).toBeTruthy()
     expect(screen.queryByRole('tablist')).toBeNull()
+  })
+})
+
+/**
+ * `?pack=<packId>` PRESELECTION (rockysurf-4d8h, issue #51).
+ *
+ * Arriving from a pack's "Launch a server with this pack" button. The existing selection rule
+ * — lowest `displayOrder` wins absent a request, and the tab follows whichever pack ends up
+ * selected — is untouched; the query parameter only supplies a different STARTING pack. Naming
+ * one that is not on offer (absent, or disabled) must be stated rather than silently swallowed.
+ */
+describe('?pack= preselects a Surge Pack from the URL', () => {
+  const bothPacksAvailable = () => vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({}), communityPack()])
+
+  it('checks the named pack\'s radio and names it as selected', async () => {
+    search.value = 'pack=aider'
+    bothPacksAvailable()
+    renderPage()
+
+    const radio = (await screen.findByRole('radio', { name: /Aider/ })) as HTMLInputElement
+    await waitFor(() => expect(radio.checked).toBe(true))
+    expect(screen.getByTestId('pack-selected').textContent).toContain('Aider')
+  })
+
+  it('opens the picker on the Community tab when the named pack is a community one', async () => {
+    search.value = 'pack=aider'
+    bothPacksAvailable()
+    renderPage()
+
+    const community = await screen.findByRole('tab', { name: 'Community' })
+    expect(community.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('states, rather than swallows, a pack that is not on offer — and falls back to the usual pack', async () => {
+    search.value = 'pack=does-not-exist'
+    bothPacksAvailable()
+    renderPage()
+
+    const notice = await screen.findByTestId('pack-preselect-missing')
+    expect(notice.textContent).toContain('does-not-exist')
+    // The usual lowest-displayOrder pack still gets preselected — nothing about the fallback
+    // rule changes because the request could not be honoured.
+    expect(screen.getByRole('radio', { name: /AI Agents/ })).toHaveProperty('checked', true)
+  })
+
+  it('states a disabled pack the same way a missing one is stated', async () => {
+    search.value = 'pack=aider'
+    vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({}), communityPack({ enabled: false })])
+    renderPage()
+
+    const notice = await screen.findByTestId('pack-preselect-missing')
+    expect(notice.textContent).toContain('aider')
+  })
+
+  it('behaves exactly as before when there is no ?pack= at all', async () => {
+    bothPacksAvailable()
+    renderPage()
+
+    await screen.findByRole('tab', { name: 'Official' })
+    expect(screen.queryByTestId('pack-preselect-missing')).toBeNull()
+    expect(screen.getByRole('radio', { name: /AI Agents/ })).toHaveProperty('checked', true)
+  })
+
+  it('submits the create request with the preselected packId', async () => {
+    const user = userEvent.setup()
+    search.value = 'pack=aider'
+    bothPacksAvailable()
+    renderPage()
+
+    await screen.findByRole('radio', { name: /Aider/ })
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].packId).toBe('aider')
   })
 })
 

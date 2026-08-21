@@ -1,5 +1,5 @@
 import { Toaster } from 'react-hot-toast'
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import './App.css'
 import { AdminRoute, ProtectedRoute } from './components/ProtectedRoute'
 import { AuthProvider } from './contexts/AuthContext'
@@ -12,10 +12,9 @@ import { AdminToolsPage } from './pages/AdminToolsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { CostsPage } from './pages/CostsPage'
 import { SetupGate, WizardPage } from './pages/WizardPage'
-import { AdminSurgePacksPage } from './pages/AdminSurgePacksPage'
+import { PacksPage } from './pages/PacksPage'
 import { HomePage } from './pages/HomePage'
 import { HelpPage } from './pages/HelpPage'
-import { AdminPackShopPage } from './pages/AdminPackShopPage'
 
 export const APP_NAME = 'Rocky Surf'
 
@@ -112,24 +111,27 @@ export function App() {
                 </AdminRoute>
               }
             />
+            {/* Surge Packs (rockysurf-4d8h, issue #51): one page, member-reachable, replacing
+                the two admin-only pages that used to live at these paths. Both redirect here
+                for old bookmarks and the docs/skill references that still name them. */}
             <Route
-              path="/admin/surge-packs"
+              path="/packs"
               element={
-                <AdminRoute>
-                  <AdminSurgePacksPage />
-                </AdminRoute>
+                <ProtectedRoute>
+                  <PacksPage />
+                </ProtectedRoute>
               }
             />
-            {/* Admin-only, because installing a pack means accepting shell that runs as root on
-                every box created with it — the same authority the import route needs. */}
             <Route
-              path="/admin/pack-shop"
+              path="/packs/:packId"
               element={
-                <AdminRoute>
-                  <AdminPackShopPage />
-                </AdminRoute>
+                <ProtectedRoute>
+                  <PacksPage />
+                </ProtectedRoute>
               }
             />
+            <Route path="/admin/surge-packs" element={<Navigate to="/packs" replace />} />
+            <Route path="/admin/pack-shop" element={<Navigate to="/packs" replace />} />
 
             {/* Unknown paths fall back to the dashboard, as they did before. */}
             <Route
@@ -148,16 +150,6 @@ export function App() {
                 <ProtectedRoute>
                   <CostsPage />
                 </ProtectedRoute>
-              }
-            />
-
-            {/* Pack admin (rockysurf-hzi7.5). Admin-only. */}
-            <Route
-              path="/admin/surge-packs"
-              element={
-                <AdminRoute>
-                  <AdminSurgePacksPage />
-                </AdminRoute>
               }
             />
 
