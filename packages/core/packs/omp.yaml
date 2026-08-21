@@ -47,7 +47,6 @@ pack:
     - omp
   displayOrder: 10
   enabled: true
-  imageUrl: /images/surge-packs/omp.png
   requiresRepos: true
   requiresRdp: false
   guide: |
