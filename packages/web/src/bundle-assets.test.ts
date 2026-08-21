@@ -112,13 +112,16 @@ describe('the Surge Pack images', () => {
     'ai-coding-agents.yaml',
     'amp-agents.yaml',
     'codex-cli.yaml',
+    'cursor-cli.yaml',
+    'deepseek-harness.yaml',
     'gas-town.yaml',
+    'grok-build.yaml',
     'open-claw.yaml',
     'open-code.yaml',
   ]
 
   it('every pack this repository ships names one', () => {
-    // A pack card with no image is the thing di5z existed to fix, and these six are the cards
+    // A pack card with no image is the thing di5z existed to fix, and these nine are the cards
     // this repository is responsible for.
     expect(packFiles).toEqual(expect.arrayContaining(SHIPPED_WITH_IMAGES))
     expect(bundledImageUrls.map(([name]) => name)).toEqual(expect.arrayContaining(SHIPPED_WITH_IMAGES))
