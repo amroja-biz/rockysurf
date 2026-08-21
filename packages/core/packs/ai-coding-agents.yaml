@@ -276,12 +276,44 @@ tools:
       set -euo pipefail
       export DEBIAN_FRONTEND=noninteractive
       # UNPINNED (deliberate): tracks the latest 22.x patch. Contract-compliant — the
-      # NodeSource script is convergent and apt resolves the right architecture itself — but
-      # not reproducible. Pinning a patch release here would strand boxes on stale security
+      # NodeSource repository is convergent and apt resolves the right architecture itself —
+      # but not reproducible. Pinning a patch release here would strand boxes on stale security
       # fixes; the major version IS pinned, which is the part that breaks tooling.
       [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
       if ! command -v node >/dev/null 2>&1; then
-        curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+        # NodeSource's own apt repository, added by hand instead of piping their setup_22.x
+        # script to bash (docs/writing-a-pack.md "never pipe an unpinned main-branch script
+        # to bash") — the same pattern the `gh` tool above uses: fetch the keyring once,
+        # write the source list only when its content would change, and only then run
+        # apt-get update. This reproduces what setup_22.x itself does (read straight out of
+        # that script on 2026-08-21) rather than guessing at NodeSource's layout: dearmor the
+        # same signing key into a keyring file, then write a deb822 .sources entry for the
+        # node_22.x/nodistro/main repository. The keyring lives under /etc/apt/keyrings, this
+        # repo's convention (matching `gh` above) rather than the vendor script's default
+        # /usr/share/keyrings — the two paths hold identical content.
+        apt-get install -y ca-certificates curl gnupg
+        install -d -m 0755 /etc/apt/keyrings
+        keyring=/etc/apt/keyrings/nodesource.gpg
+        if [ ! -f "$keyring" ]; then
+          tmp=$(mktemp)
+          curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$tmp"
+          gpg --dearmor -o "$keyring" "$tmp"
+          rm -f "$tmp"
+        fi
+
+        # $ARCH is already Debian's spelling (see `gh` above); NodeSource's own script
+        # branches on architecture too and supports the same two.
+        case "$ARCH" in
+          amd64|arm64) node_arch="$ARCH" ;;
+          *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+        esac
+
+        list=/etc/apt/sources.list.d/nodesource.sources
+        want=$(printf 'Types: deb\nURIs: https://deb.nodesource.com/node_22.x\nSuites: nodistro\nComponents: main\nArchitectures: %s\nSigned-By: %s\n' "$node_arch" "$keyring")
+        if [ "$(cat "$list" 2>/dev/null)" != "$want" ]; then
+          printf '%s\n' "$want" > "$list"
+          apt-get update -qq
+        fi
       fi
       apt-get install -y nodejs
       node --version >/dev/null
@@ -516,23 +548,31 @@ tools:
     category: agent
     url: https://claude.com/claude-code
     installOrder: 40
-    runAs: rocky
+    # A global npm install writes into node's own prefix, which apt's nodejs package puts
+    # under root's ownership — same reason `opencode` (packs/open-code.yaml) runs as root
+    # instead of the vendor installer's old per-user ~/.local/bin path under `rocky`.
+    runAs: root
     bootstrap: false
     enabled: true
     installScript: |
       set -euo pipefail
-      # The official installer moved from ~/.claude/bin to ~/.local/bin, so the old hard-coded
-      # verification path could not find a claude it had just installed successfully. Ask PATH
-      # where claude is rather than asserting where it ought to be — the location is upstream's
-      # to change, and it has changed once already.
-      export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
-      # UNPINNED: the official installer always fetches current. Guarded so the second run
-      # neither reinstalls nor duplicates the PATH line.
-      if ! command -v claude >/dev/null 2>&1; then
-        curl -fsSL https://claude.ai/install.sh | bash
-      fi
-      touch "$HOME/.bashrc"
-      for dir in "$HOME/.local/bin" "$HOME/.claude/bin"; do
-        grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
-      done
+      # PINNED TO THE `stable` DIST-TAG, not `latest` and not a version number — read this
+      # before "simplifying" it to a bare `npm install -g @anthropic-ai/claude-code`.
+      #
+      # docs/writing-a-pack.md's registry-channel rule says a bare package name resolves
+      # "the registry's stable channel", meaning npm's `latest` dist-tag. That sentence is
+      # true for every other agent in this file, but not for this package: checked
+      # 2026-08-21 via `npm view @anthropic-ai/claude-code dist-tags`, this package's tags
+      # were latest=2.1.239, stable=2.1.231, next=2.1.239 — `latest` runs AHEAD of a tag
+      # literally named `stable`, and `next` equals `latest` rather than being a prerelease
+      # channel. A bare install here would not give this pack "latest stable", it would give
+      # it whatever Anthropic is currently rolling out.
+      #
+      # `@stable` is still a dist-tag, not a version pin — it moves forward whenever
+      # Anthropic re-points it, same as a bare install tracking `latest` would — so this
+      # stays inside the doc's "quota-free registry channel: install latest, unversioned"
+      # policy (rule 1); it just names the moving target explicitly instead of taking npm's
+      # default, because for this one package npm's default is not that target. See
+      # docs/writing-a-pack.md § Which version to install.
+      npm install -g --no-fund --no-audit @anthropic-ai/claude-code@stable
       claude --version >/dev/null
