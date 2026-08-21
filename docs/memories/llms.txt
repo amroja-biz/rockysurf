@@ -1,0 +1,39 @@
+# Project Memories
+
+> Durable cross-session knowledge for Rocky Surf, migrated from the maintainers' internal
+> `bd remember` notes. Each entry below is self-contained; read the linked file for the full
+> story.
+>
+> These are lessons and rulings that outlived the session that produced them — not a changelog
+> and not a task tracker. For decisions about the shape of the software itself, see the ADRs in
+> `docs/adr/` instead; a memory here may point at one.
+>
+> Every entry here is `active`. A memory that gets superseded is removed from this index rather
+> than left to mislead in place.
+
+## Engineering practice
+
+- [keep-both-merge-gate-rule](2026-08-13-keep-both-merge-gate-rule.md): a keep-both merge conflict
+  resolution can produce syntax damage no marker scan or diff review will catch — run the full
+  quality gate after every one.
+- [whole-boot-wiring-tests](2026-08-21-whole-boot-wiring-tests.md): passing unit tests per module
+  can coexist with a product that can't boot — add a whole-boot wiring test at every composition
+  seam.
+- [pnpm-sdk-build-race](2026-08-21-pnpm-sdk-build-race.md): how a shared-worktree build race used
+  to produce failures that looked like real bugs, and the atomic-rename build fix that closed most
+  of it.
+
+## Writing and documentation
+
+- [measured-numbers-in-prose](2026-08-13-measured-numbers-in-prose.md): why a measurement of this
+  repository needs exactly one dated, re-measured home instead of being copied into prose.
+- [pass-along-home](2026-08-21-pass-along-home.md): session hand-off notes live in `.pass-along/`
+  in this repository, and they're world-readable — no secrets, ever.
+
+## Architecture
+
+- [session-tokens-opaque-not-signed](2026-08-21-session-tokens-opaque-not-signed.md): why sessions
+  are opaque random tokens validated by database lookup, not signed cookies.
+- [vendor-sdk-vs-rest-provider-ruling](2026-08-13-vendor-sdk-vs-rest-provider-ruling.md): the test
+  a new compute provider applies before taking a vendor SDK dependency — REST by hand by default,
+  buy only the auth part when it's genuinely not fetch-shaped.
