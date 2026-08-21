@@ -267,12 +267,14 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       name: z.string().min(1).optional().describe('A name for the server. One is generated if omitted.'),
       size: z
         .enum(['small', 'medium', 'large'])
-        .default('small')
+        .optional()
         .describe(
           'How big a machine, as a floor rather than an exact type: small is at least 2 vCPU and ' +
             '2 GB, medium at least 2 and 4, large at least 4 and 8. The control plane picks the ' +
             'cheapest machine the chosen cloud sells that meets it, and refuses — naming the ' +
-            'shortfall — rather than quietly handing back a smaller one.',
+            'shortfall — rather than quietly handing back a smaller one. Defaults to small when ' +
+            'offering_id is also omitted; omit this and name offering_id instead to ask for a ' +
+            'specific machine type rather than a floor.',
         ),
       /**
        * ARCH, WHICH AN AGENT COULD NOT ASK FOR AT ALL UNTIL NOW (rockysurf-0t2h).
@@ -377,7 +379,15 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
       const server = await client.post<unknown>('/api/v1/servers', {
         ...(args['name'] ? { name: args['name'] } : {}),
-        size: args['size'] ?? 'small',
+        /**
+         * `small` is the default ONLY when nothing else names a machine (rockysurf-kh3u).
+         *
+         * The schema used to default `size` to `'small'` unconditionally, so an agent that
+         * named `offering_id` alone still sent a `size` the control plane would derive
+         * `'custom'` for anyway — harmless, but it made `'custom'` unreachable from this tool.
+         * An explicit `size` still wins outright.
+         */
+        ...(args['size'] ? { size: args['size'] } : args['offering_id'] ? {} : { size: 'small' }),
         ...(args['arch'] ? { arch: args['arch'] } : {}),
         ...(args['offering_id'] ? { offeringId: args['offering_id'] } : {}),
         ...(packId ? { packId } : {}),

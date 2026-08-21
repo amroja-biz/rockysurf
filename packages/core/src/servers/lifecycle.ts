@@ -30,8 +30,8 @@ import type {
   Architecture,
   ProvisioningStep,
   ServerRow,
-  ServerSize,
   ServerStatus,
+  StoredSize,
 } from '../db/schema.js'
 import { advancesProvisioning, canTransition } from '../db/transitions.js'
 import type { ProviderRegistry } from '../providers/registry.js'
@@ -239,7 +239,8 @@ export interface CreateServerInput {
   /** Optional free-text purpose (issue #46). Display-only, like `name`. */
   description?: string
   provider: string
-  size: ServerSize
+  /** `'custom'` for a server created by naming an offering directly (rockysurf-kh3u). */
+  size: StoredSize
   offeringId: string
   arch: Architecture
   packId?: string

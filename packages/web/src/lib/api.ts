@@ -163,7 +163,12 @@ export interface Server {
   /** Provider id — `'aws'`, `'hetzner'`, `'byo'`. The key for a capability lookup, never a
    *  thing to branch on directly. */
   provider: string
-  size: 'small' | 'medium' | 'large'
+  /**
+   * `'custom'` means this server was created by naming an `offeringId` directly, with no
+   * t-shirt size behind it at all (rockysurf-kh3u) — render it as `offeringId`, never as the
+   * literal word.
+   */
+  size: 'small' | 'medium' | 'large' | 'custom'
   offeringId: string
   arch: 'amd64' | 'arm64'
   status: 'requested' | 'provisioning' | 'running' | 'stopped' | 'terminated' | 'failed'
@@ -265,12 +270,18 @@ export interface CreateServerRequest {
   name?: string
   /** Optional free-text purpose, editable later from the server page. */
   description?: string
-  size: Server['size']
+  /**
+   * Optional (rockysurf-kh3u): the machine-type picker sends `offeringId` alone and OMITS
+   * this field entirely — picking a specific machine IS the size decision, made concretely.
+   * Never `'custom'`; that is a server-side derivation, not a value this client may send. At
+   * least one of `size`/`offeringId` is required — core 400s naming both when neither arrives.
+   */
+  size?: 'small' | 'medium' | 'large'
   packId: string
   /** Provider id. Omit to let core use its default. */
   provider?: string
   /**
-   * The concrete offering the size resolved to.
+   * The concrete offering the size resolved to, or the one the picker chose directly.
    *
    * Sent explicitly so the user gets the machine whose price they were shown. Omitting it
    * lets core choose, which is right for an API caller and wrong for a form that just

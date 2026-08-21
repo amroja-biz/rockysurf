@@ -534,3 +534,67 @@ describe('choosing the provider on create', () => {
     expect(((await res.json()) as { error: string }).error).toContain('no compute provider is configured')
   })
 })
+
+/**
+ * `size` BECOMES OPTIONAL, AND `'custom'` IS DERIVED — issue #24 PR 1 (rockysurf-kh3u).
+ *
+ * The machine-type picker (packages/web/src/pages/CreateServerPage.tsx) posts `offeringId` and
+ * OMITS `size` entirely; core is the one place that turns that into a `'custom'` row, and the
+ * literal must never arrive over the wire itself.
+ */
+describe('size is optional once offeringId names the machine (rockysurf-kh3u)', () => {
+  it('creates from offeringId + arch alone, with no size in the body at all', async () => {
+    const res = await post('/api/v1/servers', {
+      packId: 'ai-coding-agents',
+      offeringId: 'fake-medium',
+      arch: 'amd64',
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['offeringId']).toBe('fake-medium')
+    expect(body['arch']).toBe('amd64')
+    // Derived, never left null and never the caller's problem to have supplied.
+    expect(body['size']).toBe('custom')
+  })
+
+  it('creates from offeringId alone (no arch, no size), deriving both', async () => {
+    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents', offeringId: 'fake-medium' })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['offeringId']).toBe('fake-medium')
+    expect(body['arch']).toBe('amd64') // fake-medium's own arch, from the catalogue
+    expect(body['size']).toBe('custom')
+  })
+
+  it('keeps a caller-supplied size alongside an offeringId, rather than overwriting it', async () => {
+    // The column is display sugar; a caller who stated a real size gets to keep it.
+    const res = await post('/api/v1/servers', {
+      packId: 'ai-coding-agents',
+      size: 'large',
+      offeringId: 'fake-medium',
+      arch: 'amd64',
+    })
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as Record<string, unknown>)['size']).toBe('large')
+  })
+
+  it('400s naming BOTH fields when neither size nor offeringId is sent', async () => {
+    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; issues?: { path: string; message: string }[] }
+    const paths = (body.issues ?? []).map((i) => i.path)
+    expect(paths).toContain('size')
+    expect(paths).toContain('offeringId')
+  })
+
+  it('never accepts the literal "custom" as a size from the wire', async () => {
+    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents', size: 'custom' })
+    expect(res.status).toBe(400)
+  })
+
+  it('still resolves size-only creates exactly as before (unaffected by the optional field)', async () => {
+    const res = await post('/api/v1/servers', CREATE)
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as Record<string, unknown>)['size']).toBe('small')
+  })
+})

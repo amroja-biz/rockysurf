@@ -12,6 +12,7 @@ import {
   resolveRepositories,
   type ConfiguredScope,
   type CreateServerRequest,
+  type Offering,
   type ProviderInfo,
   type ProviderSetupState,
   type RepositoryResolution,
@@ -394,6 +395,152 @@ function Tabs<K extends string>({
 type PackTab = 'official' | 'community'
 const tabFor = (pack: SurgePack): PackTab => (pack.provenance === 'official' ? 'official' : 'community')
 
+/**
+ * A specific machine type, named directly, over a t-shirt size (rockysurf-kh3u, issue #24 PR 1).
+ *
+ * A size is a floor — "at least this much" — and the create route already accepts an
+ * `offeringId` naming an exact one; this disclosure is the first place on this page that lets a
+ * person reach it, over the SAME catalogue the Size fieldset above resolves against. Nothing here
+ * fetches anything of its own: it is handed the allowlist-filtered offerings the page already
+ * loaded for the resolver, so a row shown here is a row the create request can actually name.
+ *
+ * RENDER CAP, deliberately. The catalogue this reads from is ~12 rows today and will be roughly a
+ * thousand once AWS's generator widens it (issue #24 PR 2a) — searching first and rendering a
+ * capped, filtered slice is what keeps that future catalogue from becoming a thousand DOM rows.
+ *
+ * SOLD-OUT ROWS ARE DISABLED, NOT HIDDEN — an id a person cannot buy today is still a real id,
+ * and hiding it would make the catalogue look smaller than it is. `Offering.available` is the
+ * only signal any provider puts on the wire for this (no provider attaches a per-row reason
+ * string), so every disabled row carries the same honest, generic sentence rather than one this
+ * component would have to invent per cloud.
+ */
+function MachineTypePicker({
+  offerings,
+  selectedId,
+  onSelect,
+  onClear,
+}: {
+  offerings: readonly Offering[]
+  /** The offering id currently driving the request, or `null` when a size drives it instead. */
+  selectedId: string | null
+  onSelect: (offering: Offering) => void
+  onClear: () => void
+}) {
+  // Collapsed by default, and the TABLE ITSELF IS NOT MOUNTED while collapsed — not merely
+  // visually hidden. Two reasons, not one: the catalogue this reads from is ~12 rows today and
+  // will be roughly a thousand once AWS's generator widens it (issue #24 PR 2a), so there is no
+  // reason to build rows nobody has asked to see; and a mounted-but-hidden table would duplicate
+  // every row's price text into the page underneath the Size fieldset above, which the rest of
+  // this page's own price display already renders once.
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return offerings
+    return offerings.filter((o) => o.id.toLowerCase().includes(q) || o.region.toLowerCase().includes(q))
+  }, [offerings, query])
+
+  const shown = filtered.slice(0, MACHINE_PICKER_RENDER_CAP)
+  const hiddenCount = filtered.length - shown.length
+
+  return (
+    <details
+      className="machine-picker"
+      data-testid="machine-type-picker"
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      {/* `role="button"` stated explicitly: the ARIA-in-HTML mapping for a details' first
+          `<summary>` is implicitly "button", but it is a context-dependent mapping few
+          accessibility-tree implementations compute, so this is declared rather than assumed. */}
+      <summary role="button">Choose a specific machine type</summary>
+      {!open ? null : (
+        <>
+          <p className="hint">
+            Pick an exact machine type instead of a size. Selecting one sends this type instead of a size, and
+            clears the Size choice above.
+          </p>
+          <input
+            type="search"
+            className="machine-picker-search"
+            aria-label="Search machine types"
+            placeholder="Search by id or region…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="machine-picker-table-wrap">
+            <table>
+              <caption className="hint">Estimates only — you are billed by the provider, not by Rocky Surf.</caption>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>vCPU</th>
+                  <th>Memory</th>
+                  <th>Disk</th>
+                  <th>Arch</th>
+                  <th>Region</th>
+                  <th>Price</th>
+                  <th>
+                    <span className="sr-only">Select</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((offering) => {
+                  const asOf = formatPricesAsOf(offering.hourly?.fetchedAt)
+                  const selected = offering.id === selectedId
+                  return (
+                    <tr key={offering.id} className={selected ? 'selected' : ''}>
+                      <td>{offering.id}</td>
+                      <td>{offering.cpu}</td>
+                      <td>{offering.memoryGb} GB</td>
+                      <td>{offering.diskGb ? `${offering.diskGb} GB` : '—'}</td>
+                      <td>
+                        <span className="arch-badge">{archLabel(offering.arch)}</span>
+                      </td>
+                      <td>{offering.region}</td>
+                      <td>
+                        {offering.hourly ? (
+                          <>
+                            {formatHourly(offering.hourly)}
+                            {asOf && <div className="hint">{asOf}</div>}
+                          </>
+                        ) : (
+                          // Never blank, never $0 — null means the provider quoted nothing, not free.
+                          'price unknown'
+                        )}
+                      </td>
+                      <td>
+                        {!offering.available ? (
+                          // Every provider's own reason lands here where one exists (none does
+                          // on the wire today — see the component doc), so this generic
+                          // sentence is what every disabled row carries.
+                          <span className="warning">sold out right now</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => (selected ? onClear() : onSelect(offering))}
+                          >
+                            {selected ? 'Selected' : 'Select'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {hiddenCount > 0 && <p className="hint">{hiddenCount} more — refine your search to see them.</p>}
+        </>
+      )}
+    </details>
+  )
+}
+/** Search-filtered rows rendered before "N more — refine" takes over (see `MachineTypePicker`). */
+const MACHINE_PICKER_RENDER_CAP = 50
+
 export function CreateServerPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -413,6 +560,13 @@ export function CreateServerPage() {
   const [providerId, setProviderId] = useState('')
   const [size, setSize] = useState<ServerSize>('small')
   const [arch, setArch] = useState<Architecture | undefined>(undefined)
+  /**
+   * A specific machine type picked by id, over a t-shirt size (rockysurf-kh3u). `null` means
+   * the Size fieldset above is driving the request, exactly as before this bead. Set, it means
+   * the opposite: the Size radios read as deselected, and submit sends `offeringId` and OMITS
+   * `size` entirely — core derives `'custom'` for the row rather than reading it from the wire.
+   */
+  const [customOfferingId, setCustomOfferingId] = useState<string | null>(null)
   const [packId, setPackId] = useState('')
   /**
    * Which shelf of the picker is showing (rockysurf-jn71). NOT part of the request — it decides
@@ -506,14 +660,38 @@ export function CreateServerPage() {
   const architectures = useMemo(() => availableArchitectures(provider?.offerings ?? []), [provider])
 
   // Resolve the t-shirt size to a CONCRETE offering, before submit, so the price shown is the
-  // price of the machine that will actually be created.
+  // price of the machine that will actually be created. Computed even in custom mode — cheap,
+  // and it means switching back to a size needs no re-derivation.
   const resolution = useMemo(() => {
     if (!provider) return null
     return resolveOffering(provider.offerings, { ...SIZE_REQUIREMENTS[size], ...(arch ? { arch } : {}) })
   }, [provider, size, arch])
 
-  const resolved = resolution?.ok ? resolution.offering : null
+  /**
+   * The machine type picker's own pick, re-looked-up rather than cached as an `Offering`
+   * (rockysurf-kh3u). A provider switch clears `customOfferingId` (see the provider radio's
+   * `onChange`), so this can only miss when the id itself has fallen out of the catalogue —
+   * which the empty-string check in `validate` below turns into a plain refusal to submit.
+   */
+  const customOffering = useMemo(() => {
+    if (!customOfferingId || !provider) return null
+    return provider.offerings.find((o) => o.id === customOfferingId) ?? null
+  }, [provider, customOfferingId])
+
+  // THE OFFERING THE REQUEST WILL ACTUALLY NAME: the custom pick when there is one, the size
+  // resolution's answer otherwise. Everything downstream — the price card, the submit button,
+  // the request body — reads this one value rather than branching on `customOfferingId` itself.
+  const resolved = customOfferingId ? customOffering : resolution?.ok ? resolution.offering : null
   const pricesAsOf = formatPricesAsOf(resolved?.hourly?.fetchedAt)
+
+  // The failure to show when `resolved` is null: the picker's own refusal in custom mode, or
+  // the size resolver's in size mode. Narrowed by hand (`resolution && !resolution.ok`) rather
+  // than the optional-chained `resolution?.reason` the JSX used before this bead — that no
+  // longer type-narrows `resolution`, because the branch it sits in is keyed off `resolved` now.
+  const planFailure =
+    resolution && !resolution.ok
+      ? { reason: resolution.reason, soldOut: resolution.soldOut }
+      : { reason: 'Choose a provider', soldOut: false }
 
   // Pack metadata, not pack identity, decides which fields exist.
   const requiresRepos = pack?.requiresRepos ?? false
@@ -601,8 +779,12 @@ export function CreateServerPage() {
   function validate(): string | null {
     if (!providerId) return 'Choose a provider'
     if (!packId) return 'Choose a pack'
-    if (!resolution) return 'Choose a provider'
-    if (!resolution.ok) return resolution.reason
+    if (customOfferingId) {
+      if (!customOffering) return 'That machine type is no longer offered by this provider — pick another'
+    } else {
+      if (!resolution) return 'Choose a provider'
+      if (!resolution.ok) return resolution.reason
+    }
     if (requiresRepos && repositories.length === 0) return 'This pack needs at least one repository'
     if (requiresRdp) {
       if (rdpPassword.length < 8) return 'Remote desktop password must be at least 8 characters'
@@ -625,7 +807,10 @@ export function CreateServerPage() {
 
     try {
       const request: CreateServerRequest = {
-        size,
+        // OMITTED, not sent as `'custom'`, once a specific machine type is picked
+        // (rockysurf-kh3u): the literal is never valid on the wire, and core derives it from
+        // `offeringId` arriving with no `size` at all.
+        ...(customOfferingId ? {} : { size }),
         packId,
         provider: providerId,
         ...(name.trim() ? { name: name.trim() } : {}),
@@ -736,6 +921,7 @@ export function CreateServerPage() {
                   onChange={() => {
                     setProviderId(p.id)
                     setArch(undefined) // catalogues differ; do not carry an arch across
+                    setCustomOfferingId(null) // ...and not a machine-type pick either
                   }}
                 />
                 <span>{p.displayName}</span>
@@ -783,8 +969,20 @@ export function CreateServerPage() {
           {SIZES.map((option) => {
             const requirements = SIZE_REQUIREMENTS[option]
             return (
-              <label key={option} className={`radio-option ${option === size ? 'selected' : ''}`}>
-                <input type="radio" name="size" value={option} checked={option === size} onChange={() => setSize(option)} />
+              <label key={option} className={`radio-option ${!customOfferingId && option === size ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="size"
+                  value={option}
+                  // Deselected, not merely un-highlighted, once a specific machine type is
+                  // picked (rockysurf-kh3u): `size` is state this component still holds, but
+                  // it is not what will be sent, and a checked radio would say otherwise.
+                  checked={!customOfferingId && option === size}
+                  onChange={() => {
+                    setSize(option)
+                    setCustomOfferingId(null)
+                  }}
+                />
                 <span className="size-name">{option}</span>
                 <span className="size-detail">
                   at least {requirements.vcpu} vCPU · {requirements.memGb} GB RAM
@@ -794,8 +992,19 @@ export function CreateServerPage() {
           })}
         </fieldset>
 
-        {/* Architecture, offered only where the provider actually sells more than one. */}
-        {architectures.length > 1 && (
+        {provider && (
+          <MachineTypePicker
+            offerings={provider.offerings}
+            selectedId={customOfferingId}
+            onSelect={(offering) => setCustomOfferingId(offering.id)}
+            onClear={() => setCustomOfferingId(null)}
+          />
+        )}
+
+        {/* Architecture, offered only where the provider actually sells more than one, and
+            only while a size — not a specific machine type — is driving the request: a
+            picked offering already carries its own arch, and this control would do nothing. */}
+        {architectures.length > 1 && !customOfferingId && (
           <fieldset>
             <legend>Architecture</legend>
             <label className={`radio-option ${arch === undefined ? 'selected' : ''}`}>
@@ -813,20 +1022,23 @@ export function CreateServerPage() {
           </fieldset>
         )}
 
-        {/* The resolved machine — shown BEFORE submit, with its price and the date of that price. */}
+        {/* The resolved machine — shown BEFORE submit, with its price and the date of that price.
+            Reads `resolved` rather than `resolution.ok` directly (rockysurf-kh3u), because it is
+            now the answer to either question: which offering the size resolved to, or which one
+            the machine-type picker named outright. */}
         <section className="resolved-offering" aria-live="polite">
-          {resolution?.ok ? (
+          {resolved ? (
             <>
               <h2>
-                {resolved!.id} <span className="arch-badge">{archLabel(resolved!.arch)}</span>
+                {resolved.id} <span className="arch-badge">{archLabel(resolved.arch)}</span>
               </h2>
               <p>
-                {resolved!.cpu} vCPU · {resolved!.memoryGb} GB RAM
-                {resolved!.diskGb ? ` · ${resolved!.diskGb} GB disk` : ''} · {resolved!.region}
+                {resolved.cpu} vCPU · {resolved.memoryGb} GB RAM
+                {resolved.diskGb ? ` · ${resolved.diskGb} GB disk` : ''} · {resolved.region}
               </p>
               <p className="price">
-                <strong>{formatHourly(resolved!.hourly)}</strong>
-                {formatMonthly(resolved!.hourly) && <> · about {formatMonthly(resolved!.hourly)}/month if left running</>}
+                <strong>{formatHourly(resolved.hourly)}</strong>
+                {formatMonthly(resolved.hourly) && <> · about {formatMonthly(resolved.hourly)}/month if left running</>}
               </p>
               {pricesAsOf ? (
                 <p className="price-note">
@@ -839,7 +1051,11 @@ export function CreateServerPage() {
               )}
             </>
           ) : (
-            <p className={resolution?.soldOut ? 'warning' : 'error'}>{resolution?.reason ?? 'Choose a provider'}</p>
+            <p className={!customOfferingId && planFailure.soldOut ? 'warning' : 'error'}>
+              {customOfferingId
+                ? 'That machine type is no longer offered by this provider — pick another.'
+                : planFailure.reason}
+            </p>
           )}
         </section>
 
@@ -1105,7 +1321,7 @@ export function CreateServerPage() {
           </label>
         )}
 
-        <button type="submit" className="btn-primary" disabled={submitting || !resolution?.ok}>
+        <button type="submit" className="btn-primary" disabled={submitting || !resolved}>
           {submitting ? 'Creating…' : 'Create server'}
         </button>
       </form>

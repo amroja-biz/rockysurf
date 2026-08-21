@@ -1061,6 +1061,43 @@ tbody tr:hover td {
   font-weight: 600;
 }
 
+/* Visually hidden but still read by a screen reader — the "Select" column's header, which a
+   sighted user gets from the row's own button label instead. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Machine type picker ──────────────────────────────────────────────────────────────
+   The create page's disclosure over a specific offering, rather than a t-shirt size
+   (rockysurf-kh3u). Its own scroll container because the AWS-widened catalogue (issue #24 PR
+   2a) will make this table wider than the form column on a narrow screen. */
+.machine-picker {
+  margin: 0.75rem 0 1rem;
+}
+
+.machine-picker-search {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.machine-picker-table-wrap {
+  overflow-x: auto;
+}
+
+.machine-picker tr.selected td {
+  background: var(--rs-surface);
+  font-weight: 500;
+}
+
 /* ── Modals ────────────────────────────────────────────────────────────────────────────
    Ported unchanged; `.modal-wide` is the port's name for what legacy spelled
    `.admin-form-modal` / `.install-preview-modal`. */

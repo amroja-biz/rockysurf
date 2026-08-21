@@ -255,7 +255,11 @@ export function ServerDetailPage() {
           <div>
             <dt>Size</dt>
             <dd>
-              {server.size} · {server.offeringId} · {server.arch}
+              {/* `'custom'` — created by naming an offering directly (rockysurf-kh3u) — is never
+                  rendered as that word: the offering id beside it already says what this box
+                  is, and repeating "custom" would say less than omitting it. */}
+              {server.size !== 'custom' && <>{server.size} · </>}
+              {server.offeringId} · {server.arch}
             </dd>
           </div>
           {/* The pack this box was built from (issue #46) — by name when the pack list has
