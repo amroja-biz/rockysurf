@@ -9,6 +9,9 @@ cap.** One process you run yourself. It creates a real Linux server, installs yo
 on it, and hands you an SSH command — then stops the box when you are done and starts it again
 tomorrow with everything still there.
 
+Five principles govern every feature: **[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md)**. Read it
+before proposing or building anything.
+
 <!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → paste a
      Hetzner token → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 

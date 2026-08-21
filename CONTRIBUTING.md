@@ -4,6 +4,9 @@ Thanks for looking. Rocky Surf is small and opinionated, and most of the opinion
 down — if something in the code looks arbitrary, there is usually an ADR or a doc comment saying
 why.
 
+Start with **[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md)** — the five principles every feature is
+measured against. An issue or PR should say which principle it serves.
+
 ## Setup
 
 **Node 24 or newer** (`engines.node` is `>=24`, and the `rockysurf` binary checks at startup
