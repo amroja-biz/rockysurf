@@ -314,7 +314,7 @@ describe('the display fields (issue #46)', () => {
     // replaces it when the pack list answers.
     await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('A Pack'))
     // Linked to the same page the nav offers (rockysurf-idxd).
-    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('href')).toBe('/admin/surge-packs')
+    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('href')).toBe('/packs/a-pack')
   })
 
   /** One pack tool, as the public list expands them — enough to pin name, link and caveat. */

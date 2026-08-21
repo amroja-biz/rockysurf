@@ -720,10 +720,10 @@ Before installing anything from a registry the admin UI shows you every script i
 verbatim, along with which steps run as root and every URL they fetch. That disclosure is the
 control. Read it.
 
-It lives at **Admin → Pack Shop**, which is also where you can see what you already have and
-where each of it came from: `official` for the packs that shipped with your release, the label
-you gave a registry for anything installed from one, and `local` for packs you created yourself.
-There is no install button anywhere except below those scripts.
+It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
+where each of it came from: `official` for the packs that shipped with your release, `registry`
+for anything installed from a registry, and `local` for packs you created yourself. There is no
+install button anywhere except below those scripts.
 
 One thing the summary on that page says about itself, worth repeating here: the list of URLs is
 derived by reading the scripts, so a script that builds a URL out of a variable will not appear

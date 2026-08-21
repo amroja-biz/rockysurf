@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Link } from 'react-router'
 import {
   ApiError,
@@ -30,8 +30,8 @@ import {
   type ServerSize,
 } from '../lib/requirements'
 import { AppShell } from '../components/AppShell'
+import { PackIcon } from '../components/PackIcon'
 import { ProvisioningFeed } from '../components/ProvisioningFeed'
-import { useAuth } from '../contexts/AuthContext'
 
 /**
  * Create a server.
@@ -396,7 +396,7 @@ const tabFor = (pack: SurgePack): PackTab => (pack.provenance === 'official' ? '
 
 export function CreateServerPage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const [searchParams] = useSearchParams()
 
   /* ---------------------------------------------------------------- catalogue */
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -420,6 +420,12 @@ export function CreateServerPage() {
    * `packId`.
    */
   const [packTab, setPackTab] = useState<PackTab>('official')
+  /**
+   * Named by `?pack=<packId>` (rockysurf-4d8h) but not on offer — absent, or disabled, so the
+   * public list never carried it. Stated rather than swallowed: silently landing on a
+   * different pack is how somebody creates a box with the wrong software on it.
+   */
+  const [packNotice, setPackNotice] = useState<string | null>(null)
   const [repoInput, setRepoInput] = useState('')
   const [sshKeyOption, setSshKeyOption] = useState<'generate' | 'provide'>('generate')
   const [sshPublicKey, setSshPublicKey] = useState('')
@@ -472,15 +478,25 @@ export function CreateServerPage() {
 
         const enabled = packList.filter((p) => p.enabled).sort((a, b) => a.displayOrder - b.displayOrder)
         setPacks(enabled)
-        if (enabled[0]) {
-          setPackId(enabled[0].packId)
+        // Arriving from a pack's "Launch a server with this pack" button (rockysurf-4d8h,
+        // issue #51): a different STARTING pack, nothing else. The selection rule below —
+        // lowest displayOrder wins absent a request — is otherwise untouched.
+        const wantedPackId = searchParams.get('pack')
+        const asked = wantedPackId ? enabled.find((p) => p.packId === wantedPackId) : undefined
+        const preselected = asked ?? enabled[0]
+        if (preselected) {
+          setPackId(preselected.packId)
           // Open on whichever tab HOLDS the preselection, rather than on Official by rule. The
           // selection rule is untouched — lowest displayOrder, exactly as before — and this only
           // follows it, so an installation whose only enabled packs are contributed ones opens
           // on Community instead of on an Official shelf that does not contain the checked
           // radio (rockysurf-jn71).
-          setPackTab(tabFor(enabled[0]))
+          setPackTab(tabFor(preselected))
         }
+        // Asked for but not available — absent from the catalogue, or disabled — and NOTHING
+        // was silently substituted. The usual lowest-displayOrder pack still gets preselected
+        // above; this only says so.
+        if (wantedPackId && !asked) setPackNotice(wantedPackId)
       } catch (err) {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Failed to load options')
       } finally {
@@ -853,7 +869,16 @@ export function CreateServerPage() {
           {packs.length === 0 && (
             <p className="hint">
               No Surge Packs are available yet. Add a pack file to <code>packs/</code> or create one
-              in Admin → Surge Packs, then reload.
+              at <Link to="/packs">Surge Packs</Link>, then reload.
+            </p>
+          )}
+          {/* A `?pack=` naming something not on offer (rockysurf-4d8h) — stated, never
+              swallowed. The usual lowest-displayOrder pack is still preselected above; this
+              only says the requested one was not it. */}
+          {packNotice && (
+            <p className="hint" data-testid="pack-preselect-missing">
+              <code>{packNotice}</code> is not available on this installation, so nothing was
+              preselected.
             </p>
           )}
           {/*
@@ -895,14 +920,10 @@ export function CreateServerPage() {
                   (packTab === 'community' ? (
                     <p className="hint" data-testid="community-empty">
                       No community packs are installed.{' '}
-                      {/* Admin-aware, because `/admin/pack-shop` is behind `AdminRoute` — a link
-                          offered to a member is a link that bounces them back to the dashboard.
-                          The member gets the fact instead: somebody else does this. */}
-                      {user?.isAdmin ? (
-                        <Link to="/admin/pack-shop">Browse the Pack Shop</Link>
-                      ) : (
-                        <>Your Rocky Surf operator installs packs for this installation.</>
-                      )}
+                      {/* `/packs` is member-reachable (rockysurf-4d8h, issue #51), unlike the
+                          admin-only `/admin/pack-shop` it replaced — so this is offered to
+                          everyone rather than branching on `user?.isAdmin`. */}
+                      <Link to="/packs">Browse the Surge Packs</Link>
                     </p>
                   ) : (
                     // The mirror case, and it is reachable: an operator can disable the packs
@@ -920,24 +941,10 @@ export function CreateServerPage() {
                       checked={option.packId === packId}
                       onChange={() => setPackId(option.packId)}
                     />
-                    {/*
-                      The card image, when the pack names one. Shipped packs point `imageUrl` at a
-                      bundled asset; a pack that names none — which is every third-party pack until
-                      its author adds one — simply has no image here, and the row still reads
-                      correctly. `onError` covers the other half: an imageUrl pointing at something
-                      that is not there would otherwise leave a broken-image glyph in the list.
-                    */}
-                    {option.imageUrl && (
-                      <img
-                        className="pack-icon"
-                        src={option.imageUrl}
-                        alt=""
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none'
-                        }}
-                      />
-                    )}
+                    {/* The pack's mark — its image, or a monogram when it has none (or the
+                        image failed). One component, shared with the /packs catalogue
+                        (rockysurf-4d8h), so every third-party pack still reads correctly. */}
+                    <PackIcon pack={option} />
                     <span>{option.name}</span>
                     <span className="size-detail">{option.tools.map((t) => t.name).join(', ')}</span>
                   </label>

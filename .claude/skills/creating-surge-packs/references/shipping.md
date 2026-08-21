@@ -81,7 +81,7 @@ shared base file can.
 
 ## 2. Import into a running instance
 
-**Admin → Surge Packs → Import.** Two inputs:
+**Surge Packs (`/packs`) → Manage packs → Import.** Two inputs:
 
 - **Upload a `.yaml` file.** The browser reads the bytes, so there are no restrictions beyond the
   file being a valid pack.
