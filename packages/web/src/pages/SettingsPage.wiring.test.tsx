@@ -422,7 +422,15 @@ describe('the unified token list', () => {
     // And the token edit survived that save rather than being swept up by it.
     expect(control('github.tokens.0.pat').value).toBe('github_pat_newacme')
     clickIn('0', 'Save this token')
-    await waitFor(() => expect(saves).toHaveLength(2))
+    // The first save is already awaited above (`onlySave()`), so this is a second, independent
+    // real round trip against the stub HTTP server — not a race with the first. There is no
+    // promise the test can hold for it (`clickIn` only dispatches a DOM event), so the only
+    // deterministic thing left to fix is testing-library's default 1000ms `waitFor` budget,
+    // which is too tight for a real socket under a loaded CI runner (rockysurf-zn33: observed
+    // giving up at ~1.2s on run 32296243192, green on immediate rerun of the same commit).
+    // `CreateServerPage.test.tsx` widens the same class of real-HTTP wait to 3000ms; this one
+    // gets a bit more headroom since it is the second round trip in the test, not the first.
+    await waitFor(() => expect(saves).toHaveLength(2), { timeout: 5000 })
     expect(saves[1]!.changes).toEqual([
       { path: ['github', 'tokens', 0, 'pat'], value: 'github_pat_newacme' },
     ])
