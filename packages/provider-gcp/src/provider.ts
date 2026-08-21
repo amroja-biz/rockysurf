@@ -17,8 +17,8 @@ import { GceApi, lastSegment } from './api.js'
 import { makeAdcTokenSource, type TokenSource } from './auth.js'
 import { resolveSshCidr, type GcpProviderConfig } from './config.js'
 import { isAlreadyExists, isNotFound } from './errors.js'
-import { buildOfferings } from './offerings.js'
-import { GCP_TYPES, T2A_ZONES } from './prices.generated.js'
+import { allowedBootDiskTypes, buildOfferings, familyOf } from './offerings.js'
+import { C4A_ZONES, GCP_TYPES, T2A_ZONES } from './prices.generated.js'
 import type { GceFirewall, GceInstance } from './types.js'
 
 /**
@@ -376,15 +376,41 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
         )
       }
       if (!offering.available) {
-        // Not `capacity`: capacity is retryable and means "sold out this afternoon". A T2A
-        // machine in a zone that has never offered T2A is a permanent no, and retrying it
-        // forever is the wrong behaviour to invite.
+        // Not `capacity`: capacity is retryable and means "sold out this afternoon". An arm64
+        // family in a zone that has never offered it is a permanent no, and retrying it forever
+        // is the wrong behaviour to invite. Named per family, because the two arm64 families
+        // have different zone lists and naming the wrong one would send an operator looking in
+        // the wrong ~70 zones.
+        const family = familyOf(offering.id)
+        const [label, zones] =
+          family === 'c4a' ? (['C4A (arm64)', C4A_ZONES] as const) : (['Tau T2A (arm64)', T2A_ZONES] as const)
         throw new ProviderError(
           'invalid_spec',
-          `${offering.id} is not offered in zone ${zone}. Tau T2A (arm64) exists only in ` +
-            `${[...T2A_ZONES].join(', ')}.`,
+          `${offering.id} is not offered in zone ${zone}. ${label} exists only in ${[...zones].join(', ')}.`,
         )
       }
+
+      // Amendment (rockysurf-ev41.9 / rockysurf-h6mb): boot disk type is per MACHINE FAMILY, not
+      // just per configuration. C4A has no Persistent Disk option at all; every other family
+      // this provider ships has no Hyperdisk option (yet). A mismatch is refused HERE, naming the
+      // constraint, rather than surfacing as a Compute API 400 on `disks.insert` after the rest
+      // of provisioning has already started.
+      const family = familyOf(offering.id)
+      if (family) {
+        const allowed = allowedBootDiskTypes(family)
+        if (!allowed.includes(config.bootDiskType)) {
+          const label = family === 'c4a' ? 'C4A' : family.toUpperCase()
+          const supports = family === 'c4a' ? 'Hyperdisk only' : 'Persistent Disk only (pd-balanced/pd-standard/pd-ssd)'
+          throw new ProviderError(
+            'invalid_spec',
+            `${offering.id} is a ${label} machine type. ${label} supports ${supports}, but this provider is ` +
+              `configured with bootDiskType '${config.bootDiskType}'. Set bootDiskType to ${allowed
+                .map((t) => `'${t}'`)
+                .join(' or ')} to provision ${label} machines.`,
+          )
+        }
+      }
+
       if (spec.sshPublicKeys.length === 0) {
         throw new ProviderError('invalid_spec', 'at least one ssh public key is required')
       }

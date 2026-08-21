@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { GceApi } from './api.js'
 import { gcpConfigSchema, type GcpProviderConfig } from './config.js'
 import gcpProviderFactory from './index.js'
-import { GCP_PRICES_FETCHED_AT } from './offerings.js'
+import { GCP_C4A_PRICES_FETCHED_AT, GCP_PRICES_FETCHED_AT } from './offerings.js'
 import {
   composeInstanceName,
   gceConsoleUrl,
@@ -377,10 +377,10 @@ describe('offerings and prices', () => {
     expect((await elsewhere.listOfferings()).every((o) => o.hourly === null)).toBe(true)
   })
 
-  it('marks arm64 unavailable in a zone that has no T2A, rather than omitting it', async () => {
-    // AMENDMENT B1, doing real work. us-central1-c has no T2A while -a does, and a size
-    // selector must be able to say "this zone has no ARM" rather than silently having none.
-    const noArm = build({ zone: 'us-central1-c' })
+  it('marks arm64 unavailable in a zone that has neither T2A nor C4A, rather than omitting it', async () => {
+    // AMENDMENT B1, doing real work. us-west3 carries neither arm64 family, and a size selector
+    // must be able to say "this zone has no ARM" rather than silently having none.
+    const noArm = build({ zone: 'us-west3-a' })
     const offerings = await noArm.listOfferings()
     const arm = offerings.filter((o) => o.arch === 'arm64')
 
@@ -389,13 +389,37 @@ describe('offerings and prices', () => {
     expect(offerings.filter((o) => o.arch === 'amd64').every((o) => o.available)).toBe(true)
   })
 
-  it('marks arm64 available in a zone that does have T2A', async () => {
+  it('marks T2A unavailable but C4A available in the zone C4A exists to close the gap in', async () => {
+    // THE WHOLE POINT OF C4A. us-central1-c is the zone T2A_ZONES is conspicuously missing and
+    // this provider's default zone dodges — C4A carries it, so an operator there is not
+    // actually stuck on amd64. One `available` flag per row means both facts can be true at
+    // once without either family's flag lying about the other.
+    const zone = 'us-central1-c'
+    const offerings = await build({ zone }).listOfferings()
+    const t2a = offerings.filter((o) => o.id.startsWith('t2a-'))
+    const c4a = offerings.filter((o) => o.id.startsWith('c4a-'))
+
+    expect(t2a.length).toBeGreaterThan(0)
+    expect(t2a.every((o) => !o.available)).toBe(true)
+    expect(c4a.length).toBeGreaterThan(0)
+    expect(c4a.every((o) => o.available)).toBe(true)
+  })
+
+  it('marks arm64 available in a zone that has both T2A and C4A', async () => {
     const offerings = await build({ zone: 'europe-west4-a' }).listOfferings()
     expect(offerings.filter((o) => o.arch === 'arm64').every((o) => o.available)).toBe(true)
   })
 
   it('reports the zone as the region, because stock varies per zone', async () => {
     expect((await provider.listOfferings()).every((o) => o.region === ZONE)).toBe(true)
+  })
+
+  it('prices c4a-standard-* with the c4a-specific fetchedAt stamp, not the e2/t2a one', async () => {
+    // The c4a rows were transcribed on a different day (rockysurf-h6mb); reusing the older
+    // e2/t2a stamp would claim they were read on a day nobody looked at them.
+    const offering = (await provider.listOfferings()).find((o) => o.id === 'c4a-standard-4')
+    expect(offering?.hourly).toEqual({ amount: 0.1796, currency: 'USD', fetchedAt: GCP_C4A_PRICES_FETCHED_AT })
+    expect(GCP_C4A_PRICES_FETCHED_AT).not.toBe(GCP_PRICES_FETCHED_AT)
   })
 })
 
@@ -444,6 +468,62 @@ describe('validateSpec', () => {
     // GCE names must start with a LETTER, which the SDK's hostname-safe rule does not require.
     // `managedBy` is what closes that gap structurally rather than by sanitizing.
     await expect(provider.validateSpec(spec({ serverId: '9lives' }))).resolves.toBeUndefined()
+  })
+
+  it('rejects a C4A offering the configured zone does not sell, naming C4A rather than T2A', async () => {
+    // us-west3 carries neither arm64 family; the message must not blame T2A for a C4A request.
+    const noC4a = build({ zone: 'us-west3-a', bootDiskType: 'hyperdisk-balanced' })
+    const err = await noC4a
+      .validateSpec(spec({ offeringId: 'c4a-standard-2', arch: 'arm64' }))
+      .catch((e: unknown) => e)
+    assertProviderErrorShape(err)
+    expect(isProviderError(err) && err.code).toBe('invalid_spec')
+    expect(String(err)).toMatch(/C4A \(arm64\) exists only in/)
+    expect(String(err)).toContain('us-central1-c')
+  })
+})
+
+describe('boot disk type resolved per machine family (rockysurf-ev41.9 / rockysurf-h6mb)', () => {
+  it('refuses C4A paired with a Persistent Disk boot disk type, naming the constraint', async () => {
+    // Default config is bootDiskType: 'pd-balanced' — legal for e2/t2a, not for C4A.
+    const err = await provider
+      .validateSpec(spec({ offeringId: 'c4a-standard-4', arch: 'arm64' }))
+      .catch((e: unknown) => e)
+    assertProviderErrorShape(err)
+    expect(isProviderError(err) && err.code).toBe('invalid_spec')
+    expect(String(err)).toMatch(/C4A supports Hyperdisk only/)
+    expect(String(err)).toContain("bootDiskType 'pd-balanced'")
+  })
+
+  it('accepts C4A paired with hyperdisk-balanced', async () => {
+    const hyperdisk = build({ bootDiskType: 'hyperdisk-balanced' })
+    await expect(
+      hyperdisk.validateSpec(spec({ offeringId: 'c4a-standard-4', arch: 'arm64' })),
+    ).resolves.toBeUndefined()
+  })
+
+  it('refuses e2 paired with hyperdisk-balanced — this provider does not expose Hyperdisk for it (yet)', async () => {
+    const hyperdisk = build({ bootDiskType: 'hyperdisk-balanced' })
+    const err = await hyperdisk.validateSpec(spec({ offeringId: 'e2-micro', arch: 'amd64' })).catch((e: unknown) => e)
+    assertProviderErrorShape(err)
+    expect(isProviderError(err) && err.code).toBe('invalid_spec')
+    expect(String(err)).toMatch(/Persistent Disk only/)
+  })
+
+  it('refuses T2A paired with hyperdisk-balanced the same way', async () => {
+    const hyperdisk = build({ bootDiskType: 'hyperdisk-balanced' })
+    const err = await hyperdisk.validateSpec(spec()).catch((e: unknown) => e) // default spec() is t2a-standard-2
+    assertProviderErrorShape(err)
+    expect(isProviderError(err) && err.code).toBe('invalid_spec')
+    expect(String(err)).toMatch(/Persistent Disk only/)
+  })
+
+  it('still accepts e2/t2a paired with any Persistent Disk type', async () => {
+    for (const bootDiskType of ['pd-balanced', 'pd-standard', 'pd-ssd'] as const) {
+      const pd = build({ bootDiskType })
+      await expect(pd.validateSpec(spec({ offeringId: 't2a-standard-2', arch: 'arm64' }))).resolves.toBeUndefined()
+      await expect(pd.validateSpec(spec({ offeringId: 'e2-micro', arch: 'amd64' }))).resolves.toBeUndefined()
+    }
   })
 })
 

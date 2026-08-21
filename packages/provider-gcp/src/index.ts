@@ -13,17 +13,20 @@ import { makeGcpProvider } from './provider.js'
 
 export { GCE_API_BASE, GceApi, lastSegment, type GceApiOptions } from './api.js'
 export { COMPUTE_SCOPE, makeAdcTokenSource, type AdcTokenSourceOptions, type TokenSource } from './auth.js'
-export { gcpConfigSchema, regionOf, resolveSshCidr, type GcpProviderConfig } from './config.js'
+export { BOOT_DISK_TYPES, gcpConfigSchema, regionOf, resolveSshCidr, type BootDiskType, type GcpProviderConfig } from './config.js'
 export { isAlreadyExists, isNotFound, RETRY_ANYWAY, toProviderError } from './errors.js'
 export {
+  allowedBootDiskTypes,
   buildOfferings,
+  familyOf,
+  GCP_C4A_PRICES_FETCHED_AT,
   GCP_PRICES_FETCHED_AT,
   GCP_PRICES_METHOD,
   GCP_PRICES_SOURCE,
   isAvailableInZone,
   OFFERING_IDS,
 } from './offerings.js'
-export { T2A_ZONES } from './prices.generated.js'
+export { C4A_ZONES, T2A_ZONES } from './prices.generated.js'
 export {
   composeInstanceName,
   gceConsoleUrl,
