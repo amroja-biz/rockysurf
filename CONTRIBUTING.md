@@ -249,11 +249,14 @@ specifications. The ADRs carry the decisions, and `spike/recordings/` carries th
 from being a one-time cleanup. If it fires on your branch, do not force-push around it — the
 value is in the scan being unignorable.
 
-The rules live in [`.gitleaks.toml`](.gitleaks.toml): the full default rule set, plus five rules
-pinned to the identifiers of the old hosted deployment. None of those five is a credential you
-can authenticate with, which is exactly why no generic scanner flags them and why they are the
-ones most likely to survive a rewrite — an account id, a GitHub App, a Stripe price, an
-operator's username. Together they are a map of somebody's live infrastructure.
+The rules live in [`.gitleaks.toml`](.gitleaks.toml): the full default rule set, plus two rules
+pinned to the old hosted deployment's GitHub App identifiers. Neither is a credential you can
+authenticate with, which is exactly why no generic scanner flags them — the open-source control
+plane has no GitHub App at all, so a match is either the old deployment's or somebody else's.
+(Five rules used to live here — an account id, a Stripe price, and an operator's own name,
+username, and worktree name were removed by owner decision 2026-08-21: none of those is a
+secret, and blocking someone's own name or an identifier the config file discloses in plain
+text was silly.)
 
 Those rules have their own test, `node scripts/gitleaks-selftest.mjs`, and CI runs it in the
 same job immediately *before* the scan. A secret scanner is the one check whose failure mode is
