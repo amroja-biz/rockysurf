@@ -6,7 +6,7 @@ Rocky Surf is an open-source, self-hosted control plane for provisioning cloud d
 
 **Status:** Active
 **Started:** 2026-02-01
-**Last Updated:** 2026-08-14
+**Last Updated:** 2026-08-21
 
 ---
 
@@ -2151,3 +2151,81 @@ worth naming is the disclosure comment on fork PRs: GitHub hands fork runs a rea
 the workflow that shows reviewers what operators see will go red on exactly the contributors it
 exists for until the privileged half is split out — queued rather than shipped, because an
 untested privileged workflow is a worse trade than an absent feature.
+
+---
+
+## 2026-08-19/21 - The Private Repo Retires, and Beads Goes Ephemeral
+
+After the shop day, development moved wholesale to the public repo, and the sessions of the
+20th and 21st closed out the transition with four merged PRs: packs can declare a `webPort`
+and the Connect panel renders the `ssh -L` tunnel for them; `lifecycle.get/list` degrade
+instead of throwing when a cloud cannot be asked — born from a live incident where GCP's
+periodic reauth (`invalid_rapt`) expired the owner's credentials and one sick provider
+500'd the entire dashboard; and servers gained a rename and description (issue #46) with a
+follow-up that stopped the Installed card rendering a heading over nothing.
+
+Then the housekeeping rulings. The old private repo — which had burned ~1,800 GitHub
+Actions minutes pre-launch and drawn the 90%-quota email, because only private repos spend
+included minutes — had its workflows disabled and was archived outright. GitHub issues
+became the system of record; beads was demoted to personal, local-only working memory,
+synced nowhere and purged periodically. And the session pass-along documents moved into the
+public repo's `.pass-along/` directory, world-readable by design — a decision that fired a
+gun heard later the same day.
+
+---
+
+## 2026-08-21 - The Farm
+
+The owner came back to thirty-three open beads and four fresh issues and said: fire up a
+farm of agents. Fourteen ran across the afternoon — six Sonnet builders on the beads
+specific enough to hand over, two more on the straightforward issues (#42 tmux mouse, #49
+an OMP pack), two Opus planners on the ones that needed root cause and design first (#41
+ssh keys, #50 extending packs), two Sonnet builders spawned from those plans, and two
+drive-by fixers for problems the farm itself turned up. Thirteen PRs by evening, #52
+through #64; twelve merged; one deliberately held.
+
+The planning pass earned its keep. Issue #41 complained that supplying your own public key
+still produced a downloadable generated key — and the planner found the double-key behavior
+is *deliberate* (ADR-0002: bootstrap and recovery run over core's own SSH connection, so
+core's key must exist), while the actual defect was that nothing persisted the fact a key
+was supplied, so the UI presented the .pem as the only way in. The fix makes the supplied
+key a visible, explained fact rather than granting the issue's literal ask. The same
+investigation shook out a second, real bug: a malformed pasted key validated *after* the
+row insert, producing an HTTP 500 and an orphaned server row. Issue #50 got the opposite
+verdict — no mechanism needed at all, because `pack.tools` already resolves tool ids across
+files; what was missing was a documented derive/amend workflow in the skill, and the
+dogfood run proved it by hitting Ubuntu 24.04's PEP 668 wall for real and folding that
+failure into the new symptom table. The OMP pack made its own discovery: the package on npm
+is a bun program wearing an npm wrapper (`#!/usr/bin/env bun`, read straight from the
+downloaded tarball), so the pack ships its own pinned, checksum-verified bun runtime rather
+than installing a binary node cannot run.
+
+Two incidents shaped the afternoon. First, the farm melted the owner's laptop: nine
+concurrent Docker smoke containers, several emulating arm64 under QEMU, until the owner
+reported the machine "burning up" — every container was purged, agents were rerouted to
+CI's per-PR smoke matrix as the authoritative check, and the reports stayed honest about
+which legs ran where. One agent's amd64 check had crashed under QEMU with a known bun
+emulation bug; it reported the leg as unproven rather than dressing it as a pass.
+
+Second, every PR came up red on exactly one check, and it was nobody's change. The secret
+scan reads full git history, and the two pass-along commits pushed to main that morning
+tripped the repo's own legacy-identifier rules — the local username, the private worktree
+name, an operator handle. The rules written so the old deployment's identifiers "cannot
+creep back in through an old note" caught the handoff notes within hours of their arrival.
+The owner's ruling cut through it: a Member's username is on every commit, the pinned
+Stripe id never existed, and the AWS account id is disclosed in plain text by the very
+regex guarding it — public-by-definition identifiers and self-disclosing pins are not
+secrets. Five rules went; the GitHub App rules and the entire default credential ruleset
+stayed; the self-test moved in lockstep; and the proof was a clean full-history scan of a
+fresh isolated clone — necessary rigor, because the first scan ran in the session's shared
+worktree and found 2,190 "leaks" that turned out to be the archived private repo's branches
+still living in the shared object store.
+
+Small mercies and one held door: the predicted collision between the tmux PR and the
+pipe-to-bash PR never happened (different tools, clean merge). The packs README, fixed at
+nine packs mid-afternoon, was stale again within the hour when the OMP pack made it ten —
+patched by the day's last PR. And #58 stays open on purpose: the OpenClaw wallpaper the
+pack would install is OpenClaw's trademark artwork, and the agent that built the PR
+declined to make that call, correctly leaving permission-or-neutral-image as an owner
+decision. By close: seven beads built and closed, all four issues shipped, the scan policy
+honest, and main green from here forward.
