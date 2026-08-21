@@ -24,6 +24,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
 - [What you may not assume](#what-you-may-not-assume)
 - [Which version to install](#which-version-to-install)
 - [The file format](#the-file-format)
+  - [Building on an existing pack](#building-on-an-existing-pack)
 - [A complete pack](#a-complete-pack)
 - [The CI smoke test](#the-ci-smoke-test)
 - [Checklist before you open a pull request](#checklist-before-you-open-a-pull-request)
@@ -485,6 +486,32 @@ tools: [ … ]      # required; the Tool records this file introduces
 in any other pack file in the repository — that is how several packs share one `claude-code`
 definition. Defining the same `toolId` in two files is an error and CI will reject it.
 
+### Building on an existing pack
+
+Because `pack.tools` already resolves ids across files, "extend pack X" needs no format change:
+a new pack file that copies X's `pack.tools` list and appends its own tool ids **is** an
+extension of X. `packs/gas-town.yaml` is this pattern shipping today — it lists the shared base
+toolchain plus `claude-code`, `amp` and `codex` from three other pack files, plus three tools of
+its own.
+
+Two ways to build on a pack, and the question that decides between them is whether the pack
+being built on gets modified:
+
+- **Derive** — a new file, the pack you are building on left untouched. This is the default: it
+  cannot break anyone else's pack, and it is what an "add X on top of the Y pack" request means.
+  Copy the base pack's `pack.tools` list verbatim, reference its ids rather than redefining them,
+  take a new `packId` and `displayOrder`, and use `installOrder` gaps for what you add rather
+  than renumbering the base's tools. The derived pack is smoke-tested exactly like a new one —
+  the base pack's own passing run does not carry over to it. `git status --porcelain packs/`
+  after writing it should show exactly one new file.
+- **Amend** — editing the base file itself, right only when it is yours to change and every
+  existing user of it should get the new tool too. Re-smoke the amended pack; if the file is
+  `packs/ai-coding-agents.yaml`, that is the shared base toolchain for every pack in the
+  repository, so re-smoke everything, not just the one pack touched.
+
+Full workflow, a worked example and the failures that come up: the `creating-surge-packs` skill,
+Step 1E and `references/extending.md`.
+
 ### Tool
 
 | Field | Type | Required | Meaning |
@@ -871,6 +898,8 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 - [ ] `requiresRepos`, `requiresRdp`, `desktop` and `webPort` describe what your pack actually needs.
 - [ ] `guide` tells the user how to authenticate everything the pack installs, and admits
       anything the install could not finish.
+- [ ] If this pack builds on another, it references that pack's tool ids, redefines none of
+      them, and leaves the other pack's file unchanged.
 
 ---
 
