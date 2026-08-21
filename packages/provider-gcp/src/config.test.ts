@@ -103,6 +103,22 @@ describe('defaults', () => {
   })
 })
 
+describe('bootDiskType', () => {
+  it('accepts hyperdisk-balanced alongside the Persistent Disk types', () => {
+    // C4A cannot boot from Persistent Disk at all; hyperdisk-balanced is what widened the enum.
+    // Whether a given machine family may actually PAIR with a given value is validateSpec's job,
+    // not this schema's — see provider.test.ts's "boot disk type resolved per machine family".
+    for (const bootDiskType of ['pd-balanced', 'pd-standard', 'pd-ssd', 'hyperdisk-balanced'] as const) {
+      expect(gcpConfigSchema.parse({ ...valid, bootDiskType }).bootDiskType).toBe(bootDiskType)
+    }
+  })
+
+  it('rejects a disk type GCE does not have', () => {
+    expect(() => gcpConfigSchema.parse({ ...valid, bootDiskType: 'ssd' })).toThrow()
+    expect(() => gcpConfigSchema.parse({ ...valid, bootDiskType: 'hyperdisk-extreme' })).toThrow()
+  })
+})
+
 describe('regionOf', () => {
   it('drops the zone letter to get the region the price table is keyed by', () => {
     expect(regionOf('us-central1-a')).toBe('us-central1')

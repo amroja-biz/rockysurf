@@ -316,8 +316,11 @@ appears nowhere in the role above.
 |---|---|---|
 | `e2-*` | amd64 | every zone |
 | `t2a-*` | **arm64** | **eight zones only** |
+| `c4a-*` | **arm64** | **~77 zones** |
 
-Tau T2A is the arm64 family, and it exists in exactly these zones:
+There are now **two** arm64 families, and they answer different questions.
+
+Tau T2A is the older one, and it exists in exactly these eight zones:
 
 ```
 us-central1-a   us-central1-b   us-central1-f
@@ -325,12 +328,53 @@ europe-west4-a  europe-west4-b  europe-west4-c
 asia-southeast1-b   asia-southeast1-c
 ```
 
-**`us-central1-c` is not one of them**, which is why the default zone is `us-central1-a`. In a
-zone without T2A the arm64 machines are still listed, reported as unavailable, so the UI can
-tell you *this zone has no ARM* rather than silently having none.
+**`us-central1-c` is not one of them**, which is why the default zone is `us-central1-a`.
 
-If you want arm64 and your zone has no T2A, move the zone — that is a one-line config change,
-and arm64 is meaningfully cheaper per vCPU.
+C4A (Axion) is Google's current-generation Arm VM — the practical successor to T2A: cheaper on
+any committed spend, eligible for Committed Use Discounts (T2A is not), and available in roughly
+77 zones rather than eight. That list is broad enough that most self-hosters' zone already has
+it; see [`prices.generated.ts`](../../packages/provider-gcp/src/prices.generated.ts)'s
+`C4A_ZONES` for the exact set, read the same way and from the same source as `T2A_ZONES`. On raw
+on-demand price alone T2A is still marginally cheaper per vCPU (\$0.0385 vs \$0.0449 for a single
+vCPU in `us-central1`, both read 2026-08-13/2026-08-21) — C4A's advantage is committed-spend
+pricing and reach, not the on-demand sticker.
+
+**`us-central1-c` is exactly the zone C4A closes the gap in**: it has no T2A, and it does have
+C4A. In any zone, an offering your zone's list doesn't cover is still returned by
+`listOfferings()`, reported as unavailable rather than omitted, so the UI can tell you *this zone
+has no C4A* (or no T2A) rather than silently having neither.
+
+If you want arm64 and your zone has neither family, move the zone — that is a one-line config
+change.
+
+### C4A's boot disk is Hyperdisk, not Persistent Disk — and that's a config choice, not automatic
+
+C4A cannot boot from Persistent Disk **at all**. Its only boot disk option is Hyperdisk Balanced.
+Every other family this provider ships (`e2-*`, `t2a-*`) is the mirror image: this package does
+not yet expose Hyperdisk for them, so they stay Persistent-Disk-only.
+
+`bootDiskType` is **one value for the whole provider instance** (it is scoped to one zone the
+same way the rest of this provider is), so pointing it at a C4A machine means setting it
+explicitly:
+
+```yaml
+providers:
+  gcp:
+    zone: us-central1-a
+    bootDiskType: hyperdisk-balanced   # required for c4a-standard-*; refused for e2-*/t2a-*
+```
+
+Get the pairing wrong and it is refused **before anything is created**, with a message naming
+which family requires which:
+
+```
+c4a-standard-4 is a C4A machine type. C4A supports Hyperdisk only, but this provider is
+configured with bootDiskType 'pd-balanced'. Set bootDiskType to 'hyperdisk-balanced' to
+provision C4A machines.
+```
+
+That is deliberate: the alternative is a Compute API 400 on `disks.insert`, partway through a
+create that has already reserved the instance name and started talking to GCE.
 
 ---
 
@@ -353,9 +397,25 @@ wrong number.
 **Only `us-central1` is bundled.** Any other region reports its prices as unknown rather than
 reusing a us-central1 figure that would be wrong.
 
+**The c4a-standard-\* rows carry their own date**, `2026-08-21`, distinct from the
+`2026-08-13` stamp on the rest of the table — they were transcribed later, when C4A was added
+(rockysurf-h6mb), from the same page and column. A price's `fetchedAt` says when *that row* was
+actually read, never a global "as of" that would misdate the rows added afterward.
+
 **The boot disk is billed separately** and is not in the hourly figure. A 20 GB `pd-balanced`
 disk is about \$2/month in `us-central1` at \$0.10 per GiB-month, and it keeps billing while an
 instance is stopped — which is the whole trade a stopped box makes.
+
+**C4A's Hyperdisk Balanced boot disk adds two more separately-metered lines: provisioned IOPS
+and provisioned throughput.** Neither is in `Offering.hourly` either, for the same reason the
+disk itself is not. They are not free by nature — Hyperdisk Balanced only waives them below a
+baseline (3,000 IOPS / 140 MiB/s in every region; \$0.000006849/hour per IOPS and
+\$0.000054795/hour per MiB/s above that, read 2026-08-21 from Google's disk pricing page) — but
+this provider does not expose a setting for either, so every disk it creates gets GCE's
+documented minimum for its size, which for any boot disk this provider can produce (10 GB and
+up) is exactly that baseline. In today's fixed configuration the two lines are real SKUs billed
+at \$0, not a free tier this package invented; a future version that lets an operator raise
+provisioned IOPS/throughput would make them non-zero without anything here changing.
 
 ---
 
@@ -445,6 +505,14 @@ permissions no launch has exercised, and `ipStableAcrossStop: false` — the cla
 ephemeral external IP is released on stop and a different one assigned on start — remains read
 from Google's documentation rather than watched. Treat that one row of
 [the capability matrix](capability-matrix.md) as reasoning, and the rest of this page as checked.
+
+**C4A is derived, not measured, and is newer than the run above.** `c4a-standard-*` and the
+Hyperdisk-only boot disk path (rockysurf-h6mb) were added after the 2026-08-14 run and were not
+part of it: no C4A box has been created against real Compute Engine, so `compute.disks.create`
+against a `hyperdisk-balanced` boot disk and the `c4a-standard-*` machine type are both read from
+Google's documentation rather than watched. The IAM permission list is unchanged and believed
+sufficient — Hyperdisk uses the same `compute.disks.*` surface Persistent Disk does — but "believed"
+is the honest word until a real launch says otherwise.
 
 **The evidence is weaker in form than AWS's and Hetzner's, and you should know how.** Those two
 have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and

@@ -459,7 +459,8 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     help:
       'The only machine types this installation will create — on the New Server page and through ' +
       'the API, the CLI and MCP alike. Unset offers everything the zone sells; ' +
-      't2a-standard-* are ARM (Tau T2A) and are the cheap, fast default.',
+      't2a-standard-* and c4a-standard-* are both ARM, in different zones — see docs/providers/gcp.md ' +
+      'for which one your zone actually has.',
     reason: 'An allowlist of machine types, edited in the file — this page does not surface a list editor for it.',
   },
 

@@ -44,6 +44,17 @@ const PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/
  */
 const RESOURCE_NAME = /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/
 
+/**
+ * Every boot disk type this provider will attach: the three Persistent Disk variants e2/t2a
+ * take, plus `hyperdisk-balanced` for C4A (the only Hyperdisk variant GCE allows as a boot
+ * disk — Hyperdisk Extreme and Hyperdisk Throughput cannot be booted from at all). Which of
+ * these a given machine family actually accepts is `offerings.ts`'s `allowedBootDiskTypes`, not
+ * this list — this is just every value the schema will parse.
+ */
+export const BOOT_DISK_TYPES = ['pd-balanced', 'pd-standard', 'pd-ssd', 'hyperdisk-balanced'] as const
+
+export type BootDiskType = (typeof BOOT_DISK_TYPES)[number]
+
 export const gcpConfigSchema = z
   .strictObject({
     /**
@@ -166,8 +177,18 @@ export const gcpConfigSchema = z
      */
     bootDiskGb: z.coerce.number().int().min(10).max(65536).default(20),
 
-    /** Boot disk type. `pd-balanced` is the general-purpose SSD-backed default. */
-    bootDiskType: z.enum(['pd-balanced', 'pd-standard', 'pd-ssd']).default('pd-balanced'),
+    /**
+     * Boot disk type. `pd-balanced` is the general-purpose SSD-backed default.
+     *
+     * `hyperdisk-balanced` joined this enum for C4A (Axion, arm64), which GCE does not let boot
+     * from Persistent Disk at all — Hyperdisk is its only option. This field stays ONE value for
+     * the whole provider instance (matching its one-zone scoping, ADR-0003 D6); it is
+     * `validateSpec()`, not this schema, that refuses the combination that does not exist —
+     * a `pd-*` value paired with a C4A offering, or `hyperdisk-balanced` paired with e2/t2a —
+     * with a message naming which family requires which. See `offerings.ts`'s
+     * `allowedBootDiskTypes`.
+     */
+    bootDiskType: z.enum(BOOT_DISK_TYPES).default('pd-balanced'),
 
     /** The project publishing the base image. Canonical's public images live here. */
     imageProject: z.string().trim().min(1).default('ubuntu-os-cloud'),
