@@ -1,0 +1,167 @@
+# OMP (oh-my-pi) — a coding agent with the IDE wired in, on the shared base toolchain.
+#
+# https://github.com/can1357/oh-my-pi / https://omp.sh. OMP bundles LSP-backed editing,
+# a debugger (DAP), Python/JS execution sandboxes, browser automation and multi-agent task
+# coordination into one terminal agent.
+#
+# OMP requires the BUN runtime specifically, not node: the published package's package.json
+# declares `"engines": {"bun": ">=1.3.14"}` and the CLI that npm/bun actually installs ships
+# with the shebang `#!/usr/bin/env bun` and bundled Bun-only globals (`// @bun` markers) —
+# verified by downloading @oh-my-pi/pi-coding-agent@17.4.2 from the npm registry and reading
+# dist/cli.js. A plain `npm install -g` (the pattern packs/open-code.yaml uses) would produce
+# a binary node cannot execute, so this pack defines its own `bun` tool rather than reusing
+# the shared `nodejs` runtime the other agent packs share.
+#
+# Upstream's own installer is `curl -fsSL https://omp.sh/install | sh`, and Homebrew and Nix
+# are also offered — none of those are used here. Vendor pipe-to-bash is against repo policy
+# (docs/writing-a-pack.md) regardless of who publishes it, and Homebrew/Nix aren't present on
+# a stock box. `bun install -g @oh-my-pi/pi-coding-agent` is the registry channel omp's own
+# docs list first, it needs no privilege escalation, and per docs/writing-a-pack.md § Which
+# version to install, an agent CLI belongs on latest — bun's own install is convergent, so a
+# second run changes nothing.
+#
+# The base tool ids below (other than `bun` and `omp`) are DEFINED in packs/ai-coding-agents.yaml
+# and referenced here.
+version: 1
+
+pack:
+  packId: omp
+  name: OMP
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - agent-deck
+    - beads-viewer
+    - bun
+    - omp
+  displayOrder: 10
+  enabled: true
+  imageUrl: /images/surge-packs/omp.png
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    OMP (oh-my-pi)
+      omp                      starts the interactive terminal UI in the current directory
+      omp setup                configure a model provider before your first real session
+      omp -p "..."             single-prompt mode: one question, answer on stdout, exits
+      omp models                lists the providers/models OMP is configured to use
+
+      OMP ships with NO credentials — it talks to whichever model provider you configure
+      through `omp setup`. Configuration is written under ~/.config/omp on this box.
+
+      OMP needs the bun runtime, which this pack installs alongside it — you should not
+      need to think about this, but `bun --version` is there if something looks wrong.
+
+      A newer OMP three weeks from now is `bun install -g @oh-my-pi/pi-coding-agent`
+      again, not a re-bootstrap of this box — this pack's install runs once, at boot.
+
+    GitHub
+      gh auth login            then: gh auth setup-git
+
+      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
+      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
+      were cloned with it — but it is not exported into an interactive session, so `gh`
+      and your own pushes need this login.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      agent-deck    session manager for terminal agents
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  # ---------------------------------------------------------------- band 20: runtime
+  - toolId: bun
+    name: Bun
+    description: JavaScript runtime and package manager that OMP's published CLI requires
+    category: base
+    url: https://bun.sh
+    installOrder: 20
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y unzip
+
+      # PINNED, and fetched from the release download endpoint rather than through the
+      # vendor's own bun.sh installer, which is a curl-pipe-to-bash — against this
+      # repository's policy no matter who wrote the script. The download endpoint,
+      # like the one `beads` and `agent-deck` above use in packs/ai-coding-agents.yaml, is a
+      # CDN with no request quota (unlike api.github.com), and the release publishes
+      # SHASUMS256.txt so the download can be verified before anything runs it.
+      #
+      # Bun is base plumbing here — the substrate `omp` below stands on — so it keeps the
+      # pinned treatment docs/writing-a-pack.md gives Node, gh and Playwright, rather than
+      # the unpinned treatment given to the agent itself.
+      #
+      # To bump: change the version and both digests. The release publishes SHASUMS256.txt.
+      bun_version=1.4.0
+      case "$ARCH" in
+        amd64) bun_dir=bun-linux-x64;      bun_sha=2d03fb5fb83ac8b567aca0a281b2ce1a1a19d488f56c2968d88c3f25e92fe452 ;;
+        arm64) bun_dir=bun-linux-aarch64;  bun_sha=4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is
+      # a no-op — the run-twice gate measures the second half of that.
+      stamp="/var/lib/rockysurf/installed-bun-$bun_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/oven-sh/bun/releases/download/bun-v$bun_version/$bun_dir.zip" \
+          -o "$tmp/bun.zip"
+        echo "$bun_sha  $tmp/bun.zip" | sha256sum -c - >/dev/null
+        unzip -q "$tmp/bun.zip" -d "$tmp"
+        install -D -m 0755 "$tmp/$bun_dir/bun" /usr/local/bin/bun
+        # bun's own installer creates this alias for `bunx`; -f -n keeps the symlink call
+        # itself idempotent on a resumed or repeated run.
+        ln -sfn bun /usr/local/bin/bunx
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+      fi
+      bun --version >/dev/null
+
+  # ---------------------------------------------------------------- band 40: agent
+  - toolId: omp
+    name: OMP (oh-my-pi)
+    description: Terminal coding agent with LSP, a debugger and code execution built in
+    category: agent
+    url: https://github.com/can1357/oh-my-pi
+    installOrder: 40
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="/usr/local/bin:$HOME/.bun/bin:$PATH"
+
+      # UNPINNED (deliberate), per docs/writing-a-pack.md § Which version to install: OMP is
+      # the agent this pack exists to deliver, npm (resolved here through bun's own client,
+      # since the published CLI needs the bun runtime — see the file header) is a quota-free
+      # registry channel, and `bun install -g` is convergent, so a second run changes
+      # nothing and rewrites nothing.
+      bun install -g @oh-my-pi/pi-coding-agent
+
+      # bun's per-user global bin. Guarded: an unguarded append duplicates the line on a
+      # resumed install, and the smoke harness hashes .bashrc across the journal discard.
+      touch "$HOME/.bashrc"
+      grep -qF '.bun/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$HOME/.bashrc"
+
+      omp --version >/dev/null
