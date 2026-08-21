@@ -70,27 +70,33 @@ const AZURE_FEED = 'https://prices.azure.com/api/retail/prices'
 const AZURE_REGIONS = ['eastus']
 
 /**
- * The VM sizes Rocky Surf offers on Azure, chosen to mirror the AWS t4g/t3 pairing: a burstable
- * family and a general-purpose one, in both architectures.
+ * AZURE_SIZES is no longer a hand-picked list (rockysurf-o05s / issue #24 PR2b) — it is
+ * DISCOVERED from the same retail feed that prices it, mechanically:
  *
- * `p` in an Azure size name means Ampere Altra (arm64); `Bpsv2`/`Dpsv5` are the ARM halves of
- * `Bsv2`/`Dsv5`. This list is the CATALOGUE, not a recommendation — the provider resolves a
- * t-shirt size against requirements, and a selector can only rule out a machine it can see.
+ *  - a candidate's `armSkuName` must look like a real, orderable ARM SKU name at all. The feed
+ *    also returns internal hardware-generation pricing artifacts that are NOT valid ARM SKU
+ *    names and can never match anything `Microsoft.Compute/skus` returns — e.g. `"DCsv3 Type1"`
+ *    (a literal space; ARM resource names never contain one) or `Dsv4_Type1` (no `Standard_`/
+ *    `Basic_` prefix at all). `looksLikeArmSkuName` excludes these.
+ *  - GPU/accelerator families are excluded by Azure's own naming convention: the `N` series
+ *    letter (`NC`, `ND`, `NV`, `NM`, `NP`, …) is reserved for GPU- or FPGA-accelerated sizes.
+ *    `Offering.gpu` is reserved-unpopulated and the bootstrap ships no drivers, so listing one
+ *    would sell a machine dishonestly — the same reasoning PR2a used for AWS's GPU families.
+ *
+ * The vCPU/memory ceiling PR2a applied at generation time (AWS's feed carries `vCPU`/`Memory`
+ * columns) has NO equivalent here: Azure's retail feed carries no shape fields at all — vCPU,
+ * memory and architecture are read LIVE from `Microsoft.Compute/skus`, which is why that ceiling
+ * is enforced in `@rockysurf/provider-azure`'s `buildOfferings` instead (see `SIZE_CEILING`
+ * there), against the real numbers rather than a name guess.
  */
-const AZURE_SIZES = [
-  'Standard_B2ls_v2',
-  'Standard_B2s_v2',
-  'Standard_B4ls_v2',
-  'Standard_B4s_v2',
-  'Standard_B2pls_v2',
-  'Standard_B2ps_v2',
-  'Standard_B4pls_v2',
-  'Standard_B4ps_v2',
-  'Standard_D2s_v5',
-  'Standard_D4s_v5',
-  'Standard_D2ps_v5',
-  'Standard_D4ps_v5',
-]
+function looksLikeArmSkuName(armSkuName) {
+  return /^(Standard|Basic)_/.test(armSkuName) && !/\s/.test(armSkuName) && !/_?[Tt]ype\d/.test(armSkuName)
+}
+
+/** Azure's GPU/FPGA-accelerated series all share the `N` family letter. */
+function isAcceleratorFamily(armSkuName) {
+  return /^Standard_N[A-Z]/.test(armSkuName)
+}
 
 const GCP_OUTPUT = join(ROOT, 'packages/provider-gcp/src/prices.generated.ts')
 
@@ -179,24 +185,59 @@ export const AWS_HOURLY_USD: Record<string, Record<string, number>> = ${JSON.str
  *    price, and spot is deliberately out of v0.1 (ADR-0003). Bundling one of these would
  *    advertise a machine at a third of what it actually costs.
  *  - `productName` containing `Windows` — the same hardware with a Windows licence folded in.
- *  - `productName` containing `Cloud Services` — the legacy PaaS meter, not IaaS VMs.
+ *  - `productName` containing `Cloud Services` — the legacy PaaS meter, not IaaS VMs. The feed
+ *    does not always spell it with a space: some products render it as one word, e.g. the real
+ *    row `"Eadsv5 Series CloudServices"` for `Standard_E96-48ads_v5`. Matching only the spaced
+ *    form let that CloudServices meter survive filtering and be bundled as if it were the VM
+ *    price (rockysurf-o05s) — at today's 12 hand-picked sizes none happened to collide with a
+ *    no-space CloudServices product, which is why it went unnoticed; at widened scale ~40 sizes
+ *    did, each bundled at roughly 70% above the real Virtual Machines price. `\s*` matches both.
  *
  * A size that does not resolve to exactly one row is reported rather than guessed at, because
  * "which of these eight numbers is the price" is not a question to answer by taking the first.
  */
-function azureLinuxMeter(rows) {
+export function azureLinuxMeter(rows) {
   return rows.filter(
     (row) =>
       !/spot|low priority/i.test(row.skuName ?? '') &&
       !/windows/i.test(row.productName ?? '') &&
-      !/cloud services/i.test(row.productName ?? ''),
+      !/cloud\s*services/i.test(row.productName ?? ''),
   )
+}
+
+/**
+ * Resolve every candidate size's rows to its one pay-as-you-go Linux meter, or leave it out.
+ *
+ * THE RULE IS "REPORT, DON'T GUESS" (unchanged from the 12-size table); WHAT CHANGED IS THE
+ * CONSEQUENCE. The hand-picked table could afford to throw and abort the whole refresh the
+ * moment one size didn't resolve cleanly, because every entry was chosen by a person and an
+ * anomaly there meant the feed itself had changed shape. At widened scale the candidate pool is
+ * discovered mechanically and legitimately contains sizes with no clean answer today — retired
+ * `*_Promo` SKUs that resolve to zero current meters, mainly — and throwing on those would make
+ * a widened refresh permanently unable to complete. So a size that doesn't resolve to exactly
+ * one row is EXCLUDED from the catalogue and named in `skipped`, for the caller to report; a
+ * fabricated price is never written for it, which is the property this rule exists to protect.
+ */
+export function resolvePricedSizes(candidatesByArmSkuName) {
+  const priced = {}
+  const skipped = []
+  for (const [id, rows] of Object.entries(candidatesByArmSkuName)) {
+    const matches = azureLinuxMeter(rows)
+    if (matches.length !== 1) {
+      skipped.push({ id, matches: matches.length })
+      continue
+    }
+    priced[id] = matches[0]
+  }
+  return { priced, skipped }
 }
 
 async function refreshAzure({ write = true } = {}) {
   const hourly = {}
   /** The oldest meter start date across everything bundled: how current these numbers are. */
   let effectiveFrom
+  /** region → the set of armSkuNames that priced cleanly in it. */
+  const acceptedByRegion = new Map()
 
   for (const region of AZURE_REGIONS) {
     const filter =
@@ -210,28 +251,47 @@ async function refreshAzure({ write = true } = {}) {
     for (let page = 0; url && page < 200; page++) {
       const body = await fetchJson(url)
       for (const item of body.Items ?? []) {
-        if (!AZURE_SIZES.includes(item.armSkuName)) continue
-        ;(candidates[item.armSkuName] ??= []).push(item)
+        const id = (item.armSkuName ?? '').trim()
+        if (!id || !looksLikeArmSkuName(id) || isAcceleratorFamily(id)) continue
+        ;(candidates[id] ??= []).push(item)
       }
       url = body.NextPageLink
     }
 
+    const { priced, skipped } = resolvePricedSizes(candidates)
+
+    // A whole-region shape break (the feed itself stopped returning anything sensible) is worth
+    // aborting for, same as the old per-size throw did — it is the one case that is NOT routine
+    // SKU-level noise. A handful of individually unpriceable SKUs (retired `*_Promo` meters,
+    // mainly) is routine, and is reported below rather than treated as failure.
+    if (Object.keys(priced).length === 0) {
+      throw new Error(`azure: ${region} priced zero VM sizes from the feed — it changed shape; fix the filter.`)
+    }
+    if (skipped.length > 0) {
+      console.log(
+        `azure: ${region}: excluded ${skipped.length} candidate size(s) with 0 or >1 pay-as-you-go Linux meters ` +
+          `(reported, not guessed): ${skipped.map((s) => `${s.id}(${s.matches})`).join(', ')}`,
+      )
+    }
+
     const perRegion = {}
-    for (const size of AZURE_SIZES) {
-      const matches = azureLinuxMeter(candidates[size] ?? [])
-      if (matches.length !== 1) {
-        throw new Error(
-          `azure: ${size} in ${region} resolved to ${matches.length} pay-as-you-go Linux meters, expected 1. ` +
-            'The feed changed shape; fix the filter rather than picking one.',
-        )
-      }
-      const meter = matches[0]
-      perRegion[size] = Number(Number(meter.retailPrice).toFixed(6))
+    for (const [id, meter] of Object.entries(priced)) {
+      perRegion[id] = Number(Number(meter.retailPrice).toFixed(6))
       if (!effectiveFrom || meter.effectiveStartDate < effectiveFrom) effectiveFrom = meter.effectiveStartDate
     }
 
+    acceptedByRegion.set(region, new Set(Object.keys(priced)))
     hourly[region] = Object.fromEntries(Object.entries(perRegion).sort(([a], [b]) => a.localeCompare(b)))
   }
+
+  // The shipped catalogue is sizes that priced cleanly in EVERY configured region — with one
+  // region today that is just that region's accepted set, but the rule holds if AZURE_REGIONS
+  // ever grows: a size this repository cannot price everywhere it claims to sell is not honest
+  // to list everywhere.
+  const regions = [...acceptedByRegion.keys()]
+  const sizes = [...acceptedByRegion.get(regions[0])]
+    .filter((id) => regions.every((region) => acceptedByRegion.get(region).has(id)))
+    .sort((a, b) => a.localeCompare(b))
 
   const contents = `// GENERATED by \`node scripts/refresh-prices.mjs --azure\` — do not edit by hand.
 //
@@ -241,30 +301,38 @@ async function refreshAzure({ write = true } = {}) {
 //
 // PAY-AS-YOU-GO LINUX ONLY. The feed returns eight meters for a typical size — Spot, Low
 // Priority, Windows and Cloud Services variants of each — and only one is what a Linux customer
-// pays. The generator refuses to write a size that does not resolve to exactly one such meter,
-// rather than taking the first row and advertising a machine at a third of its price.
+// pays. A size that does not resolve to exactly one such meter is EXCLUDED from this table and
+// reported on stderr when regenerating, rather than guessed at (rockysurf-o05s).
+//
+// THE CATALOGUE ITSELF IS DISCOVERED, not hand-picked: every armSkuName the feed returns, minus
+// internal pricing artifacts that are not real ARM SKU names, minus the GPU/accelerator (N-series)
+// families, minus whatever does not resolve to exactly one meter above. See
+// \`looksLikeArmSkuName\`/\`isAcceleratorFamily\` in this script. The vCPU/memory ceiling PR2a
+// applied to AWS at generation time has no equivalent here — Azure's feed carries no shape data at
+// all, so that ceiling is enforced in \`@rockysurf/provider-azure\`'s \`buildOfferings\` instead,
+// against the live numbers Azure actually reports.
 //
 // \`fetchedAt\` is when WE read it. \`effectiveFrom\` is the oldest meter start date across this
 // table, which is what says how current the numbers themselves are. Both are recorded because
 // they are different facts.
 //
-// Only the PRICE is bundled. A size's vCPU and memory are read live from Microsoft.Compute/skus
-// by the provider, on the same call that reports per-subscription availability, so a shape here
-// could never disagree with what Azure will actually sell.
+// Only the PRICE is bundled. A size's vCPU, memory and architecture are read live from
+// Microsoft.Compute/skus by the provider, on the same call that reports per-subscription
+// availability, so a shape here could never disagree with what Azure will actually sell.
 
 export const AZURE_PRICES_FETCHED_AT = '${new Date().toISOString()}'
 export const AZURE_PRICES_EFFECTIVE_FROM = '${effectiveFrom}'
 export const AZURE_PRICES_SOURCE = '${AZURE_FEED}'
 
 /** The sizes this provider offers. Anything else is not in the catalogue at all. */
-export const AZURE_SIZES: string[] = ${JSON.stringify(AZURE_SIZES, null, 2)}
+export const AZURE_SIZES: string[] = ${JSON.stringify(sizes, null, 2)}
 
 /** region → VM size → USD/hour, pay-as-you-go Linux, tax exclusive. */
 export const AZURE_HOURLY_USD: Record<string, Record<string, number>> = ${JSON.stringify(hourly, null, 2)}
 `
 
   if (write) writeFileSync(AZURE_OUTPUT, contents)
-  return { file: AZURE_OUTPUT, sizes: AZURE_SIZES.length, regions: AZURE_REGIONS.length, effectiveFrom, contents }
+  return { file: AZURE_OUTPUT, sizes: sizes.length, regions: AZURE_REGIONS.length, effectiveFrom, contents }
 }
 
 async function refreshHetzner() {
@@ -426,34 +494,39 @@ async function reportGcp() {
   return { rows: rows.length, region }
 }
 
-const args = process.argv.slice(2)
-const check = args.includes('--check')
+// Guarded so the exported helpers above (`azureLinuxMeter`, `resolvePricedSizes`, …) can be
+// imported by a test without also firing off network calls or exiting the process — this file
+// is both the CLI entry point and, since rockysurf-o05s, a module other code imports from.
+if (import.meta.main) {
+  const args = process.argv.slice(2)
+  const check = args.includes('--check')
 
-try {
-  if (args.includes('--hetzner')) {
-    const result = await refreshHetzner()
-    console.log(`hetzner: ${result.types} types (${result.currency}) → ${result.file}`)
-  } else if (args.includes('--gcp')) {
-    // A REPORT rather than a refresh: it reads Google's Cloud Billing Catalog and prints what it
-    // found beside the bundled stamp, and deliberately rewrites nothing — so `--check` has no
-    // table to compare and does not apply here.
-    await reportGcp()
-  } else if (args.includes('--azure')) {
-    if (check) {
-      await checkTable('azure', AZURE_OUTPUT, refreshAzure, /AZURE_PRICES_FETCHED_AT = '[^']*'/)
+  try {
+    if (args.includes('--hetzner')) {
+      const result = await refreshHetzner()
+      console.log(`hetzner: ${result.types} types (${result.currency}) → ${result.file}`)
+    } else if (args.includes('--gcp')) {
+      // A REPORT rather than a refresh: it reads Google's Cloud Billing Catalog and prints what it
+      // found beside the bundled stamp, and deliberately rewrites nothing — so `--check` has no
+      // table to compare and does not apply here.
+      await reportGcp()
+    } else if (args.includes('--azure')) {
+      if (check) {
+        await checkTable('azure', AZURE_OUTPUT, refreshAzure, /AZURE_PRICES_FETCHED_AT = '[^']*'/)
+      } else {
+        const result = await refreshAzure()
+        console.log(`azure: ${result.sizes} sizes × ${result.regions} region(s) → ${result.file}`)
+        console.log(`       oldest meter in this table took effect ${result.effectiveFrom}`)
+      }
+    } else if (check) {
+      await checkTable('aws', AWS_OUTPUT, refreshAws, /AWS_PRICES_FETCHED_AT = '[^']*'/)
     } else {
-      const result = await refreshAzure()
-      console.log(`azure: ${result.sizes} sizes × ${result.regions} region(s) → ${result.file}`)
-      console.log(`       oldest meter in this table took effect ${result.effectiveFrom}`)
+      const result = await refreshAws()
+      console.log(`aws: ${result.types} types → ${result.file}`)
+      console.log(`     AWS published this price file at ${result.publishedAt}`)
     }
-  } else if (check) {
-    await checkTable('aws', AWS_OUTPUT, refreshAws, /AWS_PRICES_FETCHED_AT = '[^']*'/)
-  } else {
-    const result = await refreshAws()
-    console.log(`aws: ${result.types} types → ${result.file}`)
-    console.log(`     AWS published this price file at ${result.publishedAt}`)
+  } catch (error) {
+    console.error(String(error instanceof Error ? error.message : error))
+    process.exit(1)
   }
-} catch (error) {
-  console.error(String(error instanceof Error ? error.message : error))
-  process.exit(1)
 }

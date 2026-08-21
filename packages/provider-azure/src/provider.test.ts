@@ -582,6 +582,64 @@ describe('listOfferings', () => {
 
     expect(await providerFor(fake).listOfferings()).toHaveLength(0)
   })
+
+  it('omits a Gen1-only size because the default image SKU is Gen2 (rockysurf-o05s)', async () => {
+    const fake = new FakeArm({
+      skus: [
+        // A size whose HyperVGenerations capability does not include V2 — cannot boot this
+        // provider's default (Gen2) image, so it must never be listed as an offering.
+        { name: 'Standard_D2s_v5', cpu: 2, memoryGb: 8, arch: 'x64', hyperVGenerations: ['V1'] },
+        { name: 'Standard_D2ps_v5', cpu: 2, memoryGb: 8, arch: 'Arm64' },
+      ],
+    })
+    const offerings = await providerFor(fake).listOfferings()
+
+    expect(offerings.find((o) => o.id === 'Standard_D2s_v5')).toBeUndefined()
+    expect(offerings.find((o) => o.id === 'Standard_D2ps_v5')).toBeDefined()
+  })
+
+  it('omits a size whose HyperVGenerations capability is missing entirely', async () => {
+    const fake = new FakeArm()
+    fake.fetch = (async (input, init) => {
+      const url = typeof input === 'string' ? input : String(input)
+      if (url.includes('/Microsoft.Compute/skus')) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                name: 'Standard_B2ps_v2',
+                resourceType: 'virtualMachines',
+                capabilities: [
+                  { name: 'vCPUs', value: '2' },
+                  { name: 'MemoryGB', value: '8' },
+                  { name: 'CpuArchitectureType', value: 'Arm64' },
+                  // No HyperVGenerations entry at all.
+                ],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new FakeArm().fetch(input, init)
+    }) as typeof fetch
+
+    expect(await providerFor(fake).listOfferings()).toHaveLength(0)
+  })
+
+  it('omits a size above the vCPU/memory ceiling (rockysurf-o05s)', async () => {
+    const fake = new FakeArm({
+      skus: [
+        // Above SIZE_CEILING.maxCpu (128) — nothing this large is a dev box.
+        { name: 'Standard_D2s_v5', cpu: 192, memoryGb: 512, arch: 'x64' },
+        { name: 'Standard_D2ps_v5', cpu: 2, memoryGb: 8, arch: 'Arm64' },
+      ],
+    })
+    const offerings = await providerFor(fake).listOfferings()
+
+    expect(offerings.find((o) => o.id === 'Standard_D2s_v5')).toBeUndefined()
+    expect(offerings.find((o) => o.id === 'Standard_D2ps_v5')).toBeDefined()
+  })
 })
 
 /**

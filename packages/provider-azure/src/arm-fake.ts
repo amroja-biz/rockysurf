@@ -51,7 +51,15 @@ export interface FakeArmOptions {
   /** Whether `GET /subscriptions/{s}/resourceGroups/{rg}` answers. False makes it 404. */
   resourceGroupExists?: boolean
   /** VM sizes the fake subscription may order, with their shapes. */
-  skus?: { name: string; cpu: number; memoryGb: number; arch: 'x64' | 'Arm64'; restricted?: boolean }[]
+  skus?: {
+    name: string
+    cpu: number
+    memoryGb: number
+    arch: 'x64' | 'Arm64'
+    restricted?: boolean
+    /** Defaults to `['V1', 'V2']` — the common case. Set to `['V1']` for a Gen1-only fixture. */
+    hyperVGenerations?: string[]
+  }[]
 }
 
 const DEFAULT_SKUS: NonNullable<FakeArmOptions['skus']> = [
@@ -211,6 +219,7 @@ export class FakeArm {
             { name: 'vCPUs', value: String(sku.cpu) },
             { name: 'MemoryGB', value: String(sku.memoryGb) },
             { name: 'CpuArchitectureType', value: sku.arch },
+            { name: 'HyperVGenerations', value: (sku.hyperVGenerations ?? ['V1', 'V2']).join(',') },
           ],
           restrictions: sku.restricted
             ? [

@@ -26,6 +26,17 @@ import type { ArmResourceSku } from './types.js'
  * rule `@rockysurf/provider-byo` follows for a host it cannot measure, and for the same reason: a
  * catalogue entry claiming 8 GB on a machine that has 4 is worse than a catalogue entry that is
  * not there.
+ *
+ * TWO MORE GATES SIT ON TOP OF THAT, both against the same live capabilities, both omitted- not
+ * fabricated (rockysurf-o05s / issue #24 PR2b):
+ *
+ *  - `HyperVGenerations` must include `V2`. This provider's default image SKU is Canonical's
+ *    Gen2 build, and a Gen1-only size cannot boot it — it would fail at ARM create with a
+ *    message that does not point back at the catalogue.
+ *  - `SIZE_CEILING`: nothing above 128 vCPU or 1024 GiB is a dev box. This is the same rule
+ *    PR2a applied to AWS's catalogue at generation time, moved here because Azure's retail feed
+ *    (unlike AWS's) carries no vCPU/memory data — the ceiling can only be checked once real
+ *    numbers exist, which is exactly what this function already has.
  */
 
 export { AZURE_PRICES_EFFECTIVE_FROM, AZURE_PRICES_FETCHED_AT, AZURE_PRICES_SOURCE, AZURE_SIZES }
@@ -42,6 +53,26 @@ function capability(sku: ArmResourceSku, name: string): number | undefined {
   const value = Number(raw)
   return Number.isFinite(value) ? value : undefined
 }
+
+/**
+ * The Hyper-V generations a size supports, as Azure reports them — typically `"V1,V2"` or
+ * `"V1"` alone for the oldest families. Undefined when the capability is absent, same as any
+ * other capability this file reads: omitted, never fabricated.
+ */
+function hyperVGenerationsOf(sku: ArmResourceSku): string[] | undefined {
+  const raw = sku.capabilities?.find((c) => c.name === 'HyperVGenerations')?.value
+  if (raw === undefined) return undefined
+  return raw.split(',').map((v) => v.trim())
+}
+
+/**
+ * The mechanical size ceiling, same rule PR2a applied to AWS at generation time — but enforced
+ * HERE instead, because Azure's feed carries no shape data at all (rockysurf-o05s): vCPU and
+ * memory only exist as real numbers once read live from `Microsoft.Compute/skus`, which is
+ * exactly what this function already has in hand. One named constant, so an operator who wants a
+ * different limit changes one place.
+ */
+export const SIZE_CEILING = { maxCpu: 128, maxMemoryGb: 1024 }
 
 /**
  * The architecture of a VM size.
@@ -114,8 +145,17 @@ export function buildOfferings(
     const cpu = capability(sku, 'vCPUs')
     const memoryGb = capability(sku, 'MemoryGB')
     const arch = architectureOf(sku)
+    const hyperVGenerations = hyperVGenerationsOf(sku)
     // Omitted rather than fabricated. See the note at the top of this file.
-    if (cpu === undefined || memoryGb === undefined || arch === undefined) continue
+    if (cpu === undefined || memoryGb === undefined || arch === undefined || hyperVGenerations === undefined) continue
+
+    // A Gen1-only size cannot boot this provider's default image SKU (Canonical's Gen2 build)
+    // and fails at ARM create with an unhelpful message — never list one (rockysurf-o05s).
+    if (!hyperVGenerations.includes('V2')) continue
+
+    // The same mechanical ceiling PR2a applied to AWS's catalogue: nothing this large is a dev
+    // box, and Offering.gpu stays reserved-unpopulated regardless (rockysurf-o05s).
+    if (cpu > SIZE_CEILING.maxCpu || memoryGb > SIZE_CEILING.maxMemoryGb) continue
 
     const amount = prices?.[id]
     offerings.push({
