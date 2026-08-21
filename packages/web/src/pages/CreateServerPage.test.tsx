@@ -1074,3 +1074,157 @@ describe('the configured-repository picker', () => {
     expect(picker.textContent).toContain('acme/private-thing')
   })
 })
+
+/**
+ * THE MACHINE TYPE PICKER — issue #24 PR 1 (rockysurf-kh3u).
+ *
+ * A size is a floor; this disclosure is the honest way to name an exact machine instead. The
+ * cases that matter most: picking a row must OMIT `size` from the request rather than send the
+ * literal `'custom'` (core derives that server-side), picking one must visibly deselect the Size
+ * radios above it, and a sold-out row must be disabled rather than pickable.
+ */
+describe('the machine type picker', () => {
+  const MANY_PROVIDER: api.ProviderInfo = {
+    ...FAKE_PROVIDER,
+    offerings: [
+      { id: 'small-arm', cpu: 2, memoryGb: 2, diskGb: 40, arch: 'arm64', hourly: price(0.0168), available: true, region: 'fake-1' },
+      { id: 'small-x86', cpu: 2, memoryGb: 2, diskGb: 40, arch: 'amd64', hourly: price(0.0208), available: true, region: 'fake-1' },
+      { id: 'big-arm', cpu: 4, memoryGb: 8, diskGb: 80, arch: 'arm64', hourly: price(0.0672), available: true, region: 'fake-1' },
+      { id: 'sold-out-type', cpu: 8, memoryGb: 16, arch: 'amd64', hourly: price(0.15), available: false, region: 'fake-1' },
+      { id: 'unpriced-type', cpu: 16, memoryGb: 32, arch: 'arm64', hourly: null, available: true, region: 'fake-2' },
+    ],
+  }
+
+  async function openPicker(provider: api.ProviderInfo = MANY_PROVIDER) {
+    const user = userEvent.setup()
+    vi.mocked(api.listProviders).mockResolvedValue([provider])
+    renderPage()
+    // The form is fully loaded once the submit button exists — generic across fixtures, unlike
+    // waiting for a specific offering's heading, which the render-cap fixture below has none of.
+    await screen.findByRole('button', { name: /create server/i })
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    return user
+  }
+
+  it('lists every offering from the resolved provider, capped and searchable', async () => {
+    await openPicker()
+
+    expect(screen.getByRole('cell', { name: 'small-arm' })).toBeTruthy()
+    expect(screen.getByRole('cell', { name: 'big-arm' })).toBeTruthy()
+    expect(screen.getByRole('cell', { name: 'sold-out-type' })).toBeTruthy()
+  })
+
+  it('filters the table as the search box is typed into', async () => {
+    const user = await openPicker()
+
+    await user.type(screen.getByLabelText(/search machine types/i), 'big-arm')
+
+    expect(screen.getByRole('cell', { name: 'big-arm' })).toBeTruthy()
+    expect(screen.queryByRole('cell', { name: 'small-arm' })).toBeNull()
+  })
+
+  it('says "price unknown" rather than blank or $0 for an unpriced offering', async () => {
+    await openPicker()
+    expect(screen.getByText(/price unknown/i)).toBeTruthy()
+  })
+
+  it('disables a sold-out row rather than letting it be picked', async () => {
+    await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'sold-out-type' }).closest('tr')!
+    expect(within(row).getByText(/sold out right now/i)).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: /^select$/i })).toBeNull()
+  })
+
+  it('selecting a row posts offeringId and arch and OMITS size entirely', async () => {
+    const user = await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: /^select$/i }))
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    const sent = vi.mocked(api.createServer).mock.calls[0]?.[0]
+    expect(sent).toMatchObject({ offeringId: 'big-arm', arch: 'arm64' })
+    // THE ASSERTION THE BEAD ASKS FOR: not merely that `size` is absent from a `toMatchObject`
+    // partial match, but that the key is not present on the request object at all.
+    expect(Object.prototype.hasOwnProperty.call(sent, 'size')).toBe(false)
+  })
+
+  it('deselects the Size radios once a machine type is picked', async () => {
+    const user = await openPicker()
+
+    expect((screen.getByRole('radio', { name: /small/i }) as HTMLInputElement).checked).toBe(true)
+
+    const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: /^select$/i }))
+
+    expect((screen.getByRole('radio', { name: /small/i }) as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByRole('radio', { name: /^large/i }) as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('re-selecting a Size radio clears the machine-type pick and sends size again', async () => {
+    const user = await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: /^select$/i }))
+    expect(within(row).getByRole('button', { name: /^selected$/i })).toBeTruthy()
+
+    await user.click(screen.getByRole('radio', { name: /large/i }))
+    // The pick itself is gone — the row goes back to offering itself, not showing "selected".
+    expect(within(row).getByRole('button', { name: /^select$/i })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    const sent = vi.mocked(api.createServer).mock.calls[0]?.[0]
+    // `size` is back in the request — omitted only while a machine type is picked.
+    expect(sent).toMatchObject({ size: 'large' })
+  })
+
+  it('shows the picked machine in the resolved-offering summary, keyed off its own id', async () => {
+    const user = await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: /^select$/i }))
+
+    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+  })
+
+  it('switching provider clears the machine-type pick', async () => {
+    const OTHER = { ...MANY_PROVIDER, id: 'other', displayName: 'Other Cloud' }
+    const user = userEvent.setup()
+    vi.mocked(api.listProviders).mockResolvedValue([MANY_PROVIDER, OTHER])
+    renderPage()
+    await user.click(await screen.findByRole('radio', { name: MANY_PROVIDER.displayName }))
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+
+    const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
+    await user.click(within(row).getByRole('button', { name: /^select$/i }))
+    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+
+    await user.click(screen.getByRole('radio', { name: 'Other Cloud' }))
+    // Back to the size-driven plan — a machine type named on the cloud just left behind
+    // cannot still be what gets created.
+    expect(screen.queryByRole('heading', { name: /big-arm/ })).toBeNull()
+  })
+
+  it('caps rendered rows and says how many more a narrower search would show', async () => {
+    const many: api.ProviderInfo = {
+      ...FAKE_PROVIDER,
+      offerings: Array.from({ length: 60 }, (_, i) => ({
+        id: `type-${String(i).padStart(2, '0')}`,
+        cpu: 2,
+        memoryGb: 2,
+        arch: 'amd64' as const,
+        hourly: price(0.01),
+        available: true,
+        region: 'fake-1',
+      })),
+    }
+    await openPicker(many)
+
+    expect(screen.getByText(/more — refine your search/i)).toBeTruthy()
+  })
+})

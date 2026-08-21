@@ -239,7 +239,15 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
   try {
     body = await deps.client.post('/api/v1/servers', {
       ...(args.name ? { name: args.name } : {}),
-      size: args.size ?? 'small',
+      /**
+       * `small` is the default ONLY when nothing else names a machine (rockysurf-kh3u).
+       *
+       * This used to send `size: 'small'` unconditionally, so `--offering t4g.large` still
+       * carried a `size` core would derive `'custom'` for anyway (harmless) but which made
+       * `'custom'` unreachable from this surface — the CLI could never exercise the branch
+       * `rockysurf offerings` exists to feed. `--size` explicitly given still wins outright.
+       */
+      ...(args.size ? { size: args.size } : args.offeringId ? {} : { size: 'small' }),
       ...(args.packId ? { packId: args.packId } : {}),
       ...(args.provider ? { provider: args.provider } : {}),
       ...(args.arch ? { arch: args.arch } : {}),

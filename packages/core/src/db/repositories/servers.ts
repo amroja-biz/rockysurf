@@ -8,8 +8,8 @@ import {
   type BootstrapMode,
   type ProvisioningStep,
   type ServerRow,
-  type ServerSize,
   type ServerStatus,
+  type StoredSize,
 } from '../schema.js'
 import {
   acceptsProgressReports,
@@ -32,7 +32,8 @@ export interface CreateServerInput {
   /** Optional free-text purpose, set at create or later via `setServerMetadata`. */
   description?: string
   provider: string
-  size: ServerSize
+  /** `'custom'` for a server created by naming an offering directly (rockysurf-kh3u). */
+  size: StoredSize
   offeringId: string
   arch: Architecture
   region?: string

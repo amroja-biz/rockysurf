@@ -58,6 +58,21 @@ export type BootstrapMode = (typeof BOOTSTRAP_MODES)[number]
 export const SERVER_SIZES = ['small', 'medium', 'large'] as const
 export type ServerSize = (typeof SERVER_SIZES)[number]
 
+/**
+ * What a row's `size` column actually holds (rockysurf-kh3u, issue #24 PR 1).
+ *
+ * `ServerSize` stays the 3-value t-shirt vocabulary — `Record<ServerSize, Requirements>` in
+ * `servers/offerings.ts` and its SPA twin stay exhaustive, and `scripts/check-size-table.mjs`
+ * keeps comparing exactly those three rows. `'custom'` is the fourth thing the COLUMN can hold:
+ * a server created by naming an `offeringId` directly, with no t-shirt size behind it at all.
+ *
+ * NO MIGRATION. The column is a plain `text()` with no `CHECK` constraint, so widening what it
+ * types to is free — the destructive alternative (nullable `size`, a NOT NULL column recreated
+ * with the billing table's rows carried across) was rejected for a display-only distinction.
+ * `'custom'` is derived server-side (`routes.ts`) and is never a value the wire may send.
+ */
+export type StoredSize = ServerSize | 'custom'
+
 export const ARCHITECTURES = ['amd64', 'arm64'] as const
 export type Architecture = (typeof ARCHITECTURES)[number]
 
@@ -125,8 +140,11 @@ export const servers = sqliteTable(
     /* --- placement --- */
     /** Provider id, matching `ComputeProvider.id`: 'aws', 'hetzner', 'byo'. */
     provider: text('provider').notNull(),
-    /** T-shirt size the user picked; UI sugar over the resolved offering. */
-    size: text('size').$type<ServerSize>().notNull(),
+    /**
+     * T-shirt size the user picked, or `'custom'` for a server created by naming an offering
+     * directly (rockysurf-kh3u) — UI sugar over the resolved offering either way.
+     */
+    size: text('size').$type<StoredSize>().notNull(),
     /** Provider-native machine type resolved at create time: 't4g.small', 'cpx12'. */
     offeringId: text('offering_id').notNull(),
     arch: text('arch').$type<Architecture>().notNull(),

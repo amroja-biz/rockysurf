@@ -6,7 +6,7 @@ import type { AppEnv } from '../app.js'
 import { DEFAULT_SSH_PORT } from '../bootstrap/push.js'
 import { InvalidTransitionError } from '../db/transitions.js'
 import { LimitExceededError } from '../jobs/limits.js'
-import type { ServerRow } from '../db/schema.js'
+import type { ServerRow, StoredSize } from '../db/schema.js'
 import { getServerRepositories, getServerTools, isBillingRow } from '../db/repositories/servers.js'
 import { badRequest, created, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
@@ -93,7 +93,15 @@ const updateBody = z
 const createBody = z.object({
   name: NAME.optional(),
   description: DESCRIPTION.optional(),
-  size: z.enum(['small', 'medium', 'large']),
+  /**
+   * Optional (rockysurf-kh3u, issue #24 PR 1): the SPA's machine-type picker posts `offeringId`
+   * directly and sends no size at all, because picking a specific machine IS the t-shirt-size
+   * decision made concretely. `'custom'` is never a member of this enum — it is a server-side
+   * derivation (below), never a value the wire may send. At least one of `size`/`offeringId`
+   * is required; enforced by hand in the handler rather than by `.refine`, so the refusal can
+   * name both fields instead of pointing at whichever zod happened to check first.
+   */
+  size: z.enum(['small', 'medium', 'large']).optional(),
   provider: z.string().trim().min(1).optional(),
   offeringId: z.string().trim().min(1).optional(),
   arch: z.enum(['amd64', 'arm64']).optional(),
@@ -396,6 +404,21 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     const user = c.get('user')
 
     /**
+     * NEITHER `size` NOR `offeringId` NAMES A MACHINE (rockysurf-kh3u).
+     *
+     * `size` became optional so the machine-type picker can post `offeringId` alone, but a
+     * request with neither is not asking for anything. Checked here, before either field is
+     * used for anything, and named as an issue on BOTH fields — a caller who sent neither
+     * needs to know both ways out, not just whichever this route happened to check first.
+     */
+    if (body.size === undefined && body.offeringId === undefined) {
+      return badRequest(c, 'send a size or an offeringId — neither was sent, so there is no machine to create', [
+        { path: 'size', message: 'send this, or offeringId' },
+        { path: 'offeringId', message: 'send this, or size' },
+      ])
+    }
+
+    /**
      * WHICH CLOUD THIS SERVER LANDS ON, and why there is no silent fallback (rockysurf-va2l).
      *
      * The old rule ended in `registry.ids()[0]`, so a request that named no provider on a
@@ -495,6 +518,15 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
 
     let offeringId: string
     let arch: 'amd64' | 'arm64'
+    /**
+     * `'custom'` DERIVED, NEVER READ OFF THE WIRE (rockysurf-kh3u).
+     *
+     * `createBody` does not admit the literal — the only way this variable becomes `'custom'`
+     * is a caller naming an `offeringId` and sending no `size` at all, which is exactly the
+     * picker's contract. A caller who sends a real size alongside an `offeringId` keeps it: the
+     * column is display sugar, and there is no reason to overwrite a size the caller stated.
+     */
+    let size: StoredSize
 
     if (body.offeringId && body.arch) {
       /*
@@ -509,6 +541,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
        */
       offeringId = body.offeringId
       arch = body.arch
+      size = body.size ?? 'custom'
     } else if (body.offeringId) {
       /*
        * An id with no arch. The catalogue is REQUIRED here rather than optional: arch is not
@@ -550,7 +583,12 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       // From the OFFERING, never from the cheapest row in the catalogue: this is what the box
       // is actually built on, and it is what `$ARCH` in every pack script resolves to.
       arch = offering.arch
+      size = body.size ?? 'custom'
     } else {
+      // No `offeringId` reaches here, and the door guard above already refused "neither field
+      // sent" — so `body.size` is guaranteed present. TypeScript cannot see that invariant
+      // across the branch, hence the assertion rather than a fourth impossible-in-practice check.
+      const requestedSize = body.size!
       let catalogue
       try {
         catalogue = allowedOfferings(await provider.listOfferings(), allowlist)
@@ -558,7 +596,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         return fail(c, err)
       }
       const resolution = resolveOffering(catalogue, {
-        ...SIZE_REQUIREMENTS[body.size],
+        ...SIZE_REQUIREMENTS[requestedSize],
         ...(body.arch ? { arch: body.arch } : {}),
       })
       if (!resolution.ok) {
@@ -570,6 +608,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       }
       offeringId = resolution.offering.id
       arch = resolution.offering.arch
+      size = requestedSize
     }
 
     try {
@@ -578,7 +617,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         name: body.name ?? `server-${Date.now().toString(36)}`,
         ...(body.description ? { description: body.description } : {}),
         provider: providerId,
-        size: body.size,
+        size,
         offeringId,
         arch,
         ...(body.packId ? { packId: body.packId } : {}),

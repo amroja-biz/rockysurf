@@ -51,6 +51,7 @@ export {
   type ServerRow,
   type ServerSize,
   type ServerStatus,
+  type StoredSize,
   type Session,
   type SettingRow,
   type ToolRow,
