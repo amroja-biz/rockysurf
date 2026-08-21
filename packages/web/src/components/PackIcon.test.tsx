@@ -74,13 +74,13 @@ describe('PackIcon', () => {
   })
 
   /**
-   * A real shipped pack rather than a synthetic fixture (rockysurf-8u2l): `packs/omp.yaml`
-   * named an `imageUrl` whose asset never existed, and the fix that landed on `main` while
-   * this page's PR was in flight was to drop the line rather than add the image — so `omp` is
-   * the first pack this repository ships that actually renders its fallback in production,
-   * not just in a test. One name, "OMP" — the one-word branch of the initials rule.
+   * Born as a real-shipped-pack case (rockysurf-8u2l): `packs/omp.yaml` briefly shipped with
+   * no `imageUrl` after its dangling one was dropped, making it the first pack to render this
+   * fallback in production. The owner later supplied real artwork, so `omp` now ships an
+   * image again — the props here are the historical icon-less shape, kept because "OMP" is
+   * the one-word branch of the initials rule and nothing else covers it.
    */
-  it('renders the fallback for the real omp pack, which ships with no imageUrl', () => {
+  it('renders the fallback for a one-word pack name with no imageUrl', () => {
     render(<PackIcon pack={{ packId: 'omp', name: 'OMP' }} />)
     expect(screen.getByTestId('pack-monogram-omp').textContent).toBe('OM')
   })
