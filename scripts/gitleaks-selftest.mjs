@@ -12,12 +12,12 @@
  *
  *   1. EVERY PROJECT RULE FIRES. A fixture is written to a scratch directory containing every
  *      pinned legacy value in the context it actually appeared in, and each rule must report at
- *      least one finding on it. Per-rule, not "some finding was reported": a config where four
- *      of five rules had been deleted would otherwise pass.
+ *      least one finding on it. Per-rule, not "some finding was reported": a config where one
+ *      of two rules had been deleted would otherwise pass.
  *   2. THE NEGATIVE CONTROLS DO NOT FIRE. A second fixture holds the near-misses that exist in
- *      the live tree — Hetzner's `price_hourly` keys, a 12-digit number that is not the account
- *      id, a plausible username. A rule broad enough to flag those is a rule someone will turn
- *      off within a week.
+ *      the live tree — a numeric GitHub App id one digit longer than the real one, a client id
+ *      with the wrong prefix letter. A rule broad enough to flag those is a rule someone will
+ *      turn off within a week.
  *   3. THE FIXTURE EXEMPTION HAS NOT OUTLIVED ITS SUBJECT. Every path in the test-fixture
  *      allowlist block must still match something in the working tree. Move or delete one of
  *      those files and this fails until the exemption is updated with it — otherwise the
@@ -48,25 +48,16 @@ const JSON_OUT = process.argv.includes('--json')
 /**
  * One entry per project-specific rule, in the surrounding context the value really appeared in,
  * because a rule anchored on punctuation would pass a bare-value fixture and fail on the file
- * it was written for. Where a rule is pinned to a literal (the account id, the app id, the
- * handle) the sample necessarily carries that literal. Where a rule matches a SHAPE (client
- * ids, price ids) the sample value is synthetic — the real ones do not appear anywhere in this
- * repository, this file included.
+ * it was written for. Where a rule is pinned to a literal (the app id) the sample necessarily
+ * carries that literal. Where a rule matches a SHAPE (the client id) the sample value is
+ * synthetic — the real one does not appear anywhere in this repository, this file included.
  */
 const MUST_DETECT = [
-  {
-    rule: 'rockysurf-legacy-aws-account',
-    sample: "aws cloudformation deploy --profile AdministratorAccess-277707111475 --region us-east-1",
-  },
   {
     rule: 'rockysurf-legacy-github-app-client-id',
     sample: "GITHUB_CLIENT_ID: 'Iv23liSynth3t1cSampl'  # and the OAuth app it was confused with: Ov23liSynth3t1cSampl",
   },
   { rule: 'rockysurf-legacy-github-app-id', sample: 'GitHubAppId: 2773473' },
-  { rule: 'rockysurf-legacy-stripe-price-id', sample: "STRIPE_METER_PRICE_ID: 'price_1Synth3t1cV4lu3F0rT3st'" },
-  { rule: 'rockysurf-legacy-operator-handle', sample: "AllowedGitHubUsers: 'jbdamask,someoneelse'" },
-  { rule: 'rockysurf-legacy-local-username', sample: 'binary /Users/johndamask/code/somewhere/dist/bin.js' },
-  { rule: 'rockysurf-legacy-private-worktree', sample: 'cwd /Users/someone/code/1-open-source-rocky-surf-v0-1/packages' },
 ]
 
 /**
@@ -74,13 +65,7 @@ const MUST_DETECT = [
  * today or one edit away from being.
  */
 const MUST_IGNORE = [
-  "// Hetzner prices arrive as { price_hourly: { gross }, price_monthly: { gross } }",
-  "const priceKeys = ['price_hourly', 'price_monthly'] as const",
-  'arn:aws:iam::123456789012:role/rocky-surf-provider', // the documentation placeholder account
-  'accountId: 277707111476', // one digit off
-  'AllowedGitHubUsers: "octocat,hubot"',
   'appId: 27734730', // \b on the rule means a longer number is not the app id
-  "const stripePrice = 'price_test123'",
   'client_id: Xv23liSynth3t1cSampl', // wrong prefix letter
 ]
 
@@ -191,9 +176,6 @@ try {
   const tracked = trackedPaths()
   const fixturePaths = [
     ...allowlistPaths('PEM banners and request fixtures in the test suites — no key material'),
-    // rockysurf-5ypc: the recorded-evidence exemption is the same shape of hole — a named-file
-    // pass on two identifier rules — so its paths get the same not-outlived-its-subject check.
-    ...allowlistPaths('Recorded evidence carrying the operator\'s local username or the private worktree name'),
   ]
   const orphaned = fixturePaths.filter((p) => !tracked.some((f) => new RegExp(p).test(f)))
   if (orphaned.length === 0) pass('every fixture exemption still has files to excuse', `${fixturePaths.length} path pattern(s)`)

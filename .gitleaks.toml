@@ -5,13 +5,21 @@
 #   1. THE GENERIC ONE. `useDefault` pulls in gitleaks' full rule set — AWS access keys, Stripe
 #      live keys, GitHub tokens, private key blocks and the rest. Nothing here weakens it.
 #
-#   2. THE PROJECT-SPECIFIC ONE. Rocky Surf was a hosted SaaS before it was open source. The
-#      identifiers of that deployment — one AWS account, one GitHub App, one Stripe price, one
-#      operator's username — were scrubbed out before the first public commit, and these rules
-#      exist so they cannot creep back in through an old note or a pasted log. None of them is a
-#      credential you can authenticate with, which is exactly why no generic scanner would ever
-#      flag them. They are, however, a map of somebody's live infrastructure, and this
-#      repository is public.
+#   2. THE PROJECT-SPECIFIC ONE. Rocky Surf was a hosted SaaS before it was open source. Two
+#      rules below still guard the identifiers of that deployment's GitHub App: neither is a
+#      credential you can authenticate with, which is why no generic scanner would flag them,
+#      but the open-source control plane has no GitHub App at all, so a match is either the old
+#      deployment's or somebody else's.
+#
+#      Owner decision 2026-08-21: the AWS account id, Stripe price id, operator handle, local
+#      username and private worktree name rules that used to live here were removed. The
+#      reasoning, verbatim: it's silly to block an AWS account id when the pinned regex that
+#      caught it disclosed the very value it guarded, in plain text, in this file; silly to
+#      block a Stripe price id that never existed; and silly to block the operator's own name,
+#      username, or the name of their private worktree — none of that is secret, all of it is
+#      public-by-definition once the person is the one running the scan. Public-by-definition
+#      identifiers and self-disclosing pinned values are not secrets, so they no longer get a
+#      rule.
 #
 # THE RULES ARE TESTED. `node scripts/gitleaks-selftest.mjs` builds a fixture containing every
 # pinned value and asserts each rule fires on it, plus a negative-control file of near-misses it
@@ -32,16 +40,11 @@ useDefault = true
 # ------------------------------------------------------------------------------------------
 # The legacy SaaS deployment's identifiers.
 #
-# Every regex below is pinned to a value that actually existed. They are deliberately NOT
-# generic ("looks like an AWS account id") — a generic rule for a 12-digit number is a rule that
-# fires on timestamps, and a rule that fires on timestamps gets turned off.
+# Every regex below is pinned to a value that actually existed, or (the GitHub App client id)
+# to the narrow shape of one. They are deliberately NOT generic beyond that — a generic rule
+# for a 12-digit number is a rule that fires on timestamps, and a rule that fires on timestamps
+# gets turned off.
 # ------------------------------------------------------------------------------------------
-
-[[rules]]
-id = "rockysurf-legacy-aws-account"
-description = "The hosted deployment's AWS account id (also the tail of its SSO profile name)"
-regex = '''277707111475'''
-tags = ["rockysurf", "legacy-saas", "account-id"]
 
 [[rules]]
 id = "rockysurf-legacy-github-app-client-id"
@@ -59,43 +62,6 @@ id = "rockysurf-legacy-github-app-id"
 description = "The hosted deployment's numeric GitHub App id"
 regex = '''\b2773473\b'''
 tags = ["rockysurf", "legacy-saas", "github-app"]
-
-[[rules]]
-id = "rockysurf-legacy-stripe-price-id"
-description = "A live Stripe price id from the metered-billing configuration"
-# `price_1` and 20+ characters, which is the shape of a real Stripe price id. Anchoring on the
-# `1` matters: the Hetzner provider's API responses carry `price_hourly` and `price_monthly`
-# keys, and a bare `price_[A-Za-z0-9]+` would flag every one of them. That is the negative
-# control in the self-test.
-regex = '''price_1[A-Za-z0-9]{20,}'''
-tags = ["rockysurf", "legacy-saas", "stripe"]
-
-[[rules]]
-id = "rockysurf-legacy-operator-handle"
-description = "The original operator's GitHub username, hardcoded as an allowlist entry"
-# It appeared as a hardcoded allowlist and billing-exemption entry — i.e. as configuration, in
-# a product whose whole premise is that the operator configures their own. A self-hoster who
-# finds this string in a shipped file has found a bug.
-regex = '''jbdamask'''
-tags = ["rockysurf", "legacy-saas", "hardcoded-user"]
-
-[[rules]]
-id = "rockysurf-legacy-local-username"
-description = "The original operator's local account name, as absolute paths spell it"
-# rockysurf-5ypc: not a credential — but CONTRIBUTING's own reasoning applies: identifiers like
-# this carry no secret value, survive rewrites, and together are a map of somebody's live
-# infrastructure. The existing occurrences live in recorded evidence and stay by the owner's
-# ruling (see the exemption below); this rule is what keeps any NEW file from adding one.
-regex = '''johndamask'''
-tags = ["rockysurf", "pinned-identifier", "local-username"]
-
-[[rules]]
-id = "rockysurf-legacy-private-worktree"
-description = "The private development worktree's name, as absolute paths spell it"
-# rockysurf-5ypc, same reasoning as the rule above: the repository this project deliberately
-# does not publish should not be namable from the one it does.
-regex = '''1-open-source-rocky-surf-v0-1'''
-tags = ["rockysurf", "pinned-identifier", "private-repo"]
 
 # ------------------------------------------------------------------------------------------
 # EXEMPTIONS
@@ -132,26 +98,10 @@ paths = [
   '''^packages/provider-hetzner/src/provider\.test\.ts$''',
 ]
 
-# --- 3. Recorded evidence (rockysurf-5ypc; owner ruling 2026-08-14: option c). The transcripts
-# --- and the documents quoting them prove the capability matrix, and rewriting a recording
-# --- weakens the thing it exists to be — so the existing occurrences stay, named file by file.
-# --- The hole: exactly these files may carry the two identifiers; every other file may not,
-# --- which is the point of the rules. Scoped to the two rules, so everything else still
-# --- applies to these files in full.
-[[allowlists]]
-description = "Recorded evidence carrying the operator's local username or the private worktree name"
-targetRules = ["rockysurf-legacy-local-username", "rockysurf-legacy-private-worktree"]
-paths = [
-  '''^docs/adr/0001-single-portable-control-plane-app\.md$''',
-  '''^docs/adr/0002-push-bootstrap-default-callback-fallback\.md$''',
-  '''^docs/adr/0004-packs-as-pr-able-yaml\.md$''',
-  '''^docs/history/DEVLOG\.md$''',
-  '''^scripts/e2e/recordings/aws-lifecycle-amd64\.log$''',
-  '''^scripts/e2e/recordings/aws-lifecycle-arm64\.log$''',
-  '''^scripts/e2e/recordings/aws-restricted-t3-small\.log$''',
-  '''^scripts/e2e/recordings/aws-restricted-t4g-small\.log$''',
-  '''^scripts/e2e/recordings/byo-container\.log$''',
-  '''^scripts/e2e/recordings/hetzner-lifecycle\.log$''',
-  '''^spike/recordings/aws-lifecycle\.txt$''',
-  '''^spike/recordings/hetzner-lifecycle\.txt$''',
-]
+# --- 3. (removed) Recorded evidence carrying the operator's local username or the private
+# --- worktree name used to be excused here, scoped to the two identifier rules that fired on
+# --- it (rockysurf-5ypc; owner ruling 2026-08-14: option c). Owner decision 2026-08-21 removed
+# --- those two rules entirely — see the header — so there is nothing left for those files to be
+# --- excused from, and an allowlist with no rule to narrow is not an exemption, just dead
+# --- config. The files themselves (docs/adr/, docs/history/DEVLOG.md, scripts/e2e/recordings/,
+# --- spike/recordings/) are unchanged; they simply no longer need a hole punched for them.
