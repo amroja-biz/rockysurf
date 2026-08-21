@@ -55,10 +55,12 @@ The test, in order:
    and workload identity federation; an RS256 assertion flow written by hand buys nothing and
    costs a class of bug you cannot debug against somebody else's cloud.
 3. **Whatever you take has to be contained.** `scripts/check-npx-closure.mjs` walks core's and
-   the CLI's production closures and asserts that each vendor package is absent from the first
-   and reaches the second only through its own provider. Add your dependency to its rules, with
-   fixture tests proving the check fails in both directions when it is broken. Core is loaded by
-   every installation, including operators who will never call your cloud.
+   the CLI's production closures against a `VENDOR_RULES` table — one row per vendor package,
+   each `{ id, pattern, provider, label }` — and asserts that every rule's `pattern` is absent
+   from core's closure and reaches the CLI only through its own `provider`. Add a row for your
+   dependency, with fixture tests in `packages/core/src/npx-closure.test.ts` proving the check
+   fails in both directions when it is broken. Core is loaded by every installation, including
+   operators who will never call your cloud.
 
 The saving is not only disk. A generated client hides the API, and the GCE work found two things
 one would have papered over: HTTP 200 means *accepted*, not *done* — every mutating call returns
