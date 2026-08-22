@@ -219,11 +219,20 @@ Bugs and feature requests go to
 [GitHub issues](https://github.com/amroja-biz/rockysurf/issues); there are templates for
 both. Security problems do **not** — see [`SECURITY.md`](SECURITY.md) for private reporting.
 
-Internally the maintainers plan with [beads](https://github.com/gastownhall/beads), a local issue
-tracker, which is why commit messages and code comments cite ids like `rockysurf-ftl9.7`. You do
-not need beads to contribute and nothing in the workflow requires it; treat those ids as
-references to the reasoning behind a change. A `TODO` in the code that names one is pointing at
-work that is already tracked, not at work that has been forgotten.
+GitHub issues are the durable, shared record — that's where work is tracked, not in any
+individual's local tooling. Some maintainers additionally use [beads](https://github.com/gastownhall/beads),
+a local issue tracker, as personal working memory to decompose a GitHub issue into steps, which is
+why commit messages and code comments sometimes cite ids like `rockysurf-ftl9.7`. That usage is
+optional and personal: a beads database is never synced to this repository and is never the
+project's system of record, so you do not need beads to contribute and nothing in the workflow
+requires it. Treat those ids as references to the reasoning behind a change, not as pointers to
+anything you can look up. A `TODO` in the code that names one is pointing at work that is already
+tracked elsewhere, not at work that has been forgotten.
+
+Durable knowledge that outlives a single issue — lessons, rulings, conventions — lives in
+[`docs/memories/`](docs/memories/llms.txt) instead of in anyone's beads database. Session hand-off
+notes live in [`.pass-along/`](.pass-along/). Both are committed here and world-readable, so never
+put a secret, credential, IP address, or account ID in either one.
 
 ## Commits and pull requests
 
