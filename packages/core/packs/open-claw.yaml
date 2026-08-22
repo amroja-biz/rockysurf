@@ -186,8 +186,12 @@ tools:
   # declared user and the onboarding daemon belongs to `rocky`, not to root.
   #
   # The legacy version of this step also fetched a wallpaper from a private S3 bucket with the
-  # AWS CLI and pinned Firefox's homepage to a vendor page. Both are gone: a self-hosted box
-  # has no AWS credentials, no AWS CLI, and no reason to carry someone's branding.
+  # AWS CLI and pinned Firefox's homepage to a vendor page. The homepage pin is still gone —
+  # nobody's default should reroute a user's browser. The wallpaper is back (rockysurf-5cll):
+  # the asset now ships in this repository (docs/media/openclaw-wallpaper.png) instead of a
+  # private bucket, so a plain HTTPS fetch from the published repo replaces the S3 fetch, per
+  # writing-a-pack.md's "fetch assets over plain HTTPS from a public URL" — no AWS CLI, no
+  # credentials, and no phone-home to the control plane a self-hosted box may not even reach.
   - toolId: open-claw-onboard
     name: OpenClaw onboarding
     description: Per-user OpenClaw daemon and desktop shortcut
@@ -200,6 +204,58 @@ tools:
     installScript: |
       set -euo pipefail
       mkdir -p "$HOME/Desktop"
+
+      # Desktop wallpaper. rockysurf-5cll: the legacy SaaS fetched this from a private S3
+      # bucket with the AWS CLI, guarded with `|| true` so a fetch failure never took the
+      # desktop down with it — a self-hosted box has neither, so this fetches the same asset
+      # over plain HTTPS from the published repository instead (writing-a-pack.md). Pinned to
+      # `main` rather than a commit: this repository's public history is a squashed, re-cut
+      # branch (see `docs/history/`), so a commit-pinned URL would 404 the next time it is
+      # re-cut, while a branch-pinned one keeps resolving — the same tradeoff ADR-0006 already
+      # made for the pack registry's own `raw.githubusercontent.com` URL.
+      #
+      # if/else stands in for the legacy `|| true`: `set -e` does not fire on a command tested
+      # as an `if` condition, so a failed fetch falls straight through to the else branch
+      # instead of failing the step — same guarantee, no bare `|| true` to trip over rule 3.
+      wallpaper="$HOME/.openclaw-wallpaper.png"
+      tmp_wallpaper=$(mktemp)
+      if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+        "https://raw.githubusercontent.com/amroja-biz/rockysurf/main/docs/media/openclaw-wallpaper.png" \
+        -o "$tmp_wallpaper"; then
+        # Only replace the live file when the content actually changed, so a resumed run does
+        # not rewrite a file XFCE may have open — the same convergence test the whole-file
+        # writes elsewhere in this step use, just for a binary rather than a text comparison.
+        if [ ! -f "$wallpaper" ] || ! cmp -s "$tmp_wallpaper" "$wallpaper"; then
+          mv "$tmp_wallpaper" "$wallpaper"
+        else
+          rm -f "$tmp_wallpaper"
+        fi
+      else
+        rm -f "$tmp_wallpaper"
+        echo "openclaw: could not fetch the desktop wallpaper; leaving the XFCE default" >&2
+      fi
+
+      # Only wire the wallpaper in if one actually landed — this run's fetch, or a previous
+      # run's. xfce4-desktop.xml is a WHOLE-FILE write, not `xfconf-query`: the property that
+      # matters under xrdp is backdrop/screen0/monitorrdp0/workspace0 (`monitorrdp0` is the
+      # xrdp-assigned monitor name xorgxrdp uses; a console or VNC session would name it
+      # differently, which is exactly why `xfconf-query` would be fiddly here — there is no
+      # single monitor name to target ahead of a session existing). Written directly into
+      # `~/.config`, which is created fresh here rather than relied on: profile creation for
+      # `rocky` has not necessarily happened before this script runs, and XFCE only seeds a
+      # channel file from its own defaults when one is not already there — so a file written
+      # now survives first login rather than being overwritten by it.
+      if [ -f "$wallpaper" ]; then
+        xfconf_dir="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
+        mkdir -p "$xfconf_dir"
+        xfconf_file="$xfconf_dir/xfce4-desktop.xml"
+        # `%s` is the one dynamic value (the wallpaper path); everything else is literal. One
+        # line so YAML's block-scalar indentation can't land mid-tag on a re-wrap.
+        printf -v want_xfconf '<?xml version="1.0" encoding="UTF-8"?>\n\n<channel name="xfce4-desktop" version="1.0">\n  <property name="backdrop" type="empty">\n    <property name="screen0" type="empty">\n      <property name="monitorrdp0" type="empty">\n        <property name="workspace0" type="empty">\n          <property name="last-image" type="string" value="%s"/>\n          <property name="image-style" type="int" value="5"/>\n        </property>\n      </property>\n    </property>\n  </property>\n</channel>' "$wallpaper"
+        if [ "$(cat "$xfconf_file" 2>/dev/null)" != "$want_xfconf" ]; then
+          printf '%s\n' "$want_xfconf" > "$xfconf_file"
+        fi
+      fi
 
       # The stamp records WHAT happened, not merely that something did. The desktop note below
       # has to tell the user whether their assistant is already running or whether starting it
