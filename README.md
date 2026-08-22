@@ -7,10 +7,9 @@
 <!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → paste a
      Hetzner token → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 
-Rocky Surf gives coding agents a real Linux server that stays put. It creates the box on your own
-cloud account, installs your agents before you first log in, and hands you an SSH command. Stop it
-tonight, start it tomorrow: your repo, your branches and your shell history are where you left
-them. A stopped box costs storage, not compute.
+Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on it, and
+hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches and your
+shell history are where you left them. A stopped box costs storage, not compute.
 
 One process you run yourself — web UI, HTTP API, SQLite file. One admin, no accounts, no
 telemetry, nothing hosted.

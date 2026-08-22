@@ -104,11 +104,12 @@ export function HomePage() {
         height={600}
       />
 
-      <h1>Rocky Surf gives coding agents a real Linux server that stays put.</h1>
+      <h1>Rocky Surf</h1>
       <p className="home-lede">
-        It creates the box on your own cloud account, installs your agents before you first log in,
-        and hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches
-        and your shell history are where you left them. A stopped box costs storage, not compute.
+        Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on
+        it, and hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your
+        branches and your shell history are where you left them. A stopped box costs storage, not
+        compute.
       </p>
       <p className="home-lede">
         One process you run yourself — web UI, HTTP API, SQLite file. One admin, no accounts, no
