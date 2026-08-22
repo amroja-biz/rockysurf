@@ -37,13 +37,13 @@ describe('HomePage', () => {
     expect(hero.getAttribute('src')).toBe('/images/logo.png')
   })
 
-  it('has exactly one h1, and it is the product name — not a blank shell heading', () => {
+  it('has exactly one h1, and it is the tagline — not a blank shell heading', () => {
     // AppShell suppresses its <h1> for an empty title; if that regresses, this page grows a
     // contentless heading above the hero and this count catches it.
     renderHome()
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]!.textContent).toBe('Rocky Surf')
+    expect(headings[0]!.textContent).toMatch(/need their own space\?/i)
   })
 
   it('names the BYO trio by their lead-ins', () => {
