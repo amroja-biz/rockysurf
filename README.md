@@ -7,6 +7,15 @@
 <!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → paste a
      Hetzner token → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 
+**Are your coding agents telling you they need their own space?**
+
+Have they been snooping around your laptop, exposing API keys? Or connecting to other apps without
+being told? And aren't you getting a little tired of killing them when you close your laptop by
+mistake?
+
+Rocky Surf solves this problem by making it easy to run agents where they belong — in cloud
+accounts that you own, preinstalled with your favorite tools and repos.
+
 Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on it, and
 hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches and your
 shell history are where you left them. A stopped box costs storage, not compute.
