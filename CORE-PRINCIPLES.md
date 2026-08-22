@@ -2,9 +2,9 @@
 
 ## What Rocky Surf is
 
-Rocky Surf is **BYOC and BYOK**: bring your own cloud, bring your own AI coding keys and
-licenses. It stands up boxes on a cloud of your choice, with your favorite coding agents
-installed, connected to your GitHub repos — and that is the whole job. Rocky Surf resells
+Rocky Surf is **BYOC, BYOK, and BYOR**: bring your own cloud, bring your own AI coding keys
+and licenses, bring your own repos. It stands up boxes on a cloud of your choice, with your
+favorite coding agents installed, connected to your GitHub repos — and that is the whole job. Rocky Surf resells
 nothing and sits in the middle of nothing: the cloud account is yours, the agent
 subscriptions are yours, the repos are yours, and the control plane is a process you run
 yourself. Any feature that would make Rocky Surf a party to those relationships — proxying
