@@ -1,5 +1,18 @@
 # Core Principles
 
+## What Rocky Surf is
+
+Rocky Surf is **BYOC and BYOK**: bring your own cloud, bring your own AI coding keys and
+licenses. It stands up boxes on a cloud of your choice, with your favorite coding agents
+installed, connected to your GitHub repos — and that is the whole job. Rocky Surf resells
+nothing and sits in the middle of nothing: the cloud account is yours, the agent
+subscriptions are yours, the repos are yours, and the control plane is a process you run
+yourself. Any feature that would make Rocky Surf a party to those relationships — proxying
+your cloud spend, pooling your API keys, holding your code — is out of bounds by definition,
+not by preference.
+
+## The five principles
+
 Five principles govern every feature in Rocky Surf. They are the test a new idea has to pass:
 a feature that serves none of them needs a very good reason to exist, and a feature that works
 against one needs a redesign, not an exception. Issues and PRs should name the principle they
