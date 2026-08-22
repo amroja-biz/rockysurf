@@ -9,9 +9,9 @@ cap.** One process you run yourself. It creates a real Linux server, installs yo
 on it, and hands you an SSH command — then stops the box when you are done and starts it again
 tomorrow with everything still there.
 
-**BYOC and BYOK**: bring your own cloud, bring your own AI coding keys. Rocky Surf just makes
-it easy to stand up boxes on a cloud of your choice, with your favorite coding agents and your
-GitHub repos — it resells nothing and holds nothing of yours.
+**BYOC, BYOK, and BYOR**: bring your own cloud, your own AI coding keys, your own repos.
+Rocky Surf just makes it easy to stand up boxes on a cloud of your choice, with your favorite
+coding agents and your GitHub repos — it resells nothing and holds nothing of yours.
 
 Five principles govern every feature: **[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md)**. Read it
 before proposing or building anything.
