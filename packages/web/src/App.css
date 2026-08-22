@@ -1821,8 +1821,7 @@ main.home h1 {
   margin-bottom: 1rem;
 }
 
-.home-principles,
-.home-paths {
+.home-principles {
   display: grid;
   gap: 0.75rem;
   margin: 0 0 1.5rem 1.25rem;
