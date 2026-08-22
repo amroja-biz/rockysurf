@@ -150,56 +150,39 @@ export function HomePage() {
       </section>
 
       <section className="home-section">
-        <h2>Five principles</h2>
-        <p>
-          Every issue and pull request should name the principle it serves. Long version:{' '}
-          <a href={repoDocUrl('CORE-PRINCIPLES.md')} target="_blank" rel="noreferrer">
-            CORE-PRINCIPLES.md
-          </a>
-          .
-        </p>
+        <h2>Rocky Surf Principles</h2>
         <ol className="home-principles">
           <li>
             <strong>
               Make it as easy as possible to create and manage cloud servers for agentic coding.
-            </strong>{' '}
-            The distance between &ldquo;I want a box&rdquo; and &ldquo;I am SSH&rsquo;d into a box
-            with my agents installed&rdquo; is the number we are always shrinking.
+            </strong>
           </li>
           <li>
-            <strong>Make it as easy as possible to add a new cloud provider.</strong> A new cloud is
-            one package and one config block, never a change to core.
+            <strong>Make it as easy as possible to add a new cloud provider.</strong>
           </li>
           <li>
-            <strong>Make it as easy as possible to create Surge Packs.</strong> A pack is one YAML
-            file. No registration, no gatekeeping, no build step.
+            <strong>Make it as easy as possible to create Surge Packs.</strong>
           </li>
           <li>
-            <strong>Make Rocky Surf easy to extend via modular components.</strong> Extension
-            happens behind seams — the provider SDK, packs as data, thin clients over one API — not
-            through them.
+            <strong>Make Rocky Surf easy to extend via modular components.</strong>
           </li>
           <li>
-            <strong>Make it easy to combine components without coding.</strong> Composition is
-            configuration. An operator wires up providers and caps spending without touching
-            TypeScript.
+            <strong>Make it easy to combine components without coding.</strong>
           </li>
         </ol>
       </section>
 
       <section className="home-section">
         <h2>Install</h2>
-        <p>Docker Compose, from a checkout — the path that works today:</p>
         <pre>
           <code>{COMPOSE_SNIPPET}</code>
         </pre>
-        <p>It prints an admin password once:</p>
+        <p>It prints an admin password once - save it:</p>
         <pre>
           <code>{PASSWORD_SNIPPET}</code>
         </pre>
         <p>
-          Open <code>http://127.0.0.1:3000</code> and sign in with it. <code>npx rockysurf</code>{' '}
-          (Node 24 or newer) arrives with v0.1.0.
+          Open <code>http://127.0.0.1:3000</code> and sign in with your admin password.
         </p>
         <p>
           With no cloud configured you get an in-memory provider: create a server, watch it boot,
@@ -236,7 +219,6 @@ export function HomePage() {
         <h2>Creating a server</h2>
 
         <h3>Pick a provider</h3>
-        <p>Every provider ships switched off, so a fresh install cannot spend money by accident.</p>
         <div className="home-table">
           <table>
             <thead>
@@ -271,15 +253,16 @@ export function HomePage() {
 
         <h3>Pick a Surge Pack</h3>
         <p>
-          A <strong>Surge Pack</strong> is the software your box is built with, one YAML file:
+          A <strong>Surge Pack</strong> is a software bundle that is installed on your box, defined
+          in a YAML file:
         </p>
         <pre>
           <code>{PACK_SNIPPET}</code>
         </pre>
         <p>
-          A readable list of tools and install scripts — reviewable in a pull request, not baked
-          into someone else&rsquo;s image — and your box is built from it while you watch the
-          install feed. Ten ship in{' '}
+          A list of tools and install scripts — reviewable in a pull request, not baked into
+          someone else&rsquo;s image — and your box is built from it while you watch the install
+          feed. Ten ship in{' '}
           <a href={`${GITHUB_URL}/tree/main/packs`} target="_blank" rel="noreferrer">
             packs/
           </a>
