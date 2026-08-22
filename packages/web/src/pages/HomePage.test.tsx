@@ -9,6 +9,10 @@ import { HomePage } from './HomePage'
  * door rather than a dead end. Content phrasing is free to change; what is pinned here is the
  * structure a reader relies on — one real heading, the hero pointing at a path the bundle
  * carries (bundle-assets.test.ts owns the other half of that claim), and the three ways out.
+ *
+ * The page also carries the README verbatim, so the section spine is pinned too: an editor who
+ * drops a section here has dropped it from one of the two copies that are meant to be the same
+ * document, and that is the failure worth catching early.
  */
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -39,13 +43,45 @@ describe('HomePage', () => {
     renderHome()
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]!.textContent).toMatch(/persistent dev boxes for coding agents/i)
+    expect(headings[0]!.textContent).toMatch(/a real Linux server that stays put/i)
   })
 
-  it('names the five claims by their lead-ins', () => {
+  it('names the BYO trio by their lead-ins', () => {
     renderHome()
-    for (const claim of ['Persistent.', 'Yours.', 'Your cloud.', 'Agents preloaded.', 'Budget-capped.']) {
+    for (const claim of [
+      'BYOC — bring your own cloud.',
+      'BYOK — bring your own keys.',
+      'BYOR — bring your own repos.',
+    ]) {
       expect(screen.getByText(claim)).toBeTruthy()
+    }
+  })
+
+  it('carries the README spine, in order', () => {
+    renderHome()
+    const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
+    expect(sections).toEqual([
+      'Bring your own cloud, keys and repos',
+      'Five principles',
+      'Install',
+      'Creating a server',
+      'Where your servers and settings are kept',
+      'Put a safety net under your cloud account',
+      'More',
+      'License',
+    ])
+  })
+
+  it('states all five principles', () => {
+    renderHome()
+    for (const principle of [
+      /create and manage cloud servers for agentic coding/i,
+      /add a new cloud provider/i,
+      /create Surge Packs/i,
+      /extend via modular components/i,
+      /combine components without coding/i,
+    ]) {
+      expect(screen.getByText(principle)).toBeTruthy()
     }
   })
 

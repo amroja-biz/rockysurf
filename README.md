@@ -4,43 +4,52 @@
 
 # Rocky Surf
 
-**Persistent cloud dev boxes for coding agents, on your own cloud account, under your own budget
-cap.** One process you run yourself. It creates a real Linux server, installs your coding agents
-on it, and hands you an SSH command — then stops the box when you are done and starts it again
-tomorrow with everything still there.
-
-**BYOC, BYOK, and BYOR**: bring your own cloud, your own AI coding keys, your own repos.
-Rocky Surf just makes it easy to stand up boxes on a cloud of your choice, with your favorite
-coding agents and your GitHub repos — it resells nothing and holds nothing of yours.
-
-Five principles govern every feature: **[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md)**. Read it
-before proposing or building anything.
-
 <!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → paste a
      Hetzner token → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 
----
+Rocky Surf gives coding agents a real Linux server that stays put. It creates the box on your own
+cloud account, installs your agents and their tools before you first log in, and hands you an SSH
+command. Stop the box when you are done for the day; start it tomorrow and your repo, your
+branches and your shell history are where you left them. A stopped box costs storage, not compute.
 
-## Why
+It is one process you run yourself: a web UI, an HTTP API, and a SQLite file beside them. One
+admin, no accounts, no tenant, no telemetry, nothing hosted anywhere.
 
-Coding agents want a machine. Not a container that dies with the tab, and not your laptop.
+## Bring your own cloud, keys and repos
 
-- **Persistent.** Stop a box and its disk survives; start it and your repo, your branches, your
-  half-finished work and your shell history are where you left them. Stopped boxes cost storage,
-  not compute.
-- **Yours.** Single admin, no accounts, no tenant, no telemetry, no hosted anything. The control
-  plane is one Node process with a SQLite file next to it.
-- **Your cloud.** Your AWS account, your Hetzner project, or a machine you already own. Rocky
-  Surf holds the credential and calls the API; the resources and the bill are yours.
-- **Agents preloaded.** A box is created *from a Surge Pack* — Claude Code, Codex CLI, Amp and friends
-  are installed and ready before you first log in, instead of after twenty minutes of `apt`.
-- **Budget-capped.** Server count, creates-per-hour and estimated monthly spend are enforced
-  server-side, which is what makes it safe to hand an agent the MCP tools and let it create its
-  own box.
+- **BYOC — bring your own cloud.** Your AWS account, your Hetzner project, Azure, GCP, or a
+  machine you already own. Rocky Surf holds the credential and calls the API. The resources and
+  the bill are yours.
+- **BYOK — bring your own keys.** Your Claude Code subscription, your Codex login, your API keys.
+  Rocky Surf installs the agents; you sign them in.
+- **BYOR — bring your own repos.** Your GitHub repositories, cloned onto the box during setup
+  using a token you supply.
 
-## Quickstart
+Rocky Surf resells nothing and sits in the middle of nothing. Any feature that would make it a
+party to those relationships — proxying your cloud spend, pooling your API keys, holding your
+code — is out of bounds by definition, not by preference.
 
-Docker Compose, from a checkout. This works today, with no npm publish involved:
+## Five principles
+
+These five principles decide what gets built. The long version is in
+[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md), and issues and pull requests should name the principle
+they serve.
+
+1. **Make it as easy as possible to create and manage cloud servers for agentic coding.** The
+   distance between "I want a box" and "I am SSH'd into a box with my agents installed" is the
+   number we are always shrinking.
+2. **Make it as easy as possible to add a new cloud provider.** A new cloud is one package and one
+   config block, never a change to core.
+3. **Make it as easy as possible to create Surge Packs.** A pack is one YAML file. No
+   registration, no gatekeeping, no build step.
+4. **Make Rocky Surf easy to extend via modular components.** Extension happens behind seams — the
+   provider SDK, packs as data, thin clients over one API — not through them.
+5. **Make it easy to combine components without coding.** Composition is configuration. An
+   operator wires up providers and caps spending without touching TypeScript.
+
+## Install
+
+Docker Compose, from a checkout — the path that works today:
 
 ```bash
 git clone https://github.com/amroja-biz/rockysurf
@@ -48,63 +57,76 @@ cd rockysurf
 docker compose up --build
 ```
 
-It prints an admin password **once** (`docker compose logs rockysurf | grep -A3 'first boot'`).
-Open <http://127.0.0.1:3000>, sign in, and the first-run wizard asks for a cloud credential.
-
-Once v0.1.0 is on npm, the same thing without a checkout:
+It prints an admin password once:
 
 ```bash
-npx rockysurf
+docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
-> **Not yet published.** The `npx` path needs the nine packages on the public registry, which
-> happens at the v0.1.0 launch — see [`docs/RELEASING.md`](docs/RELEASING.md). Until then, use
-> the Compose path above, or run `pnpm -r build` in a checkout and start
-> `node packages/rockysurf/dist/bin.js` — the same binary `npx` will fetch.
+Open <http://127.0.0.1:3000> and sign in with it.
 
-Requires Node 24 or newer for the `npx` path; the Compose image brings its own. With no cloud
-configured it still comes up on an in-memory provider, so you can create a server, watch it boot
-and terminate it before deciding whether to paste a real token.
+Once v0.1.0 is on npm there is a second path, `npx rockysurf`, which needs Node 24 or newer. It is
+not published yet — until then use Compose, or run `pnpm -r build` in a checkout and start
+`node packages/rockysurf/dist/bin.js`, which is the same binary `npx` will fetch.
 
-Full instructions, including where the data lives and what to back up:
-[`docs/self-hosting.md`](docs/self-hosting.md).
+With no cloud configured, Rocky Surf still starts on an in-memory provider, so you can create a
+server, watch it boot and terminate it before deciding whether to paste a real token.
 
-## Providers
+### Configuration
 
-You bring the cloud. Every provider is disabled until you enable it, so a fresh install cannot
-spend money by accident.
+Settings live in one YAML file. Rocky Surf reads the first of these it finds and prints the path
+it used on startup:
 
-| Provider | What it is | Stop/start | Host key | Docs |
-|---|---|---|---|---|
-| **Hetzner** | Hetzner Cloud, plain REST — the cheapest way to start | yes, IP survives | minted before boot | [`docs/providers/hetzner.md`](docs/providers/hetzner.md) |
-| **AWS** | EC2 via `RunInstances`, no CloudFormation | yes, **public IP changes** | minted before boot | [`docs/providers/aws.md`](docs/providers/aws.md) |
-| **Azure** | ARM REST, no vendor SDK; one resource group you own | yes, IP survives | minted before boot* | [`docs/providers/azure.md`](docs/providers/azure.md) |
-| **GCP** | Compute Engine v1 REST, no vendor SDK | yes, **public IP changes*** | minted before boot | [`docs/providers/gcp.md`](docs/providers/gcp.md) |
-| **BYO** | Machines you already have, managed over SSH | **no** — not our power state | trust-on-first-use, or pin it | [`docs/providers/byo.md`](docs/providers/byo.md) |
+1. `--config <path>`
+2. `./rockysurf.config.yaml`, in the directory you ran the command from
+3. `~/.rockysurf/config.yaml`
 
-The full table, with what each value was measured against, is in
-[`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md). Writing your own is
-[`docs/writing-a-provider.md`](docs/writing-a-provider.md).
+Copy [`rockysurf.config.example.yaml`](rockysurf.config.example.yaml) to one of the last two and
+edit it. Every value in the example is the default, so delete whatever you do not care about.
+Rocky Surf writes settings you save from the web UI back into whichever file it loaded.
 
-**\* Azure and GCP are newer than the rest, and they are no longer newer in the same way.**
-**GCP has now been run against real Compute Engine** — create, bootstrap and terminate on both
-architectures, with the host key core minted presented on first contact and no orphans left
-behind — so its host-key claim is measured. What that run never did is stop and start a box, so
-GCP's stop/start row and its "public IP changes" are still reasoned rather than observed.
-**Azure has had no run against real infrastructure at all**; its values are reasoned from
-Microsoft's documentation and enforced by tests against an in-memory cloud, and its host-key
-claim is expected rather than measured. The capability matrix marks exactly which values are
-which.
+Under Docker the live config is inside the `rockysurf-data` volume at
+`/data/rockysurf.config.yaml`, not in your checkout. Copy it out, edit, copy it back, restart:
 
-**On BYO specifically:** claiming one of your machines creates a `rocky` account on it with
-passwordless sudo and appends Rocky Surf's key to that account's `authorized_keys`. Releasing the
-host **does not undo that** — `terminate` gives the host back to the pool and deliberately runs
-nothing on a machine Rocky Surf does not own. Remove the account yourself if you want it gone.
+```bash
+docker compose cp rockysurf:/data/rockysurf.config.yaml ./rockysurf.config.yaml
+$EDITOR rockysurf.config.yaml
+docker compose cp ./rockysurf.config.yaml rockysurf:/data/rockysurf.config.yaml
+docker compose restart
+```
 
-## Surge Packs
+Rocky Surf listens on `127.0.0.1` only. It holds your cloud credentials and an SSH private key for
+every server it creates, and it has one password in front of it and no TLS of its own — so if you
+widen `server.host`, put a reverse proxy or a firewall in front of it. Full detail:
+[`docs/self-hosting.md`](docs/self-hosting.md) and [`SECURITY.md`](SECURITY.md).
 
-A **Surge Pack** is the software a box is created with, written as YAML and reviewable in a pull
-request:
+## Creating a server
+
+### Pick a provider
+
+Rocky Surf ships every provider switched off until you enable it in the config file, so a fresh
+install cannot spend money by accident.
+
+| Provider | Getting the credential |
+|---|---|
+| **Hetzner** | The quickest start. Make a project at console.hetzner.com, mint a read/write API token, and export it — the config file references the environment variable. |
+| **AWS** | The standard credential chain, never a key in the config file. Needs an IAM policy and an explicit `sshAllowedCidr`. |
+| **Azure** | Your environment, a managed identity, or `az login`. Needs a resource group you create and a least-privilege role. |
+| **GCP** | Application Default Credentials. Needs a project and an explicit `sshAllowedCidr`. |
+| **BYO** | Machines you already have, driven over SSH. No cloud API involved. |
+
+**You may need a live session with your cloud before a create will work.** AWS, Azure and GCP read
+credentials from the same place the rest of your tooling keeps them, which for most people is a
+login that expires: `aws sso login`, `az login`, `gcloud auth application-default login`. If that
+session has lapsed, so has Rocky Surf's access, and the fix is to log in again rather than to
+change anything here. Hetzner is the exception — its token is a long-lived string you paste once.
+
+Per-provider setup, including the IAM policy and the least-privilege roles, is in
+[`docs/providers/`](docs/providers/).
+
+### Pick a Surge Pack
+
+A **Surge Pack** is the software your box is built with, written as one YAML file:
 
 ```yaml
 version: 1
@@ -112,139 +134,141 @@ pack:  { packId: rust-dev, name: Rust, tools: [build-essential, git, rustup] }
 tools: [ … ]
 ```
 
-Six ship in [`packs/`](packs/README.md): `ai-coding-agents` (Claude Code), `amp-agents`,
-`codex-cli`, `gas-town`, `open-claw` and `open-code`. They share one base toolchain by
-referencing tool ids rather than redefining them.
+A pack is a readable list of tools and their install scripts, reviewable in a pull request rather
+than baked into an image someone else built months ago, and your box is assembled from it while
+you watch the install feed. Ten ship in [`packs/`](packs/), covering Claude Code, Codex CLI, Amp,
+OpenCode, Gas Town and others, and they share one base toolchain by referencing tool ids rather
+than redefining them.
 
-Each one also carries a `guide`: the post-boot instructions its own author wrote, shown on the
-server's page the moment the box is running. No credential of yours reaches a box during
-bootstrap, so this is where a pack tells you how to sign the agents in — and where it admits
-anything the install could not finish on your behalf.
+Each pack carries a `guide` its author wrote, shown on the server's page the moment the box is
+running. No credential of yours reaches a box during bootstrap, so the guide is where a pack tells
+you how to sign the agents in, and where it admits anything the install could not finish for you.
 
-Every install script must be idempotent, `$ARCH`-aware, non-interactive and honest about which
-user it runs as. The mechanical half of that is checked on every test run against the shipped
-pack files (`packages/core/src/packs/packs.test.ts`): no hardcoded architectures, no `apt-get
-install` without `-y`, no `sudo` inside a `runAs: rocky` script, no unguarded append to a file.
-Idempotency is the rule that catches people out, and the harness proves it: every shipped
-pack's scripts run **twice in the same container**, on amd64 and arm64, with the resume journal
-discarded between runs (`scripts/pack-smoke.mjs`, run by CI on every pull request — and
-runnable locally with one command per pack).
+Every install script has to be idempotent, architecture-aware, non-interactive and honest about
+which user it runs as. CI proves it the tedious way: every shipped pack's scripts run twice in the
+same container, on amd64 and arm64, with the resume journal thrown away in between.
 
-The authoring contract is [`docs/writing-a-pack.md`](docs/writing-a-pack.md). If you use Claude
-Code you can hand that contract to your own session instead of reading it: this repository ships
-the [`creating-surge-packs`](.claude/skills/creating-surge-packs/) Agent Skill, which a session
-started in a checkout picks up with no install step. Describe the box you want and it interviews
-you, writes the file, and drives the same loader test and smoke harness CI does.
+The authoring contract is [`docs/writing-a-pack.md`](docs/writing-a-pack.md), and the repository
+ships a Claude Code skill that will interview you and write the file for you.
 
-## Agents can drive it
+### Connect a GitHub repo
 
-`rockysurf mcp` exposes the lifecycle as MCP tools, so an agent can create, inspect, stop and
-destroy its own boxes. It speaks HTTP to the control plane exactly as a browser does, so every
-limit applies to it by construction — there is no second code path.
+The create form has a **Repositories** field: one git URL per line, each cloned into the home
+directory of the box during setup. Public URLs clone anonymously, with no credentials and nothing
+to configure.
 
-Scopes come from your config file, not from the MCP client's launch command, and default to
-`[read, stop]`. `create` and `terminate` are separate opt-in scopes: making a box costs money,
-destroying one costs work, and only one of those is recoverable.
+Private repositories need a GitHub token, and the Settings page takes one two ways:
 
-The honest claim is **budget-capped, not sandboxed**. What that does and does not protect against
-is written out in [`SECURITY.md`](SECURITY.md#the-mcp-server-threat-model).
+- **Connect GitHub** — press the button, type the short code it shows on github.com, approve, and
+  the token comes back. Nothing to export and no restart. It asks for the `repo` scope, which is
+  read and write on every repository the account can reach, and Rocky Surf stores that token
+  encrypted under your account instead of writing it to the config file. The button needs a GitHub
+  OAuth App you register yourself, which takes about a minute — Rocky Surf ships none of its own,
+  because an app somebody else registered could have its tokens revoked by them. The card walks you
+  through it and stays visible, disabled, until you paste the client ID.
+- **Access tokens** — paste a personal access token instead. One instance-wide token covers
+  everything, and you can add a token per repository, owner or host when a fine-grained PAT only
+  reaches one repo. Most specific match wins. The settings page writes these into the config file,
+  so treat that file as a credential once you have used them, or point it at an environment
+  variable with `${GITHUB_PAT}` and keep the token out of the file entirely.
 
-## How it compares to Coder
+The box receives the token in a `0600` file and clones with it in a way that keeps it out of `ps`
+output and out of the checkout's `.git/config`. Packs read it as `$GITHUB_TOKEN`, which is also
+the name `gh` picks up with no further setup.
 
-[Coder](https://coder.com) is a mature, multi-user workspace platform with Terraform templates,
-RBAC and an enterprise story; Rocky Surf is a single-admin binary that does one much smaller
-thing — persistent agent boxes on your own cloud, with a spend cap and an MCP surface — and if
-you need teams, templates or SSO today, use Coder.
+## Where your servers and settings are kept
 
-## Non-goals
+One directory holds everything Rocky Surf knows: `~/.rockysurf` by default, `/data` inside the
+container, `server.dataDir` in general. Rocky Surf creates it owner-only on first boot.
 
-Stated so nobody deploys this expecting them:
+| File | What it is |
+|---|---|
+| `rockysurf.db` | SQLite: your servers, packs, sessions and encrypted secrets |
+| `secret.key` | The master key those secrets are encrypted with |
+| `rockysurf.config.yaml` | Your configuration |
+| `packs/` | Your own pack files, if you keep any |
 
-- **Not devcontainers.** A box is a whole machine with a persistent disk, not a container
-  definition tracked in your repo. There is no `devcontainer.json` support and none planned.
-- **Not ephemeral sandboxes.** Rocky Surf optimises for boxes that live for weeks. If you want
-  per-task throwaway compute that boots in a second, this is the wrong shape.
-- **Not Windows targets.** The boxes are Ubuntu 24.04; every pack is `apt`-based and the
-  bootstrap agent assumes systemd and POSIX. Windows dev boxes are not supported.
-- **Not multi-tenant.** One admin, one password, no privilege separation inside the process. Do
-  not put it in front of a team and treat the login as a boundary.
+**Back up the whole directory.** The database and the key are useless without each other: a
+database without its key is undecryptable, and a key without its database knows nothing about your
+servers.
 
-## Security
-
-The control plane holds your cloud credentials and an SSH private key for every server it
-creates. Briefly:
-
-- **It listens on `127.0.0.1` by default.** There is no TLS of its own and one password in front
-  of the UI. Widening `server.host` is a deliberate act that should be paired with a reverse
-  proxy or a firewall.
-- **Secrets are sealed with AES-256-GCM** under a master key in `<dataDir>/secret.key` (or
-  `ROCKYSURF_SECRET_KEY`). **Back that file up** — losing it means recreating every server.
-- **No HTTP route returns decrypted secret material**, with exactly one audited, ownership-checked
-  exemption: downloading the private key for a server you own. A test enforces the rule against
-  the source tree rather than trusting review.
-- **Host keys are pinned with no trust-on-first-use window** on both clouds — core mints the
-  host key before the instance exists and verifies it on the first connection, which is the one
-  carrying secrets.
-
-Everything above in full, plus the residual risks and how to report a vulnerability:
-[`SECURITY.md`](SECURITY.md).
-
-## Provenance
-
-Rocky Surf started as a hosted, AWS-serverless product and was rewritten as a portable
-self-hosted control plane. That rewrite was preceded by a throwaway de-risking spike that built
-and destroyed real servers on two clouds before any interface was frozen; its findings memo
-became [the ADRs](docs/adr/llms.txt), and its transcripts are still in
-[`spike/recordings/`](spike/recordings/). The claims in the capability matrix are measurements
-from those runs, not intentions — and the one column with no real-infrastructure run behind it
-says so. The development story, warts included, is in
-[`docs/history/DEVLOG.md`](docs/history/DEVLOG.md).
-
-## Roadmap
-
-Wanted, deliberately not in v0.1:
-
-- **Idle auto-stop** — stop a box that nobody has touched, which is the single biggest saving
-  left on the table.
-- **More providers** — GCP and DigitalOcean, against the same frozen SDK.
-- **A GitHub App** — so repo access does not mean pasting a personal access token.
-- **Multi-user** — real accounts and per-user ownership, rather than one admin password.
-
-## Contributing
-
-Development setup, the gates, and how the pieces fit: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+**Stop the process before you copy it.** The database runs in WAL mode, and a clean shutdown folds
+the write-ahead log back in. Copy `rockysurf.db` from a running installation and you may get a
+file quietly missing the last few minutes.
 
 ```bash
-pnpm install
-pnpm run check      # lint + typecheck + test across the workspace
+# npx or from source — stop it first (Ctrl-C, or systemctl stop)
+tar czf rockysurf-backup-$(date +%F).tar.gz -C ~ .rockysurf
+
+# Docker Compose
+docker compose stop
+docker run --rm -v rockysurf-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/rockysurf-backup-$(date +%F).tar.gz -C /data .
+docker compose start
 ```
 
-The one architectural rule worth knowing before you read the code: **`@rockysurf/core` may import
-`@rockysurf/provider-sdk` and nothing else from this workspace.** Providers are loaded at runtime
-through configuration, and [`scripts/check-core-deps.mjs`](scripts/check-core-deps.mjs) enforces
-it in CI rather than in review.
+If you cannot stop it, use SQLite's own online backup (`sqlite3 rockysurf.db ".backup out.db"`)
+and copy `secret.key` alongside. Restoring is putting the directory back and starting up;
+migrations run on boot.
 
-## Documentation
+**The backup holds every provider credential and every server's private key**, with the key to
+decrypt them sitting in the same archive — so encrypt it, or hold `secret.key` outside the
+filesystem with `ROCKYSURF_SECRET_KEY` and back up only the database. And **`docker compose down
+-v` destroys the volume**, taking your credentials and the SSH keys for boxes that are still
+running and still billing.
+
+## Put a safety net under your cloud account
+
+Rocky Surf enforces its own guardrails server-side, so they apply to the web UI, the CLI and an
+agent driving the MCP tools alike:
+
+```yaml
+limits:
+  maxServers: 5
+  createRatePerHour: 4
+  spendCap:
+    amount: 50
+    currency: USD
+```
+
+Those limits are worth setting, but they should not be your only defence. The spend cap is an
+estimate, not a bill: it is computed from bundled price data, and an offering your provider quotes
+no price for contributes real spend the cap cannot see. Hitting the cap blocks new servers without
+stopping the ones already running, which is the difference between a budget cap and a sandbox.
+
+Set limits at the cloud too, where the numbers come from your actual bill:
+
+- **Billing alerts and budgets.** AWS Budgets with an alert threshold, plus Cost Anomaly
+  Detection; budgets in Azure Cost Management; budget alerts on your GCP billing account. Most of
+  them notify rather than stop, so set the threshold well below the number that would hurt.
+- **A blast radius you chose.** Give Rocky Surf its own AWS account, Azure subscription, GCP
+  project or Hetzner project. A mistake then costs you that project and nothing else, and the
+  bill tells you which spending was Rocky Surf's.
+- **A credential that can only do this job.** The AWS role in
+  [`deploy/aws/iam-role.yaml`](deploy/aws/iam-role.yaml) and the least-privilege roles in the
+  provider docs exist so the token in Rocky Surf's hands cannot reach the rest of your account.
+- **An occasional look at the console.** Rocky Surf reconciles what it believes against what the
+  cloud reports and tells you when the two disagree, but it only knows about resources it created.
+
+## More
 
 | Document | What it covers |
 |---|---|
-| [`docs/self-hosting.md`](docs/self-hosting.md) | Running it: both install paths, data, upgrades, backup and restore |
-| [`SECURITY.md`](SECURITY.md) | Credential custody, SSH trust, network defaults, the MCP threat model, reporting |
-| [`docs/adr/llms.txt`](docs/adr/llms.txt) | Index of architecture decisions — start here for the design |
-| [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | What each provider can do, and the evidence |
-| [`docs/providers/hetzner.md`](docs/providers/hetzner.md) | Hetzner: the token, locations and arm64 stock, what terminate leaves behind |
-| [`docs/providers/aws.md`](docs/providers/aws.md) | AWS: the minimal IAM policy, credentials, SSH access |
-| [`docs/providers/azure.md`](docs/providers/azure.md) | Azure: the least-privilege role, credentials, what terminate deletes |
-| [`docs/providers/byo.md`](docs/providers/byo.md) | BYO: claiming a host, host keys, what release leaves behind |
-| [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Adding a compute provider against the frozen SDK |
-| [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | The pack-author contract — normative, CI-enforced |
-| [`.claude/skills/`](.claude/skills/README.md) | Agent Skills that teach a Claude Code session these contracts — live in a checkout, no install |
-| [`docs/RELEASING.md`](docs/RELEASING.md) | Publishing the nine packages to npm |
+| [`docs/self-hosting.md`](docs/self-hosting.md) | Both install paths, data, upgrades, backup and restore |
+| [`SECURITY.md`](SECURITY.md) | Credential custody, SSH trust, network defaults, the MCP threat model |
+| [`docs/adr/llms.txt`](docs/adr/llms.txt) | The architecture decisions — start here for the design |
+| [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | What each provider can do, and the evidence behind each claim |
+| [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | The pack-author contract |
+| [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Adding a cloud against the frozen SDK |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, gates, conventions |
+
+Rocky Surf is deliberately small: there is no devcontainer support, no per-task throwaway
+sandboxes, no Windows targets and no multi-tenancy — one admin, one password, no privilege
+separation inside the process. `rockysurf mcp` exposes the lifecycle as MCP tools so an agent can
+create, inspect, stop and destroy its own boxes, with `create` and `terminate` as separate opt-in
+scopes.
 
 ## License
 
-[MIT](LICENSE).
-
-**The Rocky Surf name and logo are not covered by the MIT license.** Fork the code freely; give
-the fork its own name. See [`TRADEMARK.md`](TRADEMARK.md).
+[MIT](LICENSE). **The Rocky Surf name and logo are not covered by it** — fork the code freely and
+give the fork its own name. See [`TRADEMARK.md`](TRADEMARK.md).
