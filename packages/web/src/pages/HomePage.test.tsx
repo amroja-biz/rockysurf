@@ -62,7 +62,7 @@ describe('HomePage', () => {
     const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(sections).toEqual([
       'Bring your own cloud, keys and repos',
-      'Five principles',
+      'Rocky Surf Principles',
       'Install',
       'Creating a server',
       'Where your servers and settings are kept',
