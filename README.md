@@ -36,26 +36,15 @@ telemetry, nothing hosted.
 Rocky Surf resells nothing and sits in the middle of nothing. Proxying your cloud spend, pooling
 your API keys, holding your code — out of bounds by definition, not by preference.
 
-## Five principles
+## Rocky Surf Principles
 
-Every issue and pull request should name the principle it serves. Long version:
-[CORE-PRINCIPLES.md](CORE-PRINCIPLES.md).
-
-1. **Make it as easy as possible to create and manage cloud servers for agentic coding.** The
-   distance between "I want a box" and "I am SSH'd into a box with my agents installed" is the
-   number we are always shrinking.
-2. **Make it as easy as possible to add a new cloud provider.** A new cloud is one package and one
-   config block, never a change to core.
-3. **Make it as easy as possible to create Surge Packs.** A pack is one YAML file. No
-   registration, no gatekeeping, no build step.
-4. **Make Rocky Surf easy to extend via modular components.** Extension happens behind seams — the
-   provider SDK, packs as data, thin clients over one API — not through them.
-5. **Make it easy to combine components without coding.** Composition is configuration. An
-   operator wires up providers and caps spending without touching TypeScript.
+1. **Make it as easy as possible to create and manage cloud servers for agentic coding.** 
+2. **Make it as easy as possible to add a new cloud provider.** 
+3. **Make it as easy as possible to create Surge Packs.** 
+4. **Make Rocky Surf easy to extend via modular components.** 
+5. **Make it easy to combine components without coding.** 
 
 ## Install
-
-Docker Compose, from a checkout — the path that works today:
 
 ```bash
 git clone https://github.com/amroja-biz/rockysurf
@@ -63,14 +52,13 @@ cd rockysurf
 docker compose up --build
 ```
 
-It prints an admin password once:
+It prints an admin password once - save it:
 
 ```bash
 docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
-Open <http://127.0.0.1:3000> and sign in with it. `npx rockysurf` (Node 24 or newer) arrives with
-v0.1.0.
+Open <http://127.0.0.1:3000> and sign in with your admin password. 
 
 With no cloud configured you get an in-memory provider: create a server, watch it boot, terminate
 it, before pasting a real token.
@@ -90,8 +78,6 @@ Detail: [`docs/self-hosting.md`](docs/self-hosting.md) and [`SECURITY.md`](SECUR
 
 ### Pick a provider
 
-Every provider ships switched off, so a fresh install cannot spend money by accident.
-
 | Provider | Getting the credential |
 |---|---|
 | **Hetzner** | Quickest start. Mint a read/write API token at console.hetzner.com and export it. |
@@ -107,7 +93,7 @@ provider: [`docs/providers/`](docs/providers/).
 
 ### Pick a Surge Pack
 
-A **Surge Pack** is the software your box is built with, one YAML file:
+A **Surge Pack** is a software bundle that is installed on your box, defined in a YAML file:
 
 ```yaml
 version: 1
@@ -115,7 +101,7 @@ pack:  { packId: rust-dev, name: Rust, tools: [build-essential, git, rustup] }
 tools: [ … ]
 ```
 
-A readable list of tools and install scripts — reviewable in a pull request, not baked into
+A list of tools and install scripts — reviewable in a pull request, not baked into
 someone else's image — and your box is built from it while you watch the install feed. Ten ship in
 [`packs/`](packs/), covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town and others.
 
