@@ -13,14 +13,14 @@ Have they been snooping around your laptop, exposing API keys? Or connecting to 
 being told? And aren't you getting a little tired of killing them when you close your laptop by
 mistake?
 
-Rocky Surf solves this problem by making it easy to run agents where they belong — in cloud
+Rocky Surf solves this problem by making it easy to run agents where they belong - in cloud
 accounts that you own, preinstalled with your favorite tools and repos.
 
 Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on it, and
 hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches and your
 shell history are where you left them. A stopped box costs storage, not compute.
 
-One process you run yourself — web UI, HTTP API, SQLite file. One admin, no accounts, no
+One process you run yourself (web UI, HTTP API, SQLite file). One admin, no accounts, no
 telemetry, nothing hosted.
 
 ## Bring your own cloud, keys and repos
@@ -33,16 +33,16 @@ telemetry, nothing hosted.
 - **BYOR — bring your own repos.** Your GitHub repositories, cloned onto the box during setup
   using a token you supply.
 
-Rocky Surf resells nothing and sits in the middle of nothing. Proxying your cloud spend, pooling
-your API keys, holding your code — out of bounds by definition, not by preference.
+Rocky Surf resells nothing and sits in the middle of nothing. It won't proxy your cloud spend,
+pool your API keys, or hold your code, and features that would need it to get refused.
 
 ## Rocky Surf Principles
 
-1. **Make it as easy as possible to create and manage cloud servers for agentic coding.** 
-2. **Make it as easy as possible to add a new cloud provider.** 
-3. **Make it as easy as possible to create Surge Packs.** 
-4. **Make Rocky Surf easy to extend via modular components.** 
-5. **Make it easy to combine components without coding.** 
+1. **Make it as easy as possible to create and manage cloud servers for agentic coding.**
+2. **Make it as easy as possible to add a new cloud provider.**
+3. **Make it as easy as possible to create Surge Packs.**
+4. **Make Rocky Surf easy to extend via modular components.**
+5. **Make it easy to combine components without coding.**
 
 ## Install
 
@@ -58,21 +58,22 @@ It prints an admin password once - save it:
 docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
-Open <http://127.0.0.1:3000> and sign in with your admin password. 
+Open <http://127.0.0.1:3000> and sign in with your admin password.
 
-With no cloud configured you get an in-memory provider: create a server, watch it boot, terminate
-it, before pasting a real token.
+You don't need a cloud account to try it. With no cloud configured you get an in-memory provider,
+so you can create a server, watch it boot, and terminate it before pasting a real token.
 
 ### Configuration
 
-Settings live in one YAML file — `--config <path>`, else `./rockysurf.config.yaml`, else
+Settings live in one YAML file: `--config <path>`, else `./rockysurf.config.yaml`, else
 `~/.rockysurf/config.yaml`. Rocky Surf prints the one it used and writes web-UI changes back to
 it. Start from [`rockysurf.config.example.yaml`](rockysurf.config.example.yaml), where every value
-is the default. Under Docker the live file is in the `rockysurf-data` volume, not your checkout.
+is the default. Under Docker the live file is in the `rockysurf-data` volume rather than your
+checkout.
 
 Rocky Surf listens on `127.0.0.1` only, behind one password and no TLS, and it holds your cloud
-credentials and an SSH key per server — widen `server.host` and put a proxy or firewall in front.
-Detail: [`docs/self-hosting.md`](docs/self-hosting.md) and [`SECURITY.md`](SECURITY.md).
+credentials and an SSH key per server. If you widen `server.host`, put a proxy or firewall in
+front. Detail: [`docs/self-hosting.md`](docs/self-hosting.md) and [`SECURITY.md`](SECURITY.md).
 
 ## Creating a server
 
@@ -93,7 +94,7 @@ provider: [`docs/providers/`](docs/providers/).
 
 ### Pick a Surge Pack
 
-A **Surge Pack** is a software bundle that is installed on your box, defined in a YAML file:
+A **Surge Pack** is a software bundle that gets installed on your box, defined in a YAML file:
 
 ```yaml
 version: 1
@@ -101,16 +102,16 @@ pack:  { packId: rust-dev, name: Rust, tools: [build-essential, git, rustup] }
 tools: [ … ]
 ```
 
-A list of tools and install scripts — reviewable in a pull request, not baked into
-someone else's image — and your box is built from it while you watch the install feed. Ten ship in
+It's just a list of tools and install scripts. You can read the whole file in a pull request
+before trusting it, and you watch the install feed while your box is built from it. Ten ship in
 [`packs/`](packs/), covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town and others.
 
 Each pack carries a `guide`, shown once the box is running. No credential of yours reaches a box
-during bootstrap, so that is where a pack tells you how to sign the agents in.
+during bootstrap, so the guide is where a pack tells you how to sign the agents in.
 
-Scripts must be idempotent, architecture-aware and non-interactive; CI runs every shipped pack's
-twice, on amd64 and arm64. Contract: [`docs/writing-a-pack.md`](docs/writing-a-pack.md) — or let
-the repo's Claude Code skill write yours.
+Scripts must be idempotent, architecture-aware and non-interactive; CI runs every shipped pack
+twice, on amd64 and arm64. The contract is in [`docs/writing-a-pack.md`](docs/writing-a-pack.md),
+or let the repo's Claude Code skill write yours.
 
 ### Connect a GitHub repo
 
@@ -118,11 +119,11 @@ The create form's **Repositories** field takes one git URL per line, cloned into
 directory. Public URLs clone anonymously; private ones need a GitHub token, and Settings takes one
 two ways:
 
-- **Connect GitHub** — press the button, enter the code it shows on github.com, approve. It asks
+- **Connect GitHub** - press the button, enter the code it shows on github.com, approve. It asks
   for the `repo` scope: read and write on every repository the account can reach. The token is
-  stored encrypted, not in the config file. You register the OAuth App yourself; Rocky Surf ships
-  none of its own, because whoever registers one can revoke its tokens.
-- **Access tokens** — paste a personal access token. One covers everything, or add tokens per
+  stored encrypted (it never lands in the config file). You register the OAuth App yourself; Rocky
+  Surf ships none of its own, because whoever registers one can revoke its tokens.
+- **Access tokens** - paste a personal access token. One covers everything, or add tokens per
   repository, owner or host; most specific wins. These land in the config file, so treat it as a
   credential, or point it at `${GITHUB_PAT}`.
 
@@ -140,9 +141,9 @@ general. Created owner-only on first boot.
 | `rockysurf.config.yaml` | Your configuration |
 | `packs/` | Your own pack files, if you keep any |
 
-**Back up the whole directory** — the database and the key are useless without each other — and
-**stop the process first**, because the database runs in WAL mode and copying it live can silently
-lose the last few minutes.
+**Back up the whole directory** (the database and the key are useless without each other), and
+**stop the process first**: the database runs in WAL mode, and copying it live can silently lose
+the last few minutes.
 
 ```bash
 tar czf rockysurf-backup-$(date +%F).tar.gz -C ~ .rockysurf
@@ -152,11 +153,11 @@ docker run --rm -v rockysurf-data:/data -v "$PWD":/backup alpine \
   tar czf /backup/rockysurf-backup-$(date +%F).tar.gz -C /data .
 ```
 
-If you cannot stop it, use SQLite's online backup (`sqlite3 rockysurf.db ".backup out.db"`) and
+If you can't stop it, use SQLite's online backup (`sqlite3 rockysurf.db ".backup out.db"`) and
 copy `secret.key` alongside. Restoring is putting the directory back; migrations run on boot.
 
 **The backup holds every provider credential and every server's private key**, next to the key
-that decrypts them — so encrypt it, or keep `secret.key` outside the filesystem with
+that decrypts them. Encrypt it, or keep `secret.key` outside the filesystem with
 `ROCKYSURF_SECRET_KEY`. And **`docker compose down -v` destroys the volume**, taking the SSH keys
 for boxes that may still be running and billing.
 
@@ -174,9 +175,9 @@ limits:
     currency: USD
 ```
 
-Set them, but do not stop there. The spend cap is an estimate from bundled price data, not a bill:
-an offering your provider quotes no price for spends money the cap cannot see. And hitting it
-blocks new servers without stopping running ones — a budget cap, not a sandbox.
+Set them, but don't stop there. The spend cap is an estimate from bundled price data, and an
+offering your provider quotes no price for spends money the cap can't see. Hitting the cap blocks
+new servers without stopping running ones - a budget cap, not a sandbox.
 
 Set limits at the cloud too, where the numbers come from your actual bill:
 
@@ -197,7 +198,7 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 |---|---|
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Install paths, data, upgrades, backup and restore |
 | [`SECURITY.md`](SECURITY.md) | Credential custody, SSH trust, the MCP threat model |
-| [`docs/adr/llms.txt`](docs/adr/llms.txt) | The architecture decisions — start here for the design |
+| [`docs/adr/llms.txt`](docs/adr/llms.txt) | The architecture decisions - start here for the design |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | What each provider can do, and the evidence for it |
 | [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | The pack-author contract |
 | [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Adding a cloud against the frozen SDK |
@@ -205,9 +206,9 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,
 no multi-tenancy. `rockysurf mcp` exposes the lifecycle as MCP tools, so an agent can create,
-inspect, stop and destroy its own boxes — `create` and `terminate` are separate opt-in scopes.
+inspect, stop and destroy its own boxes (`create` and `terminate` are separate opt-in scopes).
 
 ## License
 
-[MIT](LICENSE). **The Rocky Surf name and logo are not covered by it** — fork the code freely and
+[MIT](LICENSE). **The Rocky Surf name and logo are not covered by it** - fork the code freely and
 give the fork its own name. See [`TRADEMARK.md`](TRADEMARK.md).
