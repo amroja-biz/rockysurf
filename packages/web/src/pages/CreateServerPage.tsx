@@ -603,6 +603,15 @@ export function CreateServerPage() {
    * decision about that reason.
    */
   const [createAnyway, setCreateAnyway] = useState(false)
+  /**
+   * A repository is asked for, never demanded (issue #90). A `requiresRepos` pack still asks —
+   * that is what the flag means — but an empty list refuses nothing: the first submit offers
+   * this confirmation instead, on the `createAnyway` doctrine above (the checkbox appears with
+   * its reason on screen, so ticking it is a decision about that reason). `offered` is the
+   * submit having happened; `confirmed` is the user's answer.
+   */
+  const [withoutReposOffered, setWithoutReposOffered] = useState(false)
+  const [createWithoutRepos, setCreateWithoutRepos] = useState(false)
   const [createdServerId, setCreatedServerId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -769,6 +778,16 @@ export function CreateServerPage() {
     }
   }, [repositories, resolutions, requiresRepos])
 
+  // A consent given about an empty list is about THAT list: the moment a repository is added,
+  // both the offer and any answer to it are withdrawn, so removing the line later re-asks
+  // rather than riding on a tick given in a different situation (issue #90).
+  useEffect(() => {
+    if (repositories.length > 0) {
+      setWithoutReposOffered(false)
+      setCreateWithoutRepos(false)
+    }
+  }, [repositories])
+
   /**
    * Add a picked repository to the box (rockysurf-mh8f).
    *
@@ -801,7 +820,6 @@ export function CreateServerPage() {
       if (!resolution) return 'Choose a provider'
       if (!resolution.ok) return resolution.reason
     }
-    if (requiresRepos && repositories.length === 0) return 'This pack needs at least one repository'
     if (requiresRdp) {
       if (rdpPassword.length < 8) return 'Remote desktop password must be at least 8 characters'
       if (rdpPassword !== rdpPasswordConfirm) return 'Remote desktop passwords do not match'
@@ -815,6 +833,13 @@ export function CreateServerPage() {
     const problem = validate()
     if (problem) {
       setSubmitError(problem)
+      return
+    }
+    // Not in `validate()`, because it is not a defect in what the user entered — it is a
+    // question the form has not asked yet (issue #90).
+    if (requiresRepos && repositories.length === 0 && !createWithoutRepos) {
+      setWithoutReposOffered(true)
+      setSubmitError('No repository is listed. Confirm below to create the server without one.')
       return
     }
     setSubmitError(null)
@@ -833,7 +858,9 @@ export function CreateServerPage() {
         ...(description.trim() ? { description: description.trim() } : {}),
         // The offering the user was shown a price for — not whatever core would pick now.
         ...(resolved ? { offeringId: resolved.id, arch: resolved.arch } : {}),
-        ...(requiresRepos ? { repositories } : {}),
+        // Omitted when empty — a confirmed repo-less create goes on the wire exactly like a
+        // create for a pack that never asked (issue #90).
+        ...(requiresRepos && repositories.length > 0 ? { repositories } : {}),
         ...(createAnyway ? { createAnyway: true } : {}),
         ...(sshKeyOption === 'provide' ? { sshPublicKey: sshPublicKey.trim() } : {}),
         ...(requiresRdp ? { rdpPassword } : {}),
@@ -1183,9 +1210,9 @@ export function CreateServerPage() {
                 the token — not an environment variable core reads, because it reads none
                 (rockysurf-yzae wired the config key through; the box end was already done). */}
             <p className="hint">
-              One git URL per line. They are cloned onto the box during setup. Public URLs need no
-              credentials; private repositories need <code>github.pat</code> set in{' '}
-              <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+              One git URL per line, or none at all. They are cloned onto the box during setup.
+              Public URLs need no credentials; private repositories need <code>github.pat</code> set
+              in <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
             </p>
             {/* Above the field rather than beside it, because the order is the workflow: pick what
                 is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
@@ -1324,6 +1351,22 @@ export function CreateServerPage() {
             <span>
               Create anyway. The box will still try to clone these; if they really are wrong it will
               fail during setup and keep billing until you terminate it.
+            </span>
+          </label>
+        )}
+
+        {/* The repo-less confirmation (issue #90), on the same doctrine as `createAnyway`:
+            offered only once a submit has raised the question, with the reason on screen. */}
+        {requiresRepos && withoutReposOffered && repositories.length === 0 && (
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={createWithoutRepos}
+              onChange={(e) => setCreateWithoutRepos(e.target.checked)}
+            />
+            <span>
+              Create the server without a repository. Nothing is cloned during setup — you can
+              clone whatever you like over SSH once it is running.
             </span>
           </label>
         )}

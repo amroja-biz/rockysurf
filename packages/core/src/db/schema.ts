@@ -370,7 +370,7 @@ export const packs = sqliteTable('packs', {
   theme: text('theme'),
   /** Post-boot instructions shown to the user once the server is running. Prose, never run. */
   guide: text('guide'),
-  /** The user must choose at least one repository before creating; `$REPOS` is set. */
+  /** The form asks for repositories, confirming a create that names none (#90); `$REPOS` is set. */
   requiresRepos: integer('requires_repos', { mode: 'boolean' }).notNull().default(false),
   /** The user is asked for a remote-desktop password at create time. */
   requiresRdp: integer('requires_rdp', { mode: 'boolean' }).notNull().default(false),
