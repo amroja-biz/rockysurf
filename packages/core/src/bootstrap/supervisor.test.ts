@@ -278,6 +278,92 @@ describe('failure', () => {
   })
 })
 
+describe('retiring the managed key for a supplied-key box (ADR-0008, issue #92)', () => {
+  /** Key material as `provisionServerKeys` would have written it at create time. */
+  function seedKeyMaterial() {
+    secrets.putServerKeyMaterial(row.id, {
+      userPrivateKey: 'managed-private',
+      userPublicKey: 'ssh-ed25519 AAAAmanaged rockysurf',
+      hostPrivateKey: 'host-private',
+      hostPublicKey: 'ssh-ed25519 AAAAhost',
+      hostKeyFingerprint: 'SHA256:host',
+    })
+  }
+
+  it('retires the stored private half once a supplied-key row reaches running', async () => {
+    row = insertServer(db, {
+      userId: row.userId,
+      name: 'byok-box',
+      provider: 'fake',
+      size: 'small',
+      offeringId: 'fake-small',
+      arch: 'arm64',
+      userSuppliedPublicKey: 'ssh-ed25519 AAAAuser me@laptop',
+    })
+    updateServerStatus(db, row.id, 'provisioning')
+    setNetworkAddress(db, row.id, { publicIp: '203.0.113.10' })
+    setInstallPlan(db, row.id, { ...PLAN, serverId: row.id })
+    row = getServer(db, row.id)!
+    seedKeyMaterial()
+
+    const poller = supervisor(fakeRun(async () => result()))
+    await poller.poll(row)
+    await vi.waitFor(() => expect(getServer(db, row.id)?.status).toBe('running'))
+
+    // The host half is untouched — `/ssh-host-key` still needs it — only the user half, the
+    // thing nothing has a use for once nothing SSHes into a running box, is cleared.
+    const material = secrets.getServerKeyMaterial(row.id)!
+    expect(material.userPrivateKey).toBe('')
+    expect(material.userPublicKey).toBe('')
+    expect(material.hostPrivateKey).toBe('host-private')
+    expect(material.hostPublicKey).toBe('ssh-ed25519 AAAAhost')
+
+    expect(getServer(db, row.id)?.managedSshKeyRetiredAt).toBeTruthy()
+  })
+
+  it('leaves a box with no supplied key alone — core’s key is the only way in there', async () => {
+    // `row` from `beforeEach` has no `userSuppliedPublicKey`.
+    seedKeyMaterial()
+
+    const poller = supervisor(fakeRun(async () => result()))
+    await poller.poll(row)
+    await vi.waitFor(() => expect(getServer(db, row.id)?.status).toBe('running'))
+
+    const material = secrets.getServerKeyMaterial(row.id)!
+    expect(material.userPrivateKey).toBe('managed-private')
+    expect(getServer(db, row.id)?.managedSshKeyRetiredAt).toBeNull()
+  })
+
+  it('does not retire anything for a run that fails', async () => {
+    row = insertServer(db, {
+      userId: row.userId,
+      name: 'byok-box-failed',
+      provider: 'fake',
+      size: 'small',
+      offeringId: 'fake-small',
+      arch: 'arm64',
+      userSuppliedPublicKey: 'ssh-ed25519 AAAAuser me@laptop',
+    })
+    updateServerStatus(db, row.id, 'provisioning')
+    setNetworkAddress(db, row.id, { publicIp: '203.0.113.10' })
+    setInstallPlan(db, row.id, { ...PLAN, serverId: row.id })
+    row = getServer(db, row.id)!
+    seedKeyMaterial()
+
+    const poller = supervisor(
+      fakeRun(async () => result({ state: state({ status: 'failed', failedStep: 'tool:node' }) })),
+    )
+    await poller.poll(row)
+    await pollUntilOutcome(poller)
+
+    // Both keys remain — acceptable, the box is `failed`/diagnosable (the removal step, phase
+    // 7 of `resolver.ts`, never even ran: a plan that fails before its last step is exactly the
+    // "bootstrap fails before this step runs" case that step's own doc comment names).
+    expect(secrets.getServerKeyMaterial(row.id)!.userPrivateKey).toBe('managed-private')
+    expect(getServer(db, row.id)?.managedSshKeyRetiredAt).toBeNull()
+  })
+})
+
 describe('what it refuses to start', () => {
   it('waits rather than failing when the instance has no address yet', async () => {
     const started = vi.fn()

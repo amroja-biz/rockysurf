@@ -10,6 +10,13 @@ conditional on `rockysurf-q5lm.5`. That run has since passed on real AWS (commit
 Callback mode is **kept**, with its scope narrowed by what the run revealed — see Decision 2.
 Finding #44 is closed.
 
+**Amended by [ADR-0008](0008-supplied-key-retires-managed-key.md), 2026-08-24**, for the
+supplied-key case only. Everything here about core needing its own key to push, resume, and
+recover a bootstrap is unchanged. What ADR-0008 adds is a phase-7 plan step, appended only when
+the row carries a user-supplied key, that runs AFTER bootstrap and removes core's key from that
+one box once the user's own is confirmed authorized. Every other server — no supplied key — is
+untouched by ADR-0008 and core's key remains exactly what this ADR describes.
+
 ## Context
 
 Bootstrap is how software gets onto a fresh box. Three topologies were on the table:

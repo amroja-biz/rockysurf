@@ -279,12 +279,20 @@ not create — and the UI hides those buttons rather than offering them and fail
 ## SSH access on a new server
 
 The create form's "Use my own public key" option pastes your key onto the box — but it does not
-replace Rocky Surf's own generated key, it joins it. Push-mode bootstrap installs everything over
-Rocky Surf's own SSH connection, so that key is always authorized, on every server, regardless of
-what you supplied. Both keys work; the server page's Connect panel leads with whichever one you
-gave, and keeps the generated `.pem` reachable as a recovery path. See
+replace Rocky Surf's own generated key, it joins it, at first. Push-mode bootstrap installs
+everything over Rocky Surf's own SSH connection, so that key has to be authorized while the box
+is being built, regardless of what you supplied. See
 [`SECURITY.md`](../SECURITY.md#managed-servers-pinned-with-no-trust-on-first-use-window) for
 exactly how the pasted key is parsed and appended.
+
+That is where it used to end: both keys, forever. It no longer does. Once bootstrap finishes, the
+plan's last step removes Rocky Surf's own key from the box and core retires the private half it
+had stored — your supplied key becomes the only one on it. The server page's Connect panel
+reflects this live: while bootstrap is still running (or on a server created before this
+existed), it leads with your key and keeps the generated `.pem` reachable as a disclosed recovery
+path; once retirement is confirmed, that disclosure and every `.pem`-based command disappear, and
+there is nothing left to download. If you ever lose your own key on a server whose bootstrap
+finished, there is no generated key left to fall back to — that trade is the point.
 
 ## Repositories, and how private ones clone
 

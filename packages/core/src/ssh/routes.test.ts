@@ -14,7 +14,7 @@ import { listEventsForServer, upsertUserByGithubId } from '../db/repositories/us
 import { KEY_BYTES } from '../secrets/crypto.js'
 import { createSecretsStore, type SecretsStore } from '../secrets/store.js'
 import { generateServerKeys } from './keys.js'
-import { provisionServerKeys } from './server-keys.js'
+import { provisionServerKeys, retireManagedUserKey } from './server-keys.js'
 
 const PASSWORD = 'correct-horse-battery-staple'
 const MASTER_KEY = randomBytes(KEY_BYTES)
@@ -127,6 +127,18 @@ describe('GET /api/v1/servers/:id/ssh-key', () => {
     const res = await created.app.request(`/api/v1/servers/${serverId}/ssh-key`, { headers: auth() })
     expect(res.status).toBe(404)
     expect(await res.text()).toContain('No SSH key material')
+  })
+
+  it('404s with a specific reason once the key has been retired (ADR-0008, issue #92)', async () => {
+    const serverId = makeServer()
+    provisionServerKeys(opened.db, store, { serverId })
+    retireManagedUserKey(store, serverId)
+
+    const res = await created.app.request(`/api/v1/servers/${serverId}/ssh-key`, { headers: auth() })
+    expect(res.status).toBe(404)
+    // Distinct from "no material stored" — the host half is still there, only the user half a
+    // client could have downloaded is gone.
+    expect(await res.text()).toContain('retired')
   })
 
   it('audits every download', async () => {

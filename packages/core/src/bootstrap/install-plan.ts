@@ -27,6 +27,15 @@ export interface SnapshotInstallPlanOptions {
   publicUrl?: string
   /** Off only for tests. */
   branding?: boolean
+  /**
+   * Core's own newly-minted public key line (ADR-0008, issue #92) — needed only when `row`
+   * also carries `userSuppliedPublicKey`, to render the plan step that removes exactly this
+   * line from the box once bootstrap confirms the user's own key is authorized. The row itself
+   * never holds the blob, only a fingerprint of it, so the caller (which just minted it) passes
+   * it through rather than this function re-deriving it. Absent means no such step is rendered
+   * — safe, not silent: the box simply keeps both keys, same as before this feature existed.
+   */
+  managedPublicKey?: string
 }
 
 /**
@@ -65,6 +74,9 @@ export function snapshotInstallPlan(db: Db, row: ServerRow, options: SnapshotIns
     tools: listTools(db),
     repositories: getServerRepositories(row),
     ...(options.branding === false ? { branding: false } : {}),
+    ...(row.userSuppliedPublicKey && options.managedPublicKey
+      ? { userSuppliedPublicKey: row.userSuppliedPublicKey, managedPublicKey: options.managedPublicKey }
+      : {}),
   })
 
   setInstallPlan(db, row.id, plan)

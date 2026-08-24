@@ -1,11 +1,12 @@
 import type { ProviderCapabilities } from '@rockysurf/provider-sdk'
 import type { Db } from '../db/client.js'
-import { recordProgress } from '../db/repositories/servers.js'
+import { recordProgress, setManagedSshKeyRetired } from '../db/repositories/servers.js'
 import { appendEvent } from '../db/repositories/users.js'
 import type { ServerRow } from '../db/schema.js'
 import type { BootstrapPoller } from '../jobs/provision-ticker.js'
 import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
+import { retireManagedUserKey } from '../ssh/server-keys.js'
 import { HostKeyMismatchError } from './push.js'
 import { MissingKeyMaterialError, runPushBootstrap } from './push-runner.js'
 import { bootstrapProgressEvent, serverStatusEvent } from './progress-event.js'
@@ -236,6 +237,28 @@ export function createPushBootstrapSupervisor(deps: PushSupervisorDeps): Bootstr
      * writes it down.
      */
     await markBootstrapReady(deps.db, deps.events, row)
+
+    // Push mode's half of ADR-0008 / issue #92. `result.state.status !== 'failed'` at this
+    // point means the WHOLE plan reported success, and the plan's last step — rendered only
+    // when `row.userSuppliedPublicKey` is set (`resolver.ts` phase 7) — is REQUIRED, not
+    // optional: a plan that succeeded therefore proves the box's own removal step also
+    // succeeded, with no need to re-inspect `result.state.steps` for that one step's outcome.
+    // Callback mode's equivalent trigger lives in `internal-routes.ts`, at the same "row just
+    // reached running" point, because core never opens SSH for a callback-mode bootstrap and so
+    // has no drive of its own to hook this onto.
+    if (row.userSuppliedPublicKey) {
+      try {
+        retireManagedUserKey(deps.secrets, row.id)
+        setManagedSshKeyRetired(deps.db, row.id)
+      } catch (err) {
+        // The box is fully installed and already promoted; a failure here is a database or
+        // secrets-store problem, not a bootstrap one, and must not turn a working box into a
+        // failed row. Logged so an operator can still notice a generated key that outlived its
+        // purpose.
+        log(`[bootstrap] could not retire the managed key for ${row.id}: ${String(err)}`)
+      }
+    }
+
     attempts.delete(row.id)
     finish(row.id)
   }

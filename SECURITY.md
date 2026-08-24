@@ -259,11 +259,18 @@ Two related properties:
   directory, used for one connection, and removed in a `finally` — on failure as well as success.
   A durable copy on disk exists only if you run `ssh-config --write`, which is what makes plain
   `ssh <name>` work, and which prints the trade before doing it.
-- **A user-supplied public key is appended, never substituted.** Core's key is always first and
-  always present, because push bootstrap installs software over core's own SSH connection. The
-  pasted key is parsed conservatively: newlines are rejected, so a second entry or an
-  `authorized_keys` option like `command=` cannot be smuggled in, and the declared key type must
-  match what the key blob itself declares.
+- **A user-supplied public key is appended, never substituted, at create time.** Core's key is
+  always first and always present through bootstrap, because push bootstrap installs software over
+  core's own SSH connection. The pasted key is parsed conservatively: newlines are rejected, so a
+  second entry or an `authorized_keys` option like `command=` cannot be smuggled in, and the
+  declared key type must match what the key blob itself declares. **Once bootstrap finishes, core's
+  key is retired (ADR-0008, issue #92).** The plan's last step — required, not optional, and run
+  only after every step that needs SSH — verifies the supplied key is authorized before removing
+  core's own line, surgically (a whole-line match on the exact bytes core minted, never a rewrite
+  of the file, because a BYO host's `authorized_keys` may already hold the operator's own
+  pre-existing access this step must not touch). Core then clears the stored private half; the host
+  key material it minted stays, because `GET /servers/:id/ssh-host-key` still serves that
+  independent of which user key is authorized.
 
 ### Bring-your-own hosts: trust on first use
 

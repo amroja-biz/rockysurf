@@ -370,6 +370,26 @@ export function setKeyMaterial(
   return updated
 }
 
+/**
+ * Stamp the fact that core's own key has been removed from this box (ADR-0008, issue #92).
+ *
+ * A cheap, non-secret signal on the row — set once the bootstrap plan's last step has confirmed
+ * the removal — so the API layer can answer "is the generated key still offered" without a
+ * secrets-store decrypt on every read. `retireManagedUserKey` (`ssh/server-keys.ts`) is the
+ * matching change to the key material itself; the two are called together and neither implies
+ * the other ran.
+ */
+export function setManagedSshKeyRetired(db: Db, id: string): ServerRow {
+  const [updated] = db
+    .update(servers)
+    .set({ managedSshKeyRetiredAt: nowIso(), updatedAt: nowIso() })
+    .where(eq(servers.id, id))
+    .returning()
+    .all()
+  if (!updated) throw new Error(`setManagedSshKeyRetired wrote no row for ${id}`)
+  return updated
+}
+
 export interface NetworkAddressPatch {
   publicIp?: string
   publicDns?: string

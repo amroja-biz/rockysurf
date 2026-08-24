@@ -14,7 +14,8 @@
 
 ## Provisioning & Bootstrap
 
-- [0002 Push bootstrap is the default; callback is a scoped fallback](0002-push-bootstrap-default-callback-fallback.md): [Accepted] Inert ~2.1KB cloud-config plus outbound SSH is the default; callback verified on real cloud-init (q5lm.5) and kept, but scoped to already-reachable hosted cores because a NAT'd core needed a reverse tunnel to use it; embedded stays cut; two tokens with two lifetimes, short TTL over strict single-use.
+- [0002 Push bootstrap is the default; callback is a scoped fallback](0002-push-bootstrap-default-callback-fallback.md): [Accepted, amended by 0008] Inert ~2.1KB cloud-config plus outbound SSH is the default; callback verified on real cloud-init (q5lm.5) and kept, but scoped to already-reachable hosted cores because a NAT'd core needed a reverse tunnel to use it; embedded stays cut; two tokens with two lifetimes, short TTL over strict single-use.
+- [0008 A supplied key retires core's own managed key once bootstrap confirms it](0008-supplied-key-retires-managed-key.md): [Accepted] Amends 0002 for the supplied-key case: a required, last plan step surgically removes core's own `authorized_keys` line — never a rewrite, which would delete a BYO operator's pre-existing access — once it confirms the user's own key is authorized; core then retires the stored private half but keeps the host half for `/ssh-host-key`. Same trigger point in both bootstrap topologies: the row reaching `running`.
 
 ## Provider SDK
 

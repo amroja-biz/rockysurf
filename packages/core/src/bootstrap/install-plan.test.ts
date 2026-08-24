@@ -109,6 +109,31 @@ describe('what lands on the row', () => {
   })
 })
 
+describe('the supplied-key removal step (ADR-0008, issue #92)', () => {
+  const USER_KEY = 'ssh-ed25519 AAAAuser me@laptop'
+  const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'
+
+  it('renders when the row carries a supplied key and the caller passes the managed one', () => {
+    const row = server({ packId: 'ai-coding-agents', userSuppliedPublicKey: USER_KEY })
+    const plan = snapshotInstallPlan(db, row, { mode: 'push', managedPublicKey: MANAGED_KEY })
+    expect(plan.steps.map((s) => s.id)).toContain('supplied-key-only')
+    expect(plan.steps.at(-1)?.id).toBe('supplied-key-only')
+    expect(plan.steps.at(-1)?.reports).toBe('ready')
+  })
+
+  it('is absent from a plain server, and absent when the caller omits managedPublicKey', () => {
+    const plain = server({ packId: 'ai-coding-agents' })
+    expect(snapshotInstallPlan(db, plain, { mode: 'push', managedPublicKey: MANAGED_KEY }).steps.map((s) => s.id)).not.toContain(
+      'supplied-key-only',
+    )
+
+    // The caller not threading `managedPublicKey` through (a test, or a code path that snapshots
+    // before keys exist) must not render a step whose script would embed `undefined`.
+    const supplied = server({ packId: 'ai-coding-agents', userSuppliedPublicKey: USER_KEY })
+    expect(snapshotInstallPlan(db, supplied, { mode: 'push' }).steps.map((s) => s.id)).not.toContain('supplied-key-only')
+  })
+})
+
 describe('topology', () => {
   it('gives a callback plan the URL the box posts to, built from core\'s public URL', () => {
     const row = server({ packId: 'ai-coding-agents' })

@@ -242,10 +242,21 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * only: enough for a client to say "connect with the key whose fingerprint is X" without
      * pasting a key blob into a page. Absent means core's key is the only one authorized.
      *
-     * Core's key is NOT optional and is always authorized too — a box authorized for the
-     * user's key alone could not be bootstrapped, resumed or recovered (ADR-0002, SECURITY.md).
+     * Core's key is authorized too FOR BOOTSTRAP — a box authorized for the user's key alone
+     * could not be bootstrapped, resumed or recovered (ADR-0002, SECURITY.md) — but it is a
+     * provisioning tool, not a standing credential (ADR-0008, issue #92): once bootstrap
+     * confirms the user's key is on the box, the plan's last step removes core's, and
+     * `suppliedKeyOnly` below says whether that has happened yet.
      */
     suppliedSshKey: row.userSuppliedPublicKey ? describeSuppliedKey(row.userSuppliedPublicKey) : undefined,
+    /**
+     * Whether the supplied key above is now the ONLY key on the box (ADR-0008, issue #92).
+     * Absent when no key was supplied at all — the question does not apply, core's key is the
+     * only way in and always will be. `false` while a supplied-key box's bootstrap is still
+     * running or on a box that shipped before this feature; `true` once the removal step has
+     * confirmed core's key is gone and its stored private half retired.
+     */
+    suppliedKeyOnly: row.userSuppliedPublicKey ? Boolean(row.managedSshKeyRetiredAt) : undefined,
     // Absent unless the provider reported one, which is the only way core ever gets a console
     // URL — it does not know what any provider's console looks like (ADR-0003, E16).
     consoleUrl: row.consoleUrl ?? undefined,

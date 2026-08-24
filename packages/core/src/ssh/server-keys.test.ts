@@ -16,6 +16,7 @@ import {
   normalizeUserPublicKey,
   privateKeyFilename,
   provisionServerKeys,
+  retireManagedUserKey,
 } from './server-keys.js'
 
 const MASTER_KEY = randomBytes(KEY_BYTES)
@@ -205,6 +206,41 @@ describe('a user-supplied public key', () => {
     expect(() => normalizeUserPublicKey('ssh-ed25519 AAAAB3NzaC1yc2EAAAADAQABAAABgQ== mismatch')).toThrow(
       /does not match its declared type/,
     )
+  })
+})
+
+describe('retireManagedUserKey (ADR-0008, issue #92)', () => {
+  it('clears the user half and keeps the host half', () => {
+    const serverId = makeServer()
+    provisionServerKeys(opened.db, store, { serverId })
+    const before = getServerKeyMaterial(store, serverId)!
+
+    retireManagedUserKey(store, serverId)
+
+    const after = getServerKeyMaterial(store, serverId)!
+    expect(after.userPrivateKey).toBe('')
+    expect(after.userPublicKey).toBe('')
+    // Untouched: `GET /servers/:id/ssh-host-key` still needs these, independent of which user
+    // key is authorized.
+    expect(after.hostPrivateKey).toBe(before.hostPrivateKey)
+    expect(after.hostPublicKey).toBe(before.hostPublicKey)
+    expect(after.hostKeyFingerprint).toBe(before.hostKeyFingerprint)
+  })
+
+  it('is idempotent — calling it again on an already-retired row changes nothing', () => {
+    const serverId = makeServer()
+    provisionServerKeys(opened.db, store, { serverId })
+    retireManagedUserKey(store, serverId)
+    const once = getServerKeyMaterial(store, serverId)!
+
+    retireManagedUserKey(store, serverId)
+    expect(getServerKeyMaterial(store, serverId)).toEqual(once)
+  })
+
+  it('is a no-op when the server has no key material at all', () => {
+    const serverId = makeServer()
+    expect(() => retireManagedUserKey(store, serverId)).not.toThrow()
+    expect(getServerKeyMaterial(store, serverId)).toBeUndefined()
   })
 })
 

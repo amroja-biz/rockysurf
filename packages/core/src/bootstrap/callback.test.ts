@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, type CreatedApp } from '../app.js'
 import { ensureLocalAdmin } from '../auth/admin.js'
@@ -15,6 +16,7 @@ import {
 import { getServer, insertServer, setInstallPlan, updateServerStatus } from '../db/repositories/servers.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import type { ServerRow } from '../db/schema.js'
+import { createSecretsStore } from '../secrets/store.js'
 import { createEventsService } from '../services/events.js'
 import { resolveInstallPlan } from './resolver.js'
 import { renderCallbackUserData, renderPushUserData, UserDataTooLargeError } from './user-data.js'
@@ -280,6 +282,91 @@ describe('POST /internal/servers/:id/status', () => {
       // Same type push mode emits: the SPA must not have to know which topology sent it.
       expect.objectContaining({ type: 'bootstrap-progress', serverId: server.id, stepId: 'tool:claude-code' }),
     )
+  })
+})
+
+describe('retiring the managed key over callback (ADR-0008, issue #92)', () => {
+  it('drops the stored private half once a supplied-key box reports ready', async () => {
+    // A fresh app WITH a real secretsStore wired — the shared fixture's `created` deliberately
+    // has none, so `deps.secrets` inside `createInternalRoutes` is undefined there and this
+    // whole code path is inert, exactly as it would be on a self-hosted install with no store.
+    const secretsStore = createSecretsStore(opened.db, randomBytes(32))
+    created = createApp({
+      db: opened.db,
+      config,
+      secrets: new MemorySecretStore(),
+      events: createEventsService(),
+      secretsStore,
+    })
+
+    const supplied = insertServer(opened.db, {
+      userId: server.userId,
+      name: 'byok-box',
+      provider: 'fake',
+      size: 'small',
+      offeringId: 'small',
+      arch: 'arm64',
+      idempotencyKey: `k-${Math.random()}`,
+      bootstrapMode: 'callback',
+      userSuppliedPublicKey: 'ssh-ed25519 AAAAuser me@laptop',
+    })
+    const plan = resolveInstallPlan({
+      serverId: supplied.id,
+      runId: RUN_ID,
+      mode: 'callback',
+      callbackUrl: 'https://core.example/internal/servers/x/status',
+      pack: { id: 'p', tools: [], requiresRdp: false },
+      tools: [],
+      userSuppliedPublicKey: supplied.userSuppliedPublicKey!,
+      managedPublicKey: 'ssh-ed25519 AAAAmanaged rockysurf',
+    })
+    setInstallPlan(opened.db, supplied.id, plan)
+    updateServerStatus(opened.db, supplied.id, 'provisioning')
+    const minted = mintCallbackTokens(opened.db, supplied.id)
+    secretsStore.putServerKeyMaterial(supplied.id, {
+      userPrivateKey: 'managed-private',
+      userPublicKey: 'ssh-ed25519 AAAAmanaged rockysurf',
+      hostPrivateKey: 'host-private',
+      hostPublicKey: 'ssh-ed25519 AAAAhost',
+      hostKeyFingerprint: 'SHA256:host',
+    })
+
+    const res = await post(`/internal/servers/${supplied.id}/status`, {
+      step: 'ready',
+      token: minted.callbackToken,
+      runId: RUN_ID,
+    })
+    expect(res.status).toBe(200)
+    expect(getServer(opened.db, supplied.id)?.status).toBe('running')
+
+    const material = secretsStore.getServerKeyMaterial(supplied.id)!
+    expect(material.userPrivateKey).toBe('')
+    // Untouched — `/ssh-host-key` still needs it, and retirement only ever clears the user half.
+    expect(material.hostPrivateKey).toBe('host-private')
+    expect(getServer(opened.db, supplied.id)?.managedSshKeyRetiredAt).toBeTruthy()
+  })
+
+  it('leaves a box with no supplied key alone', async () => {
+    const secretsStore = createSecretsStore(opened.db, randomBytes(32))
+    created = createApp({
+      db: opened.db,
+      config,
+      secrets: new MemorySecretStore(),
+      events: createEventsService(),
+      secretsStore,
+    })
+    secretsStore.putServerKeyMaterial(server.id, {
+      userPrivateKey: 'managed-private',
+      userPublicKey: 'ssh-ed25519 AAAAmanaged rockysurf',
+      hostPrivateKey: 'host-private',
+      hostPublicKey: 'ssh-ed25519 AAAAhost',
+      hostKeyFingerprint: 'SHA256:host',
+    })
+
+    await post(`/internal/servers/${server.id}/status`, { step: 'ready', token: callbackToken, runId: RUN_ID })
+
+    expect(secretsStore.getServerKeyMaterial(server.id)!.userPrivateKey).toBe('managed-private')
+    expect(getServer(opened.db, server.id)?.managedSshKeyRetiredAt).toBeNull()
   })
 })
 

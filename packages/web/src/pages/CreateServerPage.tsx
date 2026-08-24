@@ -1315,10 +1315,12 @@ export function CreateServerPage() {
               />
               {/* Issue #41: the create form used to present these two options as mutually
                   exclusive. They are not — Rocky Surf's key is appended, never substituted,
-                  because push-mode bootstrap installs everything over its own SSH connection. */}
+                  because push-mode bootstrap installs everything over its own SSH connection.
+                  Issue #92: that key is temporary, not permanent — once bootstrap finishes, it
+                  is removed and yours is the only one left. */}
               <p className="hint">
-                Rocky Surf also authorizes a key of its own on this box — it installs everything over its own SSH
-                connection, so it needs one. Your key is added alongside it, and both will work.
+                Rocky Surf also authorizes a key of its own on this box while it installs everything — it needs one
+                for that. Once setup finishes, that key is removed and yours is the only one left on the box.
               </p>
             </>
           )}

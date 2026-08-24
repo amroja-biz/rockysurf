@@ -82,6 +82,30 @@ describe('the create path', () => {
     expect(plan).toBeTruthy()
     expect(parseInstallPlan(plan!).serverId).toBe(serverId)
   })
+
+  it('gives a supplied-key server the removal step, carrying the key core actually minted (ADR-0008, issue #92)', async () => {
+    // The real regression this guards: `snapshotInstallPlan` moved to AFTER `provisionKeys` in
+    // `lifecycle.ts` precisely so `managedPublicKey` could be core's own just-minted key rather
+    // than nothing — a unit test calling `resolveInstallPlan` or `snapshotInstallPlan` directly
+    // cannot see that ordering bug, because it hands the key in by construction. Only the whole
+    // create path, wired the way `boot()` wires it, can.
+    const res = await post('/api/v1/servers', {
+      size: 'small',
+      packId: 'ai-coding-agents',
+      sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop',
+    })
+    expect(res.status).toBe(201)
+    const serverId = ((await res.json()) as { serverId: string }).serverId
+
+    const plan = parseInstallPlan(getServer(opened.db, serverId)!.installPlan!)
+    const step = plan.steps.at(-1)!
+    expect(step.id).toBe('supplied-key-only')
+    expect(step.reports).toBe('ready')
+    expect(step.run).toContain("user_line='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'")
+    // Core's own key line, not a placeholder or an empty string — the whole point of moving the
+    // snapshot past `provisionKeys`.
+    expect(step.run).toMatch(/managed_line='ssh-ed25519 \S+ rockysurf-core@/)
+  })
 })
 
 describe('the job loop', () => {
