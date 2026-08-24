@@ -111,6 +111,49 @@ describe('HelpPage', () => {
     })
   })
 
+  /**
+   * "Backing up your data" (rockysurf-prqc, issue #89). What is pinned is exactness — the
+   * request was "tell the user EXACTLY what to back up" — and the sensitivity claim being
+   * stated plainly rather than softened.
+   */
+  describe('the Backing up your data section', () => {
+    const backupSection = () => {
+      const { container } = renderHelp()
+      return container.querySelector('section[id="backup"]')!
+    }
+    const backup = () => backupSection().textContent ?? ''
+
+    it('names every file to back up, by filename', () => {
+      const text = backup()
+      expect(text).toContain('rockysurf.db')
+      expect(text).toContain('secret.key')
+      expect(text).toContain('rockysurf.config.yaml')
+    })
+
+    it('says where the data directory is, and how to confirm it for a running install', () => {
+      const text = backup()
+      expect(text).toContain('~/.rockysurf')
+      expect(text).toContain('server.dataDir')
+      expect(text).toContain('config:')
+    })
+
+    it('states plainly which of it is sensitive, and what it decrypts', () => {
+      const text = backup()
+      expect(text).toContain('sensitive')
+      expect(text).toContain('SSH private key')
+      expect(text).toContain('remote-desktop password')
+    })
+
+    it('says to stop the process first, and links the normative backup-and-restore doc', () => {
+      const section = backupSection()
+      expect(section.textContent).toContain('Stop Rocky Surf before copying the database')
+      const link = [...section.querySelectorAll('a')].find((a) =>
+        a.getAttribute('href')?.includes('self-hosting.md#backup-and-restore'),
+      )
+      expect(link, 'no link to the self-hosting backup-and-restore section').toBeTruthy()
+    })
+  })
+
   it('every table-of-contents entry lands on a section that exists', () => {
     const { container } = renderHelp()
     const tocLinks = [...container.querySelectorAll('.help-toc a')]

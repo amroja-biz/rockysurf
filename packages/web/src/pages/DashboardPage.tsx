@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import toast from 'react-hot-toast'
 import { ActivityFeed } from '../components/ActivityFeed'
+import { BackupReminder } from '../components/BackupReminder'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { AppShell } from '../components/AppShell'
@@ -103,6 +104,13 @@ export function DashboardPage() {
 
   return (
     <AppShell title="Servers">
+      {/*
+        Dashboard is where a session lands (rockysurf-prqc, issue #89): `/` is the only route
+        every sign-in reaches before anything else, so it is the one place a reminder shown
+        "once per app load" actually means once, rather than once per page.
+      */}
+      <BackupReminder />
+
       <div className="dashboard-actions">
         <Link className="button primary" to="/servers/new">
           New server
