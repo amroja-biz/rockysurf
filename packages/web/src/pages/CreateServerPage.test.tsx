@@ -209,15 +209,53 @@ describe('pack metadata drives the conditional fields', () => {
     expect(await screen.findByLabelText(/^remote desktop password$/i)).toBeTruthy()
   })
 
-  it('refuses to submit a repos-requiring pack with no repositories', async () => {
-    const user = userEvent.setup()
-    vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
-    renderPage()
-    await screen.findByLabelText(/repositories/i)
+  /**
+   * A repository is asked for, never demanded (issue #90). The first submit with the list
+   * empty offers a confirmation on the `createAnyway` pattern — the checkbox appears with its
+   * reason on screen — and a confirmed resubmit creates the box with nothing cloned.
+   */
+  describe('submitting a repos-requiring pack with no repositories', () => {
+    async function submitEmpty() {
+      const user = userEvent.setup()
+      vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
+      renderPage()
+      await screen.findByLabelText(/repositories/i)
+      await user.click(screen.getByRole('button', { name: /create server/i }))
+      return user
+    }
 
-    await user.click(screen.getByRole('button', { name: /create server/i }))
-    expect(await screen.findByText(/at least one repository/i)).toBeTruthy()
-    expect(api.createServer).not.toHaveBeenCalled()
+    it('offers a confirmation instead of creating', async () => {
+      await submitEmpty()
+      expect(await screen.findByText(/no repository is listed/i)).toBeTruthy()
+      expect(screen.getByRole('checkbox', { name: /without a repository/i })).toBeTruthy()
+      expect(api.createServer).not.toHaveBeenCalled()
+    })
+
+    it('does not offer the confirmation before a submit has raised the question', async () => {
+      vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
+      renderPage()
+      await screen.findByLabelText(/repositories/i)
+      expect(screen.queryByRole('checkbox', { name: /without a repository/i })).toBeNull()
+    })
+
+    it('creates once confirmed, with no repositories field on the wire', async () => {
+      const user = await submitEmpty()
+      await user.click(await screen.findByRole('checkbox', { name: /without a repository/i }))
+      await user.click(screen.getByRole('button', { name: /create server/i }))
+
+      await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+      expect(vi.mocked(api.createServer).mock.calls[0]?.[0]).not.toHaveProperty('repositories')
+    })
+
+    it('withdraws the offer when a repository is added', async () => {
+      const user = await submitEmpty()
+      await screen.findByRole('checkbox', { name: /without a repository/i })
+
+      await user.type(screen.getByLabelText(/repositories/i), 'https://github.com/a/b.git')
+      await waitFor(() =>
+        expect(screen.queryByRole('checkbox', { name: /without a repository/i })).toBeNull(),
+      )
+    })
   })
 
   it('sends repositories as a parsed list', async () => {

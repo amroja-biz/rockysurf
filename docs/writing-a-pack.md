@@ -345,7 +345,7 @@ Two more, worth calling out separately:
 | `ARCH` | every step | `amd64` or `arm64` |
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
-| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose |
+| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose — empty when they confirmed a repo-less create, so scripts must tolerate `$REPOS` being `''` |
 | your tool's secrets | steps of the tool they belong to | whatever the user supplied |
 
 Standard output and standard error are captured per step. Log freely; it is the only debugging
@@ -578,7 +578,7 @@ away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-orde
 | `imageUrl` | string | no | Card image. Relative path or absolute URL |
 | `theme` | string | no | A named UI theme for the pack's card |
 | `guide` | string | no | Post-boot instructions, shown to the user once the server is running. See below |
-| `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The user must choose at least one Git repository before creating the server, and `$REPOS` is set for setup scripts |
+| `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The form asks the user for Git repositories, and `$REPOS` is set for setup scripts. Not a hard requirement: a user who names none is asked to confirm, and the server is created with nothing cloned — write your `setupScript` to tolerate an empty `$REPOS` |
 | `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
 | `webPort` | number (1–65535) | no | The loopback port of a web UI your pack serves on the box. The server page's Connect section renders the `ssh -L` forward and the `http://localhost:<port>` link from it. Omit if the pack has no web UI |

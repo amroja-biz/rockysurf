@@ -55,7 +55,7 @@ password.
 | `imageUrl` | string | no | Card image; relative path or absolute URL |
 | `theme` | string | no | Named UI theme for the pack's card |
 | `guide` | string | no | Post-boot instructions shown to the user as plain text. See `shipping.md` |
-| `requiresRepos` | boolean | defaults `false` | The user must pick at least one Git repository. **The install plan clones them for you** — you write no clone code — and `$REPOS` is set so your scripts can do extra work per repository |
+| `requiresRepos` | boolean | defaults `false` | The form asks the user for Git repositories. **The install plan clones them for you** — you write no clone code — and `$REPOS` is set so your scripts can do extra work per repository. Not a hard requirement: the user can confirm a repo-less create, so tolerate an empty `$REPOS` |
 | `requiresRdp` | boolean | defaults `false` | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
 | `webPort` | number (1–65535) | no | Loopback port of a web UI the pack serves; Connect renders the `ssh -L` forward from it. Omit if none |
@@ -195,7 +195,7 @@ Two more:
 | `ARCH` | every step | `amd64` or `arm64` |
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
-| `REPOS` | every step, when the pack sets `requiresRepos` | Comma-separated clone URLs the user chose |
+| `REPOS` | every step, when the pack sets `requiresRepos` | Comma-separated clone URLs the user chose — `''` when they confirmed a repo-less create |
 | `GITHUB_TOKEN` | every step, **when the operator configured one** | A GitHub token, for private repositories and for `gh` |
 | `RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for `rocky` |
 
