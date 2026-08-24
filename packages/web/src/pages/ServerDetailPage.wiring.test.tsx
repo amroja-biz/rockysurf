@@ -469,6 +469,57 @@ describe('the connect panel when a key was supplied (issue #41)', () => {
 })
 
 /**
+ * The Connect panel once the supplied key is the ONLY key (issue #92).
+ *
+ * `suppliedKeyOnly: true` means core's own bootstrap step already removed its key from the box
+ * and retired the stored private half — there is nothing left to disclose, download, or build a
+ * `.pem`-based tunnel command from. `suppliedKeyOnly: false`/absent (the previous describe block)
+ * is unchanged on purpose: a box mid-bootstrap, or one that shipped before this feature, still
+ * has both keys and still gets the disclosure.
+ */
+describe('the connect panel once the managed key has been retired (issue #92)', () => {
+  async function reachRunning() {
+    renderPage()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil(
+      { type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' },
+      () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
+    )
+  }
+
+  it('drops the disclosure and the top-level download entirely', async () => {
+    row = {
+      ...SERVER,
+      suppliedSshKey: { fingerprint: 'SHA256:abc123', comment: 'me@laptop' },
+      suppliedKeyOnly: true,
+    }
+    await reachRunning()
+
+    // The primary command is unchanged — it already used the placeholder before this feature.
+    expect(screen.getByText('ssh -i <path to your key> rocky@203.0.113.7')).toBeTruthy()
+
+    // Nothing `.pem`-shaped is left anywhere on the page: no disclosure, no demoted command, no
+    // download button.
+    expect(screen.queryByText("Rocky Surf's own key")).toBeNull()
+    expect(screen.queryByText(/dev-box\.pem/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Download/ })).toBeNull()
+  })
+
+  it('uses the placeholder path, not the .pem, in the web-UI tunnel command', async () => {
+    row = {
+      ...SERVER,
+      suppliedSshKey: { fingerprint: 'SHA256:abc123', comment: 'me@laptop' },
+      suppliedKeyOnly: true,
+    }
+    packRow = { ...PACK, webPort: 3080 }
+    await reachRunning()
+
+    expect(screen.getByText('ssh -i <path to your key> -L 3080:127.0.0.1:3080 rocky@203.0.113.7')).toBeTruthy()
+    expect(screen.queryByText(/dev-box\.pem/)).toBeNull()
+  })
+})
+
+/**
  * The stop/start affordance (rockysurf-4t8y).
  *
  * The report was the owner clicking Start on a stopped t4g.medium, watching the AWS console

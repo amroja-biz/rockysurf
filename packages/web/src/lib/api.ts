@@ -178,13 +178,20 @@ export interface Server {
   sshPort?: number
   /**
    * The key the user brought, when they brought one (issue #41). Absent means Rocky Surf's own
-   * generated key is the only one authorized. Rocky Surf's key is ALWAYS authorized too — it
-   * installs everything over its own SSH connection, so it needs one regardless.
+   * generated key is the only one authorized. Rocky Surf's key is authorized too for bootstrap —
+   * it installs everything over its own SSH connection — but it is a provisioning tool, not a
+   * standing credential (issue #92): see `suppliedKeyOnly`.
    */
   suppliedSshKey?: {
     fingerprint: string
     comment?: string
   }
+  /**
+   * Whether the key above is now the ONLY key on the box (issue #92). Absent when no key was
+   * supplied. `false` while Rocky Surf's own key is still also authorized — mid-bootstrap, or a
+   * box that shipped before this existed — `true` once it has been removed.
+   */
+  suppliedKeyOnly?: boolean
   /**
    * This instance's page in the provider's own management console, when the PROVIDER reported
    * one (ADR-0003, E16). Absent for a provider with no console, and for Hetzner until

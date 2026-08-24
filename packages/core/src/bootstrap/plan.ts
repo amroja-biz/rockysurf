@@ -27,7 +27,8 @@ export type StepRunAs = (typeof STEP_RUN_AS)[number]
  * tool called `branding` from colliding with the branding phase.
  */
 export const STEP_ID_PREFIXES = ['tool:', 'tool-setup:', 'repo:'] as const
-export const SINGLETON_STEP_IDS = ['branding', 'rdp'] as const
+/** `supplied-key-only`: ADR-0008 / issue #92, phase 7 of `docs/bootstrap-contract.md`. */
+export const SINGLETON_STEP_IDS = ['branding', 'rdp', 'supplied-key-only'] as const
 
 const stepId = z.string().min(1).refine(
   (id) => STEP_ID_PREFIXES.some((p) => id.startsWith(p) && id.length > p.length) || SINGLETON_STEP_IDS.includes(id as never),

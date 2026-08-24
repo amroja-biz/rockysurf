@@ -247,10 +247,11 @@ export function createApp(deps: AppDeps): CreatedApp {
       prepareBootstrapMode: bootstrapHooks.mintTokensIfNeeded,
       // What the box will actually install, frozen onto the row at create time. Push reads it
       // from there; callback serves it to the box. Neither topology works without it.
-      snapshotInstallPlan: (row, mode) =>
+      snapshotInstallPlan: (row, mode, options) =>
         void snapshotInstallPlan(db, row, {
           mode,
           ...(config.server.publicUrl ? { publicUrl: config.server.publicUrl } : {}),
+          ...(options?.managedPublicKey ? { managedPublicKey: options.managedPublicKey } : {}),
         }),
     })
 
@@ -392,7 +393,15 @@ export function createApp(deps: AppDeps): CreatedApp {
    * has no session, and authenticates with a per-server token instead. Callback mode only —
    * a push-mode server never has tokens minted, so every one of these returns 401 for it.
    */
-  app.route('/', createInternalRoutes({ db, events, loadServerSecrets: deps.loadServerSecrets }))
+  app.route(
+    '/',
+    createInternalRoutes({
+      db,
+      events,
+      loadServerSecrets: deps.loadServerSecrets,
+      ...(deps.secretsStore ? { secrets: deps.secretsStore } : {}),
+    }),
+  )
   /*
    * The repository preflight is composed HERE (rockysurf-k6xp), for the same reason the token
    * set is passed rather than stored (`server.ts`, yzae): the credentials it needs live in the

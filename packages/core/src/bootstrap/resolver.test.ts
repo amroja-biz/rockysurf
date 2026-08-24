@@ -138,6 +138,67 @@ describe('phase ordering', () => {
   })
 })
 
+describe('phase 7: retiring the managed key (ADR-0008, issue #92)', () => {
+  const USER_KEY = 'ssh-ed25519 AAAAuser me@laptop'
+  const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'
+
+  it('adds the step last, after rdp, only when both keys are given', () => {
+    expect(
+      ids(
+        base({
+          pack: { id: 'p', tools: ['claude-code'], requiresRdp: true },
+          branding: false,
+          userSuppliedPublicKey: USER_KEY,
+          managedPublicKey: MANAGED_KEY,
+        }),
+      ),
+    ).toEqual(['tool:claude-code', 'rdp', 'supplied-key-only'])
+  })
+
+  it('is absent with no supplied key, and absent with a supplied key but no managed key', () => {
+    expect(ids(base({ branding: false }))).not.toContain('supplied-key-only')
+    expect(ids(base({ branding: false, userSuppliedPublicKey: USER_KEY }))).not.toContain('supplied-key-only')
+    expect(ids(base({ branding: false, managedPublicKey: MANAGED_KEY }))).not.toContain('supplied-key-only')
+  })
+
+  it('is required, not optional — a failed guard must fail the whole plan', () => {
+    const step = resolveInstallPlan(
+      base({ branding: false, userSuppliedPublicKey: USER_KEY, managedPublicKey: MANAGED_KEY }),
+    ).steps.find((s) => s.id === 'supplied-key-only')!
+    expect(step.optional).toBeUndefined()
+    expect(step.reports).toBe('ready')
+    expect(step.runAs).toBe('rocky')
+  })
+
+  it('guards on the user key before touching anything, and removes only the managed key line', () => {
+    const step = resolveInstallPlan(
+      base({ branding: false, userSuppliedPublicKey: USER_KEY, managedPublicKey: MANAGED_KEY }),
+    ).steps.find((s) => s.id === 'supplied-key-only')!
+
+    // The guard: fails closed under `set -euo pipefail` if the user's line is not present.
+    expect(step.run).toContain('grep -qxF -- "$user_line" "$auth"')
+    // Surgical removal — a whole-line filter on core's OWN key, never a rewrite of the file, so
+    // any other line a BYO host's authorized_keys already held survives untouched.
+    expect(step.run).toContain('grep -vxF -- "$managed_line" "$auth" > "$auth.tmp"')
+    expect(step.run).toContain(`user_line='${USER_KEY}'`)
+    expect(step.run).toContain(`managed_line='${MANAGED_KEY}'`)
+
+    // `check` re-verifies independently: the user's key present, the managed key gone.
+    expect(step.check).toContain('grep -qxF')
+    expect(step.check).toContain('! grep -qxF')
+  })
+
+  it('never embeds a raw single quote from either key unescaped', () => {
+    // shellQuote's job: a key or comment containing `'` must not be able to break out of the
+    // single-quoted literal and inject a second command.
+    const tricky = `ssh-ed25519 AAAA it's-mine`
+    const step = resolveInstallPlan(
+      base({ branding: false, userSuppliedPublicKey: tricky, managedPublicKey: MANAGED_KEY }),
+    ).steps.find((s) => s.id === 'supplied-key-only')!
+    expect(step.run).toContain(`'\\''`)
+  })
+})
+
 describe('step content', () => {
   it('gives setup scripts $REPOS, which is where the contract says it comes from', () => {
     const plan = resolveInstallPlan(

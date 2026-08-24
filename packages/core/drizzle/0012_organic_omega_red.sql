@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `managed_ssh_key_retired_at` text;

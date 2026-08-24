@@ -320,8 +320,11 @@ export interface LifecycleDeps {
    * Separate from `prepareBootstrapMode` because it is not topology-specific: BOTH modes are
    * dead without it. Push reads the plan off the row to know what to install; callback serves
    * it to the box from `/internal/servers/:id/plan`. Absent in tests that never bootstrap.
+   *
+   * Called AFTER `provisionKeys` now (ADR-0008, issue #92), so `managedPublicKey` can carry
+   * core's own just-minted public key line for a supplied-key row's final step.
    */
-  snapshotInstallPlan?: (row: ServerRow, mode: BootstrapMode) => void
+  snapshotInstallPlan?: (row: ServerRow, mode: BootstrapMode, options?: { managedPublicKey?: string }) => void
 }
 
 /**
@@ -695,11 +698,6 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
 
       // Only now can tokens be minted: they are written onto the row that has just appeared.
       deps.prepareBootstrapMode?.(row.id, bootstrapMode)
-      // The plan is snapshotted here, before the provider is called, so that a server which
-      // exists at all has something to install — a row that reaches `provisioning` with a null
-      // plan can never bootstrap in either topology.
-      deps.snapshotInstallPlan?.(row, bootstrapMode)
-      await emitServerStatus(row)
 
       /* ---- STEP 2: the SSH identity, before anything can consume it. ---- */
       //
@@ -708,6 +706,19 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // keypair must exist before the document is rendered, because the private half is what
       // cloud-init installs — a box cannot be given a key that has not been generated yet.
       const keys = provisionKeys(row, provider, sshPublicKey)
+
+      // The plan is snapshotted here, before the provider is called, so that a server which
+      // exists at all has something to install — a row that reaches `provisioning` with a null
+      // plan can never bootstrap in either topology.
+      //
+      // AFTER keys, not before (ADR-0008, issue #92): a supplied-key server's plan needs core's
+      // own newly-minted public key line to render the step that later removes exactly that
+      // line from the box, and that text does not exist until `provisionKeys` mints it. Nothing
+      // between here and STEP 1 reads `row.installPlan`, so moving this past STEP 2 changes
+      // nothing else about create ordering (ADR-0001's "row before provider" is unaffected —
+      // both of these still run well before STEP 3's provider call).
+      deps.snapshotInstallPlan?.(row, bootstrapMode, { managedPublicKey: keys.sshPublicKeys[0] })
+      await emitServerStatus(row)
 
       // The desktop password belongs to the same step for the same reason: it is server-scoped
       // secret material, and the row it is filed under has to exist first. It is written here

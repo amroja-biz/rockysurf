@@ -154,7 +154,12 @@ export async function runPushBootstrap(
   options: RunPushBootstrapOptions = {},
 ): Promise<PushResult> {
   const material = getServerKeyMaterial(deps.secrets, row.id)
-  if (!material) throw new MissingKeyMaterialError(row.id)
+  // `!material.userPrivateKey` catches a retired key (ADR-0008) the same as an absent one: both
+  // mean core has nothing to authenticate a push with. This should never actually happen —
+  // retirement only runs after a bootstrap already reached `running`, and nothing re-drives a
+  // running row — but a clear error here beats ssh2 rejecting an empty-string private key with
+  // a message that reads like a network problem.
+  if (!material || !material.userPrivateKey) throw new MissingKeyMaterialError(row.id)
   if (!row.publicIp) throw new MissingAddressError(row.id)
   if (!row.installPlan) throw new Error(`server ${row.id} has no install plan`)
 

@@ -154,13 +154,15 @@ export function HelpPage() {
         <p>
           Every running server shows its SSH command. If you pasted your own public key when you
           created the box, that command uses it directly — no key file to manage. Rocky Surf also
-          authorizes a key of its own on every box it provisions, whether or not you supplied one:
+          authorizes a key of its own while it provisions the box, whether or not you supplied one:
           it installs everything over its own SSH connection, so it needs a way in that does not
-          depend on a key only you hold. That key can be downloaded as a <code>.pem</code> — the one
-          place in the system that hands out decrypted secret material, ownership-checked and
-          audited, and safe to re-download if you lose it — and it is your recovery path even when
-          you brought your own key. Packs that ship a desktop show remote-desktop instructions
-          instead of making you guess.
+          depend on a key only you hold. While that key is still authorized it can be downloaded as
+          a <code>.pem</code> — the one place in the system that hands out decrypted secret
+          material, ownership-checked and audited, and safe to re-download if you lose it — and it
+          is your recovery path in the meantime. Once bootstrap finishes on a box you supplied a key
+          for, Rocky Surf&rsquo;s own key is removed and that recovery path goes with it: your key
+          becomes the only one on the box, on purpose. Packs that ship a desktop show remote-desktop
+          instructions instead of making you guess.
         </p>
       </section>
 

@@ -114,6 +114,7 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS` |
 | 5 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
 | 6 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
+| 7 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
 
 **Ties MUST be broken deterministically.** Two tools with equal `installOrder` are ordered by
 `toolId` ascending. A *rendered plan* cannot be non-deterministic: two renders of the same pack

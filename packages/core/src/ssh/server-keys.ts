@@ -4,6 +4,15 @@ import type { SecretsStore, ServerKeyMaterial } from '../secrets/store.js'
 import { generateServerKeys, type ServerKeys } from './keys.js'
 
 /**
+ * `ServerKeyMaterial.userPrivateKey`/`.userPublicKey` are `''` once `retireManagedUserKey` has
+ * run (ADR-0008, issue #92) — never `null`/`undefined`, so every existing reader that already
+ * treats an empty string as "nothing to use" (the download route, `MissingKeyMaterialError`'s
+ * guard) keeps working with no shape change. The host half is untouched by retirement; see
+ * `retireManagedUserKey` for why.
+ */
+export const RETIRED_USER_KEY = ''
+
+/**
  * The per-server SSH key lifecycle: mint at create time, encrypt at rest, hand the public
  * halves to the provider, and keep the private halves reachable by exactly two callers — the
  * SSH client, and the one sanctioned download route.
@@ -179,6 +188,33 @@ export function getServerKeyMaterial(secrets: SecretsStore, serverId: string): S
 /** Remove a server's key material. Call when the server row is deleted, not when it stops. */
 export function deleteServerKeys(secrets: SecretsStore, serverId: string): boolean {
   return secrets.deleteSecret({ kind: 'server-ssh-key', ownerId: serverId })
+}
+
+/**
+ * Drop the PRIVATE half of core's own managed key, once a supplied-key box's bootstrap has
+ * confirmed core's key is no longer authorized on it (ADR-0008, issue #92).
+ *
+ * REWRITES the row rather than deleting it, and that is deliberate: the HOST half
+ * (`hostPrivateKey`/`hostPublicKey`/`hostKeyFingerprint`) stays, because `GET
+ * /servers/:id/ssh-host-key` still serves it — verifying the box's identity is a client concern
+ * independent of which USER key is authorized, and deleting the whole row would 409 that route
+ * for every supplied-key box the moment its own key was removed. Only the halves nothing needs
+ * anymore are cleared: nothing SSHes into a RUNNING box (the bootstrap that just finished was
+ * the only caller, and it is over — see the "post-bootstrap SSH" audit in rockysurf-9uzd's PR),
+ * so the private half core minted for itself has no remaining use, and the public half is
+ * useless without it.
+ *
+ * Idempotent: called on a row already retired, or on one with no key material at all, it is a
+ * no-op. Callers do not need to check first.
+ */
+export function retireManagedUserKey(secrets: SecretsStore, serverId: string): void {
+  const existing = secrets.getServerKeyMaterial(serverId)
+  if (!existing || existing.userPrivateKey === RETIRED_USER_KEY) return
+  secrets.putServerKeyMaterial(serverId, {
+    ...existing,
+    userPrivateKey: RETIRED_USER_KEY,
+    userPublicKey: RETIRED_USER_KEY,
+  })
 }
 
 /** Filename for the downloaded private key. Server ids are hostname-safe, so this is too. */

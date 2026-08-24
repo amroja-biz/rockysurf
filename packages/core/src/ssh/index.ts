@@ -23,6 +23,8 @@ export {
   normalizeUserPublicKey,
   privateKeyFilename,
   provisionServerKeys,
+  RETIRED_USER_KEY,
+  retireManagedUserKey,
   type ProvisionKeys,
   type ProvisionKeysInput,
 } from './server-keys.js'

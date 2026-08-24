@@ -38,6 +38,18 @@ export interface ResolveInstallPlanInput {
   repositories?: string[]
   /** Off only for tests and for a box the operator wants left alone. */
   branding?: boolean
+  /**
+   * The key the user pasted at create time, normalized (ADR-0008, issue #92). Required
+   * together with `managedPublicKey` to render phase 7 — see `suppliedKeyOnlyScript`. Absent
+   * for every server with no supplied key, which never gets this step.
+   */
+  userSuppliedPublicKey?: string
+  /**
+   * Core's own newly-minted public key line — `ProvisionKeys.sshPublicKeys[0]`. Threaded in
+   * from the caller rather than read off the row, because the row never stores the blob, only
+   * a fingerprint of it.
+   */
+  managedPublicKey?: string
 }
 
 /** Labels come from the server row's progress vocabulary, and several steps share one. */
@@ -132,6 +144,22 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
       reports: REPORTS.finishing,
       runAs: 'root',
       run: rdpScript(),
+      timeoutSeconds: 60,
+    })
+  }
+
+  /* --- phase 7: retire core's own key once the user supplied one (ADR-0008, issue #92) --- */
+  // LAST, after every step that needs SSH — which in push mode is all of them, over the one
+  // connection this whole drive holds open. Removing the authorized_keys LINE mid-session does
+  // not close that already-authenticated SESSION (sshd only re-checks the file on a NEW
+  // connection), so this step can safely be the final thing the plan does.
+  if (input.userSuppliedPublicKey && input.managedPublicKey) {
+    steps.push({
+      id: 'supplied-key-only',
+      reports: REPORTS.finishing,
+      runAs: 'rocky',
+      run: suppliedKeyOnlyScript(input.userSuppliedPublicKey, input.managedPublicKey),
+      check: suppliedKeyOnlyCheck(input.userSuppliedPublicKey, input.managedPublicKey),
       timeoutSeconds: 60,
     })
   }
@@ -360,4 +388,60 @@ function rdpScript(): string {
     'printf \'rocky:%s\\n\' "$RDP_PASSWORD" | chpasswd',
     '',
   ].join('\n')
+}
+
+/**
+ * Retire core's own managed key from `authorized_keys`, once the user's supplied key is
+ * confirmed to already be there (ADR-0008, issue #92: "the user asked for their key, two
+ * standing keys is not what they asked for; RS's key is a provisioning tool, not a standing
+ * credential").
+ *
+ * SURGICAL, NOT A REWRITE. The tempting version — overwrite the file with just the supplied
+ * key — is wrong in general: a BYO host's `authorized_keys` may already hold the operator's OWN
+ * pre-existing access from before Rocky Surf ever touched the box (`provider-byo/prepare.ts`
+ * appends to it for exactly that reason, and `docs/self-hosting.md` documents it), and this
+ * step has no way to tell that access apart from noise. So it removes exactly the one line it
+ * knows the exact bytes of, because it minted them, and leaves every other line — however it
+ * got there — alone.
+ *
+ * THE GUARD IS WHAT MAKES "NEVER LOCK THE USER OUT" TRUE. `grep -qxF` on the user's line runs
+ * BEFORE anything is removed, under `set -euo pipefail`, so a guard that does not match aborts
+ * the script before the `grep -v`/`mv` pair ever runs — core's key stays authorized.
+ *
+ * REQUIRED, NOT OPTIONAL (unlike `branding`). If the guard fails, this step fails, and because
+ * it carries no `optional: true` that fails the WHOLE plan. That is deliberate: the guard
+ * failing at all means the box does not have the key core was told to also authorize, which is
+ * not a state worth finishing past silently. Two failure shapes reach core, and both leave the
+ * box with both keys still authorized and `failed`/diagnosable rather than losing anyone's
+ * access — a step BEFORE this one failing (this step never runs) and this step's own guard
+ * failing (it runs and refuses) look identical from core's side. Core only retires its OWN
+ * stored private key (`retireManagedUserKey`, `ssh/server-keys.ts`) when the whole plan —
+ * including this step — reports success, so a failed guard here also means core keeps holding
+ * a key it can still use if a human has to intervene.
+ */
+function suppliedKeyOnlyScript(userPublicKey: string, managedPublicKey: string): string {
+  return [
+    'set -euo pipefail',
+    'auth="$HOME"/.ssh/authorized_keys',
+    `user_line=${shellQuote(userPublicKey.trim())}`,
+    `managed_line=${shellQuote(managedPublicKey.trim())}`,
+    // -x -F: a whole-line literal match, so core's key can never be read as a prefix or
+    // substring of some other line, and the user's key can never be "found" inside a longer one.
+    'grep -qxF -- "$user_line" "$auth"',
+    'grep -vxF -- "$managed_line" "$auth" > "$auth.tmp"',
+    'mv "$auth.tmp" "$auth"',
+    '',
+  ].join('\n')
+}
+
+/**
+ * Independent re-verification after `suppliedKeyOnlyScript` runs, the same discipline every
+ * other step's `check` applies: `run` exiting 0 says the script didn't error, not that the file
+ * ended up the way it was supposed to.
+ */
+function suppliedKeyOnlyCheck(userPublicKey: string, managedPublicKey: string): string {
+  const auth = '"$HOME"/.ssh/authorized_keys'
+  const userLine = shellQuote(userPublicKey.trim())
+  const managedLine = shellQuote(managedPublicKey.trim())
+  return `grep -qxF -- ${userLine} ${auth} && ! grep -qxF -- ${managedLine} ${auth}`
 }

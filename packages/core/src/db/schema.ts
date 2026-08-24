@@ -197,10 +197,21 @@ export const servers = sqliteTable(
      * custody exemption (`secrets/route-inventory.test.ts`) bought for a value that is not a
      * secret.
      *
-     * Null means the user supplied nothing and core's key is the only way in. Never
-     * substituted for core's own key — see `ssh/server-keys.ts` — only appended alongside it.
+     * Null means the user supplied nothing and core's key is the only way in. Never substituted
+     * for core's own key AT CREATE TIME — see `ssh/server-keys.ts` — only appended alongside
+     * it, because push-mode bootstrap has to install over its own connection. Once bootstrap
+     * finishes, though, core's key is a provisioning tool, not a standing credential (ADR-0008,
+     * issue #92): the plan's last step removes it from the box and `managedSshKeyRetiredAt`
+     * below records that it did.
      */
     userSuppliedPublicKey: text('user_supplied_public_key'),
+    /**
+     * When core's own managed key was removed from this box's `authorized_keys` and its private
+     * half retired from the secrets store (ADR-0008, issue #92, rockysurf-9uzd). Null for every
+     * server with no supplied key — core's key is never retired there, it is the only way in —
+     * and null for a supplied-key server until its bootstrap's last step confirms the removal.
+     */
+    managedSshKeyRetiredAt: text('managed_ssh_key_retired_at'),
 
     /* --- callback-mode credentials (ADR-0002 Decision 5, amendments E8/E9) --- */
     /**

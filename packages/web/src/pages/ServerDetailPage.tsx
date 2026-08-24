@@ -154,6 +154,13 @@ export function ServerDetailPage() {
   const sshCommand = server.suppliedSshKey
     ? `ssh ${sshPort}-i <path to your key> ${server.sshUser}@${server.publicIp ?? '<address>'}`
     : generatedKeyCommand
+  // Once the supplied key is the ONLY key (issue #92), the generated `.pem` no longer exists —
+  // core retired the private half the moment bootstrap confirmed the removal. `suppliedKeyOnly`
+  // is absent/false for every box that still has both (no supplied key at all, mid-bootstrap,
+  // or one that shipped before this feature), which is exactly when the `.pem` forms below stay
+  // correct as written.
+  const managedKeyRetired = Boolean(server.suppliedSshKey) && server.suppliedKeyOnly === true
+  const identityFlag = managedKeyRetired ? '-i <path to your key> ' : `-i ${server.name}.pem `
 
   /**
    * The Installed card's two sources, in honesty order (rockysurf-idxd). `server.tools` is
@@ -336,31 +343,36 @@ export function ServerDetailPage() {
                 <code>{server.suppliedSshKey.fingerprint}</code>.
               </p>
               {/*
-                Demoted, not removed (issue #41): Rocky Surf's own key stays authorized no
-                matter which SSH option was picked at create time, because push-mode bootstrap
-                installs everything over its own connection and needs it regardless. It is
-                also the recovery path if the user's own key is ever lost.
+                Demoted, not removed, UNLESS it has actually been retired (issue #41, then
+                issue #92). Rocky Surf's own key stays authorized through bootstrap no matter
+                which SSH option was picked at create time — push-mode bootstrap installs
+                everything over its own connection and needs it regardless — and while that is
+                true this disclosure is the recovery path if the user's own key is ever lost.
+                Once bootstrap's last step removes it, core also retires the stored private
+                half, so there is nothing left here to disclose or download.
               */}
-              <details className="own-key-disclosure">
-                <summary>Rocky Surf's own key</summary>
-                <p className="hint">
-                  Rocky Surf also authorizes a key of its own on this box — it installs everything over its own SSH
-                  connection, so it needs one whether or not you supplied your own. It works too, and it is the way
-                  back in if you ever lose your key:
-                </p>
-                <pre>
-                  <code>{generatedKeyCommand}</code>
-                </pre>
-                <button
-                  onClick={() => void downloadSshKey(server.serverId, server.name).catch(() => toast.error('No key available'))}
-                >
-                  Download {server.name}.pem
-                </button>
-                <p className="hint">
-                  Core keeps a copy and every download is recorded; re-downloading later is fine. Store it somewhere
-                  safe and <code>chmod 600</code> it before use.
-                </p>
-              </details>
+              {!managedKeyRetired && (
+                <details className="own-key-disclosure">
+                  <summary>Rocky Surf's own key</summary>
+                  <p className="hint">
+                    Rocky Surf also authorizes a key of its own on this box — it installs everything over its own
+                    SSH connection, so it needs one whether or not you supplied your own. It works too, and it is
+                    the way back in if you ever lose your key:
+                  </p>
+                  <pre>
+                    <code>{generatedKeyCommand}</code>
+                  </pre>
+                  <button
+                    onClick={() => void downloadSshKey(server.serverId, server.name).catch(() => toast.error('No key available'))}
+                  >
+                    Download {server.name}.pem
+                  </button>
+                  <p className="hint">
+                    Core keeps a copy and every download is recorded; re-downloading later is fine. Store it
+                    somewhere safe and <code>chmod 600</code> it before use.
+                  </p>
+                </details>
+              )}
             </>
           ) : (
             <>
@@ -392,7 +404,7 @@ export function ServerDetailPage() {
                 forwarded — use this instead of the plain command above:
               </p>
               <pre>
-                <code>{`ssh ${sshPort}-i ${server.name}.pem -L ${pack.webPort}:127.0.0.1:${pack.webPort} ${server.sshUser}@${server.publicIp ?? '<address>'}`}</code>
+                <code>{`ssh ${sshPort}${identityFlag}-L ${pack.webPort}:127.0.0.1:${pack.webPort} ${server.sshUser}@${server.publicIp ?? '<address>'}`}</code>
               </pre>
               <p className="hint">
                 Leave that session open, then open http://localhost:{pack.webPort} in the browser on
@@ -407,7 +419,7 @@ export function ServerDetailPage() {
               <h3>Remote desktop</h3>
               <p>Tunnel the desktop port over SSH, then point your RDP client at localhost:</p>
               <pre>
-                <code>{`ssh ${sshPort}-i ${server.name}.pem -L 3389:localhost:3389 ${server.sshUser}@${server.publicIp ?? '<address>'}`}</code>
+                <code>{`ssh ${sshPort}${identityFlag}-L 3389:localhost:3389 ${server.sshUser}@${server.publicIp ?? '<address>'}`}</code>
               </pre>
               <p className="hint">Sign in as {server.sshUser} with the password you set when you created the server.</p>
               {/*

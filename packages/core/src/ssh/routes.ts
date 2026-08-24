@@ -56,6 +56,13 @@ export function createSshKeyRoutes(deps: SshRoutesDeps): Hono<AppEnv> {
     if (!material) {
       return notFound(c, 'No SSH key material is stored for this server')
     }
+    // Retired, not merely absent (ADR-0008, issue #92): a supplied-key box's bootstrap removed
+    // core's key from `authorized_keys` and `retireManagedUserKey` cleared the private half
+    // that would have downloaded here. The host half is still on `material` — this route never
+    // served that anyway — so the 404 is specific to the thing that is actually gone.
+    if (!material.userPrivateKey) {
+      return notFound(c, "This server's own key was retired once your supplied key became the only key on the box")
+    }
 
     appendEvent(db, {
       type: 'ssh_key.downloaded',

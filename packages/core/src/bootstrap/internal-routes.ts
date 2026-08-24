@@ -2,12 +2,14 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Db } from '../db/client.js'
 import { consumePlanToken, retirePlanToken, verifyCallbackToken } from '../db/repositories/bootstrap-tokens.js'
-import { getServer, recordProgress } from '../db/repositories/servers.js'
+import { getServer, recordProgress, setManagedSshKeyRetired } from '../db/repositories/servers.js'
 import type { ProvisioningStep, ServerRow } from '../db/schema.js'
 import { InvalidProvisioningStepError } from '../db/transitions.js'
 import { badRequest, failure, notFound, success, unauthorized } from '../http/responses.js'
 import { validate } from '../http/validate.js'
+import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
+import { retireManagedUserKey } from '../ssh/server-keys.js'
 import { parseInstallPlan } from './plan.js'
 import { bootstrapProgressEvent, serverStatusEvent } from './progress-event.js'
 
@@ -41,6 +43,14 @@ export interface InternalRoutesDeps {
    * secrets to hand out can pass nothing.
    */
   loadServerSecrets?: (server: ServerRow) => Promise<Record<string, string>>
+  /**
+   * Retires core's own managed key once a supplied-key box's bootstrap finishes (ADR-0008,
+   * issue #92) — the callback-mode counterpart to `supervisor.ts`'s push-mode trigger. Optional
+   * for the same reason `loadServerSecrets` is: a deployment with no secrets store to reach into
+   * simply never retires anything, the same as it never had key material to serve in the first
+   * place.
+   */
+  secrets?: SecretsStore
 }
 
 const statusBody = z.strictObject({
@@ -106,6 +116,25 @@ export function createInternalRoutes(deps: InternalRoutesDeps): Hono {
     // rather than a check each route has to remember: there is one rule, in one place, and
     // after it runs the plan token authenticates nothing.
     if (updated.status === 'running') retirePlanToken(db, server.id)
+
+    // Callback mode's half of ADR-0008 / issue #92 — the same "row just reached running" point
+    // push mode's `markBootstrapReady` caller hooks its trigger onto, but reached from the
+    // box's own POST instead of core's SSH poll, because core never opens SSH for a
+    // callback-mode bootstrap and so has no drive to hook this onto. The reasoning for why
+    // `status === 'running'` alone is sufficient proof the removal step succeeded — the plan's
+    // last step is REQUIRED, not optional, so a plan that reached `running` reached it through
+    // that step — lives in `resolver.ts`'s `suppliedKeyOnlyScript`.
+    if (updated.status === 'running' && server.userSuppliedPublicKey && deps.secrets) {
+      try {
+        retireManagedUserKey(deps.secrets, server.id)
+        setManagedSshKeyRetired(db, server.id)
+      } catch (err) {
+        // The box is fully installed and already promoted; a failure here must not turn a
+        // working box into a failed one. Logged so an operator can still notice a generated
+        // key that outlived its purpose.
+        console.error(`could not retire the managed key for ${server.id}: ${String(err)}`)
+      }
+    }
 
     // `bootstrap-progress`, the same type push mode emits, because it IS the same event — one
     // bootstrap step moved — and the SPA should not have to know which topology delivered it.
