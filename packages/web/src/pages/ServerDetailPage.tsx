@@ -148,9 +148,11 @@ export function ServerDetailPage() {
   const generatedKeyCommand = `ssh ${sshPort}-i ${server.name}.pem ${server.sshUser}@${server.publicIp ?? '<address>'}`
   // When the user supplied a key at create time, it — not the generated `.pem` — is the
   // primary way in (issue #41): Rocky Surf's key is appended alongside it, not substituted,
-  // so it stays authorized but is no longer the only path the page leads with.
+  // so it stays authorized but is no longer the only path the page leads with. `-i` carries a
+  // placeholder because only the user knows where their private key lives (rockysurf-hky6);
+  // a bare `ssh` that leaned on agents and default paths read as incomplete rather than clever.
   const sshCommand = server.suppliedSshKey
-    ? `ssh ${sshPort}${server.sshUser}@${server.publicIp ?? '<address>'}`
+    ? `ssh ${sshPort}-i <path to your key> ${server.sshUser}@${server.publicIp ?? '<address>'}`
     : generatedKeyCommand
 
   /**
