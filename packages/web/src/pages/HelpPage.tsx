@@ -45,6 +45,7 @@ const SECTIONS = [
   ['costs', 'Costs and the caps'],
   ['packs', 'Surge Packs and tools'],
   ['settings', 'Settings'],
+  ['backup', 'Backing up your data'],
   ['docs', 'The full documentation'],
 ] as const
 
@@ -339,6 +340,72 @@ export function HelpPage() {
           your environment and out of the file. Changes to the file are picked up when the process
           restarts, and the create form will tell you when an entry exists that the running process
           has not restarted into.
+        </p>
+      </section>
+
+      {/*
+        BACKUP (rockysurf-prqc, issue #89). Every path and filename below is stated, not
+        summarized further, because "exactly what to back up" is the request — a reader who
+        wants to act on this should not have to open self-hosting.md first to find a filename.
+        The normative version, including the stop-first WAL caveat and the restore procedure,
+        stays in docs/self-hosting.md; this section is the answer to "what" and "why it's
+        sensitive," linked from the reminder shown on the dashboard.
+      */}
+      <section id="backup">
+        <h2>Backing up your data</h2>
+        <p>
+          Rocky Surf keeps everything it knows in one directory, and there is no hosted copy of
+          any of it — back it up yourself, or a lost machine takes your server records, your
+          cloud credentials and your SSH keys with it.
+        </p>
+        <p>
+          <strong>Where it is:</strong> <code>~/.rockysurf</code> by default, or whatever{' '}
+          <code>server.dataDir</code> is set to in your config file; <code>/data</code> in the
+          Docker Compose volume. Rocky Surf prints the config file it read on every start
+          (<code>config: &lt;path&gt;</code>), which is the fastest way to confirm where a
+          running installation actually keeps its data.
+        </p>
+        <p>
+          <strong>What is in it, and back up all of it together:</strong>
+        </p>
+        <ul>
+          <li>
+            <code>rockysurf.db</code> — the SQLite database: every server row, pack, session and
+            encrypted secret.
+          </li>
+          <li>
+            <code>secret.key</code> — the master key those secrets are encrypted with. Lose it
+            and every secret in the database is unrecoverable ciphertext; a database without it
+            is undecryptable on its own.
+          </li>
+          <li>
+            <code>rockysurf.config.yaml</code> — your configuration. If you pasted a per-repository
+            GitHub token directly into a Settings field rather than referencing an environment
+            variable, that token is written into this file too.
+          </li>
+          <li>
+            <code>packs/</code>, if you keep your own pack files here — the software your servers
+            are created with.
+          </li>
+        </ul>
+        <p>
+          <strong>This is sensitive.</strong> Together, <code>secret.key</code> and{' '}
+          <code>rockysurf.db</code> decrypt every provider credential, every managed server&rsquo;s
+          SSH private key, and any remote-desktop password Rocky Surf holds for you — a
+          Connect-GitHub token lives there too. A backup is that same secret material, copied.
+          Store it somewhere private, encrypt it, or keep <code>secret.key</code> out of the
+          backup entirely by setting <code>ROCKYSURF_SECRET_KEY</code> instead of letting Rocky
+          Surf write it to disk.
+        </p>
+        <p>
+          <strong>Stop Rocky Surf before copying the database</strong> — SQLite&rsquo;s write-ahead
+          log means a plain file copy from a running installation can silently miss the last few
+          minutes of writes. The exact commands, for both an <code>npx</code>/from-source install
+          and Docker Compose, plus how to restore, are in{' '}
+          <a href={repoDocUrl('docs/self-hosting.md#backup-and-restore')} target="_blank" rel="noreferrer">
+            Backup and restore
+          </a>
+          .
         </p>
       </section>
 

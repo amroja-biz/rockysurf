@@ -1443,6 +1443,40 @@ p.hint {
   padding-left: 0.75rem;
 }
 
+/* Backup reminder (rockysurf-prqc, issue #89) — same yellow advisory as the IP change alert,
+   but longer copy, so content and dismiss button sit on their own row instead of being forced
+   onto one line. */
+.backup-reminder {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #d2992233;
+  border: 1px solid var(--rs-yellow);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--rs-yellow);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.backup-reminder-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.backup-reminder-icon {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.backup-reminder a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* IP change alert — ported verbatim; the port kept every class name in it. */
 .ip-change-alert {
   display: flex;
