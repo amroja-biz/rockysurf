@@ -435,8 +435,9 @@ describe('the connect panel when a key was supplied (issue #41)', () => {
     row = { ...SERVER, suppliedSshKey: { fingerprint: 'SHA256:abc123', comment: 'me@laptop' } }
     await reachRunning()
 
-    // No -i, no .pem, in the primary command — it is not nested in the disclosure.
-    const primary = screen.getByText('ssh rocky@203.0.113.7')
+    // The user's own key, behind a placeholder path — only they know where it lives
+    // (rockysurf-hky6). No .pem in the primary command; it is not nested in the disclosure.
+    const primary = screen.getByText('ssh -i <path to your key> rocky@203.0.113.7')
     expect(primary.closest('details')).toBeNull()
     // The fingerprint of the key that command actually uses is named.
     expect(screen.getByText(/SHA256:abc123/)).toBeTruthy()
