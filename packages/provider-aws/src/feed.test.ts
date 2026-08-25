@@ -63,7 +63,7 @@ describe('PriceFeedClient', () => {
     let now = 0
     const client = new PriceFeedClient('https://feed.test/aws.json', 6, () => now)
 
-    expect((await client.get())?.regions['us-east-1']['m7g.large']).toBe(0.0816)
+    expect((await client.get())?.regions['us-east-1']?.['m7g.large']).toBe(0.0816)
     now += 5 * 3_600_000
     await client.get()
     expect(fetchSpy).toHaveBeenCalledTimes(1)

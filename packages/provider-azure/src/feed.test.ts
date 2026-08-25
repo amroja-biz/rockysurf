@@ -63,7 +63,7 @@ describe('PriceFeedClient', () => {
     let now = 0
     const client = new PriceFeedClient('https://feed.test/azure.json', 6, () => now)
 
-    expect((await client.get())?.regions.eastus['Standard_B2ps_v2']).toBe(0.0816)
+    expect((await client.get())?.regions.eastus?.['Standard_B2ps_v2']).toBe(0.0816)
     now += 5 * 3_600_000
     await client.get()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
