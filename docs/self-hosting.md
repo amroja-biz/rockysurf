@@ -249,29 +249,36 @@ default, so anything you leave out keeps working.
 
 ## Cloud prices
 
-The hourly cost estimates for AWS and Azure machines are not part of the release you installed
-(issue #100, [ADR-0009](adr/0009-prices-served-from-hosted-feed.md)). They come from a hosted
-price feed — three JSON files the Rocky Surf repository's `price-feed` workflow regenerates
-from the clouds' public pricing feeds and republishes to GitHub Pages daily:
+The hourly cost estimates for AWS, Azure and GCP machines are not part of the release you
+installed (issue #100, [ADR-0009](adr/0009-prices-served-from-hosted-feed.md)). They come from a
+hosted price feed — four JSON files the Rocky Surf repository's `price-feed` workflow
+republishes to GitHub Pages daily:
 
 ```
-https://amroja-biz.github.io/rockysurf/prices/v1/{index,aws,azure}.json
+https://amroja-biz.github.io/rockysurf/prices/v1/{index,aws,azure,gcp}.json
 ```
 
 Your installation fetches its provider's document at runtime and caches it (`pricing.refreshHours`,
 default 6), so a price a cloud changes today reaches you on the next publish plus one cache
 refresh — no upgrade involved. Every estimate in the UI carries the feed's own "as of" stamp.
 
-Three things worth knowing:
+Four things worth knowing:
 
 - **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
   is deliberately no stale bundled fallback: creating, stopping and terminating servers all
   work, the create form says prices are unavailable, and the spend cap reports the affected
   servers in its `unpricedServers` count instead of silently miscounting.
 - **Air-gapped?** Set `pricing.enabled: false` (prices show unavailable, no doomed fetches), or
-  mirror the three files somewhere you control and point `pricing.feedUrl` at the mirror.
-- **Hetzner and GCP are not on the feed.** Hetzner's API returns prices inline on the same call
-  that lists machines; GCP's transcribed table ships with the release as before.
+  mirror the four files somewhere you control and point `pricing.feedUrl` at the mirror.
+- **Hetzner is not on the feed.** Its API returns prices inline on the same call that lists
+  machines, so there is nothing to publish.
+- **GCP's dates are older than the others, on purpose.** AWS's and Azure's numbers are re-fetched
+  from their public pricing APIs on every publish. Google has no such API that works without
+  credentials, so GCP's prices are transcribed by hand from its published pricing page, and the
+  feed carries **the day a person read them** rather than the day it was republished. A GCP
+  estimate reading "as of" a date weeks ago is the system being honest, not stale plumbing. What
+  the feed buys is the fix path: correcting a transcribed number reaches you on the next publish
+  instead of the next release.
 
 ## Bring-your-own hosts
 

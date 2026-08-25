@@ -80,7 +80,7 @@ interface ProviderWiring<TConfig> {
  * Empty when pricing is disabled: the provider schemas default `pricesUrl` to absent, which
  * every offering then reports as `hourly: null` — prices unavailable, catalogue intact.
  */
-function pricingExtras(config: Config, doc: 'aws.json' | 'azure.json'): Record<string, unknown> {
+function pricingExtras(config: Config, doc: 'aws.json' | 'azure.json' | 'gcp.json'): Record<string, unknown> {
   if (!config.pricing.enabled) return {}
   return {
     pricesUrl: `${config.pricing.feedUrl.replace(/\/+$/, '')}/${doc}`,
@@ -142,6 +142,7 @@ const WIRINGS: ProviderWiring<never>[] = [
     // `sizes` is core's own idea — an allowlist for the UI — and the provider has never heard
     // of it, so it is stripped alongside `enabled`.
     input: ({ enabled: _enabled, sizes: _sizes, ...rest }) => rest,
+    extras: (config) => pricingExtras(config, 'gcp.json'),
     credentialHint:
       'run `gcloud auth application-default login`, set GOOGLE_APPLICATION_CREDENTIALS, or set providers.gcp.keyFile',
   },

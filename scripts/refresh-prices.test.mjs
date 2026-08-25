@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Self-test for the mechanical catalogue rules in refresh-prices.mjs — AWS's family/ceiling/
- * arch classification (rockysurf-tzzw, issue #24 PR2a) and Azure's meter-filtering and
- * ambiguity-resolution rules (rockysurf-o05s, issue #24 PR2b).
+ * arch classification (rockysurf-tzzw, issue #24 PR2a), Azure's meter-filtering and
+ * ambiguity-resolution rules (rockysurf-o05s, issue #24 PR2b), and GCP's transcription-date
+ * honesty rule (rockysurf-ndx6).
  *
- * PURE-FUNCTION AND OFFLINE, ON PURPOSE, for both halves. `refresh-prices.mjs` itself talks to
+ * PURE-FUNCTION AND OFFLINE, ON PURPOSE, for all three. `refresh-prices.mjs` itself talks to
  * live feeds; a test that also needed the network would be one CI could not run reliably and a
  * contributor could not run offline. So this drives the exported classification/filter functions
  * with fixture rows and pinned family/product names — nothing here makes an HTTP request.
@@ -14,11 +15,14 @@
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import {
   AWS_MAX_MEMORY_GIB,
   AWS_MAX_VCPU,
   azureCatalogue,
   azureLinuxMeter,
+  buildGcpFeedDoc,
   classifyAwsArch,
   isAwsCatalogued,
   isAwsMetal,
@@ -219,4 +223,79 @@ test('azureCatalogue with a single region is that region, unchanged', () => {
   const { sizes, everywhere } = azureCatalogue(one)
   assert.deepEqual(sizes, ['Standard_B2ps_v2', 'Standard_D2s_v5'])
   assert.deepEqual(everywhere, sizes)
+})
+
+/* ================================================================================ GCP (ndx6) === */
+
+/**
+ * WHY THIS HAS A TEST AT ALL. GCP's feed document is the one `--feed` does not fetch: its
+ * numbers are hand-transcribed and its DATES ARE THE POINT. `price-feed.yml` republishes every
+ * document daily, so the single thing that must never happen is a publish-time stamp landing on
+ * a two-week-old transcription and presenting it as this morning's price.
+ */
+const GCP_TRANSCRIBED_FIXTURE = {
+  source: 'https://example.invalid/pricing',
+  currency: 'USD',
+  tables: [
+    { fetchedAt: '2026-08-21T00:00:00.000Z', regions: { 'us-central1': { 'c4a-standard-1': 0.0449 } } },
+    { fetchedAt: '2026-08-13T00:00:00.000Z', regions: { 'us-central1': { 't2a-standard-1': 0.0385 } } },
+  ],
+}
+
+test('gcp: fetchedAt is the oldest transcription date, never the publish date', () => {
+  const doc = buildGcpFeedDoc(GCP_TRANSCRIBED_FIXTURE)
+
+  assert.equal(doc.fetchedAt, '2026-08-13T00:00:00.000Z')
+  // Table order must not decide it: the floor is the oldest, and the newer table is listed first
+  // in the fixture above precisely so a naive "first table wins" would fail here.
+  assert.ok(new Date(doc.fetchedAt) < new Date())
+})
+
+test('gcp: every row keeps the date its own table was read', () => {
+  const doc = buildGcpFeedDoc(GCP_TRANSCRIBED_FIXTURE)
+
+  assert.deepEqual(doc.transcribedAt, {
+    'c4a-standard-1': '2026-08-21T00:00:00.000Z',
+    't2a-standard-1': '2026-08-13T00:00:00.000Z',
+  })
+  assert.deepEqual(doc.regions, { 'us-central1': { 'c4a-standard-1': 0.0449, 't2a-standard-1': 0.0385 } })
+  assert.equal(doc.schemaVersion, 1)
+  assert.equal(doc.provider, 'gcp')
+})
+
+test('gcp: one type in two tables is a throw, not a last-write-wins merge', () => {
+  // Two dates for one number means the transcription is ambiguous, and a publisher must not
+  // silently pick the date that flatters it.
+  const doubled = {
+    ...GCP_TRANSCRIBED_FIXTURE,
+    tables: [...GCP_TRANSCRIBED_FIXTURE.tables, { fetchedAt: '2026-08-25T00:00:00.000Z', regions: { 'us-central1': { 't2a-standard-1': 0.04 } } }],
+  }
+  assert.throws(() => buildGcpFeedDoc(doubled), /transcribed in two tables/)
+})
+
+test('gcp: a table without a date, and a non-price, are throws', () => {
+  assert.throws(() => buildGcpFeedDoc({ tables: [{ regions: {} }] }), /no fetchedAt/)
+  assert.throws(() => buildGcpFeedDoc({ tables: [] }), /no transcribed price tables/)
+  for (const bad of [0, -1, 'free', null]) {
+    const doc = { tables: [{ fetchedAt: '2026-08-13T00:00:00.000Z', regions: { 'us-central1': { 'e2-micro': bad } } }] }
+    assert.throws(() => buildGcpFeedDoc(doc), /is not a price/)
+  }
+})
+
+test('gcp: the shipped transcription file builds a document the feed reader would accept', () => {
+  // The real file, not a fixture: a typo in it is a broken publish, and this is the cheapest
+  // place to catch one.
+  const file = fileURLToPath(new URL('gcp-transcribed-prices.json', import.meta.url))
+  const doc = buildGcpFeedDoc(JSON.parse(readFileSync(file, 'utf8')))
+
+  assert.equal(doc.currency, 'USD')
+  assert.ok(doc.source.startsWith('https://'))
+  for (const [region, prices] of Object.entries(doc.regions)) {
+    assert.match(region, /^[a-z]+-[a-z]+\d+$/)
+    for (const [type, amount] of Object.entries(prices)) {
+      assert.ok(Number.isFinite(amount) && amount > 0, `${type} is not a price`)
+      assert.match(doc.transcribedAt[type], /^\d{4}-\d{2}-\d{2}T/)
+      assert.ok(new Date(doc.transcribedAt[type]) >= new Date(doc.fetchedAt))
+    }
+  }
 })

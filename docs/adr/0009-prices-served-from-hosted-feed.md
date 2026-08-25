@@ -61,6 +61,25 @@ its Billing Catalog prices components that do not reproduce published machine-ty
 its transcribed table stays as ADR-0003 left it. Serving GCP's transcription *through* the
 feed (fixing its delivery, not its provenance) is a possible follow-up, not decided here.
 
+**Amendment, 2026-08-25 (rockysurf-ndx6): the GCP follow-up landed.** The owner asked for it
+"for consistency", and the motive above holds: a transcription *error* was a release-blocking
+data fix. GCP now publishes `prices/v1/gcp.json` and reads it at runtime like AWS and Azure —
+same schema, same no-fallback rule, same reject-whole validation, `pricesUrl`/`pricesRefreshHours`
+injected by compose. Two things are deliberately different, because the provenance did **not**
+change and this decision does not pretend otherwise:
+
+1. **The publisher does not fetch GCP.** The numbers live as data in
+   `scripts/gcp-transcribed-prices.json` — still hand-transcribed, still for the reasons above —
+   and the generator reads that file rather than Google.
+2. **`fetchedAt` is a transcription date, never the publish date.** A daily republish must not
+   launder a hand-copied number as freshly read. The document-level stamp is the *oldest*
+   transcription (a floor), and `transcribedAt` — GCP's one provider-specific provenance stamp,
+   the slot AWS uses for `publishedAt` — carries per-row dates, because the c4a rows were read
+   eight days after the e2/t2a ones and misdating either batch is the wrongness the stamp exists
+   to prevent.
+
+Hetzner remains off the feed: it prices live on the `listOfferings()` call itself.
+
 ## Considered options
 
 - **Keep bundling, automate the release** (nightly regenerates, commits, tags): rejected —

@@ -41,11 +41,12 @@
  *    the configured location. Refreshing it needs a project token, which is why it is opt-in
  *    rather than part of the default run.
  *
- *  - **GCP** — OPTIONAL, and it REPORTS rather than REWRITES. See the long comment on
- *    `reportGcp()` for why: Google publishes no credential-free price feed, and the Cloud
- *    Billing Catalog API prices machine types by COMPONENT SKUs that do not reproduce the
- *    published predefined-machine-type prices. A mode that summed them would generate a
- *    confidently wrong number, which is worse than the transcription it would replace.
+ *  - **GCP** — TRANSCRIBED BY HAND, and read from `scripts/gcp-transcribed-prices.json` rather
+ *    than fetched. Google publishes no credential-free price feed, so `--feed` carries the
+ *    transcription instead of generating one, and every date it publishes is a date a person
+ *    actually read the pricing page (`buildGcpFeedDoc`). `--gcp` REPORTS rather than REWRITES;
+ *    see the long comment on `reportGcp()` for why the Cloud Billing Catalog cannot become a
+ *    generator here.
  */
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
@@ -285,7 +286,16 @@ function isAcceleratorFamily(armSkuName) {
   return /^Standard_N[A-Z]/.test(armSkuName)
 }
 
-const GCP_OUTPUT = join(ROOT, 'packages/provider-gcp/src/prices.generated.ts')
+/**
+ * The hand-transcribed GCP price tables — the closest thing GCP has to a source feed.
+ *
+ * A PLAIN JSON FILE RATHER THAN A TS MODULE, so that fixing a transcription reaches every
+ * installation through the next feed publish instead of the next release (rockysurf-ndx6,
+ * ADR-0009). It carries only the NUMBERS and the date each table was read; the machine-type
+ * shapes and the T2A/C4A zone lists stay bundled in `packages/provider-gcp/src/prices.generated.ts`
+ * because without them there is no catalogue at all.
+ */
+const GCP_TRANSCRIBED = join(ROOT, 'scripts/gcp-transcribed-prices.json')
 
 async function fetchJson(url, headers = {}) {
   const response = await fetch(url, { headers })
@@ -642,19 +652,81 @@ export const BUNDLED_PRICES: PriceTable = {
 }
 
 /**
+ * Turn the hand-transcribed GCP tables into the feed's normalized document (rockysurf-ndx6).
+ *
+ * THE HONESTY RULE THIS FUNCTION EXISTS TO ENFORCE: a GCP price's date is the day a PERSON READ
+ * IT off Google's pricing page, and nothing here may move it. `price-feed.yml` republishes every
+ * document daily; if `fetchedAt` were stamped at publish time — as it legitimately is for AWS and
+ * Azure, whose numbers really are re-fetched on each run — a two-week-old transcription would
+ * present itself as this morning's price, and the UI's "estimate based on prices as of …" label
+ * would be actively lying. So:
+ *
+ *  - `fetchedAt` is the OLDEST table's date. It is the document-level floor: no number in this
+ *    document is older than it, and none is misreported as newer by a reader that ignores the
+ *    per-row stamps.
+ *  - `transcribedAt` — GCP's one provider-specific provenance stamp, the slot ADR-0009 gives
+ *    AWS's `publishedAt` and Azure's `effectiveFrom` — carries machine type → the date THAT row
+ *    was read. The c4a-standard-* rows were transcribed eight days after the e2/t2a ones, and
+ *    `provider-gcp`'s `buildOfferings` stamps each price from this map, so a c4a price still
+ *    reports 2026-08-21 rather than borrowing a day nobody looked at it.
+ *
+ * A type appearing in two tables is a THROW rather than a last-write-wins merge: two dates for
+ * one number means the transcription is ambiguous, and a feed publisher must not pick one.
+ */
+export function buildGcpFeedDoc(transcribed) {
+  const tables = transcribed.tables ?? []
+  if (tables.length === 0) throw new Error('gcp: no transcribed price tables')
+
+  const regions = {}
+  const transcribedAt = {}
+  for (const table of tables) {
+    if (!table.fetchedAt) throw new Error('gcp: a transcribed table has no fetchedAt — see scripts/gcp-transcribed-prices.json')
+    for (const [region, prices] of Object.entries(table.regions ?? {})) {
+      regions[region] ??= {}
+      for (const [type, amount] of Object.entries(prices)) {
+        if (transcribedAt[type] !== undefined) {
+          throw new Error(`gcp: ${type} is transcribed in two tables (${transcribedAt[type]} and ${table.fetchedAt}) — one price, one date`)
+        }
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error(`gcp: ${region}/${type} is not a price: ${amount}`)
+        regions[region][type] = amount
+        transcribedAt[type] = table.fetchedAt
+      }
+    }
+  }
+
+  const oldest = tables.map((t) => t.fetchedAt).sort()[0]
+  return {
+    schemaVersion: 1,
+    provider: 'gcp',
+    // NOT `new Date()`. See the honesty rule above.
+    fetchedAt: oldest,
+    transcribedAt,
+    source: transcribed.source,
+    currency: transcribed.currency,
+    regions,
+  }
+}
+
+/**
  * Emit the hosted price feed (gh issue #100): the JSON documents the `price-feed` workflow
  * publishes to GitHub Pages, which installed copies of Rocky Surf read at runtime.
  *
  * Same fetches as the TS modes above, different destination. The shape is NORMALIZED — one
  * document per provider with identical keys (`schemaVersion`, `provider`, `fetchedAt`,
  * `source`, `currency`, `regions`) plus at most a provider-specific provenance stamp
- * (`publishedAt` for AWS, `effectiveFrom` for Azure) — so the read side needs no
- * provider-specific parsing. The path is VERSIONED (`prices/v1/`): a breaking schema change is
- * a new `/v2/` directory, never a rewrite under old installs' feet.
+ * (`publishedAt` for AWS, `effectiveFrom` for Azure, `transcribedAt` for GCP) — so the read side
+ * needs no provider-specific parsing. The path is VERSIONED (`prices/v1/`): a breaking schema
+ * change is a new `/v2/` directory, never a rewrite under old installs' feet.
+ *
+ * GCP IS THE ONE DOCUMENT THIS FUNCTION DOES NOT FETCH (rockysurf-ndx6). Its numbers are read
+ * off a file in this repository rather than off Google, because Google publishes no
+ * credential-free feed — so its `fetchedAt` is a transcription date and stays put while the
+ * other two move with each run. That asymmetry is the honest one: see `buildGcpFeedDoc`.
  */
 async function writeFeed(outdir) {
   const aws = await refreshAws({ write: false })
   const azure = await refreshAzure({ write: false })
+  const gcp = buildGcpFeedDoc(JSON.parse(readFileSync(GCP_TRANSCRIBED, 'utf8')))
 
   const docs = {
     'aws.json': {
@@ -675,6 +747,7 @@ async function writeFeed(outdir) {
       currency: 'USD',
       regions: azure.hourly,
     },
+    'gcp.json': gcp,
   }
   // The index is for HUMANS AND TOOLING POKING AROUND, not for Rocky Surf — the runtime
   // readers are handed their provider's document URL directly and never fetch this. So it
@@ -699,9 +772,15 @@ async function writeFeed(outdir) {
   }
   // A browser visit to the directory gets this instead of raw JSON: what the feed is, where
   // the documents are, how fresh they are. Static — the numbers are baked in at generation,
-  // so the page needs no script and works wherever the three JSON files are mirrored.
+  // so the page needs no script and works wherever the JSON documents are mirrored.
   writeFileSync(join(outdir, 'index.html'), feedIndexHtml(summaries))
-  return { outdir, awsTypes: aws.types, azureSizes: azure.sizes }
+  return {
+    outdir,
+    awsTypes: aws.types,
+    azureSizes: azure.sizes,
+    gcpTypes: Object.keys(gcp.transcribedAt).length,
+    gcpFetchedAt: gcp.fetchedAt,
+  }
 }
 
 /** The human-readable face of the feed directory. */
@@ -741,6 +820,13 @@ ${rows}
   <p>Each document is <code>{ schemaVersion, provider, fetchedAt, source, currency, regions }</code>,
   where <code>regions</code> maps region &rarr; machine type &rarr; hourly price. A machine-readable
   listing of this directory is <a href="index.json"><code>index.json</code></a>.</p>
+  <p><strong>GCP&rsquo;s dates are older than today on purpose.</strong> Google publishes no
+  credential-free price feed, so <code>gcp.json</code> carries numbers a person read off
+  <a href="https://cloud.google.com/products/compute/pricing/general-purpose">Google&rsquo;s pricing page</a>
+  by hand. Its <code>fetchedAt</code> is the day that reading happened and does not move when this
+  directory is republished &mdash; a daily publish must not present a hand-copied number as fresh.
+  Rows transcribed on different days keep their own dates in <code>transcribedAt</code>, which is
+  the date a Rocky Surf install shows beside a GCP estimate.</p>
 </body>
 </html>
 `
@@ -750,13 +836,17 @@ ${rows}
  * GCP: report the Cloud Billing Catalog, and deliberately do NOT rewrite the table.
  *
  * THIS MODE IS A READING AID, NOT A GENERATOR, and the asymmetry with the AWS path above is a
- * fact about Google's pricing surface rather than an unfinished job. Three things, in the order
- * they constrain the design:
+ * fact about Google's pricing surface rather than an unfinished job. That did not change when
+ * the numbers moved out of `prices.generated.ts` and into `scripts/gcp-transcribed-prices.json`
+ * (rockysurf-ndx6): moving to the feed fixed the DELIVERY of the transcription, not its
+ * provenance, so what this mode may safely do is still "print, and let a person decide". Three
+ * things, in the order they constrain the design:
  *
  * 1. **There is no credential-free feed.** Verified 2026-08-13: the old
  *    `cloudpricingcalculator.appspot.com/static/data/pricelist.json` is HTTP 404, and
  *    `cloudbilling.googleapis.com/.../skus` is HTTP 403 without a key. So unlike AWS, nothing
- *    here can run in CI or on a contributor's machine unprompted.
+ *    here can run in CI or on a contributor's machine unprompted — which is exactly why
+ *    `--feed` reads GCP's numbers off disk instead of calling this.
  * 2. **An API key is enough** — not full OAuth — which is the same shape as the Hetzner path
  *    needing a project token, hence the same opt-in treatment.
  * 3. **The Catalog prices COMPONENTS, not machine types.** Compute Engine SKUs are "E2 Instance
@@ -767,9 +857,9 @@ ${rows}
  *    confidently wrong number that nobody would think to check, which is exactly the failure
  *    the `fetchedAt` stamp exists to make visible.
  *
- * So this prints what the Catalog says beside what is bundled, and leaves the decision to a
- * person. If Google ever publishes per-machine-type SKUs, this becomes a generator and the
- * comment goes away.
+ * So this prints what the Catalog says beside what is transcribed, and leaves the decision to a
+ * person. If Google ever publishes per-machine-type SKUs, this becomes a generator writing
+ * `scripts/gcp-transcribed-prices.json` and the comment goes away.
  */
 const GCP_COMPUTE_SERVICE = '6F81-5844-456A'
 
@@ -812,21 +902,25 @@ async function reportGcp() {
     pageToken = body.nextPageToken
   }
 
-  const bundled = readFileSync(GCP_OUTPUT, 'utf8')
-  const stamp = /GCP_PRICES_FETCHED_AT = '([^']*)'/.exec(bundled)?.[1] ?? 'unknown'
+  const transcribed = JSON.parse(readFileSync(GCP_TRANSCRIBED, 'utf8'))
 
   console.log(`gcp: ${rows.length} component SKU(s) for ${region} from the Cloud Billing Catalog\n`)
   for (const row of rows.sort((a, b) => a.description.localeCompare(b.description))) {
     console.log(`  ${row.amount.toFixed(9)}  per ${row.usage ?? '?'}  ${row.description}`)
   }
 
-  console.log(`\ngcp: the bundled table in ${GCP_OUTPUT}`)
-  console.log(`     was read on ${stamp} from Google's published pricing page.`)
+  console.log(`\ngcp: the transcribed tables in ${GCP_TRANSCRIBED}`)
+  for (const table of transcribed.tables ?? []) {
+    const types = Object.values(table.regions ?? {}).flatMap((prices) => Object.keys(prices))
+    console.log(`     read ${table.fetchedAt} from Google's published pricing page: ${types.sort().join(', ')}`)
+  }
+  console.log("     Those dates are what installs see; they move only when somebody re-reads the page.")
   console.log('\nTHESE ARE NOT DIRECTLY COMPARABLE, and this mode does not rewrite the table.')
   console.log('Predefined machine types (e2-standard-2, t2a-standard-2, …) are priced as their OWN SKUs,')
   console.log('cheaper than the sum of the per-core and per-GiB component rates printed above — summing')
   console.log('them for e2-standard-2 overstates the published price by about 5%. Use this output to')
-  console.log('sanity-check magnitude and currency; refresh the bundled numbers from the pricing page.')
+  console.log('sanity-check magnitude and currency; refresh the transcribed numbers from the pricing page,')
+  console.log(`editing ${GCP_TRANSCRIBED} and moving that table's fetchedAt to the day you read it.`)
 
   return { rows: rows.length, region }
 }
@@ -859,7 +953,9 @@ if (import.meta.main) {
       if (!outdir || outdir.startsWith('--')) throw new Error('--feed requires an output directory')
       const result = await writeFeed(outdir)
       console.log(
-        `feed: aws (${result.awsTypes} types) + azure (${result.azureSizes} sizes) → ${result.outdir}/{index,aws,azure}.json`,
+        `feed: aws (${result.awsTypes} types) + azure (${result.azureSizes} sizes) + ` +
+          `gcp (${result.gcpTypes} types, transcribed, oldest read ${result.gcpFetchedAt}) → ` +
+          `${result.outdir}/{index,aws,azure,gcp}.json`,
       )
     } else if (args.includes('--azure')) {
       const result = await refreshAzure()

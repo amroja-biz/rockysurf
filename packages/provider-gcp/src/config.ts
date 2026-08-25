@@ -203,6 +203,23 @@ export const gcpConfigSchema = z
      * without republishing this package.
      */
     imageFamilyPrefix: z.string().trim().min(1).default('ubuntu-2404-lts'),
+
+    /**
+     * URL of this provider's hosted price-feed document (gh issue #100, ADR-0009;
+     * rockysurf-ndx6).
+     *
+     * Injected by core's compose wiring from `pricing.feedUrl` — an operator sets that, not
+     * this. Absent (pricing disabled, or a config bypassing compose) means no feed: every
+     * offering reports `hourly: null`, and the catalogue is otherwise unaffected.
+     *
+     * The document behind it is a HAND TRANSCRIPTION republished daily, not a live read of
+     * Google — GCP publishes no credential-free price feed. Its dates are the days a person read
+     * the pricing page, and they do not move when the feed is republished. See `feed.ts`.
+     */
+    pricesUrl: z.url().optional(),
+
+    /** How often the feed is re-read, in hours. Injected from `pricing.refreshHours`. */
+    pricesRefreshHours: z.coerce.number().positive().max(720).default(6),
   })
   .refine((config) => config.allowAllCidr || config.sshAllowedCidr !== undefined, {
     path: ['sshAllowedCidr'],

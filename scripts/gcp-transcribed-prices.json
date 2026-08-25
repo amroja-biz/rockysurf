@@ -1,0 +1,48 @@
+{
+  "provider": "gcp",
+  "source": "https://cloud.google.com/products/compute/pricing/general-purpose",
+  "currency": "USD",
+  "method": "transcribed",
+  "provenance": [
+    "READ THIS BEFORE TRUSTING A NUMBER IN THIS FILE.",
+    "These figures were TRANSCRIBED BY HAND from Google's published pricing page, with the region selector set to Iowa (us-central1), reading the 'Default (USD)' column — which that page's own footnote defines as the on-demand consumption model. They are NOT machine-read, and that is a real difference from AWS and Azure, whose feed documents are generated from public price feeds. GCP has no such feed.",
+    "Verified 2026-08-13: https://cloudpricingcalculator.appspot.com/static/data/pricelist.json is HTTP 404 (dead), and https://cloudbilling.googleapis.com/v1/services/6F81-5844-456A/skus is HTTP 403 ('Method doesn't allow unregistered callers'). The Cloud Billing Catalog API needs an API key, so `node scripts/refresh-prices.mjs --gcp` exists, is gated on GCP_BILLING_API_KEY, and REPORTS rather than rewrites: the Catalog prices machine COMPONENTS ('E2 Instance Core running in Americas'), and predefined machine types are a separate, cheaper SKU set. Summing components for e2-standard-2 gives ~0.070362/hour against a published 0.06701142 — about 5% high. See reportGcp() in scripts/refresh-prices.mjs.",
+    "EACH TABLE CARRIES THE DATE ITS OWN ROWS WERE READ, and the feed writer propagates those dates into gcp.json rather than the publish date. A daily republish must not launder a hand-copied number as fresh, and backdating (or forward-dating) a price to a day nobody looked at it is exactly the kind of silent wrongness the stamps exist to avoid.",
+    "E2, T2A and C4A receive NO sustained-use discount (only N1, N2, N2D, C2, M1, M2 and sole-tenant nodes do), so these on-demand rates are the effective rates rather than a pre-discount headline. Amounts are USD per hour, tax exclusive, Linux.",
+    "THE BOOT DISK IS BILLED SEPARATELY and is not in these numbers — see the provenance comment in packages/provider-gcp/src/prices.generated.ts for pd-balanced and for C4A's Hyperdisk Balanced IOPS/throughput lines.",
+    "ONE REGION, deliberately. A price transcribed for us-central1 is wrong for europe-west4, and emitting it under another region key would be silently wrong rather than honestly unknown. Anywhere absent reports hourly: null, which the SDK defines as 'unknown, never free'.",
+    "TO FIX A NUMBER: edit it here, merge, and the next price-feed publish carries it to every installation — no release (ADR-0009). Move the table's fetchedAt to the day you actually re-read the page, or split the row into a new table with its own date if you only re-read part of it."
+  ],
+  "tables": [
+    {
+      "fetchedAt": "2026-08-13T00:00:00.000Z",
+      "note": "E2 and Tau T2A rows, read 2026-08-13 from the source page above with the region selector on Iowa (us-central1).",
+      "regions": {
+        "us-central1": {
+          "e2-micro": 0.008376428,
+          "e2-small": 0.016752855,
+          "e2-medium": 0.03350571,
+          "e2-standard-2": 0.06701142,
+          "e2-standard-4": 0.13402284,
+          "e2-standard-8": 0.26804568,
+          "t2a-standard-1": 0.0385,
+          "t2a-standard-2": 0.077,
+          "t2a-standard-4": 0.154,
+          "t2a-standard-8": 0.308
+        }
+      }
+    },
+    {
+      "fetchedAt": "2026-08-21T00:00:00.000Z",
+      "note": "C4A (Axion) rows, added SEPARATELY on 2026-08-21 from the SAME page and the same column after C4A shipped as a general-purpose Arm option (rockysurf-ev41.9 / rockysurf-h6mb). Their own date, not the 2026-08-13 one: that is when the e2/t2a rows were read, and nobody looked at these until the 21st.",
+      "regions": {
+        "us-central1": {
+          "c4a-standard-1": 0.0449,
+          "c4a-standard-2": 0.0898,
+          "c4a-standard-4": 0.1796,
+          "c4a-standard-8": 0.3592
+        }
+      }
+    }
+  ]
+}

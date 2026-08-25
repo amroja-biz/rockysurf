@@ -17,6 +17,7 @@ import { GceApi, lastSegment } from './api.js'
 import { makeAdcTokenSource, type TokenSource } from './auth.js'
 import { resolveSshCidr, type GcpProviderConfig } from './config.js'
 import { isAlreadyExists, isNotFound } from './errors.js'
+import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { allowedBootDiskTypes, buildOfferings, familyOf } from './offerings.js'
 import { C4A_ZONES, GCP_TYPES, T2A_ZONES } from './prices.generated.js'
 import type { GceFirewall, GceInstance } from './types.js'
@@ -189,6 +190,8 @@ export interface GcpProviderOptions {
   /** Injected by tests, so the propagation grace costs no wall-clock time. */
   absenceGrace?: { attempts: number; delayMs: number }
   sleep?: (ms: number) => Promise<void>
+  /** Injected by tests; production builds a `PriceFeedClient` from the config. */
+  priceFeed?: { get(): Promise<PriceFeedDoc | null> }
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -330,7 +333,8 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
     }
   }
 
-  const offerings = () => buildOfferings(zone, config.bootDiskGb)
+  const priceFeed = options.priceFeed ?? new PriceFeedClient(config.pricesUrl, config.pricesRefreshHours)
+  const offerings = async () => buildOfferings(zone, config.bootDiskGb, await priceFeed.get())
 
   /** Both label halves have to be legal or GCE rejects the whole create (ADR-0003, A7). */
   function assertLabelsAreLegal(tags: Record<string, string>): void {
@@ -365,7 +369,7 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
     },
 
     async validateSpec(spec: ProvisionSpec) {
-      const offering = offerings().find((o) => o.id === spec.offeringId)
+      const offering = (await offerings()).find((o) => o.id === spec.offeringId)
       if (!offering) {
         throw new ProviderError('invalid_spec', `no such offering: ${spec.offeringId}`)
       }

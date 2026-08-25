@@ -13,8 +13,8 @@ import { isProviderError, type ComputeProvider, type ProvisionSpec } from '@rock
 import { beforeEach, describe, expect, it } from 'vitest'
 import { GceApi } from './api.js'
 import { gcpConfigSchema, type GcpProviderConfig } from './config.js'
+import type { PriceFeedDoc } from './feed.js'
 import gcpProviderFactory from './index.js'
-import { GCP_C4A_PRICES_FETCHED_AT, GCP_PRICES_FETCHED_AT } from './offerings.js'
 import {
   composeInstanceName,
   gceConsoleUrl,
@@ -194,10 +194,43 @@ function config(overrides: Partial<GcpProviderConfig> = {}): GcpProviderConfig {
   return gcpConfigSchema.parse({ projectId: PROJECT, zone: ZONE, sshAllowedCidr: CIDR, ...overrides })
 }
 
+/**
+ * A stand-in for `prices/v1/gcp.json` (gh issue #100, ADR-0009; rockysurf-ndx6).
+ *
+ * The real numbers now live in `scripts/gcp-transcribed-prices.json` and reach an install over
+ * the network, so these tests inject a document rather than asserting against a bundled table —
+ * the same `feedOf`/FEED pattern `provider-aws` and `provider-azure` use.
+ *
+ * TWO DATES, ON PURPOSE. The document-level `fetchedAt` is the OLDEST transcription (the
+ * generator's floor), and `transcribedAt` carries the day each row was actually read off
+ * Google's pricing page. That split is the honesty mechanism a daily republish must not
+ * flatten, so it is fixtured here exactly as the generator emits it.
+ */
+const E2_T2A_TRANSCRIBED_AT = '2026-08-13T00:00:00.000Z'
+const C4A_TRANSCRIBED_AT = '2026-08-21T00:00:00.000Z'
+
+const FEED: PriceFeedDoc = {
+  fetchedAt: E2_T2A_TRANSCRIBED_AT,
+  currency: 'USD',
+  transcribedAt: {
+    't2a-standard-2': E2_T2A_TRANSCRIBED_AT,
+    'e2-standard-2': E2_T2A_TRANSCRIBED_AT,
+    'c4a-standard-4': C4A_TRANSCRIBED_AT,
+  },
+  regions: {
+    'us-central1': { 't2a-standard-2': 0.077, 'e2-standard-2': 0.06701142, 'c4a-standard-4': 0.1796 },
+  },
+}
+
+const feedOf = (doc: PriceFeedDoc | null) => ({ get: async () => doc })
+
 let gce: ReturnType<typeof fakeGce>
 let provider: ComputeProvider
 
-function build(overrides: Partial<GcpProviderConfig> = {}): ComputeProvider {
+function build(
+  overrides: Partial<GcpProviderConfig> = {},
+  priceFeed: { get(): Promise<PriceFeedDoc | null> } = feedOf(FEED),
+): ComputeProvider {
   return makeGcpProvider({
     config: config(overrides),
     api: new GceApi({
@@ -210,6 +243,7 @@ function build(overrides: Partial<GcpProviderConfig> = {}): ComputeProvider {
     // The propagation grace is real behaviour and is exercised below; the WAITING is not, so
     // the delay is zeroed rather than the attempt count.
     sleep: async () => {},
+    priceFeed,
   })
 }
 
@@ -359,10 +393,28 @@ describe('the state map', () => {
 })
 
 describe('offerings and prices', () => {
-  it('prices in USD with a fetchedAt stamp (amendment B2)', async () => {
+  it('prices in USD with a fetchedAt stamp from the feed (amendment B2)', async () => {
     const offering = (await provider.listOfferings()).find((o) => o.id === 't2a-standard-2')
-    expect(offering?.hourly).toEqual({ amount: 0.077, currency: 'USD', fetchedAt: GCP_PRICES_FETCHED_AT })
-    expect(GCP_PRICES_FETCHED_AT).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(offering?.hourly).toEqual({ amount: 0.077, currency: 'USD', fetchedAt: E2_T2A_TRANSCRIBED_AT })
+  })
+
+  it('lists a type the feed carries no price for, unpriced rather than omitted', async () => {
+    // Unlike provider-aws, an absent price here never means "this zone does not sell it": the
+    // catalogue is a fixed list and availability is the `available` flag's job. e2-micro is in
+    // GCP_TYPES and deliberately not in the fixture feed.
+    const offering = (await provider.listOfferings()).find((o) => o.id === 'e2-micro')
+    expect(offering).toBeDefined()
+    expect(offering?.hourly).toBeNull()
+  })
+
+  it('lists every offering unpriced when the feed is unreachable, with the catalogue intact', async () => {
+    // The owner's no-fallback ruling (ADR-0009): no stale bundled table, no missing catalogue.
+    const offline = await build({}, feedOf(null)).listOfferings()
+    const online = await provider.listOfferings()
+
+    expect(offline.map((o) => o.id)).toEqual(online.map((o) => o.id))
+    expect(offline.every((o) => o.hourly === null)).toBe(true)
+    expect(offline.some((o) => o.available)).toBe(true)
   })
 
   it('offers both architectures', async () => {
@@ -371,7 +423,7 @@ describe('offerings and prices', () => {
     expect(offerings.some((o) => o.arch === 'amd64')).toBe(true)
   })
 
-  it('reports hourly null in a region the table does not cover, rather than a wrong number', async () => {
+  it('reports hourly null in a region the feed does not cover, rather than a wrong number', async () => {
     // Reusing a us-central1 price for europe-west4 would be silently wrong; null means unknown.
     const elsewhere = build({ zone: 'europe-west4-a' })
     expect((await elsewhere.listOfferings()).every((o) => o.hourly === null)).toBe(true)
@@ -414,12 +466,21 @@ describe('offerings and prices', () => {
     expect((await provider.listOfferings()).every((o) => o.region === ZONE)).toBe(true)
   })
 
-  it('prices c4a-standard-* with the c4a-specific fetchedAt stamp, not the e2/t2a one', async () => {
-    // The c4a rows were transcribed on a different day (rockysurf-h6mb); reusing the older
-    // e2/t2a stamp would claim they were read on a day nobody looked at them.
+  it("stamps c4a-standard-* with the feed's per-row transcription date, not the document floor", async () => {
+    // The c4a rows were transcribed eight days after e2/t2a (rockysurf-h6mb); reusing the older
+    // stamp would claim they were read on a day nobody looked at them. The document-level
+    // fetchedAt IS that older date, so this passes only if the per-row map is being honoured.
     const offering = (await provider.listOfferings()).find((o) => o.id === 'c4a-standard-4')
-    expect(offering?.hourly).toEqual({ amount: 0.1796, currency: 'USD', fetchedAt: GCP_C4A_PRICES_FETCHED_AT })
-    expect(GCP_C4A_PRICES_FETCHED_AT).not.toBe(GCP_PRICES_FETCHED_AT)
+    expect(offering?.hourly).toEqual({ amount: 0.1796, currency: 'USD', fetchedAt: C4A_TRANSCRIBED_AT })
+    expect(C4A_TRANSCRIBED_AT).not.toBe(FEED.fetchedAt)
+  })
+
+  it('falls back to the document floor for a row the feed does not stamp', async () => {
+    // The generator sets the document fetchedAt to the OLDEST transcription, so an unstamped row
+    // is dated conservatively rather than optimistically.
+    const unstamped: PriceFeedDoc = { ...FEED, transcribedAt: { 't2a-standard-2': E2_T2A_TRANSCRIBED_AT } }
+    const offerings = await build({}, feedOf(unstamped)).listOfferings()
+    expect(offerings.find((o) => o.id === 'c4a-standard-4')?.hourly?.fetchedAt).toBe(FEED.fetchedAt)
   })
 })
 
