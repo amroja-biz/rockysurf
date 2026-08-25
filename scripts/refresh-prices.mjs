@@ -603,17 +603,74 @@ async function writeFeed(outdir) {
       regions: azure.hourly,
     },
   }
+  // The index is for HUMANS AND TOOLING POKING AROUND, not for Rocky Surf — the runtime
+  // readers are handed their provider's document URL directly and never fetch this. So it
+  // says where the actual data is, rather than assuming the visitor already knows.
+  const summaries = Object.entries(docs).map(([document, doc]) => ({
+    provider: doc.provider,
+    document,
+    fetchedAt: doc.fetchedAt,
+    regions: Object.keys(doc.regions).length,
+    entries: Object.values(doc.regions).reduce((n, table) => n + Object.keys(table).length, 0),
+  }))
   docs['index.json'] = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    providers: Object.keys(docs).map((name) => name.replace(/\.json$/, '')),
+    note: 'Rocky Surf hosted price feed. The prices are in the per-provider documents listed under providers[].document.',
+    providers: summaries,
   }
 
   mkdirSync(outdir, { recursive: true })
   for (const [name, doc] of Object.entries(docs)) {
     writeFileSync(join(outdir, name), `${JSON.stringify(doc, null, 1)}\n`)
   }
+  // A browser visit to the directory gets this instead of raw JSON: what the feed is, where
+  // the documents are, how fresh they are. Static — the numbers are baked in at generation,
+  // so the page needs no script and works wherever the three JSON files are mirrored.
+  writeFileSync(join(outdir, 'index.html'), feedIndexHtml(summaries))
   return { outdir, awsTypes: aws.types, azureSizes: azure.sizes }
+}
+
+/** The human-readable face of the feed directory. */
+function feedIndexHtml(summaries) {
+  const rows = summaries
+    .map(
+      (s) =>
+        `      <tr><td><a href="${s.document}">${s.document}</a></td><td>${s.provider}</td>` +
+        `<td>${s.regions}</td><td>${s.entries}</td><td>${s.fetchedAt}</td></tr>`,
+    )
+    .join('\n')
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocky Surf price feed</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.5; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ccc; font-variant-numeric: tabular-nums; }
+  code { background: rgba(127,127,127,.15); padding: .1em .3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <h1>Rocky Surf price feed</h1>
+  <p>Machine-readable hourly prices for the clouds <a href="https://github.com/amroja-biz/rockysurf">Rocky Surf</a>
+  manages, regenerated daily from the providers' public pricing feeds. Installed copies of Rocky Surf
+  read these documents at runtime, so cost estimates stay current without a release
+  (<a href="https://github.com/amroja-biz/rockysurf/blob/main/docs/adr/0009-prices-served-from-hosted-feed.md">ADR-0009</a>).</p>
+  <table>
+    <thead><tr><th>Document</th><th>Provider</th><th>Regions</th><th>Prices</th><th>Fetched</th></tr></thead>
+    <tbody>
+${rows}
+    </tbody>
+  </table>
+  <p>Each document is <code>{ schemaVersion, provider, fetchedAt, source, currency, regions }</code>,
+  where <code>regions</code> maps region &rarr; machine type &rarr; hourly price. A machine-readable
+  listing of this directory is <a href="index.json"><code>index.json</code></a>.</p>
+</body>
+</html>
+`
 }
 
 /**
