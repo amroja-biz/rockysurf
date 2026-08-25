@@ -226,8 +226,35 @@ const AZURE_OUTPUT = join(ROOT, 'packages/provider-azure/src/prices.generated.ts
 /** The public retail feed. No key, no account — the same numbers azure.com/pricing renders. */
 const AZURE_FEED = 'https://prices.azure.com/api/retail/prices'
 
-/** Azure region ids to bundle. Add a row to support another region. */
-const AZURE_REGIONS = ['eastus']
+/**
+ * Azure `armRegionName` ids to price. Add a row to cover another region.
+ *
+ * The same geographic spread as `AWS_REGIONS` above, region for region where Azure has one:
+ * three US, one Canada, one Brazil, four Europe, three Asia-Pacific. A region that is NOT on
+ * this list is not an error — the provider lists its sizes with `hourly: null` ("unknown, never
+ * free") because the feed's per-region map has no entry for it, exactly as AWS behaves for an
+ * unlisted region.
+ *
+ * Unlike `AWS_REGIONS` these need no hand-mapped label: the retail feed is filtered by
+ * `armRegionName` directly, and a region id that does not exist returns zero rows, which
+ * `refreshAzure` treats as fatal rather than shipping a silently empty region.
+ */
+const AZURE_REGIONS = [
+  'eastus',
+  'eastus2',
+  'centralus',
+  'westus2',
+  'canadacentral',
+  'brazilsouth',
+  'northeurope',
+  'westeurope',
+  'uksouth',
+  'francecentral',
+  'germanywestcentral',
+  'southeastasia',
+  'australiaeast',
+  'japaneast',
+]
 
 /**
  * AZURE_SIZES is no longer a hand-picked list (rockysurf-o05s / issue #24 PR2b) — it is
@@ -416,6 +443,43 @@ export function resolvePricedSizes(candidatesByArmSkuName) {
   return { priced, skipped }
 }
 
+/**
+ * The bundled size catalogue from the per-region accepted sets: THE UNION of sizes that priced
+ * cleanly in ANY configured region, not the intersection of all of them (rockysurf-lodw).
+ *
+ * It was the intersection while `AZURE_REGIONS` held one region, where the two are the same set
+ * and the choice cost nothing. Across the fourteen regions that list now covers they are very
+ * different sets — measured 2026-08-25: union 1721 sizes, intersection 1097. Shipping the
+ * intersection would have DELETED 532 sizes that eastus sells and prices today, a third of the
+ * catalogue, from eastus users, because some other region does not stock them. Half the arm64
+ * catalogue goes with it (97 sizes down to 48): `Standard_B2ps_v2`, the cheap Ampere dev box, is
+ * priced in thirteen of the fourteen and absent only from brazilsouth. Azure varies what it
+ * stocks per region much more than EC2 does, so "priced everywhere" is a far smaller set here.
+ *
+ * The intersection was never buying the honesty it looked like it was buying, either. Per-region
+ * pricing honesty is enforced downstream, not here: prices live in the hosted feed's own
+ * per-region map (ADR-0009), and `buildOfferings` in `@rockysurf/provider-azure` lists a size
+ * with `hourly: null` — "unknown, never free" — when the configured region has no price for it.
+ * And a size Azure does not sell in a region never reaches that code at all, because this list is
+ * intersected with what `Microsoft.Compute/skus` reports live FOR THAT REGION. So the failure the
+ * intersection guarded against cannot happen, while its cost — hiding a size from the thirteen
+ * regions that do sell it because the fourteenth does not — is real. Same shape as AWS, whose
+ * catalogue is likewise every type seen in any covered region.
+ *
+ * `everywhere` is not used for the catalogue; it is reported so a maintainer regenerating this
+ * can see how far apart the two rules have drifted.
+ *
+ * @param acceptedByRegion region → the set of armSkuNames that priced cleanly in it
+ */
+export function azureCatalogue(acceptedByRegion) {
+  const regions = [...acceptedByRegion.keys()]
+  const sizes = [...new Set(regions.flatMap((region) => [...acceptedByRegion.get(region)]))].sort((a, b) =>
+    a.localeCompare(b),
+  )
+  const everywhere = sizes.filter((id) => regions.every((region) => acceptedByRegion.get(region).has(id)))
+  return { sizes, everywhere }
+}
+
 async function refreshAzure({ write = true } = {}) {
   const hourly = {}
   /** The oldest meter start date across everything bundled: how current these numbers are. */
@@ -430,8 +494,11 @@ async function refreshAzure({ write = true } = {}) {
 
     /** armSkuName → every meter the feed returned for it, before the Linux filter. */
     const candidates = {}
-    // The feed pages 100 rows at a time and a region carries a few hundred pages of VM meters;
-    // the guard is a hard stop rather than an expectation.
+    // PAGE GUARD, not a page budget. Measured 2026-08-25 across all fourteen regions: the feed
+    // returns ~1000 rows a page and a region carries 6,200-8,800 VM meter rows, so 7-9 pages —
+    // 200 is roughly twenty times the largest real region. Running out of guard means the feed
+    // changed shape (a smaller page size, or a filter that stopped filtering), and that throws
+    // below rather than quietly shipping a region missing most of its sizes.
     for (let page = 0; url && page < 200; page++) {
       const body = await fetchJson(url)
       for (const item of body.Items ?? []) {
@@ -440,6 +507,12 @@ async function refreshAzure({ write = true } = {}) {
         ;(candidates[id] ??= []).push(item)
       }
       url = body.NextPageLink
+    }
+    if (url) {
+      throw new Error(
+        `azure: ${region} still had pages after the 200-page guard — the retail feed changed shape. ` +
+          'Raise the guard once you know why, rather than shipping a truncated region.',
+      )
     }
 
     const { priced, skipped } = resolvePricedSizes(candidates)
@@ -468,14 +541,11 @@ async function refreshAzure({ write = true } = {}) {
     hourly[region] = Object.fromEntries(Object.entries(perRegion).sort(([a], [b]) => a.localeCompare(b)))
   }
 
-  // The shipped catalogue is sizes that priced cleanly in EVERY configured region — with one
-  // region today that is just that region's accepted set, but the rule holds if AZURE_REGIONS
-  // ever grows: a size this repository cannot price everywhere it claims to sell is not honest
-  // to list everywhere.
-  const regions = [...acceptedByRegion.keys()]
-  const sizes = [...acceptedByRegion.get(regions[0])]
-    .filter((id) => regions.every((region) => acceptedByRegion.get(region).has(id)))
-    .sort((a, b) => a.localeCompare(b))
+  const { sizes, everywhere } = azureCatalogue(acceptedByRegion)
+  console.log(
+    `azure: catalogue is ${sizes.length} size(s) priced in at least one of ${acceptedByRegion.size} region(s); ` +
+      `${everywhere.length} priced in all of them`,
+  )
 
   const contents = `// GENERATED by \`node scripts/refresh-prices.mjs --azure\` — do not edit by hand.
 //
@@ -491,7 +561,10 @@ async function refreshAzure({ write = true } = {}) {
 // THE CATALOGUE ITSELF IS DISCOVERED, not hand-picked: every armSkuName the feed returns, minus
 // internal pricing artifacts that are not real ARM SKU names, minus the GPU/accelerator (N-series)
 // families, minus whatever does not resolve to exactly one meter above. See
-// \`looksLikeArmSkuName\`/\`isAcceleratorFamily\` in this script. The vCPU/memory ceiling PR2a
+// \`looksLikeArmSkuName\`/\`isAcceleratorFamily\` in this script. It is the UNION across the
+// ${AZURE_REGIONS.length} priced regions — a size priced in any of them is catalogued, and a region that does not
+// sell it simply never lists it, because this list is intersected with what
+// \`Microsoft.Compute/skus\` reports live for the configured region. The vCPU/memory ceiling PR2a
 // applied to AWS at generation time has no equivalent here — Azure's feed carries no shape data at
 // all, so that ceiling is enforced in \`@rockysurf/provider-azure\`'s \`buildOfferings\` instead,
 // against the live numbers Azure actually reports.
