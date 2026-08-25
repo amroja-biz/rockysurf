@@ -25,7 +25,7 @@
 // Microsoft.Compute/skus by the provider, on the same call that reports per-subscription
 // availability, so a shape here could never disagree with what Azure will actually sell.
 
-export const AZURE_PRICES_FETCHED_AT = '2026-08-21T22:35:18.539Z'
+export const AZURE_PRICES_FETCHED_AT = '2026-08-25T16:10:34.739Z'
 export const AZURE_PRICES_EFFECTIVE_FROM = '2017-10-01T00:00:00Z'
 export const AZURE_PRICES_SOURCE = 'https://prices.azure.com/api/retail/prices'
 
