@@ -1,39 +1,39 @@
 import type { Offering, Price } from '@rockysurf/provider-sdk'
 import type { BootDiskType } from './config.js'
 import { regionOf } from './config.js'
-import {
-  C4A_ZONES,
-  GCP_C4A_PRICES_FETCHED_AT,
-  GCP_HOURLY_USD,
-  GCP_PRICES_FETCHED_AT,
-  GCP_PRICES_METHOD,
-  GCP_PRICES_SOURCE,
-  GCP_TYPES,
-  T2A_ZONES,
-} from './prices.generated.js'
+import type { PriceFeedDoc } from './feed.js'
+import { C4A_ZONES, GCP_TYPES, T2A_ZONES } from './prices.generated.js'
 
 /**
- * The machine types this provider offers, their bundled prices, and — unlike either provider
- * that came before it — an `available` flag that is doing real work.
+ * The machine types this provider offers, where their prices come from, and — unlike either
+ * provider that came before it — an `available` flag that is doing real work.
  *
- * See `prices.generated.ts` for where the numbers came from and how they differ in provenance
- * from the AWS table. The short version: transcribed from Google's published pricing page, not
- * machine-read, because GCP publishes no credential-free price feed.
+ * THE CATALOGUE IS BUNDLED; THE PRICES ARE FETCHED (gh issue #100, ADR-0009; rockysurf-ndx6).
+ * `GCP_TYPES` — the shapes — and the T2A/C4A zone lists still ship in `prices.generated.ts`,
+ * because without them there is no catalogue at all. The hourly numbers come from the hosted
+ * price feed (`feed.ts`), so correcting one reaches every install without a release.
+ *
+ * WHAT DID NOT CHANGE IS WHERE THE NUMBERS CAME FROM. Google publishes no credential-free price
+ * feed, so `gcp.json` carries a hand transcription off Google's published pricing page rather
+ * than something re-read from Google each morning — the feed fixed their delivery, not their
+ * provenance. That is why the document carries a `transcribedAt` map its AWS and Azure
+ * counterparts do not, and why the stamp on a price here is a day a person read a web page.
  */
-
-export { GCP_C4A_PRICES_FETCHED_AT, GCP_PRICES_FETCHED_AT, GCP_PRICES_METHOD, GCP_PRICES_SOURCE }
 
 /**
- * `fetchedAt` varies by WHEN a row was read, not by a single global stamp: the c4a-standard-*
- * rows were transcribed on a different day than e2/t2a (see `prices.generated.ts`), and reusing
- * the older stamp for them would claim they were read on a day nobody looked at them.
+ * `fetchedAt` varies by WHEN A ROW WAS READ, not by a single document-level stamp: the
+ * c4a-standard-* rows were transcribed eight days after e2/t2a, and reusing the older stamp for
+ * them would claim they were read on a day nobody looked at them.
+ *
+ * The document-level `fetchedAt` is the fallback because the generator sets it to the OLDEST
+ * transcription date — a floor, so a row missing from the map is dated conservatively rather
+ * than optimistically.
  */
-const usd = (amount: number, fetchedAt: string): Price => ({ amount, currency: 'USD', fetchedAt })
-
-/** Which `GCP_PRICES_*_FETCHED_AT` stamp applies to a given machine family's price row. */
-function fetchedAtFor(family: string): string {
-  return family === 'c4a' ? GCP_C4A_PRICES_FETCHED_AT : GCP_PRICES_FETCHED_AT
-}
+const priceOf = (amount: number, typeId: string, feed: PriceFeedDoc): Price => ({
+  amount,
+  currency: feed.currency,
+  fetchedAt: feed.transcribedAt?.[typeId] ?? feed.fetchedAt,
+})
 
 /**
  * Whether a machine family can actually be ordered in a zone right now.
@@ -94,12 +94,23 @@ export function familyOf(offeringId: string): string | undefined {
  * offering is the zone — that is the granularity a caller must actually pick — and the price
  * lookup joins through the zone's region.
  *
+ * EVERY TYPE IS ALWAYS LISTED, priced or not, which is where this differs from `provider-aws`:
+ * AWS omits a type its region's feed does not carry, because there that means the region does
+ * not sell it. Here the catalogue is a fixed hand list and availability is stated by the
+ * `available` flag, so an unpriced row means "we do not know this price", never "you cannot have
+ * this machine". A zone in a region the feed does not cover — and every zone when the feed is
+ * unreachable — lists in full with `hourly: null`, the SDK's "unknown, never free": the owner's
+ * no-fallback ruling (ADR-0009) says tell the user prices are unavailable and keep creates
+ * working, and reusing a us-central1 number for europe-west4 would be silently wrong rather than
+ * honestly unknown.
+ *
  * @param diskGb the boot disk size this provider is configured to attach, so the offering
  *   describes the machine core will actually create. Note that GCE bills this separately from
  *   the instance, so it is NOT included in `hourly`.
+ * @param feed the current hosted price-feed document, or `null` when it could not be fetched.
  */
-export function buildOfferings(zone: string, diskGb: number): Offering[] {
-  const forRegion = GCP_HOURLY_USD[regionOf(zone)]
+export function buildOfferings(zone: string, diskGb: number, feed: PriceFeedDoc | null): Offering[] {
+  const forRegion = feed?.regions[regionOf(zone)]
 
   return GCP_TYPES.map((type) => {
     const amount = forRegion?.[type.id]
@@ -109,7 +120,7 @@ export function buildOfferings(zone: string, diskGb: number): Offering[] {
       memoryGb: type.memoryGb,
       diskGb,
       arch: type.arch,
-      hourly: amount === undefined ? null : usd(amount, fetchedAtFor(type.family)),
+      hourly: amount === undefined ? null : priceOf(amount, type.id, feed!),
       available: isAvailableInZone(type.family, zone),
       region: zone,
     }

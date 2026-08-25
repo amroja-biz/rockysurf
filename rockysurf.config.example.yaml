@@ -330,17 +330,21 @@ registry:
   cacheTtlSeconds: 300
 
 pricing:
-  # Where AWS and Azure hourly prices come from (issue #100, ADR-0009). Prices are NOT baked
-  # into the release: this repository's `price-feed` workflow republishes them to GitHub Pages
-  # daily, and your installation reads that feed at runtime — so a cloud price change reaches
-  # you without an upgrade. When the feed cannot be fetched, offerings show "price unknown"
-  # and everything else keeps working; there is deliberately no stale bundled fallback.
+  # Where AWS, Azure and GCP hourly prices come from (issue #100, ADR-0009). Prices are NOT
+  # baked into the release: this repository's `price-feed` workflow republishes them to GitHub
+  # Pages daily, and your installation reads that feed at runtime — so a cloud price change
+  # reaches you without an upgrade. When the feed cannot be fetched, offerings show "price
+  # unknown" and everything else keeps working; there is deliberately no stale bundled fallback.
+  #
+  # GCP's stamps are older than the other two on purpose. Google publishes no credential-free
+  # pricing API, so its numbers are transcribed by hand and the feed reports the day a person
+  # read them rather than the day it republished them — see docs/providers/gcp.md.
 
   # Set false for an air-gapped installation: prices show as unavailable instead of a doomed
-  # fetch being attempted. Hetzner is unaffected (its API returns prices inline), as is GCP.
+  # fetch being attempted. Hetzner is unaffected — its API returns prices inline.
   enabled: true
 
-  # Mirror the three files at <feedUrl>/{index,aws,azure}.json to serve prices yourself.
+  # Mirror the four files at <feedUrl>/{index,aws,azure,gcp}.json to serve prices yourself.
   feedUrl: https://amroja-biz.github.io/rockysurf/prices/v1
 
   # How often the feed is re-read, in hours. The publish side has its own cadence — one cron

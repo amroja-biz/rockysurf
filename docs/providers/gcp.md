@@ -380,27 +380,41 @@ create that has already reserved the instance name and started talking to GCE.
 
 ## What it costs
 
-Prices ship bundled and stamped, and the UI says "as of" rather than implying they are live.
-Two things to know:
+Prices come from the hosted price feed, stamped, and the UI says "as of" rather than implying
+they are live. Four things to know:
 
-**The bundled numbers were transcribed by hand, not machine-read.** Google publishes no
-credential-free price feed — the old `cloudpricingcalculator` JSON is gone and the Cloud Billing
-Catalog API refuses unauthenticated callers — so unlike the AWS table, which is generated from a
-public feed, these were read off Google's published pricing page on a stated date. The file
-[`prices.generated.ts`](../../packages/provider-gcp/src/prices.generated.ts) records the URL,
-the date, and the word "transcribed". `node scripts/refresh-prices.mjs --gcp` (with a
-`GCP_BILLING_API_KEY`) prints the Cloud Billing Catalog beside the bundled table to sanity-check
+**The numbers were transcribed by hand, not machine-read.** Google publishes no credential-free
+price feed — the old `cloudpricingcalculator` JSON is gone and the Cloud Billing Catalog API
+refuses unauthenticated callers — so unlike AWS and Azure, whose feed documents are generated
+from public pricing APIs, these were read off Google's published pricing page on a stated date.
+They live as data in
+[`scripts/gcp-transcribed-prices.json`](../../scripts/gcp-transcribed-prices.json), which records
+the URL, the dates, and the word "transcribed". `node scripts/refresh-prices.mjs --gcp` (with a
+`GCP_BILLING_API_KEY`) prints the Cloud Billing Catalog beside that transcription to sanity-check
 it, and deliberately does **not** rewrite it: the Catalog prices machine *components*, and
 predefined machine types are their own cheaper SKUs, so summing them would produce a confidently
 wrong number.
 
-**Only `us-central1` is bundled.** Any other region reports its prices as unknown rather than
-reusing a us-central1 figure that would be wrong.
+**They still reach you over the feed, and that is the point** (issue #100,
+[ADR-0009](../adr/0009-prices-served-from-hosted-feed.md); rockysurf-ndx6). The transcription is
+published daily as `prices/v1/gcp.json` and read at runtime, exactly like AWS's and Azure's, so
+**correcting a transcribed number reaches your installation on the next publish instead of the
+next release**. What moved was the delivery, not the provenance. If the feed is unreachable,
+every offering lists with its price unknown and nothing else changes — there is no stale bundled
+fallback, by the owner's ruling. Set `pricing.enabled: false` to opt out explicitly.
 
-**The c4a-standard-\* rows carry their own date**, `2026-08-21`, distinct from the
-`2026-08-13` stamp on the rest of the table — they were transcribed later, when C4A was added
-(rockysurf-h6mb), from the same page and column. A price's `fetchedAt` says when *that row* was
-actually read, never a global "as of" that would misdate the rows added afterward.
+**The date you see is the day somebody read the page, not the day the feed was republished.**
+This is the part that looks like a bug and is not: `gcp.json` is regenerated every morning, and
+its `fetchedAt` still says `2026-08-13`, because that is when the numbers were actually read. A
+daily republish must not present a hand-copied number as freshly checked. The
+**c4a-standard-\* rows carry their own date**, `2026-08-21` — they were transcribed later, when
+C4A was added (rockysurf-h6mb), from the same page and column — and the feed's `transcribedAt`
+map carries that per row. A price's `fetchedAt` says when *that row* was actually read, never a
+global "as of" that would misdate the rows added afterward.
+
+**Only `us-central1` is priced.** Any other region reports its prices as unknown rather than
+reusing a us-central1 figure that would be wrong. Machine types are still listed there — an
+unknown price never hides a machine you can create.
 
 **The boot disk is billed separately** and is not in the hourly figure. A 20 GB `pd-balanced`
 disk is about \$2/month in `us-central1` at \$0.10 per GiB-month, and it keeps billing while an

@@ -54,13 +54,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       # The generator is dependency-free (plain node + fetch): no pnpm install needed.
-      - name: Generate the feed (AWS + Azure, credential-free)
+      # AWS and Azure are re-fetched on every run. GCP is not: Google publishes no
+      # credential-free feed, so its numbers are read from scripts/gcp-transcribed-prices.json
+      # and keep the dates a person read them on (rockysurf-ndx6).
+      - name: Generate the feed (AWS + Azure fetched, GCP transcribed)
         run: node scripts/refresh-prices.mjs --feed dist-feed/prices/v1
       - name: Show what will be published
         run: |
           ls -la dist-feed/prices/v1/
           node -e "const d=require('./dist-feed/prices/v1/aws.json'); console.log('aws regions:', Object.keys(d.regions).length, '| publishedAt:', d.publishedAt)"
           node -e "const d=require('./dist-feed/prices/v1/azure.json'); console.log('azure regions:', Object.keys(d.regions).length, '| effectiveFrom:', d.effectiveFrom)"
+          # fetchedAt here MUST be a transcription date, not today: a daily republish must not
+          # present hand-copied numbers as freshly read.
+          node -e "const d=require('./dist-feed/prices/v1/gcp.json'); console.log('gcp regions:', Object.keys(d.regions).length, '| transcribed (oldest):', d.fetchedAt)"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist-feed

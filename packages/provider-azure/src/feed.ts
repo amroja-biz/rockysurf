@@ -16,9 +16,11 @@
  * tampered document must degrade to UNPRICED, never to WRONG: one bad entry rejects the whole
  * document rather than serving the rest.
  *
- * NOTE: `packages/provider-aws/src/feed.ts` is this file's twin — same shape, same rules,
- * kept in lockstep by hand because the types-only SDK cannot host runtime code and providers
- * may not import each other. Change one, change both.
+ * NOTE: `packages/provider-aws/src/feed.ts` and `packages/provider-gcp/src/feed.ts` are this
+ * file's twins — same shape, same rules, kept in lockstep by hand because the types-only SDK
+ * cannot host runtime code and providers may not import each other. Change one, change all
+ * three. The GCP copy carries one documented extra field (`transcribedAt`, per-row provenance
+ * for prices Google publishes no feed for); nothing else may differ.
  */
 
 /** The normalized document `scripts/refresh-prices.mjs --feed` emits, one per provider. */

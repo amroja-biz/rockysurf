@@ -100,14 +100,17 @@ Two things worth knowing before the first launch:
 
 ## Prices
 
-**Bundled and stamped with a `fetchedAt`, in USD**, for `us-central1` only. Any other region
-reports its prices as `null` — unknown, never free — rather than reusing a number that would be
-wrong.
+**Read from the hosted price feed and stamped with a `fetchedAt`, in USD**, for `us-central1`
+only (issue #100, ADR-0009). Any other region — and every region when the feed cannot be reached —
+reports its prices as `null`: unknown, never free, rather than reusing a number that would be
+wrong. There is no bundled fallback, and an unpriced offering is still listed.
 
-They were **transcribed by hand** from Google's published pricing page rather than machine-read,
-because Google publishes no credential-free price feed. The generated file records the URL, the
-date and the method. The boot disk is billed separately and is **not** included in the hourly
-figure.
+The numbers were **transcribed by hand** from Google's published pricing page rather than
+machine-read, because Google publishes no credential-free price feed. Serving them over the feed
+fixed their delivery, not their provenance: a transcription fix now reaches installs without a
+release, and `fetchedAt` remains **the day a person read the page**, never the day the feed
+republished it. Rows read on different days keep their own dates. The boot disk is billed
+separately and is **not** included in the hourly figure.
 
 `e2-*` is amd64 and available everywhere. `t2a-*` is arm64, meaningfully cheaper per vCPU, and
 exists in eight zones only — in a zone without it, those machines are reported as unavailable

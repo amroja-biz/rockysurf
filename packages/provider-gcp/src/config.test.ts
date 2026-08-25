@@ -90,6 +90,9 @@ describe('defaults', () => {
       bootDiskType: 'pd-balanced',
       imageProject: 'ubuntu-os-cloud',
       imageFamilyPrefix: 'ubuntu-2404-lts',
+      // No `pricesUrl` default: compose injects it from the operator's `pricing` section, and
+      // its absence is the honest "no feed, so no prices" state rather than a broken config.
+      pricesRefreshHours: 6,
     })
   })
 
