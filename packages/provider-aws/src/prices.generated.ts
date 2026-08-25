@@ -15,8 +15,8 @@
 // AWS_MAX_MEMORY_GIB and classifyAwsArch in scripts/refresh-prices.mjs for the exact rules.
 import type { Architecture } from '@rockysurf/provider-sdk'
 
-export const AWS_PRICES_FETCHED_AT = '2026-08-21T22:29:22.305Z'
-export const AWS_PRICES_PUBLISHED_AT = '2026-08-21T02:02:57Z'
+export const AWS_PRICES_FETCHED_AT = '2026-08-25T16:10:21.505Z'
+export const AWS_PRICES_PUBLISHED_AT = '2026-08-24T19:31:47Z'
 export const AWS_PRICES_SOURCE = 'https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(N.%20Virginia)/Linux/index.json'
 
 export interface AwsTypeSpec {
