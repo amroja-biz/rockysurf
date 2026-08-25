@@ -12,7 +12,8 @@ import { makeAwsProvider } from './provider.js'
 
 export { awsConfigSchema, resolveSshCidr, type AwsProviderConfig } from './config.js'
 export { awsErrorCode, isNotFound, mapAwsError } from './errors.js'
-export { buildOfferings, OFFERING_IDS, PRICES_FETCHED_AT } from './offerings.js'
+export { buildOfferings, OFFERING_IDS } from './offerings.js'
+export { parsePriceFeedDoc, PriceFeedClient, type PriceFeedDoc } from './feed.js'
 export { ec2ConsoleUrl, makeAwsProvider, type AwsProviderOptions } from './provider.js'
 
 export const AWS_PROVIDER_ID = 'aws'

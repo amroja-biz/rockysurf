@@ -16,6 +16,7 @@ import {
 } from '@rockysurf/provider-sdk'
 import { API_VERSIONS, ArmApi, resourceGroupPath, resourcePath } from './api.js'
 import { resolveSshCidr, type AzureProviderConfig } from './config.js'
+import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { CredentialChain, type CredentialChainOptions } from './credentials.js'
 import { azureCodeOf, isNotFound } from './errors.js'
 import { buildOfferings } from './offerings.js'
@@ -231,6 +232,8 @@ export interface AzureProviderOptions {
   sleep?: (ms: number) => Promise<void>
   /** Overrides the describe() propagation grace. Never to skip it — only to lengthen it. */
   absenceGrace?: { attempts: number; delayMs: number }
+  /** Injected by tests; production builds a `PriceFeedClient` from the config. */
+  priceFeed?: { get(): Promise<PriceFeedDoc | null> }
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -238,6 +241,7 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 export function makeAzureProvider(options: AzureProviderOptions): ComputeProvider {
   const { config } = options
   const { subscriptionId, resourceGroup, location, managedBy } = config
+  const priceFeed = options.priceFeed ?? new PriceFeedClient(config.pricesUrl, config.pricesRefreshHours)
 
   const credentials =
     options.credentials ??
@@ -566,7 +570,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     },
 
     async listOfferings(): Promise<Offering[]> {
-      return buildOfferings(await resourceSkus(), location, config.osDiskGb)
+      return buildOfferings(await resourceSkus(), location, config.osDiskGb, await priceFeed.get())
     },
 
     /**

@@ -1,23 +1,20 @@
 import type { Architecture, Offering, Price } from '@rockysurf/provider-sdk'
-import {
-  AZURE_HOURLY_USD,
-  AZURE_PRICES_EFFECTIVE_FROM,
-  AZURE_PRICES_FETCHED_AT,
-  AZURE_PRICES_SOURCE,
-  AZURE_SIZES,
-} from './prices.generated.js'
+import type { PriceFeedDoc } from './feed.js'
+import { AZURE_SIZES } from './prices.generated.js'
 import type { ArmResourceSku } from './types.js'
 
 /**
- * Turning `Microsoft.Compute/skus` plus a bundled price table into `Offering[]`.
+ * Turning `Microsoft.Compute/skus` plus the hosted price feed into `Offering[]`.
  *
- * THE SHAPE IS LIVE AND THE PRICE IS BUNDLED, which is a split neither other cloud provider
+ * THE SHAPE IS LIVE AND THE PRICE IS FETCHED, which is a split neither other cloud provider
  * needed, and it is the honest one for Azure:
  *
- *  - **Price** ships bundled and stamped, because live pricing APIs are out of v0 (ADR-0003) and
- *    Azure's retail feed is a separate unauthenticated service rather than something already in
- *    hand. Hetzner is the documented exception precisely because its prices arrive inline on a
- *    call `listOfferings()` already makes; Azure's do not.
+ *  - **Price** comes from the hosted price feed (`feed.ts`, gh issue #100, ADR-0009),
+ *    republished daily from Azure's public Retail Prices API, so a price change reaches every
+ *    install without a release. When the feed cannot be fetched, every size lists with
+ *    `hourly: null` — prices unavailable, catalogue intact. Hetzner remains the documented
+ *    exception precisely because its prices arrive inline on a call `listOfferings()` already
+ *    makes; Azure's do not.
  *  - **Shape** — vCPU and memory — is read live, because Azure publishes it on the very call
  *    that reports availability, so fetching it costs nothing extra and a bundled copy could
  *    drift from what Azure will actually sell.
@@ -39,13 +36,7 @@ import type { ArmResourceSku } from './types.js'
  *    numbers exist, which is exactly what this function already has.
  */
 
-export { AZURE_PRICES_EFFECTIVE_FROM, AZURE_PRICES_FETCHED_AT, AZURE_PRICES_SOURCE, AZURE_SIZES }
-
-const usd = (amount: number): Price => ({
-  amount,
-  currency: 'USD',
-  fetchedAt: AZURE_PRICES_FETCHED_AT,
-})
+export { AZURE_SIZES }
 
 /** One capability off a `resourceSkus` entry, as a number. */
 function capability(sku: ArmResourceSku, name: string): number | undefined {
@@ -132,8 +123,14 @@ export function buildOfferings(
   skus: readonly ArmResourceSku[],
   location: string,
   diskGb: number,
+  feed: PriceFeedDoc | null,
 ): Offering[] {
-  const prices = AZURE_HOURLY_USD[location]
+  const prices = feed?.regions[location]
+  const price = (amount: number): Price => ({
+    amount,
+    currency: feed!.currency,
+    fetchedAt: feed!.fetchedAt,
+  })
   const catalogue = new Set<string>(AZURE_SIZES)
   const offerings: Offering[] = []
 
@@ -164,9 +161,10 @@ export function buildOfferings(
       memoryGb,
       diskGb,
       arch,
-      // `null` is "unknown, never free": a region this repository has not bundled prices for
-      // gets no number rather than a us-east number that would be wrong.
-      hourly: amount === undefined ? null : usd(amount),
+      // `null` is "unknown, never free": a region the feed does not cover — or a feed that
+      // could not be fetched at all — gets no number rather than a us-east number that would
+      // be wrong.
+      hourly: amount === undefined ? null : price(amount),
       available: isAvailable(sku, location),
       region: location,
     })

@@ -67,6 +67,18 @@ export const azureConfigSchema = z
     location: z.string().trim().min(1).default('eastus'),
 
     /**
+     * URL of this provider's hosted price-feed document (gh issue #100, ADR-0009).
+     *
+     * Injected by core's compose wiring from `pricing.feedUrl` — an operator sets that, not
+     * this. Absent (pricing disabled, or a config bypassing compose) means no feed: every
+     * offering lists with `hourly: null`, and everything else keeps working.
+     */
+    pricesUrl: z.url().optional(),
+
+    /** How often the feed is re-read, in hours. Injected from `pricing.refreshHours`. */
+    pricesRefreshHours: z.coerce.number().positive().max(720).default(6),
+
+    /**
      * Who may reach SSH on the shared network security group.
      *
      * REQUIRED AND EXPLICIT, with no default, and this is the security decision of the whole

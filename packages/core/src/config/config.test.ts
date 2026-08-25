@@ -121,6 +121,17 @@ describe('defaults materialize', () => {
     expect(config.providers.byo).toMatchObject({ enabled: false, hosts: [] })
   })
 
+  it('pricing defaults to the hosted feed, enabled (gh #100)', () => {
+    // Out-of-the-box installs read the feed this repo's own price-feed workflow republishes;
+    // an operator can mirror it (feedUrl) or opt out entirely (enabled: false, for air gaps).
+    const config = parseConfig('', 'test.yaml', {})
+    expect(config.pricing).toEqual({
+      enabled: true,
+      feedUrl: 'https://amroja-biz.github.io/rockysurf/prices/v1',
+      refreshHours: 6,
+    })
+  })
+
   it('treats a section whose children are all commented out as defaults', () => {
     // Regression: `github:` with every child commented out parses as null, not as a missing
     // key, so .prefault({}) never fired and the section failed as "expected object, received

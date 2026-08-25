@@ -1007,6 +1007,20 @@ export function CreateServerPage() {
           <p className="warning">Could not read {provider.displayName}&apos;s catalogue: {provider.offeringsError}</p>
         )}
 
+        {/*
+          One aggregate notice when a provider's catalogue came back entirely unpriced —
+          usually the hosted price feed being unreachable (gh issue #100, ADR-0009). Without
+          it, a page of rows each saying "price unknown" reads as a per-row mystery instead of
+          one condition. Deliberately not an error: creates work fine, only the estimates are
+          missing, and the sentence says exactly that.
+        */}
+        {provider && provider.offerings.length > 0 && provider.offerings.every((o) => o.hourly === null) && (
+          <p className="warning" data-testid="prices-unavailable">
+            Prices are currently unavailable for {provider.displayName} — cost estimates cannot be shown, but
+            servers can still be created.
+          </p>
+        )}
+
         <fieldset>
           <legend>Size</legend>
           {SIZES.map((option) => {
