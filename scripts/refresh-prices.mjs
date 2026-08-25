@@ -11,6 +11,7 @@
  *   node scripts/refresh-prices.mjs --check      # fail if the on-disk table is out of date
  *   node scripts/refresh-prices.mjs --azure      # also credential-free
  *   node scripts/refresh-prices.mjs --azure --check
+ *   node scripts/refresh-prices.mjs --feed <dir> # emit the hosted price-feed JSON (gh #100)
  *   HETZNER_TOKEN=… node scripts/refresh-prices.mjs --hetzner
  *
  * PROVENANCE, per provider:
@@ -43,7 +44,7 @@
  *    published predefined-machine-type prices. A mode that summed them would generate a
  *    confidently wrong number, which is worse than the transcription it would replace.
  */
-import { writeFileSync, readFileSync } from 'node:fs'
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -351,7 +352,7 @@ export const AWS_HOURLY_USD: Record<string, Record<string, number>> = ${JSON.str
 `
 
   if (write) writeFileSync(AWS_OUTPUT, contents)
-  return { file: AWS_OUTPUT, types: types.length, publishedAt, contents }
+  return { file: AWS_OUTPUT, types: types.length, publishedAt, contents, hourly, source }
 }
 
 /**
@@ -511,7 +512,7 @@ export const AZURE_HOURLY_USD: Record<string, Record<string, number>> = ${JSON.s
 `
 
   if (write) writeFileSync(AZURE_OUTPUT, contents)
-  return { file: AZURE_OUTPUT, sizes: sizes.length, regions: AZURE_REGIONS.length, effectiveFrom, contents }
+  return { file: AZURE_OUTPUT, sizes: sizes.length, regions: AZURE_REGIONS.length, effectiveFrom, contents, hourly }
 }
 
 async function refreshHetzner() {
@@ -560,6 +561,54 @@ export const BUNDLED_PRICES: PriceTable = {
 `
   writeFileSync(HETZNER_OUTPUT, contents)
   return { file: HETZNER_OUTPUT, types: Object.keys(sorted).length, currency }
+}
+
+/**
+ * Emit the hosted price feed (gh issue #100): the JSON documents the `price-feed` workflow
+ * publishes to GitHub Pages, which installed copies of Rocky Surf read at runtime.
+ *
+ * Same fetches as the TS modes above, different destination. The shape is NORMALIZED — one
+ * document per provider with identical keys (`schemaVersion`, `provider`, `fetchedAt`,
+ * `source`, `currency`, `regions`) plus at most a provider-specific provenance stamp
+ * (`publishedAt` for AWS, `effectiveFrom` for Azure) — so the read side needs no
+ * provider-specific parsing. The path is VERSIONED (`prices/v1/`): a breaking schema change is
+ * a new `/v2/` directory, never a rewrite under old installs' feet.
+ */
+async function writeFeed(outdir) {
+  const aws = await refreshAws({ write: false })
+  const azure = await refreshAzure({ write: false })
+
+  const docs = {
+    'aws.json': {
+      schemaVersion: 1,
+      provider: 'aws',
+      fetchedAt: new Date().toISOString(),
+      publishedAt: aws.publishedAt,
+      source: aws.source,
+      currency: 'USD',
+      regions: aws.hourly,
+    },
+    'azure.json': {
+      schemaVersion: 1,
+      provider: 'azure',
+      fetchedAt: new Date().toISOString(),
+      effectiveFrom: azure.effectiveFrom,
+      source: AZURE_FEED,
+      currency: 'USD',
+      regions: azure.hourly,
+    },
+  }
+  docs['index.json'] = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    providers: Object.keys(docs).map((name) => name.replace(/\.json$/, '')),
+  }
+
+  mkdirSync(outdir, { recursive: true })
+  for (const [name, doc] of Object.entries(docs)) {
+    writeFileSync(join(outdir, name), `${JSON.stringify(doc, null, 1)}\n`)
+  }
+  return { outdir, awsTypes: aws.types, azureSizes: azure.sizes }
 }
 
 /**
@@ -690,6 +739,13 @@ if (import.meta.main) {
       // found beside the bundled stamp, and deliberately rewrites nothing — so `--check` has no
       // table to compare and does not apply here.
       await reportGcp()
+    } else if (args.includes('--feed')) {
+      const outdir = args[args.indexOf('--feed') + 1]
+      if (!outdir || outdir.startsWith('--')) throw new Error('--feed requires an output directory')
+      const result = await writeFeed(outdir)
+      console.log(
+        `feed: aws (${result.awsTypes} types) + azure (${result.azureSizes} sizes) → ${result.outdir}/{index,aws,azure}.json`,
+      )
     } else if (args.includes('--azure')) {
       if (check) {
         await checkTable('azure', AZURE_OUTPUT, refreshAzure, /AZURE_PRICES_FETCHED_AT = '[^']*'/)

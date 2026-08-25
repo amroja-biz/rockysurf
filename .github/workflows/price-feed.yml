@@ -1,0 +1,68 @@
+# Regenerate and publish the hosted price feed (gh issue #100).
+#
+# WHAT THIS IS. Rocky Surf shows cost estimates for AWS and Azure machines. Those prices used
+# to be compiled into the release artifact, which meant a cloud provider changing a price
+# created release pressure for a zero-code change — and a drift-check job that could only turn
+# red until a human regenerated and shipped (issue #99 was exactly that, for a republish in
+# which no price had even changed). This workflow replaces that loop: it re-reads the same
+# credential-free public vendor feeds `scripts/refresh-prices.mjs` has always read, writes the
+# normalized JSON documents under a versioned path, and deploys them to GitHub Pages. Installed
+# copies of Rocky Surf read the published URL at runtime, so a price change reaches every
+# install on the next scheduled run here — no release, no human.
+#
+# WRITER IDENTITY. The deploy uses this repository's own Actions OIDC token via
+# actions/deploy-pages — no PAT, no new secret, and every update is an auditable Pages
+# deployment on this repo. There is deliberately no PR step: the data is generated, not judged,
+# and eliminating human latency is the point.
+#
+# IF THIS GOES RED, a vendor feed fetch or the Pages deploy failed; prices already published
+# stay served (a failed run deploys nothing). Nothing in the product breaks while it is red —
+# installs keep whatever they last fetched until their cache expires, then show "price
+# unknown" — but the numbers age until the next green run.
+name: Price feed
+
+on:
+  schedule:
+    # PUBLISH CADENCE — edit this one line to change how often prices republish.
+    # 05:30 UTC daily, offset from nightly-real-cloud (07:00) so the two never contend.
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel a run that may already be mid-deploy.
+concurrency:
+  group: price-feed
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  publish:
+    name: Regenerate and publish the price feed
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # The generator is dependency-free (plain node + fetch): no pnpm install needed.
+      - name: Generate the feed (AWS + Azure, credential-free)
+        run: node scripts/refresh-prices.mjs --feed dist-feed/prices/v1
+      - name: Show what will be published
+        run: |
+          ls -la dist-feed/prices/v1/
+          node -e "const d=require('./dist-feed/prices/v1/aws.json'); console.log('aws regions:', Object.keys(d.regions).length, '| publishedAt:', d.publishedAt)"
+          node -e "const d=require('./dist-feed/prices/v1/azure.json'); console.log('azure regions:', Object.keys(d.regions).length, '| effectiveFrom:', d.effectiveFrom)"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-feed
+      - id: deployment
+        uses: actions/deploy-pages@v4
