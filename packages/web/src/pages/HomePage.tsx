@@ -86,7 +86,7 @@ const DATA_FILES: readonly (readonly [string, string])[] = [
 const DOCS: readonly (readonly [string, string])[] = [
   ['docs/self-hosting.md', 'Install paths, data, upgrades, backup and restore'],
   ['SECURITY.md', 'Credential custody, SSH trust, the MCP threat model'],
-  ['docs/adr/llms.txt', 'The architecture decisions — start here for the design'],
+  ['docs/adr/llms.txt', 'The architecture decisions - start here for the design'],
   ['docs/providers/capability-matrix.md', 'What each provider can do, and the evidence for it'],
   ['docs/writing-a-pack.md', 'The pack-author contract'],
   ['docs/writing-a-provider.md', 'Adding a cloud against the frozen SDK'],
@@ -111,7 +111,7 @@ export function HomePage() {
         your laptop by mistake?
       </p>
       <p className="home-lede">
-        Rocky Surf solves this problem by making it easy to run agents where they belong — in
+        Rocky Surf solves this problem by making it easy to run agents where they belong - in
         cloud accounts that you own, preinstalled with your favorite tools and repos.
       </p>
       <p className="home-lede">
@@ -121,7 +121,7 @@ export function HomePage() {
         compute.
       </p>
       <p className="home-lede">
-        One process you run yourself — web UI, HTTP API, SQLite file. One admin, no accounts, no
+        One process you run yourself (web UI, HTTP API, SQLite file). One admin, no accounts, no
         telemetry, nothing hosted.
       </p>
 
@@ -143,9 +143,9 @@ export function HomePage() {
           </li>
         </ul>
         <p>
-          Rocky Surf resells nothing and sits in the middle of nothing. Proxying your cloud spend,
-          pooling your API keys, holding your code — out of bounds by definition, not by
-          preference.
+          Rocky Surf resells nothing and sits in the middle of nothing. It won&rsquo;t proxy your
+          cloud spend, pool your API keys, or hold your code, and features that would need it to
+          get refused.
         </p>
       </section>
 
@@ -185,25 +185,26 @@ export function HomePage() {
           Open <code>http://127.0.0.1:3000</code> and sign in with your admin password.
         </p>
         <p>
-          With no cloud configured you get an in-memory provider: create a server, watch it boot,
-          terminate it, before pasting a real token.
+          You don&rsquo;t need a cloud account to try it. With no cloud configured you get an
+          in-memory provider, so you can create a server, watch it boot, and terminate it before
+          pasting a real token.
         </p>
 
         <h3>Configuration</h3>
         <p>
-          Settings live in one YAML file — <code>--config &lt;path&gt;</code>, else{' '}
+          Settings live in one YAML file: <code>--config &lt;path&gt;</code>, else{' '}
           <code>./rockysurf.config.yaml</code>, else <code>~/.rockysurf/config.yaml</code>. Rocky
           Surf prints the one it used and writes web-UI changes back to it. Start from{' '}
           <a href={repoDocUrl('rockysurf.config.example.yaml')} target="_blank" rel="noreferrer">
             rockysurf.config.example.yaml
           </a>
           , where every value is the default. Under Docker the live file is in the{' '}
-          <code>rockysurf-data</code> volume, not your checkout.
+          <code>rockysurf-data</code> volume rather than your checkout.
         </p>
         <p>
           Rocky Surf listens on <code>127.0.0.1</code> only, behind one password and no TLS, and it
-          holds your cloud credentials and an SSH key per server — widen <code>server.host</code>{' '}
-          and put a proxy or firewall in front. Detail:{' '}
+          holds your cloud credentials and an SSH key per server. If you widen{' '}
+          <code>server.host</code>, put a proxy or firewall in front. Detail:{' '}
           <a href={repoDocUrl('docs/self-hosting.md')} target="_blank" rel="noreferrer">
             docs/self-hosting.md
           </a>{' '}
@@ -253,16 +254,16 @@ export function HomePage() {
 
         <h3>Pick a Surge Pack</h3>
         <p>
-          A <strong>Surge Pack</strong> is a software bundle that is installed on your box, defined
-          in a YAML file:
+          A <strong>Surge Pack</strong> is a software bundle that gets installed on your box,
+          defined in a YAML file:
         </p>
         <pre>
           <code>{PACK_SNIPPET}</code>
         </pre>
         <p>
-          A list of tools and install scripts — reviewable in a pull request, not baked into
-          someone else&rsquo;s image — and your box is built from it while you watch the install
-          feed. Ten ship in{' '}
+          It&rsquo;s just a list of tools and install scripts. You can read the whole file in a
+          pull request before trusting it, and you watch the install feed while your box is built
+          from it. Ten ship in{' '}
           <a href={`${GITHUB_URL}/tree/main/packs`} target="_blank" rel="noreferrer">
             packs/
           </a>
@@ -270,16 +271,16 @@ export function HomePage() {
         </p>
         <p>
           Each pack carries a <code>guide</code>, shown once the box is running. No credential of
-          yours reaches a box during bootstrap, so that is where a pack tells you how to sign the
-          agents in.
+          yours reaches a box during bootstrap, so the guide is where a pack tells you how to sign
+          the agents in.
         </p>
         <p>
           Scripts must be idempotent, architecture-aware and non-interactive; CI runs every shipped
-          pack&rsquo;s twice, on amd64 and arm64. Contract:{' '}
+          pack twice, on amd64 and arm64. The contract is in{' '}
           <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
             docs/writing-a-pack.md
-          </a>{' '}
-          — or let the repo&rsquo;s Claude Code skill write yours.
+          </a>
+          , or let the repo&rsquo;s Claude Code skill write yours.
         </p>
 
         <h3>Connect a GitHub repo</h3>
@@ -290,14 +291,14 @@ export function HomePage() {
         </p>
         <ul className="home-claims">
           <li>
-            <strong>Connect GitHub</strong> — press the button, enter the code it shows on
+            <strong>Connect GitHub</strong> - press the button, enter the code it shows on
             github.com, approve. It asks for the <code>repo</code> scope: read and write on every
-            repository the account can reach. The token is stored encrypted, not in the config file.
-            You register the OAuth App yourself; Rocky Surf ships none of its own, because whoever
-            registers one can revoke its tokens.
+            repository the account can reach. The token is stored encrypted (it never lands in the
+            config file). You register the OAuth App yourself; Rocky Surf ships none of its own,
+            because whoever registers one can revoke its tokens.
           </li>
           <li>
-            <strong>Access tokens</strong> — paste a personal access token. One covers everything,
+            <strong>Access tokens</strong> - paste a personal access token. One covers everything,
             or add tokens per repository, owner or host; most specific wins. These land in the
             config file, so treat it as a credential, or point it at{' '}
             <code>${'{'}GITHUB_PAT{'}'}</code>.
@@ -336,15 +337,15 @@ export function HomePage() {
           </table>
         </div>
         <p>
-          <strong>Back up the whole directory</strong> — the database and the key are useless
-          without each other — and <strong>stop the process first</strong>, because the database
-          runs in WAL mode and copying it live can silently lose the last few minutes.
+          <strong>Back up the whole directory</strong> (the database and the key are useless
+          without each other), and <strong>stop the process first</strong>: the database runs in
+          WAL mode, and copying it live can silently lose the last few minutes.
         </p>
         <pre>
           <code>{BACKUP_SNIPPET}</code>
         </pre>
         <p>
-          If you cannot stop it, use SQLite&rsquo;s online backup (
+          If you can&rsquo;t stop it, use SQLite&rsquo;s online backup (
           <code>sqlite3 rockysurf.db &quot;.backup out.db&quot;</code>) and copy{' '}
           <code>secret.key</code> alongside. Restoring is putting the directory back; migrations run
           on boot.
@@ -353,7 +354,7 @@ export function HomePage() {
           <strong>
             The backup holds every provider credential and every server&rsquo;s private key
           </strong>
-          , next to the key that decrypts them — so encrypt it, or keep <code>secret.key</code>{' '}
+          , next to the key that decrypts them. Encrypt it, or keep <code>secret.key</code>{' '}
           outside the filesystem with <code>ROCKYSURF_SECRET_KEY</code>. And <strong>
             <code>docker compose down -v</code> destroys the volume
           </strong>
@@ -371,9 +372,10 @@ export function HomePage() {
           <code>{LIMITS_SNIPPET}</code>
         </pre>
         <p>
-          Set them, but do not stop there. The spend cap is an estimate from bundled price data, not
-          a bill: an offering your provider quotes no price for spends money the cap cannot see. And
-          hitting it blocks new servers without stopping running ones — a budget cap, not a sandbox.
+          Set them, but don&rsquo;t stop there. The spend cap is an estimate from bundled price
+          data, and an offering your provider quotes no price for spends money the cap can&rsquo;t
+          see. Hitting the cap blocks new servers without stopping running ones - a budget cap, not
+          a sandbox.
         </p>
         <p>Set limits at the cloud too, where the numbers come from your actual bill:</p>
         <ul className="home-claims">
@@ -428,8 +430,8 @@ export function HomePage() {
         <p>
           Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no
           Windows, no multi-tenancy. <code>rockysurf mcp</code> exposes the lifecycle as MCP tools,
-          so an agent can create, inspect, stop and destroy its own boxes — <code>create</code> and{' '}
-          <code>terminate</code> are separate opt-in scopes.
+          so an agent can create, inspect, stop and destroy its own boxes (<code>create</code> and{' '}
+          <code>terminate</code> are separate opt-in scopes).
         </p>
       </section>
 
@@ -439,7 +441,7 @@ export function HomePage() {
           <a href={repoDocUrl('LICENSE')} target="_blank" rel="noreferrer">
             MIT
           </a>
-          . <strong>The Rocky Surf name and logo are not covered by it</strong> — fork the code
+          . <strong>The Rocky Surf name and logo are not covered by it</strong> - fork the code
           freely and give the fork its own name. See{' '}
           <a href={repoDocUrl('TRADEMARK.md')} target="_blank" rel="noreferrer">
             TRADEMARK.md
