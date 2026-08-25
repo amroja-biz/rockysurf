@@ -481,7 +481,15 @@ selling one would be dishonest), a bare-metal (`.metal`) id, or above the ceilin
 1024 GiB. There is deliberately no "current generation" hand list — a family list goes stale
 silently; a mechanical rule regenerated from the live feed does not.
 
-**Twelve regions are bundled with real prices:**
+**Prices are not bundled — they come from the hosted price feed** (issue #100,
+[ADR-0009](../adr/0009-prices-served-from-hosted-feed.md)): a JSON document this repository's
+`price-feed` workflow regenerates from the same public AWS feed and republishes to GitHub Pages
+daily. Your installation fetches it at runtime (see `pricing` in
+[self-hosting](../self-hosting.md)), so a price AWS changes today reaches you on the next
+publish + cache refresh — no Rocky Surf release involved. Every `hourly` field carries the
+feed's own `fetchedAt`, which is what the "estimate based on prices as of …" label renders.
+
+**Twelve regions are covered with real prices:**
 
 | | |
 |---|---|
@@ -492,29 +500,24 @@ silently; a mechanical rule regenerated from the live feed does not.
 | `ap-southeast-2` (Sydney) | `ap-northeast-1` (Tokyo) |
 | `ca-central-1` (Central Canada) | `sa-east-1` (São Paulo) |
 
-Point `providers.aws.region` at any of these and every offering's `hourly` field carries a real
-USD/hour number, stamped with `fetchedAt` (when the bundled table was last refreshed) and, where
-AWS reports it, `publishedAt` (when AWS itself published that price file).
-
 **Any other region is a documented degraded state, not a silent one.** EC2 will happily create an
 instance in `ap-south-1` or `eu-north-1` — Rocky Surf does not restrict `region` to this list —
 but every offering's `hourly` comes back `null`, which the SDK defines as "unknown, never free"
 rather than reusing another region's number. That has one binding consequence worth stating
 plainly: **the spend cap cannot see those boxes.** `hourlyCostAmount` is null for an unpriced
-offering, so a server in an unbundled region counts toward nobody's spend total — it is real,
+offering, so a server in an uncovered region counts toward nobody's spend total — it is real,
 billing, and invisible to the one feature meant to bound cost. If you run in a region not in the
 table above, budget for it the way you would for a provider Rocky Surf could not price at all.
 
-**The table does not drift silently.** `node scripts/refresh-prices.mjs --check` re-reads the live
-feed and fails if the bundled table disagrees with what AWS reports today, and the nightly
-workflow (`.github/workflows/nightly-real-cloud.yml`, the `price-drift` job) runs exactly that
-check every morning, credential-free, against both AWS and Azure. That check runs on the
-maintainers' schedule, not yours: **the catalogue you run is as current as the release you
-installed.** A price AWS changed after that release shipped is not reflected until the next one —
-regenerating the table and cutting a release is the only thing that updates it for an operator
-already running Rocky Surf.
+**When the feed is unreachable, prices are unavailable — deliberately.** There is no bundled
+fallback (ADR-0009): every offering lists with `hourly: null`, the create form shows one
+"prices are currently unavailable" notice, and creating servers keeps working. If your
+installation cannot reach a public GitHub Pages URL, either its internet is gone or GitHub is
+down; a stale price pretending to be current was judged worse than an honest "unavailable".
+Air-gapped? Set `pricing.enabled: false`, or point `pricing.feedUrl` at your own mirror.
 
-To add a region yourself: add a row to `AWS_REGIONS` in `scripts/refresh-prices.mjs` (the region
-id and the exact label the pricing page uses for it — there is no feed index to read this from,
-so the generator hard-fails on a bad label rather than silently skipping the region) and re-run
-`node scripts/refresh-prices.mjs`.
+To add a region: add a row to `AWS_REGIONS` in `scripts/refresh-prices.mjs` (the region id and
+the exact label the pricing page uses for it — there is no feed index to read this from, so the
+generator hard-fails on a bad label rather than silently skipping the region). The next
+`price-feed` publish carries it; re-run `node scripts/refresh-prices.mjs` too if the catalogue
+of type shapes should pick up new types.

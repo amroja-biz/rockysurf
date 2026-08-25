@@ -19,7 +19,8 @@
 
 ## Provider SDK
 
-- [0003 Freeze the provider SDK shape, with deliberate exclusions](0003-provider-sdk-shape-and-exclusions.md): [Accepted] Adopts A1-A7, B1-B3, C1-C3, D1-D6, E2/E4, F1-F2; adds `terminating`, `Offering.available`, resource ownership and a propagation grace on `describe()`; rejects `dedupeName`, `hostKeys` and a tenth error code; spot/resize stay cut.
+- [0003 Freeze the provider SDK shape, with deliberate exclusions](0003-provider-sdk-shape-and-exclusions.md): [Accepted, amended by 0009] Adopts A1-A7, B1-B3, C1-C3, D1-D6, E2/E4, F1-F2; adds `terminating`, `Offering.available`, resource ownership and a propagation grace on `describe()`; rejects `dedupeName`, `hostKeys` and a tenth error code; spot/resize stay cut.
+- [0009 AWS/Azure prices are served from a hosted feed, with no bundled fallback](0009-prices-served-from-hosted-feed.md): [Accepted] Amends 0003's live-pricing exclusion for the price table only: the `price-feed` workflow republishes normalized JSON to GitHub Pages daily and installations read it at runtime, so a price change never needs a release; feed unreachable means `hourly: null` everywhere and everything else keeps working — a bundled fallback was explicitly rejected by the owner. Catalogues (AWS type shapes, Azure size list) stay bundled; the reader rejects a whole document on any invalid price because the spend cap consumes these numbers; the nightly `price-drift` job and `--check` are retired.
 
 ## Packs & Extensibility
 
