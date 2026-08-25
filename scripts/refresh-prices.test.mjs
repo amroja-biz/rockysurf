@@ -17,6 +17,7 @@ import assert from 'node:assert/strict'
 import {
   AWS_MAX_MEMORY_GIB,
   AWS_MAX_VCPU,
+  azureCatalogue,
   azureLinuxMeter,
   classifyAwsArch,
   isAwsCatalogued,
@@ -188,4 +189,34 @@ test('resolvePricedSizes excludes rather than guesses when a candidate is not ex
   const byId = Object.fromEntries(skipped.map((s) => [s.id, s.matches]))
   assert.equal(byId.Standard_Retired_Promo, 0)
   assert.equal(byId.Standard_Ambiguous, 2)
+})
+
+/**
+ * The catalogue rule is a UNION across the priced regions, and this is the test that keeps it
+ * one (rockysurf-lodw). The distinction was invisible while `AZURE_REGIONS` held a single region
+ * — union and intersection are the same set then — so it is worth pinning now that the list is
+ * fourteen regions wide and the two rules differ by ~600 sizes.
+ */
+test('azureCatalogue is the union across regions, not the intersection', () => {
+  const { sizes, everywhere } = azureCatalogue(
+    new Map([
+      ['eastus', new Set(['Standard_B2ps_v2', 'Standard_D2s_v5', 'Standard_D2ps_v5'])],
+      ['brazilsouth', new Set(['Standard_D2s_v5'])],
+      ['westeurope', new Set(['Standard_D2s_v5', 'Standard_D2ps_v5', 'Standard_E2s_v6'])],
+    ]),
+  )
+
+  // Sorted, deduplicated, and INCLUDING the sizes only some regions sell — brazilsouth not
+  // stocking Standard_B2ps_v2 must not delete it from the two regions that do.
+  assert.deepEqual(sizes, ['Standard_B2ps_v2', 'Standard_D2ps_v5', 'Standard_D2s_v5', 'Standard_E2s_v6'])
+
+  // Reported for the maintainer, never used as the catalogue.
+  assert.deepEqual(everywhere, ['Standard_D2s_v5'])
+})
+
+test('azureCatalogue with a single region is that region, unchanged', () => {
+  const one = new Map([['eastus', new Set(['Standard_D2s_v5', 'Standard_B2ps_v2'])]])
+  const { sizes, everywhere } = azureCatalogue(one)
+  assert.deepEqual(sizes, ['Standard_B2ps_v2', 'Standard_D2s_v5'])
+  assert.deepEqual(everywhere, sizes)
 })

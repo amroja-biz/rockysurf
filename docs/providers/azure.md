@@ -11,6 +11,7 @@ your own subscription — and nothing beyond that.
 - [What each action is for](#what-each-action-is-for)
 - [Who can reach SSH](#who-can-reach-ssh)
 - [What terminate actually deletes](#what-terminate-actually-deletes)
+- [Priced regions](#priced-regions)
 - [What is deliberately absent](#what-is-deliberately-absent)
 
 ---
@@ -267,10 +268,10 @@ Note what is **not** in that table: a pricing call. A size's hourly price comes 
 price feed (issue #100, [ADR-0009](../adr/0009-prices-served-from-hosted-feed.md)) — a JSON
 document this repository's `price-feed` workflow regenerates from Azure's public Retail Prices
 API and republishes to GitHub Pages daily, fetched at runtime by your installation (see
-`pricing` in [self-hosting](../self-hosting.md)). It covers `eastus` today; any other location
-lists offerings with `hourly: null` ("unknown, never free"), and if the feed itself is
-unreachable everything still works with prices simply shown as unavailable — there is
-deliberately no bundled fallback.
+`pricing` in [self-hosting](../self-hosting.md)). It covers the fourteen locations listed under
+[Priced regions](#priced-regions); any other location lists offerings with `hourly: null`
+("unknown, never free"), and if the feed itself is unreachable everything still works with prices
+simply shown as unavailable — there is deliberately no bundled fallback.
 
 ### The `join/action` entries, which are the trap
 
@@ -374,6 +375,48 @@ attribute. That is a finding worth surfacing rather than a gap.
 
 This is also why the resource group should be Rocky Surf's own and not shared with your other
 infrastructure.
+
+---
+
+## Priced regions
+
+**Fourteen locations are covered with real prices**, regenerated daily from Azure's public
+Retail Prices API by [`scripts/refresh-prices.mjs`](../../scripts/refresh-prices.mjs) and
+published to the hosted feed (issue #100, [ADR-0009](../adr/0009-prices-served-from-hosted-feed.md)):
+
+| | |
+|---|---|
+| `eastus` (Virginia) | `eastus2` (Virginia) |
+| `centralus` (Iowa) | `westus2` (Washington) |
+| `canadacentral` (Toronto) | `brazilsouth` (São Paulo) |
+| `northeurope` (Ireland) | `westeurope` (Netherlands) |
+| `uksouth` (London) | `francecentral` (Paris) |
+| `germanywestcentral` (Frankfurt) | `southeastasia` (Singapore) |
+| `australiaeast` (New South Wales) | `japaneast` (Tokyo) |
+
+**Any other location is a documented degraded state, not a silent one.** Rocky Surf does not
+restrict `location` to this list and Azure will create the machine — but every offering's
+`hourly` comes back `null`, which the SDK defines as "unknown, never free" rather than reusing
+another region's number. One consequence is worth stating plainly: **the spend cap cannot see
+those boxes.** `hourlyCostAmount` is null for an unpriced offering, so a server in an uncovered
+location counts toward nobody's spend total. Budget for it the way you would for a provider Rocky
+Surf could not price at all.
+
+**The size catalogue is not per-region.** `AZURE_SIZES` in
+`packages/provider-azure/src/prices.generated.ts` is the *union* of every size that priced
+cleanly in any of the regions above — 1721 of them as of 2026-08-25, against 1097 that price in
+all fourteen. It is a union rather than an intersection because Azure stocks its regions very
+differently, and intersecting would have hidden a third of the catalogue (including half the
+arm64 sizes, `Standard_B2ps_v2` among them, absent only from `brazilsouth`) from the regions that
+*do* sell it. Nothing is oversold by that: the catalogue is intersected at runtime with what
+`Microsoft.Compute/skus` reports for **your** location and subscription, and a size your location
+has no price for lists with `hourly: null` like any other unpriced offering.
+
+To add a region: add its `armRegionName` to `AZURE_REGIONS` in
+[`scripts/refresh-prices.mjs`](../../scripts/refresh-prices.mjs). A region id that does not exist
+returns no rows and fails the generator rather than shipping a silently empty region. The next
+`price-feed` publish carries the prices; re-run `node scripts/refresh-prices.mjs --azure` too if
+the bundled size list should pick up sizes only that region sells.
 
 ---
 
