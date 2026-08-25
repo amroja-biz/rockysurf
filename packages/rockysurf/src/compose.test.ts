@@ -56,6 +56,20 @@ describe('what ends up in the registry', () => {
     expect(getProviderToken).not.toHaveBeenCalled()
   })
 
+  it('loads a feed-priced provider with pricing disabled — the extras are optional (gh #100)', () => {
+    // Every OTHER test in this file runs with `pricing` at its defaults, which already proves
+    // the injected `pricesUrl`/`pricesRefreshHours` pass the provider's strict schema. This one
+    // pins the opposite path: an air-gapped operator's `pricing.enabled: false` must yield a
+    // provider that loads fine and simply lists unpriced.
+    const cfg = configSchema.parse({
+      providers: { aws: { enabled: true, sshAllowedCidr: '203.0.113.7/32' } },
+      pricing: { enabled: false },
+    })
+    const { registry, notes } = compose(cfg)
+    expect(registry.ids()).toEqual(['aws'])
+    expect(notes.some((n) => n.startsWith('aws: ready'))).toBe(true)
+  })
+
   it('loads several providers at once', () => {
     const { registry } = compose(
       config({

@@ -186,6 +186,24 @@ describe('resolving a size to a concrete offering before submit', () => {
     renderPage()
     expect(await screen.findByText(/rate limited/)).toBeTruthy()
   })
+
+  it('shows one aggregate notice when every offering came back unpriced (gh #100)', async () => {
+    // The hosted price feed being unreachable is one condition, not a per-row mystery — and it
+    // must not block creating: only the estimates are missing (ADR-0009).
+    vi.mocked(api.listProviders).mockResolvedValue([
+      { ...FAKE_PROVIDER, offerings: FAKE_PROVIDER.offerings.map((o) => ({ ...o, hourly: null })) },
+    ])
+    renderPage()
+
+    expect(await screen.findByTestId('prices-unavailable')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /create server/i })).toHaveProperty('disabled', false)
+  })
+
+  it('does not show the unpriced notice while any offering carries a price', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+    expect(screen.queryByTestId('prices-unavailable')).toBeNull()
+  })
 })
 
 describe('pack metadata drives the conditional fields', () => {

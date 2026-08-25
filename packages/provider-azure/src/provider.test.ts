@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { FakeArm } from './arm-fake.js'
 import { azureConfigSchema, type AzureProviderConfig } from './config.js'
 import { CredentialChain } from './credentials.js'
+import type { PriceFeedDoc } from './feed.js'
 import { instanceStateOf, makeAzureProvider, powerStateOf, vmNameFrom } from './provider.js'
 
 /**
@@ -23,9 +24,36 @@ function configFor(fake: FakeArm, overrides: Partial<AzureProviderConfig> = {}):
   })
 }
 
-function providerFor(fake: FakeArm, overrides: Partial<AzureProviderConfig> = {}): ComputeProvider {
+/**
+ * A fake hosted price feed (gh issue #100): prices come from `feed.ts` at runtime now, so
+ * these tests hand the provider a canned document instead of letting it fetch. It covers
+ * eastus only — a provider pointed anywhere else gets `hourly: null`, same as production.
+ */
+const FEED_FETCHED_AT = '2026-08-25T00:00:00.000Z'
+const FEED: PriceFeedDoc = {
+  fetchedAt: FEED_FETCHED_AT,
+  currency: 'USD',
+  regions: {
+    eastus: {
+      Standard_B2ls_v2: 0.0304,
+      Standard_B2s_v2: 0.0608,
+      Standard_B2pls_v2: 0.0244,
+      Standard_B2ps_v2: 0.0486,
+      Standard_D2s_v5: 0.096,
+      Standard_D2ps_v5: 0.077,
+    },
+  },
+}
+const feedOf = (doc: PriceFeedDoc | null) => ({ get: async () => doc })
+
+function providerFor(
+  fake: FakeArm,
+  overrides: Partial<AzureProviderConfig> = {},
+  priceFeed: { get(): Promise<PriceFeedDoc | null> } = feedOf(FEED),
+): ComputeProvider {
   return makeAzureProvider({
     config: configFor(fake, overrides),
+    priceFeed,
     fetchImpl: fake.fetch,
     credentials: new CredentialChain({
       fetchImpl: fake.fetch,
@@ -523,7 +551,7 @@ describe('validateCredentials', () => {
 })
 
 describe('listOfferings', () => {
-  it('reads shape from the live sku list and price from the bundled table', async () => {
+  it('reads shape from the live sku list and price from the hosted feed', async () => {
     const fake = new FakeArm()
     const offerings = await providerFor(fake).listOfferings()
 
@@ -531,11 +559,20 @@ describe('listOfferings', () => {
     expect(arm.arch).toBe('arm64')
     expect(arm.cpu).toBe(2)
     expect(arm.memoryGb).toBe(8)
-    expect(arm.hourly).toMatchObject({ currency: 'USD' })
-    expect(arm.hourly!.amount).toBeGreaterThan(0)
+    // Currency and the "as of" stamp both come from the feed document (gh issue #100).
+    expect(arm.hourly).toEqual({ amount: 0.0486, currency: 'USD', fetchedAt: FEED_FETCHED_AT })
     expect(arm.region).toBe('eastus')
     // The OS disk size this provider is configured to attach, not the image's default.
     expect(arm.diskGb).toBe(30)
+  })
+
+  it('lists the catalogue unpriced when the feed is unreachable (ADR-0009)', async () => {
+    // The owner's no-fallback ruling: no feed means "prices unavailable", never a stale or
+    // wrong number — and never a smaller catalogue. Creates must keep working.
+    const fake = new FakeArm()
+    const offerings = await providerFor(fake, {}, feedOf(null)).listOfferings()
+    expect(offerings.length).toBeGreaterThan(0)
+    expect(offerings.every((o) => o.hourly === null)).toBe(true)
   })
 
   it('offers both architectures', async () => {
@@ -559,7 +596,7 @@ describe('listOfferings', () => {
     expect(offerings.find((o) => o.id === 'Standard_B2s_v2')?.available).toBe(true)
   })
 
-  it('reports hourly null for a region this repository has no bundled prices for', async () => {
+  it('reports hourly null for a region the feed has no prices for', async () => {
     const fake = new FakeArm({ location: 'westeurope' })
     const offerings = await providerFor(fake, { location: 'westeurope' }).listOfferings()
     // `null` is "unknown, never free" — never a us-east number that would be wrong.

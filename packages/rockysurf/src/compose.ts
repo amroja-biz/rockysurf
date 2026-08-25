@@ -63,8 +63,29 @@ interface ProviderWiring<TConfig> {
     section: Record<string, unknown>,
     credential: string | undefined,
   ) => Record<string, unknown>
+  /**
+   * Fields core injects that are not part of the provider's own config section — today only
+   * the hosted price feed's URL and read cadence (gh issue #100, ADR-0009), for the providers
+   * whose prices the feed carries. Absent for providers that price themselves: Hetzner reads
+   * prices live, GCP's are transcribed, BYO's machines have no price at all.
+   */
+  extras?: (config: Config) => Record<string, unknown>
   /** Where a missing credential comes from, for the error message. */
   credentialHint: string
+}
+
+/**
+ * The feed document URL for one provider, from the operator's `pricing` section.
+ *
+ * Empty when pricing is disabled: the provider schemas default `pricesUrl` to absent, which
+ * every offering then reports as `hourly: null` — prices unavailable, catalogue intact.
+ */
+function pricingExtras(config: Config, doc: 'aws.json' | 'azure.json'): Record<string, unknown> {
+  if (!config.pricing.enabled) return {}
+  return {
+    pricesUrl: `${config.pricing.feedUrl.replace(/\/+$/, '')}/${doc}`,
+    pricesRefreshHours: config.pricing.refreshHours,
+  }
 }
 
 /**
@@ -93,6 +114,7 @@ const WIRINGS: ProviderWiring<never>[] = [
     // `sizes` is core's own idea — an allowlist for the UI — and the provider has never heard
     // of it, so it is stripped alongside `enabled`.
     input: ({ enabled: _enabled, sizes: _sizes, ...rest }) => rest,
+    extras: (config) => pricingExtras(config, 'aws.json'),
     credentialHint: 'set AWS_PROFILE, or the standard AWS environment variables',
   },
   {
@@ -106,6 +128,7 @@ const WIRINGS: ProviderWiring<never>[] = [
     // `sizes` is core's own idea — an allowlist for the UI — and the provider has never heard of
     // it, so it is stripped alongside `enabled`.
     input: ({ enabled: _enabled, sizes: _sizes, ...rest }) => rest,
+    extras: (config) => pricingExtras(config, 'azure.json'),
     credentialHint:
       'set AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, run on a VM with a managed identity, or run `az login`',
   },
@@ -171,7 +194,10 @@ export function composeRegistry(context: ProviderCompositionContext): ComposeRes
     }
 
     try {
-      const parsed = wiring.factory.configSchema.parse(wiring.input(section, credential))
+      const parsed = wiring.factory.configSchema.parse({
+        ...wiring.input(section, credential),
+        ...wiring.extras?.(config),
+      })
       providers.push(wiring.factory.createProvider(parsed))
       notes.push(`${id}: ready${credential ? '' : ' (credentials from the environment)'}`)
     } catch (error) {

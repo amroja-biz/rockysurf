@@ -60,13 +60,12 @@ export { armErrorCode, armErrorMessage, azureCodeOf, isNotFound, RETRY_ANYWAY, t
 export {
   architectureFromName,
   architectureOf,
-  AZURE_PRICES_EFFECTIVE_FROM,
-  AZURE_PRICES_FETCHED_AT,
-  AZURE_PRICES_SOURCE,
   AZURE_SIZES,
   buildOfferings,
   isAvailable,
 } from './offerings.js'
+
+export { parsePriceFeedDoc, PriceFeedClient, type PriceFeedDoc } from './feed.js'
 
 export {
   asAzureData,

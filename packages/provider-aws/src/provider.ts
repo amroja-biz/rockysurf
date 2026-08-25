@@ -34,6 +34,7 @@ import {
 } from '@rockysurf/provider-sdk'
 import { resolveSshCidr, type AwsProviderConfig } from './config.js'
 import { awsErrorCode, isNotFound, mapAwsError } from './errors.js'
+import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { buildOfferings } from './offerings.js'
 
 /**
@@ -117,6 +118,8 @@ export interface AwsProviderOptions {
   /** Injected by tests, so the propagation grace costs no wall-clock time. */
   absenceGrace?: { attempts: number; delayMs: number }
   sleep?: (ms: number) => Promise<void>
+  /** Injected by tests; production builds a `PriceFeedClient` from the config. */
+  priceFeed?: { get(): Promise<PriceFeedDoc | null> }
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -326,7 +329,8 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     }
   }
 
-  const offerings = () => buildOfferings(region, config.rootVolumeGb)
+  const priceFeed = options.priceFeed ?? new PriceFeedClient(config.pricesUrl, config.pricesRefreshHours)
+  const offerings = async () => buildOfferings(region, config.rootVolumeGb, await priceFeed.get())
 
   const provider: ComputeProvider = {
     id: 'aws',
@@ -341,7 +345,7 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     },
 
     async validateSpec(spec: ProvisionSpec) {
-      const offering = offerings().find((o) => o.id === spec.offeringId)
+      const offering = (await offerings()).find((o) => o.id === spec.offeringId)
       if (!offering) {
         throw new ProviderError('invalid_spec', `no such offering: ${spec.offeringId}`)
       }

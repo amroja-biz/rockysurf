@@ -612,6 +612,27 @@ const registrySchema = section(
   }),
 )
 
+/**
+ * Where the AWS/Azure price tables the feed workflow publishes are served from.
+ *
+ * The default is the feed this repository's own `price-feed` workflow republishes daily to
+ * GitHub Pages (gh issue #100, ADR-0009). Overridable for a self-hosted mirror; `enabled:
+ * false` for an air-gapped install that would rather not attempt doomed fetches. Either way
+ * off the default path, prices simply show as unavailable — there is deliberately NO bundled
+ * fallback (owner ruling): a reachable feed is the same reachability bar as GitHub itself,
+ * and everything except the price labels keeps working without it.
+ */
+export const DEFAULT_PRICE_FEED_URL = 'https://amroja-biz.github.io/rockysurf/prices/v1'
+
+const pricingSchema = section(
+  z.strictObject({
+    enabled: z.boolean().default(true),
+    feedUrl: z.url().default(DEFAULT_PRICE_FEED_URL),
+    /** How often an installed copy re-reads the feed. The publish cadence is the workflow's. */
+    refreshHours: z.coerce.number().positive().max(720).default(6),
+  }),
+)
+
 export const configSchema = section(
   z.strictObject({
     server: serverSchema,
@@ -621,6 +642,7 @@ export const configSchema = section(
     limits: limitsSchema,
     mcp: mcpSchema,
     registry: registrySchema,
+    pricing: pricingSchema,
   }),
 )
 
@@ -634,3 +656,4 @@ export type RegistryConfig = Config['registry']
 export type RegistrySource = RegistryConfig['sources'][number]
 export type McpScope = McpConfig['scopes'][number]
 export type ByoHost = Config['providers']['byo']['hosts'][number]
+export type PricingConfig = Config['pricing']
