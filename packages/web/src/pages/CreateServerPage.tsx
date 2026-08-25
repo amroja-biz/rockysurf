@@ -28,6 +28,7 @@ import {
   SIZE_REQUIREMENTS,
   SIZES,
   type Architecture,
+  type Resolution,
   type ServerSize,
 } from '../lib/requirements'
 import { AppShell } from '../components/AppShell'
@@ -684,13 +685,25 @@ export function CreateServerPage() {
 
   const architectures = useMemo(() => availableArchitectures(provider?.offerings ?? []), [provider])
 
-  // Resolve the t-shirt size to a CONCRETE offering, before submit, so the price shown is the
+  // Resolve the t-shirt sizes to CONCRETE offerings, before submit, so the price shown is the
   // price of the machine that will actually be created. Computed even in custom mode — cheap,
   // and it means switching back to a size needs no re-derivation.
-  const resolution = useMemo(() => {
+  //
+  // EVERY size, not only the selected one (rockysurf-b1gr). The Size fieldset labels each option
+  // with the machine it would land on, and three floors that all read "at least 2 vCPU" cannot be
+  // compared without clicking through them one at a time. One resolver over one catalogue at one
+  // arch, so a label and the plan card below can never quote different machines for the same size.
+  const sizeResolutions = useMemo(() => {
     if (!provider) return null
-    return resolveOffering(provider.offerings, { ...SIZE_REQUIREMENTS[size], ...(arch ? { arch } : {}) })
-  }, [provider, size, arch])
+    return new Map(
+      SIZES.map((option): [ServerSize, Resolution] => [
+        option,
+        resolveOffering(provider.offerings, { ...SIZE_REQUIREMENTS[option], ...(arch ? { arch } : {}) }),
+      ]),
+    )
+  }, [provider, arch])
+
+  const resolution = sizeResolutions?.get(size) ?? null
 
   /**
    * The machine type picker's own pick, re-looked-up rather than cached as an `Offering`
@@ -1025,6 +1038,11 @@ export function CreateServerPage() {
           <legend>Size</legend>
           {SIZES.map((option) => {
             const requirements = SIZE_REQUIREMENTS[option]
+            // The machine this size would land on right now. Absent before a cloud is chosen,
+            // and absent for a size this cloud cannot meet — the label keeps its floor and says
+            // nothing more, because the reason belongs to the size actually selected and the
+            // plan card below already gives it there.
+            const lands = sizeResolutions?.get(option)
             return (
               <label key={option} className={`radio-option ${!customOfferingId && option === size ? 'selected' : ''}`}>
                 <input
@@ -1044,6 +1062,14 @@ export function CreateServerPage() {
                 <span className="size-detail">
                   at least {requirements.vcpu} vCPU · {requirements.memGb} GB RAM
                 </span>
+                {lands?.ok && (
+                  <span className="size-detail" data-testid={`size-resolves-${option}`}>
+                    {/* Never blank, never $0 — null means the provider quoted nothing, not free.
+                        When the whole catalogue came back that way it is one condition, and the
+                        aggregate notice above says so once for all three of these. */}
+                    {lands.offering.id} · {lands.offering.hourly ? formatHourly(lands.offering.hourly) : 'price unknown'}
+                  </span>
+                )}
               </label>
             )
           })}

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../lib/api'
+import { SIZES } from '../lib/requirements'
 import { CreateServerPage } from './CreateServerPage'
 
 // `Link` arrived with the page moving inside `AppShell` (rockysurf-k72k) — the shell's nav is
@@ -123,8 +124,11 @@ describe('resolving a size to a concrete offering before submit', () => {
     renderPage()
 
     // The cheapest offering meeting "small" — shown BEFORE anything is submitted.
-    expect(await screen.findByRole('heading', { name: /small-arm/ })).toBeTruthy()
-    expect(screen.getByText(/\$0\.0168\/hr/)).toBeTruthy()
+    const heading = await screen.findByRole('heading', { name: /small-arm/ })
+    // Scoped to the plan card: the same price now also labels the "small" radio above it
+    // (rockysurf-b1gr), so an unscoped query would match two elements and throw.
+    const planCard = heading.closest('section')!
+    expect(within(planCard).getByText(/\$0\.0168\/hr/)).toBeTruthy()
     // Prices ship bundled, so they carry the date they were read.
     expect(screen.getByText(/prices as of/i)).toBeTruthy()
   })
@@ -203,6 +207,85 @@ describe('resolving a size to a concrete offering before submit', () => {
     renderPage()
     await screen.findByRole('heading', { name: /small-arm/ })
     expect(screen.queryByTestId('prices-unavailable')).toBeNull()
+  })
+})
+
+/**
+ * Every size priced at once, not only the selected one (rockysurf-b1gr).
+ *
+ * The plan card prices whichever size is selected, which makes comparing the three a matter of
+ * clicking each in turn and remembering the last number. Each option now carries the machine it
+ * would land on, from the same resolver over the same catalogue at the same arch.
+ */
+describe('pricing every size option, not only the selected one', () => {
+  const labelFor = (size: string) => screen.getByTestId(`size-resolves-${size}`).textContent
+
+  it('names the machine each size would land on, with its hourly price', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+
+    expect(labelFor('small')).toBe('small-arm · $0.0168/hr')
+    // "medium" wants 4 GB and only the big type here has it: a coarse catalogue rounds up, and
+    // the label is what makes that visible without selecting medium to find out.
+    expect(labelFor('medium')).toBe('big-arm · $0.0672/hr')
+    expect(labelFor('large')).toBe('big-arm · $0.0672/hr')
+  })
+
+  it('says "price unknown" for a size that lands on an unpriced machine', async () => {
+    // One unpriced type rather than a whole unreachable feed: the aggregate notice stays away,
+    // and the label still names the machine instead of going blank or implying it is free.
+    vi.mocked(api.listProviders).mockResolvedValue([
+      {
+        ...FAKE_PROVIDER,
+        offerings: FAKE_PROVIDER.offerings.map((o) => (o.id === 'big-arm' ? { ...o, hourly: null } : o)),
+      },
+    ])
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+
+    expect(labelFor('large')).toBe('big-arm · price unknown')
+    expect(screen.queryByTestId('prices-unavailable')).toBeNull()
+  })
+
+  it('degrades with the aggregate notice when the whole feed came back unpriced', async () => {
+    // ADR-0009: an unreachable price feed is one condition, said once above the fieldset. The
+    // labels below it must agree with that sentence rather than quoting numbers nobody has.
+    vi.mocked(api.listProviders).mockResolvedValue([
+      { ...FAKE_PROVIDER, offerings: FAKE_PROVIDER.offerings.map((o) => ({ ...o, hourly: null })) },
+    ])
+    renderPage()
+    await screen.findByTestId('prices-unavailable')
+
+    for (const size of SIZES) expect(labelFor(size)).toMatch(/· price unknown$/)
+  })
+
+  it('re-labels every option when the cloud changes', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.listProviders).mockResolvedValue([FAKE_PROVIDER, OTHER_PROVIDER])
+    renderPage()
+
+    // Nothing to price until a cloud is chosen — the labels are that cloud's answer.
+    await screen.findByRole('radio', { name: 'Fake Cloud' })
+    expect(screen.queryByTestId('size-resolves-small')).toBeNull()
+
+    await user.click(screen.getByRole('radio', { name: 'Fake Cloud' }))
+    await waitFor(() => expect(labelFor('small')).toBe('small-arm · $0.0168/hr'))
+
+    await user.click(screen.getByRole('radio', { name: 'Other Cloud' }))
+    await waitFor(() => expect(labelFor('small')).toBe('other-medium · $0.0310/hr'))
+    // Other Cloud sells nothing meeting "large", so that option keeps its floor and gains no
+    // machine. Saying why is the plan card's job, and only for the size actually selected.
+    expect(screen.queryByTestId('size-resolves-large')).toBeNull()
+  })
+
+  it('resolves the labels at the chosen architecture, as the plan card does', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+
+    await user.click(screen.getByRole('radio', { name: /x86-64/i }))
+    await waitFor(() => expect(labelFor('small')).toBe('small-x86 · $0.0208/hr'))
+    expect(screen.queryByTestId('size-resolves-large')).toBeNull()
   })
 })
 
