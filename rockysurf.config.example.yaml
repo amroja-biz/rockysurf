@@ -328,3 +328,21 @@ registry:
   # several requests over a minute or two; one HTTP call per page view would be rude to a CDN and
   # slow for you. There is a refresh button for when this is too long.
   cacheTtlSeconds: 300
+
+pricing:
+  # Where AWS and Azure hourly prices come from (issue #100, ADR-0009). Prices are NOT baked
+  # into the release: this repository's `price-feed` workflow republishes them to GitHub Pages
+  # daily, and your installation reads that feed at runtime — so a cloud price change reaches
+  # you without an upgrade. When the feed cannot be fetched, offerings show "price unknown"
+  # and everything else keeps working; there is deliberately no stale bundled fallback.
+
+  # Set false for an air-gapped installation: prices show as unavailable instead of a doomed
+  # fetch being attempted. Hetzner is unaffected (its API returns prices inline), as is GCP.
+  enabled: true
+
+  # Mirror the three files at <feedUrl>/{index,aws,azure}.json to serve prices yourself.
+  feedUrl: https://amroja-biz.github.io/rockysurf/prices/v1
+
+  # How often the feed is re-read, in hours. The publish side has its own cadence — one cron
+  # line in .github/workflows/price-feed.yml.
+  refreshHours: 6

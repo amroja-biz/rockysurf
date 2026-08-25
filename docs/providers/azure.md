@@ -263,6 +263,15 @@ The provider makes these calls and no others.
 | the shared network | `virtualNetworks/*`, `networkSecurityGroups/*`, `securityRules/*`, minus delete | Created on first launch and adopted forever after. **No delete action is granted for either**, because they outlive every server and a reconciler must never reap them. |
 | attach things | the four `join/action` entries | See below. This is the one that trips people up. |
 
+Note what is **not** in that table: a pricing call. A size's hourly price comes from the hosted
+price feed (issue #100, [ADR-0009](../adr/0009-prices-served-from-hosted-feed.md)) — a JSON
+document this repository's `price-feed` workflow regenerates from Azure's public Retail Prices
+API and republishes to GitHub Pages daily, fetched at runtime by your installation (see
+`pricing` in [self-hosting](../self-hosting.md)). It covers `eastus` today; any other location
+lists offerings with `hourly: null` ("unknown, never free"), and if the feed itself is
+unreachable everything still works with prices simply shown as unavailable — there is
+deliberately no bundled fallback.
+
 ### The `join/action` entries, which are the trap
 
 **Azure authorizes an attachment against the resource being attached *to*.** Creating a network

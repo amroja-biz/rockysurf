@@ -2,16 +2,20 @@
 /**
  * Refresh the bundled price tables (rockysurf-gyp1.3).
  *
- * Run by a maintainer, never at runtime. Live pricing APIs are out of v0 (ADR-0003), so prices
- * ship bundled and stamped with `fetchedAt` — which is the only thing that lets the UI say
- * "estimate based on prices as of …" instead of implying a number is current. This script is
- * what keeps that stamp from going stale silently: drift is one command away from a fix.
+ * Two jobs, two destinations (gh issue #100, ADR-0009):
  *
- *   node scripts/refresh-prices.mjs              # AWS only; no credentials needed
- *   node scripts/refresh-prices.mjs --check      # fail if the on-disk table is out of date
- *   node scripts/refresh-prices.mjs --azure      # also credential-free
- *   node scripts/refresh-prices.mjs --azure --check
- *   node scripts/refresh-prices.mjs --feed <dir> # emit the hosted price-feed JSON (gh #100)
+ *  - `--feed` emits the HOSTED PRICE FEED — the normalized JSON the `price-feed` workflow
+ *    republishes to GitHub Pages daily and every installation reads at runtime. This is how
+ *    prices reach installed copies now; a price change never needs a release.
+ *  - The TS modes regenerate the bundled CATALOGUE files (AWS type shapes, Azure size list) —
+ *    run by a maintainer when the machine-type catalogue itself should move, which does still
+ *    ride a release. Every price the feed serves carries the feed's own `fetchedAt`, which is
+ *    what lets the UI say "estimate based on prices as of …" instead of implying a number is
+ *    current.
+ *
+ *   node scripts/refresh-prices.mjs              # AWS catalogue; no credentials needed
+ *   node scripts/refresh-prices.mjs --azure      # Azure catalogue; also credential-free
+ *   node scripts/refresh-prices.mjs --feed <dir> # emit the hosted price-feed JSON
  *   HETZNER_TOKEN=… node scripts/refresh-prices.mjs --hetzner
  *
  * PROVENANCE, per provider:
@@ -26,11 +30,10 @@
  *    hand list was rejected (it is the staleness failure mode this generator exists to escape).
  *
  *  - **Azure** — the public Retail Prices API, `https://prices.azure.com/api/retail/prices`.
- *    Also credential-free, so anyone can reproduce the numbers in this repository, which is why
- *    it supports `--check` the way AWS does. Only the price is bundled: a VM size's vCPU and
- *    memory are read LIVE from `Microsoft.Compute/skus` by the provider itself, from the same
- *    call that reports per-subscription availability, so a shape can never disagree with what
- *    Azure will actually sell.
+ *    Also credential-free, so anyone can reproduce the numbers this feed serves. Only the size
+ *    LIST is bundled: a VM size's vCPU and memory are read LIVE from `Microsoft.Compute/skus`
+ *    by the provider itself, from the same call that reports per-subscription availability, so
+ *    a shape can never disagree with what Azure will actually sell.
  *
  *  - **Hetzner** — OPTIONAL, and off by default. Hetzner returns prices inline on
  *    `GET /server_types`, the very call `listOfferings()` already makes, so that provider reads
@@ -614,32 +617,6 @@ async function writeFeed(outdir) {
 }
 
 /**
- * Compare a freshly-fetched table against the one on disk, without writing either.
- *
- * Never writes: a `--check` that clobbers the file it is checking would leave the tree dirty if
- * it were interrupted, and CI runs this on a clean checkout. The fetch stamp is stripped before
- * comparing, because it changes on every run by construction and a stamp-only difference is not
- * drift.
- */
-async function checkTable(label, output, refresh, stampPattern) {
-  const before = (() => {
-    try {
-      return readFileSync(output, 'utf8')
-    } catch {
-      return ''
-    }
-  })()
-  const { contents } = await refresh({ write: false })
-
-  const strip = (text) => text.replace(stampPattern, '')
-  if (strip(before) !== strip(contents)) {
-    console.error(`${label}: bundled prices are OUT OF DATE — run without --check to refresh`)
-    process.exit(1)
-  }
-  console.log(`${label}: bundled prices are current`)
-}
-
-/**
  * GCP: report the Cloud Billing Catalog, and deliberately do NOT rewrite the table.
  *
  * THIS MODE IS A READING AID, NOT A GENERATOR, and the asymmetry with the AWS path above is a
@@ -730,7 +707,14 @@ async function reportGcp() {
 // and rockysurf-tzzw, a module other code imports from.
 if (import.meta.main) {
   const args = process.argv.slice(2)
-  const check = args.includes('--check')
+
+  // `--check` is gone with the price-drift job it served (gh issue #100, ADR-0009): the
+  // bundled files hold only the CATALOGUE now, prices ship via `--feed`, and a catalogue-only
+  // refresh is a deliberate maintainer act rather than something CI diff-polices nightly.
+  if (args.includes('--check')) {
+    console.error('--check was removed: prices are no longer bundled, so there is no table to drift. See ADR-0009.')
+    process.exit(1)
+  }
 
   try {
     if (args.includes('--hetzner')) {
@@ -738,8 +722,7 @@ if (import.meta.main) {
       console.log(`hetzner: ${result.types} types (${result.currency}) → ${result.file}`)
     } else if (args.includes('--gcp')) {
       // A REPORT rather than a refresh: it reads Google's Cloud Billing Catalog and prints what it
-      // found beside the bundled stamp, and deliberately rewrites nothing — so `--check` has no
-      // table to compare and does not apply here.
+      // found beside the bundled stamp, and deliberately rewrites nothing.
       await reportGcp()
     } else if (args.includes('--feed')) {
       const outdir = args[args.indexOf('--feed') + 1]
@@ -749,15 +732,9 @@ if (import.meta.main) {
         `feed: aws (${result.awsTypes} types) + azure (${result.azureSizes} sizes) → ${result.outdir}/{index,aws,azure}.json`,
       )
     } else if (args.includes('--azure')) {
-      if (check) {
-        await checkTable('azure', AZURE_OUTPUT, refreshAzure, /AZURE_PRICES_FETCHED_AT = '[^']*'/)
-      } else {
-        const result = await refreshAzure()
-        console.log(`azure: ${result.sizes} sizes × ${result.regions} region(s) → ${result.file}`)
-        console.log(`       oldest meter in this table took effect ${result.effectiveFrom}`)
-      }
-    } else if (check) {
-      await checkTable('aws', AWS_OUTPUT, refreshAws, /AWS_PRICES_FETCHED_AT = '[^']*'/)
+      const result = await refreshAzure()
+      console.log(`azure: ${result.sizes} sizes × ${result.regions} region(s) → ${result.file}`)
+      console.log(`       oldest meter in this table took effect ${result.effectiveFrom}`)
     } else {
       const result = await refreshAws()
       console.log(`aws: ${result.types} types → ${result.file}`)

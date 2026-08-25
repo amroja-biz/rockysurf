@@ -247,6 +247,32 @@ default, so anything you leave out keeps working.
 
 **Take a backup before upgrading.** Migrations move forward only.
 
+## Cloud prices
+
+The hourly cost estimates for AWS and Azure machines are not part of the release you installed
+(issue #100, [ADR-0009](adr/0009-prices-served-from-hosted-feed.md)). They come from a hosted
+price feed — three JSON files the Rocky Surf repository's `price-feed` workflow regenerates
+from the clouds' public pricing feeds and republishes to GitHub Pages daily:
+
+```
+https://amroja-biz.github.io/rockysurf/prices/v1/{index,aws,azure}.json
+```
+
+Your installation fetches its provider's document at runtime and caches it (`pricing.refreshHours`,
+default 6), so a price a cloud changes today reaches you on the next publish plus one cache
+refresh — no upgrade involved. Every estimate in the UI carries the feed's own "as of" stamp.
+
+Three things worth knowing:
+
+- **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
+  is deliberately no stale bundled fallback: creating, stopping and terminating servers all
+  work, the create form says prices are unavailable, and the spend cap reports the affected
+  servers in its `unpricedServers` count instead of silently miscounting.
+- **Air-gapped?** Set `pricing.enabled: false` (prices show unavailable, no doomed fetches), or
+  mirror the three files somewhere you control and point `pricing.feedUrl` at the mirror.
+- **Hetzner and GCP are not on the feed.** Hetzner's API returns prices inline on the same call
+  that lists machines; GCP's transcribed table ships with the release as before.
+
 ## Bring-your-own hosts
 
 You do not need a cloud account at all. `@rockysurf/provider-byo` manages machines that already
