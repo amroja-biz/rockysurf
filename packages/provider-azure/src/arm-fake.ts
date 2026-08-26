@@ -320,6 +320,33 @@ export class FakeArm {
       properties: { ...((body?.['properties'] as Record<string, unknown>) ?? {}), provisioningState: 'Succeeded' },
     }
 
+    if (type === 'Microsoft.Network/virtualNetworks') {
+      // Real ARM returns a vnet's subnets WITH their ids, both from the PUT that created them
+      // inline and from every later GET. The fake used to echo the request body untouched, so
+      // its inline subnets had no `id` — and the provider, which adopts a subnet only when it
+      // can see one, re-wrote the subnet as a child on every single provision. That made a
+      // faithful adopt path look like a rewrite, and it is why the shared-network test could
+      // only pass while ensureNetwork() was memoized (rockysurf-3l4g).
+      const subnets = (resource.properties?.['subnets'] as { name?: string }[] | undefined) ?? []
+      resource.properties = {
+        ...resource.properties,
+        subnets: subnets.map((subnet) => ({ ...subnet, id: `${path}/subnets/${subnet.name}` })),
+      }
+    }
+
+    if (type === 'Microsoft.Network/virtualNetworks/subnets') {
+      // A child PUT has to become visible on the parent, or the next GET of the vnet reports a
+      // subnet that demonstrably exists as missing.
+      const vnetPath = path.slice(0, path.indexOf('/subnets/'))
+      const vnet = this.resources.get(vnetPath.toLowerCase())
+      if (vnet) {
+        const siblings = ((vnet.properties?.['subnets'] as { name?: string }[] | undefined) ?? []).filter(
+          (subnet) => subnet.name !== name,
+        )
+        vnet.properties = { ...vnet.properties, subnets: [...siblings, { ...resource, id: path }] }
+      }
+    }
+
     if (type === 'Microsoft.Network/publicIPAddresses') {
       // Assigned once and kept: a Standard SKU address is Static, which is the whole basis of
       // `ipStableAcrossStop`.
