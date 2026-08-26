@@ -160,7 +160,14 @@ tools:
 
       # One rig + crew per repository the user selected. `gt rig add` on an existing rig is
       # an error rather than a no-op, so each is stamped: this is the generic guard for a
-      # third-party command with no idempotent mode.
+      # third-party command with no idempotent mode. A rig add that fails removes its own
+      # directory (gastown's AddRig cleans up on error), so a re-run after a failure is a
+      # plain retry, not a "directory already exists".
+      #
+      # `gt rig add` clones the repository AGAIN, bare, from the URL — it does not use the
+      # checkout in $HOME the bootstrap already made. For a private repository that git is
+      # authenticated by the credential helper the bootstrap hands every setup step through
+      # GIT_CONFIG_* (issue #142); nothing here may add credentials of its own.
       for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
         [ -n "$repo" ] || continue
         repo_name=$(basename "$repo" .git)

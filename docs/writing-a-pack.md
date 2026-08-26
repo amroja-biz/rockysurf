@@ -345,7 +345,7 @@ Two more, worth calling out separately:
 | `ARCH` | every step | `amd64` or `arm64` |
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
-| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose — empty when they confirmed a repo-less create, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it |
+| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose — empty when they confirmed a repo-less create, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it. Any `git` your setup script runs against these URLs — directly, or through a tool that clones on its own the way `gt rig add` does — authenticates with the same credential helper the clone step used, handed to the step through git's `GIT_CONFIG_*` environment when the box carries a token (issue #142). You write no credential code and must not: the token never goes on a command line or into a git config |
 | your tool's secrets | steps of the tool they belong to | whatever the user supplied |
 
 Standard output and standard error are captured per step. Log freely; it is the only debugging
@@ -969,6 +969,7 @@ hardcode what they carry.
 | `DEBIAN_FRONTEND` | every step | `noninteractive`. See [Rule 3](#rule-3-non-interactive). |
 | `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
 | `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
+| `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
 | `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
 | `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
 

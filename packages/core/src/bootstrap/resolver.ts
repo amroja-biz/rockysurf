@@ -124,8 +124,9 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
       runAs: tool.runAs === 'root' ? 'root' : 'rocky',
       // `$REPOS` is documented to setup scripts in writing-a-pack.md, and the frozen plan
       // schema has no env field — so it is exported by the step itself. Data, not a schema
-      // change, and it keeps the value visible in the snapshot.
-      run: `${exportRepos(repositories)}${tool.setupScript}`,
+      // change, and it keeps the value visible in the snapshot. The same preamble hands the
+      // script the clone step's git credentials; see `setupPreamble`.
+      run: `${setupPreamble(repositories)}${tool.setupScript}`,
       timeoutSeconds: DEFAULT_TOOL_TIMEOUT_SECONDS,
     })
   }
@@ -186,10 +187,6 @@ export function repoDirName(url: string): string {
   const trimmed = url.trim().replace(/\/+$/, '')
   const last = trimmed.slice(trimmed.lastIndexOf('/') + 1)
   return last.replace(/\.git$/, '') || 'repo'
-}
-
-function exportRepos(repositories: string[]): string {
-  return `export REPOS=${shellQuote(repositories.join(','))}\n`
 }
 
 /**
@@ -262,6 +259,50 @@ export const GIT_CREDENTIAL_HELPER_BODY = `f() {
 }`
 
 export const GIT_CREDENTIAL_HELPER = `!${GIT_CREDENTIAL_HELPER_BODY}; f`
+
+/**
+ * Every setup script starts with this. `$REPOS` is the documented part; the rest is what
+ * makes `$REPOS` usable when the repositories are private (issue #142).
+ *
+ * A setup script runs AFTER the clones precisely so it can do per-repository work, and some
+ * of that work is git — `gt rig add` clones the repository a second time, bare, on its own.
+ * The clone step authenticates through a credential helper it wires in with `-c` for that one
+ * git invocation, so nothing of it survives into phase 4: the tokens are in the environment
+ * (secrets.env is forwarded to every unprivileged step) but no git run by a setup script had
+ * any way to use them. Against a private repository that git hung on a username prompt with
+ * no TTY and died with "could not read Username for https://github.com: No such device or
+ * address", which is the whole of #142.
+ *
+ * The remedy is the SAME helper, delivered the only way that reaches git processes the script
+ * does not start itself: git's `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_<n>` / `GIT_CONFIG_VALUE_<n>`
+ * environment (git ≥ 2.31; Ubuntu 24.04 ships 2.43), which every git in the step's process
+ * tree reads as if the pairs had been passed with `-c`. The three custody properties the
+ * clone step is built on hold unchanged: the token never reaches argv (the helper reads it
+ * from the environment at the moment git asks), never reaches any `.gitconfig` or
+ * `.git/config` (the environment dies with the step), and a box with no tokens gets plain
+ * anonymous git — the `if` is the clone step's own guard, so the two can never disagree about
+ * when a helper is offered.
+ *
+ * `GIT_TERMINAL_PROMPT=0` is there for the failure mode that remains — a private repository
+ * on a box that carries no token for it — so it fails in git's stable "terminal prompts
+ * disabled" wording instead of the "No such device or address" the user in #142 had to read.
+ *
+ * Exported as a constant rather than assembled inline so the test that runs REAL git against
+ * it cannot drift from the preamble a box receives.
+ */
+export const SETUP_GIT_AUTH_PREAMBLE = [
+  'export GIT_TERMINAL_PROMPT=0',
+  'if [ -n "${GITHUB_TOKEN:-}" ] || [ "${ROCKYSURF_GITHUB_TOKEN_COUNT:-0}" -gt 0 ]; then',
+  '  export GIT_CONFIG_COUNT=2',
+  '  export GIT_CONFIG_KEY_0=credential.useHttpPath GIT_CONFIG_VALUE_0=true',
+  `  export GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1='${GIT_CREDENTIAL_HELPER}'`,
+  'fi',
+  '',
+].join('\n')
+
+function setupPreamble(repositories: string[]): string {
+  return `export REPOS=${shellQuote(repositories.join(','))}\n${SETUP_GIT_AUTH_PREAMBLE}`
+}
 
 /**
  * How the no-matching-token sentence begins, exported so the tests that assert it arrives in a
