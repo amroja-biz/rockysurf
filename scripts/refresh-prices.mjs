@@ -438,6 +438,22 @@ export function azureLinuxMeter(rows) {
  * a widened refresh permanently unable to complete. So a size that doesn't resolve to exactly
  * one row is EXCLUDED from the catalogue and named in `skipped`, for the caller to report; a
  * fabricated price is never written for it, which is the property this rule exists to protect.
+ *
+ * A METER AT `retailPrice: 0` IS NOT A PRICE, AND EXCLUDING IT IS THE SAME RULE (gh issue #140).
+ * Azure publishes placeholder meters for families it has announced but is not yet billing for:
+ * on 2026-08-26 the whole Mbv4 memory-optimized series — thirty sizes, `Standard_M16bs_v4`
+ * through `Standard_M304bds_4_v4` — returned four rows apiece in `eastus` and
+ * `germanywestcentral`, Linux and Windows, spot and not, every one of them at `0`. Each
+ * resolves to exactly ONE pay-as-you-go Linux meter, so the ambiguity rule above waves them
+ * through; the number it waves through is a zero.
+ *
+ * That mattered far more than thirty missing sizes, because THE RUNTIME READERS REJECT A FEED
+ * DOCUMENT WHOLE (`parsePriceFeedDoc` in each provider package: any non-positive price and the
+ * document is `null`, so the spend cap can never be fed a wrong number). Thirty zeros in
+ * `eastus` therefore did not unprice thirty sizes — they unpriced ALL of Azure, in every region,
+ * for every install, which is exactly what issue #140 reported. `unreadableFeedEntries()` below
+ * is the belt to this braces: it fails the generator rather than publishing a document the
+ * readers will throw away.
  */
 export function resolvePricedSizes(candidatesByArmSkuName) {
   const priced = {}
@@ -445,7 +461,16 @@ export function resolvePricedSizes(candidatesByArmSkuName) {
   for (const [id, rows] of Object.entries(candidatesByArmSkuName)) {
     const matches = azureLinuxMeter(rows)
     if (matches.length !== 1) {
-      skipped.push({ id, matches: matches.length })
+      skipped.push({ id, matches: matches.length, reason: `${matches.length} pay-as-you-go Linux meters` })
+      continue
+    }
+    const amount = Number(matches[0].retailPrice)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      skipped.push({
+        id,
+        matches: 1,
+        reason: `its one Linux meter carries no price (retailPrice ${JSON.stringify(matches[0].retailPrice)})`,
+      })
       continue
     }
     priced[id] = matches[0]
@@ -454,13 +479,39 @@ export function resolvePricedSizes(candidatesByArmSkuName) {
 }
 
 /**
+ * Every entry in a feed document's `regions` map that the RUNTIME READERS would refuse
+ * (gh issue #140).
+ *
+ * This is deliberately a transcription of the rule in `parsePriceFeedDoc` — the hand-rolled
+ * validator each provider package's `feed.ts` applies to the document it fetches — rather than
+ * a looser sanity check of its own. Those readers reject a document WHOLE: one price that is
+ * not a finite number greater than zero and the entire provider goes unpriced, in every region,
+ * for every install. So the one place that can prevent that is here, at generation, and the
+ * check has to be the same check or it does not prevent anything.
+ *
+ * Returns the offending `region/id = value` entries so the caller can name them. Empty means
+ * the readers will accept the document.
+ */
+export function unreadableFeedEntries(regions) {
+  const bad = []
+  for (const [region, table] of Object.entries(regions ?? {})) {
+    for (const [id, amount] of Object.entries(table ?? {})) {
+      if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+        bad.push(`${region}/${id} = ${JSON.stringify(amount)}`)
+      }
+    }
+  }
+  return bad
+}
+
+/**
  * The bundled size catalogue from the per-region accepted sets: THE UNION of sizes that priced
  * cleanly in ANY configured region, not the intersection of all of them (rockysurf-lodw).
  *
  * It was the intersection while `AZURE_REGIONS` held one region, where the two are the same set
  * and the choice cost nothing. Across the fourteen regions that list now covers they are very
- * different sets — measured 2026-08-25: union 1721 sizes, intersection 1097. Shipping the
- * intersection would have DELETED 532 sizes that eastus sells and prices today, a third of the
+ * different sets — measured 2026-08-26: union 1691 sizes, intersection 1097. Shipping the
+ * intersection would have DELETED 502 sizes that eastus sells and prices today, a third of the
  * catalogue, from eastus users, because some other region does not stock them. Half the arm64
  * catalogue goes with it (97 sizes down to 48): `Standard_B2ps_v2`, the cheap Ampere dev box, is
  * priced in thirteen of the fourteen and absent only from brazilsouth. Azure varies what it
@@ -536,18 +587,27 @@ async function refreshAzure({ write = true } = {}) {
     }
     if (skipped.length > 0) {
       console.log(
-        `azure: ${region}: excluded ${skipped.length} candidate size(s) with 0 or >1 pay-as-you-go Linux meters ` +
-          `(reported, not guessed): ${skipped.map((s) => `${s.id}(${s.matches})`).join(', ')}`,
+        `azure: ${region}: excluded ${skipped.length} candidate size(s) with no single priced pay-as-you-go ` +
+          `Linux meter (reported, not guessed): ${skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}`,
       )
     }
 
     const perRegion = {}
     for (const [id, meter] of Object.entries(priced)) {
-      perRegion[id] = Number(Number(meter.retailPrice).toFixed(6))
+      const amount = Number(Number(meter.retailPrice).toFixed(6))
+      // `resolvePricedSizes` already refused a zero meter; this catches the other way a zero can
+      // arrive — a real price so small that rounding to six decimals erases it. Either way a
+      // zero must not reach the document, because the readers throw the WHOLE document away for
+      // one of them (gh issue #140).
+      if (amount <= 0) continue
+      perRegion[id] = amount
       if (!effectiveFrom || meter.effectiveStartDate < effectiveFrom) effectiveFrom = meter.effectiveStartDate
     }
 
-    acceptedByRegion.set(region, new Set(Object.keys(priced)))
+    // Keyed off what actually got a number, not off what resolved to one meter: the two differ
+    // by the rounding case above, and the catalogue must not name a size this region could not
+    // price.
+    acceptedByRegion.set(region, new Set(Object.keys(perRegion)))
     hourly[region] = Object.fromEntries(Object.entries(perRegion).sort(([a], [b]) => a.localeCompare(b)))
   }
 
@@ -749,6 +809,24 @@ async function writeFeed(outdir) {
     },
     'gcp.json': gcp,
   }
+
+  // PUBLISH NOTHING THE READERS WOULD THROW AWAY (gh issue #140). Each provider's `feed.ts`
+  // rejects a document WHOLE on a single non-positive price, so a document that fails here
+  // would not degrade one size — it would unprice that entire cloud for every install until
+  // someone noticed. A red workflow run publishes nothing and leaves the last good document
+  // being served, which is strictly the better failure.
+  for (const [name, doc] of Object.entries(docs)) {
+    const bad = unreadableFeedEntries(doc.regions)
+    if (bad.length > 0) {
+      throw new Error(
+        `feed: ${name} has ${bad.length} entr${bad.length === 1 ? 'y' : 'ies'} that are not prices, and the ` +
+          'runtime readers reject a document whole for even one — publishing this would unprice ' +
+          `${doc.provider} everywhere. Exclude them at the source instead: ${bad.slice(0, 10).join(', ')}` +
+          `${bad.length > 10 ? `, and ${bad.length - 10} more` : ''}`,
+      )
+    }
+  }
+
   // The index is for HUMANS AND TOOLING POKING AROUND, not for Rocky Surf — the runtime
   // readers are handed their provider's document URL directly and never fetch this. So it
   // says where the actual data is, rather than assuming the visitor already knows.

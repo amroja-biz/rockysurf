@@ -494,7 +494,7 @@ Surf could not price at all.
 
 **The size catalogue is not per-region.** `AZURE_SIZES` in
 `packages/provider-azure/src/prices.generated.ts` is the *union* of every size that priced
-cleanly in any of the regions above — 1721 of them as of 2026-08-25, against 1097 that price in
+cleanly in any of the regions above — 1691 of them as of 2026-08-26, against 1097 that price in
 all fourteen. It is a union rather than an intersection because Azure stocks its regions very
 differently, and intersecting would have hidden a third of the catalogue (including half the
 arm64 sizes, `Standard_B2ps_v2` among them, absent only from `brazilsouth`) from the regions that
@@ -507,6 +507,25 @@ To add a region: add its `armRegionName` to `AZURE_REGIONS` in
 returns no rows and fails the generator rather than shipping a silently empty region. The next
 `price-feed` publish carries the prices; re-run `node scripts/refresh-prices.mjs --azure` too if
 the bundled size list should pick up sizes only that region sells.
+
+### A size Azure has not priced is absent, never present at zero
+
+Azure publishes retail meters for VM families **before it starts billing for them**, and those
+meters carry `retailPrice: 0`. On 2026-08-26 the entire thirty-size Mbv4 memory-optimized series
+did this in `eastus` and `germanywestcentral` — `Standard_M16bs_v4` through
+`Standard_M304bds_4_v4`, four meters apiece (Linux and Windows, spot and not), all zero.
+
+A zero is not a price, and the generator now excludes such a size and names it in the run log,
+on the same "report, don't guess" rule that already excluded a size resolving to two meters or
+none. **This is why it matters more than thirty missing sizes** (issue #140): every provider's
+feed reader rejects a price document *whole* on a single non-positive number, because the spend
+cap must degrade to *unpriced* rather than to *wrong*. So thirty zeros in `eastus` did not
+unprice thirty sizes — they unpriced every Azure size in all fourteen regions, for every
+installation, which is exactly the "prices are currently unavailable for Azure" notice that
+issue reported. The generator now also refuses to publish a document its own readers would
+reject, so the next family Azure announces without billing for turns the `price-feed` run red —
+which publishes nothing and keeps the last good document being served — instead of silently
+unpricing the cloud.
 
 ---
 

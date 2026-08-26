@@ -25,6 +25,10 @@
 - [verify-the-checkout-before-you-work](2026-08-26-verify-the-checkout-before-you-work.md): this
   machine has eleven worktrees and an archived remote that is easy to mistake for the live one — a
   stale checkout builds, tests green, and cannot be pushed. Check before editing, not at push time.
+- [reject-whole-readers-need-validating-writers](2026-08-26-reject-whole-readers-need-validating-writers.md):
+  the price-feed reader rejects a document whole on one bad price — correct, and it means one
+  zero-priced vendor meter unpriced all of Azure everywhere while the publisher stayed green. A
+  reject-whole consumer obliges its producer to validate with the same predicate.
 - [regional-ubuntu-mirrors-fail-as-a-unit](2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md):
   a cloud image's per-region Ubuntu mirror takes every box in the region down with it, and apt
   never retries a 503 — the bootstrap agent's one-shot mirror fallback is the remedy, not retries.

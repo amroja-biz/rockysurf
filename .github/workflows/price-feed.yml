@@ -15,10 +15,13 @@
 # deployment on this repo. There is deliberately no PR step: the data is generated, not judged,
 # and eliminating human latency is the point.
 #
-# IF THIS GOES RED, a vendor feed fetch or the Pages deploy failed; prices already published
-# stay served (a failed run deploys nothing). Nothing in the product breaks while it is red —
-# installs keep whatever they last fetched until their cache expires, then show "price
-# unknown" — but the numbers age until the next green run.
+# IF THIS GOES RED, a vendor feed fetch failed, the Pages deploy failed, or the generator
+# refused to publish a document the runtime readers would reject (issue #140 — a vendor
+# publishing a placeholder meter at zero). Prices already published stay served (a failed run
+# deploys nothing). Nothing in the product breaks while it is red — installs keep whatever they
+# last fetched until their cache expires, then show "price unknown" — but the numbers age until
+# the next green run. Red-and-serving-yesterday beats green-and-serving-a-document-nobody-
+# accepts, which is the failure #140 actually had.
 name: Price feed
 
 on:

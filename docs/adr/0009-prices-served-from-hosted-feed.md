@@ -80,6 +80,30 @@ change and this decision does not pretend otherwise:
 
 Hetzner remains off the feed: it prices live on the `listOfferings()` call itself.
 
+**Amendment, 2026-08-26 (issue #140): decision 5's rule now binds the WRITER too.** "A rejected
+document is a missing document" was written as a property of the reader, and the reader did its
+job exactly as specified — which is how a whole cloud went unpriced without anything going red.
+Azure publishes placeholder retail meters at `retailPrice: 0` for families it has announced and
+is not yet billing for; on 2026-08-26 the thirty-size Mbv4 series did this in `eastus` and
+`germanywestcentral`. Each resolved cleanly to one pay-as-you-go Linux meter, so the generator
+wrote thirty zeros into `azure.json` — and every install's reader then rejected the *whole*
+document and listed all fourteen regions unpriced. The publisher was green throughout: it had
+published a syntactically perfect document that no reader would accept.
+
+So the generator now applies the reader's own rule to what it is about to publish
+(`unreadableFeedEntries` in `scripts/refresh-prices.mjs`, a deliberate transcription of
+`parsePriceFeedDoc`) and **fails the run** rather than emitting such a document. A failed run
+deploys nothing and the last good document keeps being served, which is the better of the two
+failures. Upstream of that, a size whose only meter carries no price is excluded and named in
+the run log, on the same "report, don't guess" rule that already excluded ambiguous ones: a size
+Azure has not priced is absent, never present at zero.
+
+The general lesson, worth stating because it is not specific to Azure: **when a reader's
+validation is deliberately all-or-nothing, an unvalidated writer converts any single bad row
+into a total outage of that data.** Reject-whole is still the right rule for the reader — the
+spend cap must never be handed a wrong number — which is precisely why the writer cannot be the
+place that hopes.
+
 ## Considered options
 
 - **Keep bundling, automate the release** (nightly regenerates, commits, tags): rejected —
