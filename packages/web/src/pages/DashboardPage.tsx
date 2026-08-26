@@ -30,6 +30,7 @@ import {
   type ServerSummary,
 } from '../lib/api'
 import { formatCostCell, formatTimestamp, formatUptime, STEP_LABELS } from '../lib/format'
+import { destructiveAction } from '../lib/serverActions'
 
 /**
  * The server list.
@@ -67,14 +68,42 @@ export function DashboardPage() {
   }, [refresh])
 
   /**
+   * Read ONE row again, in place (issue #154).
+   *
+   * A single-server `getServer`, not `refresh()`, for the reason the card's transition nudge
+   * gives below: a list refresh syncs every row this user has against its provider, which is a
+   * lot of cloud calls to learn about one box. A read that fails changes nothing — the frame
+   * has already patched the status, and a card showing last-known state beats a card that
+   * blanks because one GET did.
+   */
+  const refreshRow = useCallback(async (serverId: string) => {
+    try {
+      const row = await getServer(serverId)
+      setServers((current) => current.map((server) => (server.serverId === serverId ? row : server)))
+    } catch {
+      // Deliberately silent: nothing the user can act on, and the row still reads what it read.
+    }
+  }, [])
+
+  /**
    * Live updates, applied in place.
    *
    * Patching the row rather than refetching the list is deliberate: a provisioning server
    * emits a step every few seconds, and refetching on each one would make the page flicker
    * and hammer core for a field it just told us.
+   *
+   * A TERMINAL FRAME IS THE EXCEPTION (ADR-0010, issue #154), the same exception the detail
+   * page makes. The frame carries a status and nothing else, while the verdict on whether the
+   * machine still exists — `billing`, which decides whether this card's button says Terminate
+   * or Dismiss — lives on the row. Patching `status: 'failed'` onto the object this page holds
+   * left the provisioning-time billing block on it, so the card offered to Terminate a machine
+   * core had already released. It is one read of one row, on an event that arrives once.
    */
   useServerUpdates(
     useCallback((event) => {
+      if (event.type === 'server-status' && (event.status === 'failed' || event.status === 'terminated')) {
+        void refreshRow(event.serverId)
+      }
       setServers((current) =>
         current.map((server) => {
           if (server.serverId !== event.serverId) return server
@@ -90,7 +119,7 @@ export function DashboardPage() {
           return server
         }),
       )
-    }, []),
+    }, [refreshRow]),
   )
 
   const live = servers.filter((server) => server.status !== 'terminated')
@@ -243,6 +272,14 @@ function ServerCard({
   const showStop = providerCanStop && server.status === 'running'
   const showStart = providerCanStop && server.status === 'stopped'
   const showTerminate = server.status === 'running' || server.status === 'stopped' || server.status === 'failed'
+  /**
+   * Terminate, or Dismiss for a failed row whose machine core already released (issue #154).
+   *
+   * The rule and the wording come from `lib/serverActions.ts` because the detail page asks the
+   * same question of the same row — this card said "Terminate" for a box the detail page said
+   * "Dismiss" for, which is a promise to destroy something that no longer exists.
+   */
+  const destructive = destructiveAction(server)
   const busy = pending !== null || transition.pending !== null
   const cost = formatCostCell(server)
 
@@ -369,7 +406,7 @@ function ServerCard({
         )}
         {showTerminate && (
           <button className="destructive" disabled={busy} onClick={() => setConfirming('terminate')}>
-            {pending === 'terminate' ? 'Terminating…' : 'Terminate'}
+            {pending === 'terminate' ? destructive.pendingLabel : destructive.label}
           </button>
         )}
       </footer>
@@ -385,13 +422,19 @@ function ServerCard({
       )}
       {confirming === 'terminate' && (
         <ConfirmModal
-          title={`Terminate ${server.name}?`}
-          message="This destroys the server and its disk. It cannot be undone."
-          confirmLabel="Terminate"
+          title={destructive.confirmTitle}
+          message={destructive.confirmMessage}
+          confirmLabel={destructive.label}
           isDestructive
           onCancel={() => setConfirming(null)}
           onConfirm={() =>
-            void run('terminate', () => terminateServer(server.serverId), `${server.name} is terminating`)
+            // Same call underneath either way — core's terminate is idempotent, and clearing a
+            // row whose machine is gone is what it does for one (ADR-0010).
+            void run(
+              'terminate',
+              () => terminateServer(server.serverId),
+              destructive.label === 'Dismiss' ? `${server.name} dismissed` : `${server.name} is terminating`,
+            )
           }
         />
       )}

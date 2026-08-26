@@ -1,7 +1,7 @@
 import { startStubServer, type StubServer } from '../test-server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AuthProvider } from '../contexts/AuthContext'
@@ -104,6 +104,37 @@ const FAILED_BUT_BILLING = {
     providerState: 'running',
     since: '2026-08-12T00:00:00.000Z',
     confirmedAt: '2026-08-12T00:24:26.000Z',
+  },
+}
+
+/**
+ * The other ending ADR-0010 gives a failed row, and the one this page got wrong (issue #154).
+ *
+ * A TOOL install failed, so core released the machine BEFORE failing the row: there is no
+ * `billing` block, and the report says in words what happened to the instance. Nothing is left
+ * to terminate — the click only clears the row — which is why the button reads Dismiss.
+ */
+const FAILED_AND_RELEASED = {
+  ...RUNNING,
+  status: 'failed',
+  billing: undefined,
+  errorMessage:
+    'Deliberate apt failure could not be installed. Rocky Surf terminated the machine, so it is not billing.',
+  bootstrapReport: {
+    failure: {
+      stepId: 'tool:deliberate-apt-failure',
+      phase: 'tool',
+      label: 'Deliberate apt failure',
+      exitCode: 100,
+      cause: 'apt',
+      summary: 'Deliberate apt failure could not be installed.',
+      keyLines: ['E: Unable to locate package rockysurf-deliberately-missing-package'],
+      log: 'E: Unable to locate package rockysurf-deliberately-missing-package',
+      logComplete: true,
+      instance: 'terminated',
+      instanceNote: 'Rocky Surf terminated the machine, so it is not billing.',
+    },
+    warnings: [],
   },
 }
 
@@ -430,6 +461,108 @@ describe('a failed row whose machine is still running', () => {
 })
 
 /**
+ * A FAILED ROW WHOSE MACHINE CORE ALREADY RELEASED (ADR-0010, issue #154).
+ *
+ * The report: a box whose tool install failed offered **Dismiss** on the detail page and
+ * **Terminate** on its card — for the same row, at the same moment. The rule lived only on the
+ * detail page; the card switched on `status` alone and always said Terminate. Both halves are
+ * pinned here, because "does this machine still exist" has two answers and a card that got the
+ * second one right by accident would still be wrong on the first.
+ */
+describe('the destructive button a failed card offers', () => {
+  /**
+   * Scoped to the card, because `StaleServersNotice` above the list has a Dismiss of its own
+   * (issue #149) and a page-wide query would answer with the wrong button.
+   */
+  const buttonOn = (card: HTMLElement, name: string) => within(card).queryByRole('button', { name })
+
+  it('says Dismiss when core released the machine, because nothing is left to terminate', async () => {
+    rows = [FAILED_AND_RELEASED]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const card = cardFor(container, 'dev-box')
+    expect(pill(container).textContent).toBe('Failed')
+    // The row has no `billing` block, and the card says so by not showing the notice...
+    expect(card.querySelector('.still-billing-notice')).toBeNull()
+    // ...and by not offering to destroy a machine that is already gone.
+    expect(buttonOn(card, 'Dismiss')).toBeTruthy()
+    expect(buttonOn(card, 'Terminate')).toBeNull()
+  })
+
+  it('warns that the click only clears the row, rather than that it destroys a disk', async () => {
+    rows = [FAILED_AND_RELEASED]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    fireEvent.click(buttonOn(cardFor(container, 'dev-box'), 'Dismiss')!)
+
+    expect(screen.getByText('Dismiss dev-box?')).toBeTruthy()
+    expect(screen.getByText(/clears the failed server and its report/)).toBeTruthy()
+    // The terminate warning would be a lie here: there is no disk left to destroy.
+    expect(screen.queryByText(/destroys the server and its disk/)).toBeNull()
+  })
+
+  it('still says Terminate when the failure KEPT the machine, which is still billing', async () => {
+    // The #138 guard, from the other side: a non-tool failure (or `onFailure: keep`) leaves a
+    // machine up and metering, and Dismiss on that row would hide a running bill behind a word
+    // that means "this is over".
+    rows = [FAILED_BUT_BILLING]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const card = cardFor(container, 'dev-box')
+    expect(buttonOn(card, 'Terminate')).toBeTruthy()
+    expect(buttonOn(card, 'Dismiss')).toBeNull()
+  })
+
+  it('agrees with the detail page, which is served the same row', async () => {
+    rows = [FAILED_AND_RELEASED]
+    const list = renderPage()
+    await waitFor(() => expect(buttonOn(cardFor(list.container, 'dev-box'), 'Dismiss')).toBeTruthy())
+    list.unmount()
+
+    // One rule in `lib/serverActions.ts`, asked by both pages, so this is one string in two
+    // places rather than two implementations that happen to match today — which is exactly
+    // what they did not do at HEAD.
+    const detail = renderDetail(SERVER_ID)
+    await waitFor(() => expect(detail.container.querySelector('.server-actions')).toBeTruthy())
+    const actions = detail.container.querySelector('.server-actions') as HTMLElement
+    expect(within(actions).getByRole('button', { name: 'Dismiss' })).toBeTruthy()
+    expect(within(actions).queryByRole('button', { name: 'Terminate' })).toBeNull()
+  })
+
+  it('re-reads the row on the failed frame, so a card built while the box billed catches up', async () => {
+    // While the box was building, core reported it as billing — the truth at the time.
+    rows = [{ ...RUNNING, status: 'provisioning', billing: FAILED_BUT_BILLING.billing }]
+    const { container } = renderPage()
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+
+    // Then the tool install failed, core released the machine, and the row lost its billing
+    // block. The frame core broadcasts carries the status and nothing else.
+    rows = [FAILED_AND_RELEASED]
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await waitFor(() => {
+      streams.forEach((write) =>
+        write(
+          `event: message\ndata: ${JSON.stringify({
+            type: 'server-status',
+            serverId: SERVER_ID,
+            status: 'failed',
+          })}\n\n`,
+        ),
+      )
+      // Patched from the frame alone the card would still hold the provisioning-time billing
+      // block, keep the still-billing notice, and label the button "Terminate".
+      expect(buttonOn(cardFor(container, 'dev-box'), 'Dismiss')).toBeTruthy()
+    })
+    const card = cardFor(container, 'dev-box')
+    expect(card.querySelector('.still-billing-notice')).toBeNull()
+    expect(buttonOn(card, 'Terminate')).toBeNull()
+  })
+})
+
+/**
  * The guard that would have caught this at HEAD, in the shape `ServerDetailPage.wiring.test.tsx`
  * already uses for the status and step vocabularies: read core's own source rather than restate
  * it here.
@@ -616,6 +749,7 @@ describe("the row shape the SPA declares", () => {
       RUNNING,
       UNPRICED,
       FAILED_BUT_BILLING,
+      FAILED_AND_RELEASED,
       STALE,
       ON_ANOTHER_CLOUD,
       ON_AN_UNLISTED_CLOUD,
