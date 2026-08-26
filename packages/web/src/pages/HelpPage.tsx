@@ -40,6 +40,7 @@ const SECTIONS = [
   ['boot', 'While it boots'],
   ['connect', 'Connecting'],
   ['lifecycle', 'Start, stop, terminate'],
+  ['stale-servers', 'Checking for stale servers'],
   ['repositories', 'Private repositories'],
   ['git-auth', 'Git Auth'],
   ['costs', 'Costs and the caps'],
@@ -179,6 +180,26 @@ export function HelpPage() {
             the capability matrix
           </a>
           .
+        </p>
+      </section>
+
+      {/*
+        Issue #126. Stays here regardless of whether the dashboard's own notice has been
+        dismissed — DISMISSING THE REMINDER MUST NOT MAKE THE ADVICE UNFINDABLE, so this
+        paragraph is not gated by any of the notice's own localStorage keys.
+      */}
+      <section id="stale-servers">
+        <h2>Checking for stale servers</h2>
+        <p>
+          Rocky Surf&rsquo;s dashboard shows what core last learned from each provider&rsquo;s
+          own API — polled on an interval and pushed over live events, but never a guaranteed,
+          up-to-the-second mirror of your cloud account. A server terminated from the cloud
+          console between polls, a box created directly on the account outside Rocky Surf, or a
+          provider outage that delays a status update can all leave the dashboard saying
+          something your cloud bill will not agree with. Treat this page as Rocky Surf&rsquo;s
+          best record, not as your account&rsquo;s source of truth, and check your cloud
+          provider&rsquo;s own console periodically for anything still running that this page
+          does not show.
         </p>
       </section>
 
