@@ -600,6 +600,27 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
     if (!data || row.status === 'terminated' || row.status === 'requested') return { row }
 
     /*
+     * A failed row core has already RELEASED is history, and history is not re-read from the
+     * cloud (ADR-0010, follow-up to #120 and #138; issue #163).
+     *
+     * `failBootstrap` terminates the machine and records `terminated` on the row in the same
+     * breath, so the meter stops on that tick. Nothing a later `describe()` can say changes the
+     * row after that: `failed` leaves through `terminate` alone, so there is no path by which
+     * that machine comes back; a provider still reporting it running is reporting the past
+     * (the stale-`running` window #138 closed — Azure answers `Succeeded` for a while after the
+     * delete is accepted, EC2 says `shutting-down`); a provider reporting it gone repeats what
+     * the row already says; and not-found returns the row untouched anyway. Three outcomes,
+     * zero information — and a real cost, because the A4 propagation grace makes a describe of
+     * an absent instance the SLOWEST read a provider has: four attempts over six seconds on
+     * Hetzner, paid per row, sequentially, on every dashboard load. Two dismissed failures
+     * were making the Servers page take thirteen seconds to render with nothing running
+     * (#163). So the read is not made. A failed row whose release did NOT get recorded (the
+     * terminate itself failed, or the user killed the box in the provider console) is still
+     * observed below, because for that row the provider's word is the only way the meter stops.
+     */
+    if (row.status === 'failed' && row.providerState === 'terminated') return { row }
+
+    /*
      * A row whose provider is not in this registry degrades to its stored state instead of
      * failing (rockysurf-1nfc).
      *
@@ -631,27 +652,6 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // A read failure must not corrupt the row. Report what we last knew.
       if (isProviderError(err) && err.code === 'not_found') return { row }
       throw err
-    }
-
-    /*
-     * A failed row core has already RELEASED stays released (ADR-0010, follow-up to #120).
-     *
-     * `failBootstrap` terminates the machine and records `terminated` on the row in the same
-     * breath, so the meter stops on that tick. But a cloud's `describe()` lags its own DELETE:
-     * on Azure the VM answers `Succeeded`/running for a while after the delete was accepted, and
-     * EC2 reports `shutting-down`. The first sync in that window — the detail page's own GET —
-     * used to record that stale `running` over core's `terminated`, which put the row back on the
-     * meter, brought the still-billing notice back, and relabelled Dismiss as Terminate on a
-     * machine that no longer existed. Seen live on 2026-08-26 (`srv-f5b3dbb3910a`).
-     *
-     * The rule is narrow on purpose: only a FAILED row, only one whose provider state is already
-     * `terminated`, and only against a read that says otherwise. `failed` leaves through
-     * `terminate` alone, so there is no legitimate path by which that machine comes back; a
-     * provider still reporting it is reporting the past. `not_found` above already returns the
-     * row untouched for the same reason.
-     */
-    if (row.status === 'failed' && row.providerState === 'terminated' && view.state !== 'terminated') {
-      return { row, state: view.state }
     }
 
     // The provider's own word about the machine, recorded BEFORE anything is derived from it

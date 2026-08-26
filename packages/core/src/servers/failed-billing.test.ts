@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { DESCRIBE_ABSENCE_GRACE } from '@rockysurf/provider-sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app.js'
 import { ensureLocalAdmin } from '../auth/admin.js'
@@ -328,6 +329,37 @@ describe('a failed row core itself released stays released (ADR-0010, seen live 
     pretendItHasBeenUpSinceTheStartOfTheMonth(serverId!)
     await accrueFor(1)
     expect(row(serverId!).totalUptimeSeconds).toBe(0)
+  })
+
+  it('costs zero provider calls to list, because a released machine has nothing left to say (#163)', async () => {
+    // Two dismissed failures and nothing running — the owner's dashboard on 2026-08-26, which
+    // took thirteen seconds to render. Each row was still asked of the provider on every list,
+    // and a describe of an absent instance is the slowest read a provider has: the A4 grace is
+    // four attempts over six seconds, paid per row, sequentially.
+    const first = (await createServer('first')).serverId!
+    const second = (await createServer('second')).serverId!
+    await failBootstrap()
+    for (const id of [first, second]) {
+      await provider.terminate(getProviderData(row(id))!)
+      recordProviderState(opened.db, id, 'terminated')
+    }
+    // A terminated row is already skipped; it rides along so the invariant covers every
+    // terminal row the list can hold, not just the failed kind.
+    const third = (await createServer('third')).serverId!
+    await request(`/api/v1/servers/${third}/terminate`, { method: 'POST' })
+
+    provider.calls.length = 0
+    const started = Date.now()
+    const res = await request('/api/v1/servers')
+    const listed = (await res.json()) as Array<Record<string, unknown>>
+
+    expect(provider.calls.filter((call) => call === 'describe')).toHaveLength(0)
+    // The rows are served from what is stored, unchanged and without a stale-view excuse.
+    const failed = listed.filter((s) => s['status'] === 'failed').map((s) => s['serverId'])
+    expect(failed.sort()).toEqual([first, second].sort())
+    expect(listed.every((s) => s['syncError'] === undefined)).toBe(true)
+    // Below one grace delay, let alone the three per row a describe of an absent box costs.
+    expect(Date.now() - started).toBeLessThan(DESCRIBE_ABSENCE_GRACE.delayMs)
   })
 
   it('leaves the rule out of it for a failed row core did NOT release, which keeps billing', async () => {
