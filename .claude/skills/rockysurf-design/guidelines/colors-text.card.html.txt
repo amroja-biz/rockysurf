@@ -1,0 +1,9 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Text" subtitle="Five levels, heading brightest, dim for timestamps" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><div style="display:flex;flex-direction:column;gap:6px;font-size:15px">
+<div style="color:var(--rs-heading)">--rs-heading &nbsp;#f0f6fc &nbsp; Servers</div>
+<div style="color:var(--rs-text)">--rs-text &nbsp;#c9d1d9 &nbsp; A stopped box costs storage, not compute.</div>
+<div style="color:var(--rs-muted)">--rs-muted &nbsp;#8b949e &nbsp; Estimate. Rounds down.</div>
+<div style="color:var(--rs-placeholder)">--rs-placeholder &nbsp;#6e7681 &nbsp; https://github.com/you/repo</div>
+<div style="color:var(--rs-dim)">--rs-dim &nbsp;#484f58 &nbsp; 12m ago</div></div></body></html>

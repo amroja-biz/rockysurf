@@ -1,0 +1,65 @@
+/* The click-through: sign in, browse your boxes, create one, watch it come up, open it. */
+const { AppShell } = window.RockySurfDesignSystem_5702b3
+
+const TITLES = { '/': 'Servers', '/servers/new': 'Create a server', '/packs': 'Surge Packs', '/home': '', '/costs': 'Costs', '/admin/tools': 'Tools', '/settings': 'Settings', '/help': 'Help' }
+
+function App() {
+  const [signedIn, setSignedIn] = React.useState(false)
+  const [route, setRoute] = React.useState('/')
+  const [servers, setServers] = React.useState(window.RS_DATA.servers)
+  const [openServer, setOpenServer] = React.useState(null)
+  const [pack, setPack] = React.useState(null)
+
+  function action(kind, server) {
+    setServers((list) => list.map((s) => {
+      if (s.serverId !== server.serverId) return s
+      if (kind === 'stop') return { ...s, status: 'stopped' }
+      if (kind === 'start') return { ...s, status: 'running' }
+      return { ...s, status: 'terminated' }
+    }))
+    if (kind === 'terminate') { setOpenServer(null); setRoute('/') }
+    else if (openServer?.serverId === server.serverId) {
+      setOpenServer((s) => ({ ...s, status: kind === 'stop' ? 'stopped' : 'running' }))
+    }
+  }
+
+  if (!signedIn) return <LoginScreen onSignedIn={() => setSignedIn(true)} />
+
+  let title = openServer ? openServer.name : (pack && route === '/packs' ? 'Surge Packs' : TITLES[route] ?? 'Servers')
+  let className = route === '/servers/new' ? 'page' : route === '/home' ? 'home' : undefined
+  let body
+
+  if (openServer) {
+    body = <ServerDetailScreen server={openServer} onAction={action}
+      onOpenPack={(p) => { setPack(p); setOpenServer(null); setRoute('/packs') }} />
+  } else if (route === '/servers/new') {
+    body = <CreateServerScreen onCreated={(draft) => {
+      const created = {
+        serverId: 's' + (servers.length + 1), name: draft.name, status: 'provisioning', provider: draft.provider,
+        publicIp: null, uptime: '0s', cost: '$0.00', size: draft.size, offeringId: 'cx32', arch: 'arm64',
+        packId: draft.packId, sshUser: 'rocky', created: 'Aug 26, 2026', step: 'instance_launching',
+        repositories: draft.repos.split('\n').filter(Boolean), tokenScopes: ['github.com/you'],
+      }
+      setServers((list) => [created, ...list])
+      setOpenServer(created)
+      setRoute('/')
+    }} />
+  } else if (route === '/packs') {
+    body = <PacksScreen selected={pack} onSelect={setPack}
+      onCreateWith={() => { setPack(null); setRoute('/servers/new') }} />
+  } else if (route === '/home') {
+    body = <HomeScreen onNew={() => setRoute('/servers/new')} />
+  } else {
+    body = <DashboardScreen servers={servers} onNew={() => setRoute('/servers/new')}
+      onOpen={setOpenServer} onAction={action} />
+  }
+
+  return (
+    <AppShell title={title} className={className} current={openServer ? '/' : route} markSrc="../../assets/mark-48.png"
+      onNavigate={(path) => { setOpenServer(null); setPack(null); setRoute(path) }}>
+      {openServer ? <p className="hint" style={{ marginBottom: '1rem' }}><a href="#" onClick={(e) => { e.preventDefault(); setOpenServer(null) }}>← Back to your servers</a></p> : null}
+      {body}
+    </AppShell>
+  )
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />)

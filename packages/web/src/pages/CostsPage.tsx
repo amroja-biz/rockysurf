@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { AppShell } from '../components/AppShell'
-import { Moon, Waterline } from '../components/etched'
+import { Moon, Plate, Waterline } from '../components/etched'
 import { NEAR_CAP_FRACTION, SpendCapBanner } from '../components/SpendCapBanner'
 import { useEvents } from '../contexts/EventsContext'
 import { getCosts, type CostsResponse, type ServerCost } from '../lib/api'
@@ -39,16 +39,17 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
   const spent = costs.monthToDate.byCurrency[cap.currency] ?? 0
   const fraction = costs.cap.fraction ?? 0
   const pct = Math.min(100, Math.round(fraction * 100))
-  // The product's status tokens, not literal hexes: green acts, yellow warns, red refuses,
-  // whichever skin is on.
+  // The product's status tokens, not literal hexes: yellow warns, red refuses. Until it warns,
+  // the level is drawn in the beam — the one accent — as the designer's screen draws it
+  // (ui_kits/etched); a green "all clear" here would be a status the page is not reporting.
   const tone = costs.cap.overCap
     ? 'var(--rs-red)'
     : fraction >= NEAR_CAP_FRACTION
       ? 'var(--rs-yellow)'
-      : 'var(--rs-green-bright)'
+      : 'var(--rs-beam, var(--rs-green-bright))'
 
   return (
-    <section>
+    <Plate as="section" className="spend-cap">
       <h2>Spend cap</h2>
       {/* THE ONE PLACE A LEVEL IS DRAWN (#174): the cap is named in the same breath as the
           spend, so a waterline against it is a fact, not a decoration. The moon gives the
@@ -76,11 +77,11 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
           </div>
         </div>
       </div>
-      <p style={{ fontSize: '0.875rem' }}>
+      <p style={{ fontSize: '0.875rem', marginBottom: 0 }}>
         Max servers: <strong>{costs.limits.maxServers}</strong>. Both limits are read-only here —
         they come from your config file.
       </p>
-    </section>
+    </Plate>
   )
 }
 

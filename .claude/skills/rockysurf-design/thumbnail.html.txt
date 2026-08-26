@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="styles.css">
+<style>html,body{margin:0;padding:0}.tile{width:1280px;height:854px;display:flex}
+.main{flex:1;background:var(--rs-brand-night);display:flex;align-items:center;justify-content:center;padding:60px}
+.main img{width:100%;height:100%;object-fit:contain}
+.strip{width:320px;display:flex;flex-direction:column}.strip div{flex:1}</style>
+</head><body><div class="tile">
+<div class="main"><img src="assets/logo.png" alt="Rocky Surf"></div>
+<div class="strip">
+<div style="background:#3fb950"></div>
+<div style="background:#58a6ff"></div>
+<div style="background:#d29922"></div>
+<div style="background:#f85149"></div>
+</div></div></body></html>

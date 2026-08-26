@@ -400,6 +400,9 @@ function ServerCard({
         <p className="provisioning-step">{STEP_LABELS[server.provisioningStep] ?? server.provisioningStep}</p>
       )}
 
+      {/* The rule between what the box is doing and what it is — in the illustration's hand,
+          quiet enough not to compete with the plate's own frame (ui_kits/etched). */}
+      <Swell opacity={0.22} />
       <dl className="server-meta">
         <div>
           <dt>Address</dt>

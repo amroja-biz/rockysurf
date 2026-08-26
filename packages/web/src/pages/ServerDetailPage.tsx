@@ -5,7 +5,7 @@ import { AppShell } from '../components/AppShell'
 import { BootstrapReport } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
-import { Beacon, Lamp, Tally } from '../components/etched'
+import { Beacon, Lamp, Plate, Swell, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
 import { ToolList } from '../components/ToolList'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
@@ -313,6 +313,7 @@ export function ServerDetailPage() {
             )}
           </p>
         )}
+        <Swell opacity={0.25} />
         <dl>
           <div>
             <dt>{historical ? 'Last address' : 'Address'}</dt>
@@ -720,7 +721,9 @@ function ProvisioningTimeline({
   logLines: string[]
 }) {
   return (
-    <section className="provisioning-timeline">
+    // On a plate of its own, like every other block on this page (ui_kits/etched): the beam
+    // needs a frame to be read against, and unframed it floated between two cards.
+    <Plate as="section" className="provisioning-timeline">
       <h2>Setting up</h2>
       {/* The beam (#174): `Beacon` still emits `.step-list` + `.step-<state>` + `data-state`,
           the vocabulary the stylesheet and the tests read (rockysurf-xinr), and reads its steps
@@ -735,7 +738,7 @@ function ProvisioningTimeline({
           </pre>
         </details>
       )}
-    </section>
+    </Plate>
   )
 }
 

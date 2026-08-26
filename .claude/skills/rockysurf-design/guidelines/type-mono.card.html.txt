@@ -1,0 +1,7 @@
+<!-- @dsCard group="Type" viewport="700x180" name="Mono" subtitle="Every value the user copies or the machine wrote" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><pre style="margin-bottom:8px"><code>ssh -p 22 -i dev-box.pem rocky@203.0.113.10</code></pre>
+<p style="font-size:var(--text-ui)">Inline: the config lives at <code>~/.rockysurf/config.yaml</code>.</p>
+<div class="pack-guide-text" style="margin-top:8px">version: 1
+pack:  { packId: rust-dev, name: Rust, tools: [build-essential, git, rustup] }</div></body></html>

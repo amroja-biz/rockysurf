@@ -1,0 +1,280 @@
+/* The two hard screens in the etched skin: the create form and one server. */
+const { AppShell, Button, PackIcon, Field, Tabs, CheckboxRow, Chip, ToolList, Notice } = window.RockySurfDesignSystem_5702b3
+const A = '../../assets/surge-packs/'
+const CAPS = { fontSize:'0.66rem', letterSpacing:'0.11em', textTransform:'uppercase', color:'#8a8494' }
+/* Caps label a field; they never carry a sentence. This is the quiet prose voice. */
+const QUIET = { fontSize:'0.78rem', color:'#8a8494', lineHeight:1.45 }
+const MONO = { fontFamily:'var(--rs-mono)', fontSize:'0.8125rem', color:'#cbc5cf' }
+const STEPS = ['requested','instance_launching','instance_running','installing_tools','tools_installed','cloning_repos','ready']
+const STEP_LABELS = { requested:'Requested', instance_launching:'Launching server', instance_running:'Server launched', installing_tools:'Installing tools', tools_installed:'Tools installed', cloning_repos:'Cloning repositories', ready:'Ready' }
+
+const PROVIDERS = [
+  ['hetzner','Hetzner','Read/write API token from console.hetzner.com'],
+  ['aws','AWS','The standard credential chain, plus an explicit sshAllowedCidr'],  // eslint-disable-line
+  ['gcp','GCP','Application Default Credentials'],
+  ['byo','BYO','Machines you already have, over SSH'],
+]
+const SIZES = [
+  ['small','small','2 vCPU · 4 GB · cx22','$0.007/hr'],
+  ['medium','medium','4 vCPU · 8 GB · cx32','$0.013/hr'],
+  ['large','large','8 vCPU · 16 GB · cpx41','$0.034/hr'],
+]
+const PACKS = [
+  ['ai-coding-agents','AI Coding Agents','claude-code.png','14 tools · Claude Code, Codex CLI, Amp, OpenCode'],
+  ['open-claw','Open Claw','open-claw.png','9 tools · a desktop session with a browser-driving agent'],
+  ['gas-town','Gas Town','gas-town.png','7 tools · the Gas Town harness and its dependencies'],
+]
+
+/*
+ * The choice row, etched: the plate's own rule carries selection, and a cut tick replaces the
+ * radio dot. A filled radio in a skin where nothing else is filled reads as a foreign part.
+ */
+function Choice({ selected, onSelect, title, detail, trailing, media }) {
+  return (
+    <label onClick={onSelect} style={{
+      display:'flex', alignItems:'center', gap:'0.75rem', cursor:'pointer', padding:'0.7rem 0.85rem',
+      background:'#171420',
+      border:'1px solid ' + (selected ? 'rgba(232,195,122,.6)' : 'rgba(252,245,232,.16)'),
+      boxShadow: selected ? 'inset 0 0 0 3px rgba(232,195,122,.1)' : 'none',
+    }}>
+      <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true" style={{ flexShrink:0, color: selected ? '#e8c37a' : 'rgba(252,245,232,.3)' }}>
+        <rect x="0.5" y="0.5" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="0.9" />
+        {selected ? <path d="M2.5 6.8 L5.2 9.6 L10.6 3.2" fill="none" stroke="currentColor" strokeWidth="1.5" /> : null}
+      </svg>
+      {media}
+      <span style={{ flex:1 }}>
+        <span style={{ display:'block', color: selected ? '#fcf5e8' : '#cbc5cf', fontSize:'0.875rem', fontWeight:600 }}>{title}</span>
+        <span style={{ display:'block', ...QUIET, marginTop:'0.15rem' }}>{detail}</span>
+      </span>
+      {trailing ? <span style={{ ...MONO, color:'#e8c37a' }}>{trailing}</span> : null}
+    </label>
+  )
+}
+
+function Label({ children, help }) {
+  return (
+    <div style={{ marginBottom:'0.55rem' }}>
+      <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>{children}</div>
+      {help ? <p style={{ fontSize:'0.8125rem', color:'#8a8494', lineHeight:1.5, margin:'0.35rem 0 0', maxWidth:'62ch' }}>{help}</p> : null}
+    </div>
+  )
+}
+
+function CreateScreen({ onCreate }) {
+  const [provider, setProvider] = React.useState('hetzner')
+  const [size, setSize] = React.useState('medium')
+  const [pack, setPack] = React.useState('ai-coding-agents')
+  const [name, setName] = React.useState('agent-box')
+  const [force, setForce] = React.useState(false)
+  const chosen = SIZES.find((s) => s[0] === size)
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onCreate() }} style={{ gap:'1.75rem' }}>
+      <div>
+        <Label help="Rocky Surf holds the credential and calls the API. The resources and the bill are yours.">Provider</Label>
+        <div style={{ display:'grid', gap:'0.4rem' }}>
+          {PROVIDERS.map(([id, n, d]) => (
+            <Choice key={id} selected={provider === id} onSelect={() => setProvider(id)} title={n} detail={d} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label help="Shown here only — nothing on the cloud is renamed.">Name</Label>
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={63} />
+      </div>
+
+      <div>
+        <Label help="A t-shirt size resolves to a real machine. Pick an offering directly if you want one.">Size</Label>
+        <div style={{ display:'grid', gap:'0.4rem' }}>
+          {SIZES.map(([id, n, d, price]) => (
+            <Choice key={id} selected={size === id} onSelect={() => setSize(id)} title={n} detail={d} trailing={price} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label help="A list of tools and install scripts. You can read the whole file before trusting it.">Surge Pack</Label>
+        <div style={{ display:'grid', gap:'0.4rem' }}>
+          {PACKS.map(([id, n, img, d]) => (
+            <Choice key={id} selected={pack === id} onSelect={() => setPack(id)} title={n} detail={d}
+              media={<PackIcon pack={{ packId:id, name:n, imageUrl:A + img }} />} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label help="One git URL per line, cloned into the box's home directory. Private ones need a token from Settings.">Repositories</Label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'0.4rem', marginBottom:'0.6rem' }}>
+          <Chip>github.com/you/web</Chip><Chip state="added" disabled>github.com/you/api</Chip><Chip state="pending">github.com/you/infra</Chip>
+        </div>
+        <textarea rows={3} defaultValue={'https://github.com/you/api'} />
+        <ul style={{ margin:'0.6rem 0 0', paddingLeft:'1.1rem', fontSize:'0.8125rem', lineHeight:1.55, color:'#8a8494' }}>
+          <li style={{ color:'#7ee08f' }}>github.com/you/api — covered by the <code>github.com/you</code> token</li>
+          <li style={{ color:'#e8c37a' }}>github.com/you/infra — the config file holds a token this process has not loaded</li>
+        </ul>
+      </div>
+
+      <CheckboxRow checked={force} onChange={setForce}>Create anyway — I know one of these repositories may not clone.</CheckboxRow>
+
+      {/* The one number the form exists to show, on the one lit plate. */}
+      <Plate lit>
+        <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Resolved offering</div>
+        <Swell opacity={0.25} />
+        <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:'1rem', marginTop:'0.7rem' }}>
+          <div>
+            <div style={{ ...MONO, fontSize:'1rem', color:'#fcf5e8' }}>{chosen[2].split(' · ')[2]} <span className="arch-badge">arm64</span></div>
+            <div style={{ ...QUIET, marginTop:'0.35rem' }}>{chosen[2]}</div>
+          </div>
+          <div style={{ ...MONO, fontSize:'1.5rem', color:'#e8c37a' }}>{chosen[3]}</div>
+        </div>
+        <p style={{ fontSize:'0.8125rem', color:'#8a8494', margin:'0.7rem 0 0', lineHeight:1.5 }}>
+          Estimate from bundled price data, in the currency your provider quotes.
+        </p>
+      </Plate>
+
+      <div style={{ display:'flex', gap:'0.75rem' }}>
+        <button type="submit" className="primary">Create server</button>
+        <Button>Preview the install</Button>
+      </div>
+    </form>
+  )
+}
+
+function DetailScreen({ status, onToggle }) {
+  const running = status === 'running'
+  const up = status === 'provisioning' ? 0 : 2.23
+  return (
+    <>
+      <Plate lit={running}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem' }}>
+          <Lamp status={status} />
+          <div style={{ display:'flex', gap:'0.5rem' }}>
+            <Button onClick={onToggle}>{running ? 'Stop' : 'Start'}</Button>
+            <Button variant="destructive">Terminate</Button>
+          </div>
+        </div>
+        <Swell opacity={0.25} />
+        <dl style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'0.6rem 1rem', margin:'0.8rem 0 0', alignItems:'center' }}>
+          {[['Address', running ? '203.0.113.10' : '—'],
+            ['Size','medium · cx32 · arm64'],
+            ['Surge Pack','AI Coding Agents'],
+            ['Created','Aug 24, 2026']].map(([k, v]) => (
+            <React.Fragment key={k}>
+              <dt style={CAPS}>{k}</dt>
+              <dd style={{ ...MONO, margin:0, textAlign:'right' }}>{v}</dd>
+            </React.Fragment>
+          ))}
+          <dt style={CAPS}>Uptime</dt>
+          <dd style={{ margin:0, display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'0.7rem', color:'#e8c37a' }}>
+            <Tally hours={up} /><span style={MONO}>{up > 0 ? '2h 14m' : '0s'}</span>
+          </dd>
+          <dt style={CAPS}>Estimated cost</dt>
+          <dd style={{ ...MONO, margin:0, textAlign:'right' }}>{up > 0 ? '$0.42' : '$0.00'}</dd>
+        </dl>
+      </Plate>
+
+      {status === 'provisioning' ? (
+        <div style={{ marginTop:'1rem' }}>
+          <Plate>
+            <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.9rem' }}>Setting up</div>
+            <Beacon steps={STEPS} current="installing_tools" labels={STEP_LABELS} />
+            <details open style={{ marginTop:'1rem' }}>
+              <summary style={CAPS}>Install log</summary>
+              <pre style={{ background:'#0a0910', border:'1px solid rgba(252,245,232,.16)', padding:'0.7rem', marginTop:'0.5rem', maxHeight:'150px', overflow:'auto' }}>
+{`+ apt-get update -qq
+Get:1 http://archive.ubuntu.com/ubuntu noble InRelease [256 kB]
++ install claude-code
+added 214 packages in 9s
++ install ripgrep
+ripgrep 14.1.1 is already the newest version`}
+              </pre>
+            </details>
+          </Plate>
+        </div>
+      ) : null}
+
+      {running ? (
+        <div style={{ marginTop:'1rem' }}>
+          <Plate>
+            <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.7rem' }}>Connect</div>
+            <pre style={{ background:'#0a0910', border:'1px solid rgba(252,245,232,.16)', padding:'0.7rem 0.85rem', fontSize:'0.85rem' }}>
+              <code>ssh -i dev-box.pem rocky@203.0.113.10</code>
+            </pre>
+            <div style={{ marginTop:'0.8rem' }}><Button>Download dev-box.pem</Button></div>
+            <p style={{ fontSize:'0.8125rem', color:'#8a8494', lineHeight:1.5, margin:'0.7rem 0 0' }}>
+              Core keeps a copy and every download is recorded; re-downloading later is fine. Store it
+              somewhere safe and <code>chmod 600</code> it before use.
+            </p>
+          </Plate>
+        </div>
+      ) : null}
+
+      {running ? (
+        <div style={{ marginTop:'1rem' }}>
+          <Plate>
+            <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Getting started with AI Coding Agents</div>
+            <p style={{ fontSize:'0.8125rem', color:'#8a8494', margin:'0.4rem 0 0.7rem', lineHeight:1.5 }}>
+              Written by the pack. Most steps run on the box once you are connected; where one runs on
+              your own machine instead, the guide says which.
+            </p>
+            <pre style={{ background:'#0a0910', border:'1px solid rgba(252,245,232,.16)', padding:'0.75rem 1rem', lineHeight:1.6 }}>
+{`Sign the agents in — no credential of yours reached this box during bootstrap.
+
+  claude login
+  codex login
+
+Both open a device-code flow. Paste the code on your own machine.`}
+            </pre>
+          </Plate>
+        </div>
+      ) : null}
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem', marginTop:'1rem', alignItems:'start' }}>
+        <Plate>
+          <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.6rem' }}>Repositories</div>
+          <ul style={{ listStyle:'none', margin:0, padding:0, display:'grid', gap:'0.4rem', fontSize:'0.875rem' }}>
+            <li><code>https://github.com/you/api</code></li>
+            <li><code>https://github.com/you/web</code></li>
+          </ul>
+          <Swell opacity={0.22} />
+          <p style={{ fontSize:'0.8125rem', color:'#8a8494', lineHeight:1.5, marginTop:'0.6rem' }}>
+            Git tokens on this box: <code>github.com/you</code>. Tokens are chosen at create, and there
+            is no way to add one to a running box.
+          </p>
+        </Plate>
+        <Plate>
+          <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.6rem' }}>Installed</div>
+          <ToolList tools={[
+            { toolId:'claude-code', name:'Claude Code', url:'#', description:"Anthropic's CLI harness" },
+            { toolId:'codex-cli', name:'Codex CLI', url:'#', description:"OpenAI's CLI harness" },
+            { toolId:'amp', name:'Amp' },
+            { toolId:'ripgrep', name:'ripgrep', description:'Fast recursive search' },
+          ]} />
+        </Plate>
+      </div>
+    </>
+  )
+}
+
+function App() {
+  const [route, setRoute] = React.useState('create')
+  const [status, setStatus] = React.useState('running')
+  const title = route === 'create' ? 'Create a server' : 'dev-box'
+  return (
+    <AppShell title={title} className={route === 'create' ? 'page' : undefined} current={route === 'create' ? '/servers/new' : '/'} markSrc="../../assets/mark-48.png">
+      <EtchedDefs />
+      {/* exploration control, not part of the design */}
+      <div style={{ display:'flex', gap:'0.5rem', marginBottom:'1.25rem' }}>
+        <Button onClick={() => setRoute('create')}>Create form</Button>
+        <Button onClick={() => { setRoute('detail'); setStatus('running') }}>Server · running</Button>
+        <Button onClick={() => { setRoute('detail'); setStatus('provisioning') }}>Server · provisioning</Button>
+        <Button onClick={() => { setRoute('detail'); setStatus('failed') }}>Server · failed</Button>
+      </div>
+      {route === 'create'
+        ? <CreateScreen onCreate={() => { setRoute('detail'); setStatus('provisioning') }} />
+        : <DetailScreen status={status} onToggle={() => setStatus((s) => (s === 'running' ? 'stopped' : 'running'))} />}
+    </AppShell>
+  )
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />)

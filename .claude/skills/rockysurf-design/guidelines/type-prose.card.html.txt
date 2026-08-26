@@ -1,0 +1,5 @@
+<!-- @dsCard group="Type" viewport="700x170" name="Prose measure" subtitle="680px column, 1.6 line-height, 62ch for help text" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><p style="line-height:var(--leading-prose);max-width:var(--measure-home)">Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on it, and hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches and your shell history are where you left them.</p>
+<p class="field-help" style="margin-top:10px">Help text under a label never exceeds 62ch, and is never a tooltip: a title attribute is invisible to touch and to keyboards.</p></body></html>

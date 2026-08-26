@@ -1,0 +1,27 @@
+/* Single-admin password login. No accounts, no OAuth — the password core printed on first boot. */
+const { Notice } = window.RockySurfDesignSystem_5702b3
+
+function LoginScreen({ onSignedIn }) {
+  const [password, setPassword] = React.useState('')
+  const [error, setError] = React.useState(null)
+  function submit(e) {
+    e.preventDefault()
+    if (password.length < 4) { setError('Incorrect password'); return }
+    onSignedIn()
+  }
+  return (
+    <main className="login-page">
+      <h1>Rocky Surf</h1>
+      <form onSubmit={submit}>
+        <label htmlFor="password">Admin password</label>
+        <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button type="submit" disabled={password.length === 0}>Sign in</button>
+        {error ? <p role="alert">{error}</p> : null}
+      </form>
+      <p className="hint">
+        Your password was printed once, on first boot. Set <code>ROCKYSURF_ADMIN_PASSWORD</code> to choose another.
+      </p>
+    </main>
+  )
+}
+Object.assign(window, { LoginScreen })

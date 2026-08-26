@@ -1,0 +1,9 @@
+<!-- @dsCard group="Brand" viewport="700x150" name="Motion" subtitle="Two durations, two keyframes, nothing else" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><div style="display:flex;gap:20px;align-items:center">
+<div class="loading-spinner"></div>
+<span class="status-badge" data-status="stopped" data-transition="start">Starting…</span>
+<span class="connection-status" data-status="connecting">events: connecting</span>
+<div><div style="font-size:12px;color:var(--rs-muted);font-family:var(--rs-mono)">0.15s ease — colour and border<br>1.5s rs-pulse — happening now<br>1s rs-spin — waiting</div></div></div>
+<p class="hint" style="margin-top:12px">Nothing slides, scales, or bounces. Hover changes a background or a border colour; press states are not styled separately.</p></body></html>

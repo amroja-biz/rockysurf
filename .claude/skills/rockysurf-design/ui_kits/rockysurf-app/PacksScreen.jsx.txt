@@ -1,0 +1,71 @@
+/* Surge Packs: the shop grid, and one pack's detail with its expanded tool list. */
+const { PackCard, PackIcon, Badge, Button, ToolList, Card, Modal } = window.RockySurfDesignSystem_5702b3
+
+function PacksScreen({ selected, onSelect, onCreateWith }) {
+  const D = window.RS_DATA
+  const [disclosing, setDisclosing] = React.useState(false)
+  if (selected) {
+    return (
+      <>
+        <div className="pack-detail-header">
+          <PackIcon pack={selected} size="large" />
+          <div>
+            <h2>{selected.name} <Badge variant={selected.trust === 'official' ? 'trust-official' : 'trust-other'}>{selected.trust}</Badge></h2>
+            <p className="hint">{selected.description}</p>
+          </div>
+        </div>
+        <ul className="behaviour-chips">
+          <li>{selected.toolCount} tools</li>
+          {selected.requiresRdp ? <li>needs a remote desktop</li> : null}
+          {selected.webPort ? <li>serves a web UI on {selected.webPort}</li> : null}
+          <li>amd64 and arm64</li>
+        </ul>
+        <section className="card">
+          <h2>What it installs</h2>
+          <ToolList tools={selected.tools ?? []} />
+        </section>
+        <div className="pack-admin-actions">
+          <Button variant="primary" onClick={() => onCreateWith(selected)}>Create a server with this pack</Button>
+          <Button onClick={() => setDisclosing(true)}>Read the install scripts</Button>
+          <Button onClick={() => onSelect(null)}>Back to all packs</Button>
+        </div>
+        {disclosing ? (
+          <Modal title={`${selected.name} — what will run on your box`} wide
+            actions={<><Button onClick={() => setDisclosing(false)}>Close</Button><Button variant="primary" onClick={() => { setDisclosing(false); onCreateWith(selected) }}>Looks fine — create</Button></>}>
+            <p>Every script, in the order it runs. Root steps are the ones worth a second look.</p>
+            <div className="disclosure">
+              {(selected.tools ?? []).slice(0, 3).map((tool, i) => (
+                <div className="disclosure-tool" key={tool.toolId}>
+                  <h4><span className="order">{i + 1}</span>{tool.name} <Badge variant={i === 0 ? 'run-as-root' : 'run-as-rocky'}>{i === 0 ? 'root' : 'rocky'}</Badge></h4>
+                  <pre className="disclosure-script">{`set -euo pipefail\nif command -v ${tool.toolId} >/dev/null; then exit 0; fi\ncurl -fsSL https://example.invalid/${tool.toolId}/install.sh | sh`}</pre>
+                </div>
+              ))}
+            </div>
+          </Modal>
+        ) : null}
+      </>
+    )
+  }
+  const groups = [['Official', 'official'], ['Community & internal', 'other']]
+  return (
+    <>
+      {groups.map(([label, key]) => {
+        const packs = D.packs.filter((p) => (key === 'official' ? p.trust === 'official' : p.trust !== 'official'))
+        return (
+          <section className="shop-section" key={key}>
+            <div className="shop-section-head">
+              <h2>{label}</h2>
+              <p className="hint">{packs.length} packs</p>
+            </div>
+            <ul className="pack-grid">
+              {packs.map((p) => (
+                <PackCard key={p.packId} pack={p} trust={p.trust} action={<Button onClick={() => onSelect(p)}>Details</Button>} />
+              ))}
+            </ul>
+          </section>
+        )
+      })}
+    </>
+  )
+}
+Object.assign(window, { PacksScreen })

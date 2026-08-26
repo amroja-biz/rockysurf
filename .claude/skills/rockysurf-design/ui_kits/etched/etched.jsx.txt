@@ -1,0 +1,270 @@
+/*
+ * Etched parts — components whose FORM comes from the logo, not just its colours.
+ *
+ * The painting is an engraving: a beam of light drawn as swept arcs, water as repeated
+ * strokes, rock as angular hatched mass, the moon as a hatched disc. Each part below takes
+ * one of those marks and gives it a job in the product.
+ *
+ * All line work is drawn at 0.9px in currentColor, with density — not fill — carrying value,
+ * which is how the source illustration carries tone.
+ */
+
+/* One hatch pattern for the whole page, so nothing duplicates an svg id. */
+function EtchedDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <defs>
+        <pattern id="rs-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+        </pattern>
+        <pattern id="rs-hatch-cross" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+          <line x1="0" y1="0" x2="5" y2="0" stroke="currentColor" strokeWidth="0.6" />
+        </pattern>
+      </defs>
+    </svg>
+  )
+}
+
+/*
+ * LAMP — status as the lighthouse's own light, not a coloured lozenge.
+ *
+ * A lit lamp throws swept arcs; a stopped one throws none; a failed one is a lens with the
+ * beam cut. The colour still carries the product's meaning, so the pill's five states survive
+ * — what changes is that the mark says the same thing the illustration does.
+ */
+const LAMP_STATE = {
+  running:      { arcs: 3, tone: '#7ee08f', dash: null, label: 'running' },
+  provisioning: { arcs: 2, tone: '#e8c37a', dash: '3 3', label: 'provisioning', pulse: true },
+  requested:    { arcs: 1, tone: '#e8c37a', dash: '2 4', label: 'requested', pulse: true },
+  stopped:      { arcs: 0, tone: '#8a8494', dash: null, label: 'stopped' },
+  failed:       { arcs: 0, tone: '#f8837d', dash: null, label: 'failed', cut: true },
+  terminated:   { arcs: 0, tone: '#8a8494', dash: null, label: 'terminated', cut: true },
+}
+
+function Lamp({ status, children }) {
+  const s = LAMP_STATE[status] ?? LAMP_STATE.stopped
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: s.tone }}>
+      <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" style={{ overflow: 'visible' }}>
+        {/* the lens: a hatched disc, because a lit lens in the plate is tone, not white */}
+        <circle cx="5" cy="9" r="3.4" fill={s.arcs > 0 ? 'url(#rs-hatch)' : 'none'} stroke="currentColor" strokeWidth="0.9" />
+        {[0, 1, 2].map((i) => (
+          <path
+            key={i}
+            d={`M ${10 + i * 6} ${9 - (4 + i * 2.6)} A ${4 + i * 2.6} ${4 + i * 2.6} 0 0 1 ${10 + i * 6} ${9 + (4 + i * 2.6)}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.9"
+            strokeDasharray={s.dash ?? undefined}
+            opacity={i < s.arcs ? 1 - i * 0.22 : 0.13}
+            style={s.pulse && i === s.arcs - 1 ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined}
+          />
+        ))}
+        {s.cut ? <line x1="1" y1="15" x2="13" y2="3" stroke="currentColor" strokeWidth="1.1" /> : null}
+      </svg>
+      <span style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase' }}>
+        {children ?? s.label}
+      </span>
+    </span>
+  )
+}
+
+/*
+ * TALLY — duration as tally strokes, one per hour, crossed at each fifth. Uptime has no
+ * ceiling, so it cannot be a gauge: the earlier wave stack read as a trend line because a
+ * stacked curve implies an axis, and there is no axis here. A tally counts, which is what
+ * "2h 14m" does. The part-hour is the short stroke at the end.
+ */
+function Tally({ hours, max = 18 }) {
+  const whole = Math.min(Math.floor(hours), max)
+  const part = hours - Math.floor(hours)
+  const groups = []
+  for (let i = 0; i < whole; i += 5) groups.push(Math.min(5, whole - i))
+  const groupW = (n) => n * 4 + 6
+  const width = groups.reduce((a, n) => a + groupW(n), 0) + (part > 0.08 ? 7 : 0) + 2
+  let x = 1
+  return (
+    <svg width={Math.max(width, 12)} height="16" viewBox={`0 0 ${Math.max(width, 12)} 16`} aria-hidden="true">
+      {groups.map((n, gi) => {
+        const start = x
+        x += groupW(n)
+        return (
+          <g key={gi}>
+            {Array.from({ length: n }, (_, i) => (
+              <line key={i} x1={start + i * 4} y1="2" x2={start + i * 4} y2="13" stroke="currentColor" strokeWidth="1.1" />
+            ))}
+            {n === 5 ? <line x1={start - 1.5} y1="12.5" x2={start + 17.5} y2="2.5" stroke="currentColor" strokeWidth="1.1" /> : null}
+          </g>
+        )
+      })}
+      {part > 0.08 ? <line x1={x} y1="6" x2={x} y2="13" stroke="currentColor" strokeWidth="1.1" opacity="0.55" /> : null}
+      {whole === 0 && part <= 0.08 ? <line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1.1" opacity="0.3" /> : null}
+    </svg>
+  )
+}
+
+/*
+ * WATERLINE — a level against a ceiling, which is the only water reading in the product that
+ * has one: spend against the cap. Ticked staff below, hatched water to the level, one wave
+ * stroke at the surface. It cannot be mistaken for a series: it has a start, an end, and marks.
+ */
+function Waterline({ fraction, width = 92 }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const w = width * f
+  const surface = `M ${w} 3 q -2 2.4 -4 0 q -2 -2.4 -4 0`
+  return (
+    <svg width={width} height="18" viewBox={`0 0 ${width} 18`} aria-hidden="true">
+      <rect x="0" y="3" width={width} height="9" fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.32" />
+      {w > 1 ? <rect x="0.5" y="3.5" width={Math.max(0, w - 1)} height="8" fill="url(#rs-hatch)" opacity="0.85" /> : null}
+      {w > 6 ? <path d={surface} fill="none" stroke="currentColor" strokeWidth="1.1" /> : null}
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        <line key={t} x1={t * width} y1="13" x2={t * width} y2={t === 0 || t === 1 ? 18 : 16}
+          stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      ))}
+    </svg>
+  )
+}
+
+/*
+ * MOON — a fraction as a lunar phase. What is spent is bitten; what is left is bare plate.
+ *
+ * Built as a mask rather than one clever path: the right limb is always lit, and the terminator
+ * ellipse either eats into it (waxing crescent, below half) or adds to it (gibbous, above), so
+ * the disc reads as a phase and never as a pie slice. A single-path version got the areas right
+ * and the sweep flags wrong at a glance, which is worse than verbose.
+ */
+function Moon({ fraction, size = 46 }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const r = size / 2 - 2
+  const c = size / 2
+  const rx = Math.abs(1 - 2 * f) * r
+  const id = `rs-moon-${size}-${Math.round(f * 1000)}`
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width={size} height={size}>
+        <circle cx={c} cy={c} r={r} fill="#fff" />
+        {/* the left half is never lit */}
+        <rect x="0" y="0" width={c} height={size} fill="#000" />
+        {/* below half the terminator eats the limb; above half it reaches across it */}
+        <ellipse cx={c} cy={c} rx={rx} ry={r} fill={f <= 0.5 ? '#000' : '#fff'} />
+      </mask>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      <g mask={`url(#${id})`}>
+        <circle cx={c} cy={c} r={r} fill="url(#rs-hatch-cross)" />
+        <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" />
+      </g>
+    </svg>
+  )
+}
+
+/*
+ * BEACON — the provisioning timeline as the beam itself. The cone widens as the work
+ * progresses; each step is a stroke crossing it, inked once reached. Replaces the dot-and-rail
+ * list, which said the same thing in a vocabulary borrowed from nowhere.
+ */
+function Beacon({ steps, current, labels }) {
+  const reached = steps.indexOf(current)
+  const rowH = 30
+  const height = steps.length * rowH + 10
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg width="120" height={height} viewBox={`0 0 120 ${height}`} aria-hidden="true"
+        style={{ position: 'absolute', left: 0, top: 0, color: '#e8c37a' }}>
+        {/* the tower: two converging rules and a lantern, in the plate's lightest pass */}
+        {/* the rock the tower stands on: angular, hatched, the plate's darkest mass */}
+        <path d={`M 2 ${height} L 8 ${height - 26} L 18 ${height - 34} L 30 ${height - 22} L 40 ${height - 30} L 44 ${height} Z`}
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        {/* the tower, tapering the way a lighthouse does */}
+        <path d={`M 17 17 L 13 ${height - 30} L 33 ${height - 30} L 29 17 Z`} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        <path d="M 14 17 L 32 17" stroke="currentColor" strokeWidth="0.9" opacity="0.5" fill="none" />
+        <rect x="17" y="5" width="12" height="12" fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.85" />
+        <path d="M 15 5 L 31 5 M 23 5 L 23 1" stroke="currentColor" strokeWidth="0.9" opacity="0.6" fill="none" />
+        {/* the beam, widening downward, only as far as the work has got */}
+        <path d={`M 31 10 L 118 ${(reached + 1) * rowH + 8} L 118 2 Z`} fill="url(#rs-hatch)" opacity="0.3" />
+        {steps.map((step, i) => (
+          <line key={step} x1="40" y1={i * rowH + 20} x2="112" y2={i * rowH + 20}
+            stroke="currentColor" strokeWidth={i === reached ? 1.4 : 0.9}
+            strokeDasharray={i > reached ? '2 4' : undefined}
+            opacity={i < reached ? 0.7 : i === reached ? 1 : 0.2}
+            style={i === reached ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined} />
+        ))}
+      </svg>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, marginLeft: '132px' }}>
+        {steps.map((step, i) => (
+          <li key={step} style={{
+            height: rowH + 'px', display: 'flex', alignItems: 'center',
+            fontSize: '0.7rem', letterSpacing: '0.11em', textTransform: 'uppercase',
+            fontWeight: i === reached ? 700 : 500,
+            color: i < reached ? '#7ee08f' : i === reached ? '#e8c37a' : '#6c6678',
+          }}>{labels[step] ?? step}</li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+/*
+ * SWELL — the section divider. A hairline says "these are different"; a swell says it in the
+ * illustration's own hand, and costs the same pixel.
+ */
+function Swell({ opacity = 0.4 }) {
+  return (
+    <svg width="100%" height="9" viewBox="0 0 400 9" preserveAspectRatio="none" aria-hidden="true"
+      style={{ display: 'block', color: '#e8c37a', opacity }}>
+      <path d="M0 5 q 12.5 -4 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0"
+        fill="none" stroke="currentColor" strokeWidth="0.9" />
+    </svg>
+  )
+}
+
+/*
+ * SHORE — the empty state as the thing the plate is actually of: a rock mass under a horizon.
+ * Angular, hatched, and drawn once at the bottom of an empty list.
+ */
+function Shore({ children }) {
+  return (
+    <div style={{ border: '1px solid rgba(252,245,232,.2)', padding: '2.5rem 2rem 0', textAlign: 'center', color: '#8a8494', overflow: 'hidden' }}>
+      <p style={{ marginBottom: '1.5rem', fontSize: '0.875rem' }}>{children}</p>
+      <svg width="100%" height="74" viewBox="0 0 400 74" preserveAspectRatio="none" aria-hidden="true" style={{ display: 'block', color: '#e8c37a', margin: '0 -2rem', width: 'calc(100% + 4rem)' }}>
+        <path d="M0 46 L 62 30 L 104 41 L 158 18 L 214 38 L 268 26 L 322 44 L 400 32 L 400 74 L 0 74 Z"
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.5" />
+      </svg>
+    </div>
+  )
+}
+
+/*
+ * PLATE — the frame. A double rule with corner ticks, the way an engraved plate is bounded,
+ * replacing the 6px-radius card. Nothing inside changes.
+ */
+function Plate({ children, lit }) {
+  const ink = lit ? 'rgba(232,195,122,.85)' : 'rgba(252,245,232,.42)'
+  /* Corner ticks as four two-stop gradients: the registration marks an engraved plate carries
+     at its bounds. Cheaper and sharper than a border on a second element. */
+  const tick = `linear-gradient(${ink},${ink}) 0 0/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 0 0/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 0/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 0/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 0 100%/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 0 100%/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 100%/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 100%/1px 11px no-repeat`
+  return (
+    <div style={{
+      position: 'relative',
+      /* Lit from the same corner as the page: a plate that ignores the room's light reads as a
+         sticker on top of it. `lit` adds a touch of the beam's own warmth. */
+      background: lit
+        ? 'linear-gradient(148deg, rgba(232,195,122,.085) 0%, rgba(252,245,232,.012) 48%, rgba(0,0,0,.14) 100%), #171420'
+        : 'linear-gradient(148deg, rgba(252,245,232,.045) 0%, rgba(252,245,232,.008) 46%, rgba(0,0,0,.12) 100%), #171420',
+      border: '1px solid ' + (lit ? 'rgba(232,195,122,.5)' : 'rgba(252,245,232,.18)'),
+      padding: '1.1rem',
+    }}>
+      <div aria-hidden="true" style={{ position: 'absolute', inset: '4px', background: tick, pointerEvents: 'none' }} />
+      {children}
+    </div>
+  )
+}
+
+Object.assign(window, { EtchedDefs, Lamp, Tally, Waterline, Moon, Beacon, Swell, Shore, Plate })

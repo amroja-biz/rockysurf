@@ -1,3 +1,17 @@
+<!--
+  PACKAGED FOR A REPOSITORY. This is the Rocky Surf design system exported as an Agent Skill.
+  Two differences from the design-system project it came from:
+
+  1. Every .jsx, .js and .html file carries a .txt suffix, so no build compiles them and no
+     tooling treats them as pages. Strip the suffix to run or open one.
+  2. ui_kits/etched/ holds the two screens the etched direction landed on. The earlier
+     explorations (palette, light, material, and three readings of "etched") stayed behind —
+     they were the search, not the answer.
+
+  Everything else — the guide below, the tokens, the CSS, the assets, the component contracts,
+  the handoff — is verbatim.
+-->
+
 # Rocky Surf — design system
 
 Rocky Surf is an open-source control plane for **cloud servers for agentic engineering**. You run
@@ -139,7 +153,8 @@ must look the same on every reload.
 | `assets/` | `logo.png` (the painting), `mark-48.png` / `mark-192.png` / `favicon.ico`, `openclaw-wallpaper.png`, `surge-packs/` (ten PNGs) |
 | `guidelines/` | 17 specimen cards — colours, type, spacing, radii, motion, iconography, pack marks, the logo |
 | `components/` | The reusable primitives, below |
-| `ui_kits/rockysurf-app/` | The click-through control plane. Start at `index.html`; `README.md` maps each screen to its source file |
+| `ui_kits/rockysurf-app/` | The click-through control plane, as the app looked when this was read. `README.md` maps each screen to its source file |
+| `ui_kits/etched/` | The two screens the etched skin landed on: the dashboard built from the parts, and the create form plus server detail |
 | `thumbnail.html` | The homepage tile |
 | `handoff/` | Dropping the etched skin into `packages/web`: `etched.css`, `etched.tsx.txt`, and a README with the rollout order and the upstream delta |
 | `SKILL.md` | Agent Skills front matter, for using this system in Claude Code |
