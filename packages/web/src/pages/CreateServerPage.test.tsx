@@ -1485,6 +1485,13 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     // The provider's own reason (#139), not a generic "sold out": the cure is a portal request.
     expect(note).toContain('no core quota')
     expect(note).toContain('small-arm')
+
+    // ...and it goes away once a machine type is picked by hand, because that overrides every
+    // size: a sentence about what `small` would have resolved to answers nothing then.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    await user.click(within(screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!).getByRole('button', { name: /^select$/i }))
+    expect(screen.queryByTestId('tier-preference-note')).toBeNull()
   })
 
   it('offers to remember a machine type once one has been picked by hand', async () => {

@@ -1071,12 +1071,16 @@ export function CreateServerPage() {
           {/*
             A saved type that could not be used, and what was used instead (issue #124).
 
-            SHOWN FOR THE SELECTED SIZE ONLY, and never as an error: nothing is broken, the
-            create will succeed, and the machine is simply not the one the preference names.
+            SHOWN FOR THE SELECTED SIZE ONLY, and only while a size is what drives the request:
+            a machine type picked by hand has already overridden every size, so a sentence about
+            what one of them would have resolved to is answering a question nobody asked.
+
+            NEVER AS AN ERROR: nothing is broken, the create will succeed, and the machine is
+            simply not the one the preference names.
             Silence here is the failure mode the whole note exists to prevent — a user who saved
             a type, got a different one, and found out from the invoice.
           */}
-          {resolution?.note && (
+          {!customOfferingId && resolution?.note && (
             <p className="hint" data-testid="tier-preference-note">
               {resolution.note}
             </p>
