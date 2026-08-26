@@ -223,25 +223,29 @@ unavoidable rather than a convenience.
 }
 ```
 
-> **Status: reasoned from the API calls the provider makes, and NOT yet proven under a restricted
-> principal.**
+> **Status: EXERCISED END TO END under a principal holding exactly this role, on 2026-08-26
+> (`rockysurf-ihtq.8`).**
 >
-> This is a weaker claim than the one [`aws.md`](aws.md) makes, and the difference is worth
-> stating plainly rather than leaving a reader to assume parity. The Azure provider was built
-> without an Azure subscription: every action above corresponds to a call the provider actually
-> issues, and the list was derived by walking that code — but nobody has yet assumed a principal
-> holding exactly this role and run a server end to end under it.
+> The full lifecycle — create, bootstrap, SSH, stop, start, terminate — ran on both architectures
+> under a service principal holding these two roles and nothing else, with `allowAzureCli: false`
+> set so no wider credential could be silently substituted. No `AuthorizationFailed` occurred at
+> any point, and the teardown left no VM, disk, network interface or public address behind.
 >
-> **That matters because the AWS equivalent found a real bug the first time it was run.** A
-> resource sat in a statement whose condition could never match, and every first launch under the
-> published policy failed. There is no reason to think Azure is less likely to have one. The
-> `join/action` entries below are the most likely candidates: Azure authorizes an attachment
-> against the resource being attached *to*, and it is easy to miss one.
+> So this list is now known to be **sufficient**, and known not to be wider than the lifecycle
+> needs. Two honest limits on that claim: the run exercised the lifecycle, not every branch that
+> can call Azure, and it made no attempt to prove each action is individually necessary — an
+> entry could still be redundant without any run noticing.
 >
-> The run that settles it is tracked as **`rockysurf-ihtq.8`** and is owner-gated — it needs a
-> subscription and it spends money. Until it has passed, treat this as a good-faith minimum
-> rather than a verified one, and if you hit an `AuthorizationFailed`, the error names the action
-> it wanted and we would like to hear about it.
+> **The AWS equivalent found a real bug the first time it was run**, which is why this block used
+> to warn that Azure was likely to have one too. Azure did — but not in the action list. The
+> template itself had never compiled: `deploy/azure/role.bicep` declared the resource-group-scoped
+> assignment inside a subscription-scoped file, which Bicep refuses (BCP139), so `az deployment
+> sub create` failed at parse. The permissions were right; the file that granted them could not be
+> deployed by anyone. It is fixed, and the `join/action` entries this block predicted would be the
+> problem all turned out to be correct.
+>
+> If you do hit an `AuthorizationFailed`, the error names the action it wanted and we would like
+> to hear about it.
 >
 > **The two copies cannot drift apart.** `node scripts/check-azure-role.mjs` runs in
 > `pnpm run lint` and compares the JSON above to
