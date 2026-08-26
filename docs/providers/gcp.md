@@ -561,19 +561,26 @@ this is its one dated home — see
 [`docs/memories/2026-08-13-measured-numbers-in-prose.md`](../memories/2026-08-13-measured-numbers-in-prose.md)
 for why it lives here once instead of being copied into prose elsewhere.
 
-From 4 clean `nightly-real-cloud.yml` runs, 2026-08-22 through 2026-08-26:
+Every night creates **five boxes** — one Hetzner, two AWS, two GCP — each for a few minutes,
+then destroys them. The bill is per box for the minutes it lived. From 4 clean
+`nightly-real-cloud.yml` runs for Hetzner and AWS (2026-08-22 through 2026-08-26) and the GCP
+leg's first run (2026-08-26, run 33002562621 — one sample each, so those two rows are the least
+settled):
 
-| Box | Avg lifetime | Per-run cost |
+| Box | Lifetime | Per-run cost |
 |---|---|---|
 | Hetzner `cpx12` (eu) | ~3.2 min, billed a full hour (hourly rounding) | ≈ $0.022 |
 | AWS `t4g.small` (us-east-1, arm64) | ~5.8 min, billed per-second | ≈ $0.0023 |
 | AWS `t3.small` (us-east-1, amd64) | ~4.1 min, billed per-second | ≈ $0.0019 |
-| **All three boxes, per night** | | **≈ $0.026** |
+| GCP `t2a-standard-1` (us-central1-a, arm64) | ~6.7 min, billed per-second | ≈ $0.005 |
+| GCP `e2-small` (us-central1-a, amd64) | ~12 min, billed per-second | ≈ $0.004 |
+| **All five boxes, per night** | | **≈ 4 cents** |
 
-**Per month:** ~30 scheduled nights plus occasional manual reruns ≈ **under $2/month**, most
-likely close to $0.78/month. **GitHub Actions minutes: $0** — `amroja-biz/rockysurf` is public,
-and GitHub-hosted Linux/ARM runners are free and unmetered on every plan for public repos (still
-true as of Aug 2026). This applies to every workflow in the repo, not just this one.
+**Per month:** ~30 scheduled nights plus occasional manual reruns ≈ **about $1**, $2 at the
+outside. Hetzner is roughly half of it, purely because it bills a three-minute box as an hour.
+**GitHub Actions minutes: $0** — `amroja-biz/rockysurf` is public, and GitHub-hosted Linux/ARM
+runners are free and unmetered on every plan for public repos (still true as of Aug 2026). This
+applies to every workflow in the repo, not just this one.
 
 **Assumptions:** AWS prices from this repo's own hosted feed
 (`https://amroja-biz.github.io/rockysurf/prices/v1/aws.json`, `t4g.small` $0.0168/hr, `t3.small`
@@ -583,19 +590,15 @@ minutes of life. Hetzner `cpx12` is **not** in this repo's feed (see "Pricing" a
 treat that one number as an estimate rather than a measurement, with Hetzner's documented
 hourly-rounded billing applied on top.
 
-**Not yet included: the GCP leg.** As the section above says, it stays skipped until the
-CI-only project exists, so it has run zero times and contributes nothing to the numbers above.
-Once it runs, using the same method: `t2a-standard-1` + `e2-small` in `us-central1-a`, each for a
-lifetime similar to the AWS legs — a few minutes, GCP bills per-second with a 1-minute minimum —
-at the rates in this repo's own GCP price feed (`scripts/gcp-transcribed-prices.json`, hand-
-transcribed 2026-08-13 from Google's published pricing page for `us-central1`: `t2a-standard-1`
-$0.0385/hr, `e2-small` $0.016753/hr; no sustained-use discount applies to either type). At an
-AWS-like ~5-minute lifetime each, that's roughly $0.0032 + $0.0014 ≈ **$0.005/run** for compute
-alone, plus a small, similarly-rounding-error external-IP and `pd-balanced` boot-disk charge for
-the few minutes each box exists (boot disk is billed separately from the compute rate above; see
-the pricing note on this page). Call it **another $0.005–0.01/run**, which keeps the nightly's
-total in the same "a few cents a night, well under $1/month" range — it does not change the
-headline.
+**The GCP rows** use the rates in this repo's own GCP price feed
+(`scripts/gcp-transcribed-prices.json`, hand-transcribed 2026-08-13 from Google's published
+pricing page for `us-central1`: `t2a-standard-1` $0.0385/hr, `e2-small` $0.016753/hr; no
+sustained-use discount applies to either type; GCP bills per-second with a 1-minute minimum),
+plus the external-IP and `pd-balanced` boot-disk charges for the minutes each box exists —
+both rounding errors at this lifetime. The lifetimes are the `Lifecycle` step's wall-clock from
+the one run so far; the amd64 box's ~12 minutes was mostly bootstrap (its `ready` came at 532 s
+against the arm64 box's 205 s) and will move as more nights accumulate. Adding the leg took the
+nightly from about 3 cents to about 4 — it did not change the headline.
 
 **How to re-measure:** pull the last few runs' step timings with
 `gh run list --workflow=nightly-real-cloud.yml` and `gh run view <id> --json jobs`, multiply each
