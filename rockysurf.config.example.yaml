@@ -350,3 +350,18 @@ pricing:
   # How often the feed is re-read, in hours. The publish side has its own cadence — one cron
   # line in .github/workflows/price-feed.yml.
   refreshHours: 6
+
+bootstrap:
+  # What happens to the machine when a TOOL install fails during setup (ADR-0010).
+  #
+  #   terminate — the default. The box is released and the server is failed with a complete
+  #               report: which tool, why, the whole log of that step, and what happened to
+  #               the machine. Nothing the user made exists on a box before it is ready, so a
+  #               half-installed one is only a bill.
+  #   keep      — leave the machine up so you can SSH in and look. For pack authors debugging
+  #               a pack on a real server; the row then carries the still-billing notice until
+  #               you terminate it yourself.
+  #
+  # A repository that fails to clone never terminates the box under either setting — it is a
+  # warning on the running server. Other finishing steps keep the machine too.
+  onFailure: terminate

@@ -345,7 +345,7 @@ Two more, worth calling out separately:
 | `ARCH` | every step | `amd64` or `arm64` |
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
-| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose — empty when they confirmed a repo-less create, so scripts must tolerate `$REPOS` being `''` |
+| `REPOS` | `setupScript`, when the pack sets `requiresRepos: true` | comma-separated list of the repositories the user chose — empty when they confirmed a repo-less create, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it |
 | your tool's secrets | steps of the tool they belong to | whatever the user supplied |
 
 Standard output and standard error are captured per step. Log freely; it is the only debugging
@@ -752,6 +752,32 @@ Three things in there are worth copying into your own pack:
   step, but only if the step actually reports failure.
 - **Each script's idempotency is visible in one glance** — a `command -v` guard, a `grep -q`
   guard, and a stamp file. A reviewer should not have to guess.
+
+---
+
+## Debugging a pack on a real box
+
+When one of your tool steps fails on a real server, the default is that **the machine is
+terminated** (ADR-0010): a half-installed box is worthless and billing, and the user gets the
+complete account instead — the failed step by name, the classified cause, the decisive lines, and
+the step's whole log, on the creation screen and the server page. For most failures that log is
+all you need.
+
+When it is not — you want to poke at the box itself — set this in the config of the Rocky Surf
+you are testing with:
+
+```yaml
+bootstrap:
+  onFailure: keep
+```
+
+A failed tool install then leaves the machine up, exactly as it did before, and the row carries
+the still-billing notice until you terminate it. SSH in and read `/var/lib/rockysurf/agent.log`
+and `/var/lib/rockysurf/steps/<step id>.log`. Put it back to `terminate` (or delete the key) when
+you are done; nobody else's boxes should outlive their failures.
+
+A repository that fails to clone never terminates the box under either setting — it is an
+optional step, and shows up as a warning on the running server.
 
 ---
 
