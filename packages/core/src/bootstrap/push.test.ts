@@ -46,6 +46,15 @@ describe('parseAgentState', () => {
     expect(state?.failedStep).toBe('tool:node')
     expect(state?.logTail).toContain('Could not resolve host')
   })
+
+  it('carries the notice the agent journalled while a step waits, and nothing when it did not', () => {
+    // The apt wait (#129) is the first reason a step deliberately stalls; the journal says so
+    // in one line while it lasts. An empty string is "no notice", not a blank line to show.
+    const waiting = parseAgentState(journal({ notice: "Ubuntu's package archive is out of sync — waiting 2 min" }))
+    expect(waiting?.notice).toBe("Ubuntu's package archive is out of sync — waiting 2 min")
+    expect(parseAgentState(journal())?.notice).toBeUndefined()
+    expect(parseAgentState(journal({ notice: '' }))?.notice).toBeUndefined()
+  })
 })
 
 describe('runId filtering (conformance #4)', () => {

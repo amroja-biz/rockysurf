@@ -290,6 +290,9 @@ check "the wait honoured the override" "$(grep -c 'waiting 1s' "$WORK/run7.log")
 check "retry announced" "$(grep -c 'retrying once on the fallback mirror' "$WORK/run7.log")" 1
 check "apt step ran exactly twice" "$(count global)" 2
 check "no regional mirror was invented" "$(grep -c 'rewritten to the global one' "$WORK/run7.log")" 0
+# The journal carried a reason while the wait lasted and dropped it after: a notice that
+# outlived its cause would sit under a failed step claiming nothing is stuck.
+check "notice cleared once the wait was over" "$(state '.notice // "none"')" none
 
 echo
 if [ "$FAILURES" -eq 0 ]; then

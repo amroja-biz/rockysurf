@@ -149,14 +149,19 @@ report_progress() {
   # to learn in callback mode that a repository did not clone.
   stepstatus=$(jq -r --arg id "$step" 'first(.steps[] | select(.id == $id) | .status) // ""' <<<"$STATE")
   tail_txt=$(jq -r --arg id "$step" 'first(.steps[] | select(.id == $id) | .logTail) // ""' <<<"$STATE")
+  # The plan-level notice (see set_notice), so callback mode's timeline says the same thing
+  # push mode's does while a step waits.
+  local notice
+  notice=$(jq -r '.notice // ""' <<<"$STATE")
 
   # Body on stdin, never in argv: a `-d` with the token in it is readable through `ps` by
   # every user on the box, including the unprivileged steps this agent is about to run.
   if ! jq -nc --arg s "$label" --arg sid "$step" --arg st "$status" --arg t "$CALLBACK_TOKEN" --arg r "$runid" \
-    --arg ss "$stepstatus" --arg lt "$tail_txt" \
+    --arg ss "$stepstatus" --arg lt "$tail_txt" --arg n "$notice" \
     '{step:$s, stepId:$sid, status:$st, token:$t, runId:$r}
      + (if $ss != "" then {stepStatus:$ss} else {} end)
-     + (if $lt != "" then {logTail:$lt} else {} end)' |
+     + (if $lt != "" then {logTail:$lt} else {} end)
+     + (if $n != "" then {notice:$n} else {} end)' |
     curl -fsS --max-time 15 --retry 3 --retry-delay 2 --retry-connrefused \
       -H 'Content-Type: application/json' --data @- "$CALLBACK_URL" >/dev/null; then
     # Progress is telemetry, not control flow. A box that cannot reach core still finishes
@@ -238,7 +243,11 @@ apt_mirror_fallback() {
   done
   if [ "$rewritten" = 0 ]; then
     log "!!! already on the global Ubuntu mirror — nothing to swap; waiting ${APT_RETRY_WAIT_S}s for the archive to settle (an index published ahead of its pool answers 404 until it catches up), then refreshing lists and retrying as-is"
+    # Two minutes under "Installing tools" with nothing moving looks like a hang. The journal
+    # carries a one-line reason for the timeline while the wait lasts, and drops it after.
+    set_notice "Ubuntu's package archive is out of sync — waiting $(human_wait) before retrying. Nothing is stuck."
     sleep "$APT_RETRY_WAIT_S"
+    clear_notice
   fi
 
   # The step's own `apt-updated` stamp is stale by definition now, but the lists it guards are
@@ -362,6 +371,30 @@ set_plan_status() {
   local st="$1"
   STATE=$(jq -c --arg st "$st" --arg ts "$(now)" '.status = $st | .updatedAt = $ts' <<<"$STATE")
   flush_state
+}
+
+# A one-line, user-readable reason the CURRENT step is taking longer than it looks (#129). Core
+# forwards it on the progress event and the timeline shows it under the active step; it is
+# cleared the moment the reason stops applying, so a notice never outlives its cause. Bumping
+# `updatedAt` is what makes core's poller notice a journal whose step and status are unchanged.
+# Silently a no-op before the plan is loaded (no journal yet) or without jq (nothing to write
+# it with): the jq bootstrap's own fallback wait has no channel, and that is fine — it is the
+# agent's first seconds, not a two-minute hole in the middle of an install.
+set_notice() {
+  [ -n "${STATE:-}" ] && command -v jq >/dev/null 2>&1 || return 0
+  STATE=$(jq -c --arg n "$1" --arg ts "$(now)" '.notice = $n | .updatedAt = $ts' <<<"$STATE")
+  flush_state
+}
+
+clear_notice() {
+  [ -n "${STATE:-}" ] && command -v jq >/dev/null 2>&1 || return 0
+  STATE=$(jq -c --arg ts "$(now)" 'del(.notice) | .updatedAt = $ts' <<<"$STATE")
+  flush_state
+}
+
+# "2 min" for a real box, "1 s" under the smoke harness's override.
+human_wait() {
+  if [ "$APT_RETRY_WAIT_S" -ge 60 ]; then echo "$((APT_RETRY_WAIT_S / 60)) min"; else echo "${APT_RETRY_WAIT_S} s"; fi
 }
 
 mark_failed() {

@@ -1105,6 +1105,16 @@ details > summary:hover {
   animation: rs-pulse 1.5s ease-in-out infinite;
 }
 
+/* The one-line reason under the active step while it waits (#129) — quieter than the step it
+   explains, so the eye reads "Installing tools" first and the "why" second. */
+.step-notice {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--rs-muted);
+}
+
 .step-failed {
   color: var(--rs-red);
 }

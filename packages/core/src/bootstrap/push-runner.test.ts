@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { createServer, type Server, type Socket } from 'node:net'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openTestDatabase, type Db, type OpenedDatabase } from '../db/client.js'
 import {
   getServer,
@@ -195,5 +195,51 @@ describe('a promoting report is not believed from the journal', () => {
     const promoted = await markBootstrapReady(db, events, getServer(db, row.id)!)
     expect(promoted?.status).toBe('running')
     expect(promoted?.startedAt).toBeTruthy()
+  })
+})
+
+/**
+ * WHY A STEP IS WAITING TRAVELS WITH THE STEP (#129).
+ *
+ * The agent's bounded apt wait is two minutes under "Installing tools" with nothing moving. The
+ * journal carries a one-line reason while it lasts; the progress event carries it to the
+ * timeline; and its ABSENCE on the next event is what clears it — so the SPA never has to guess
+ * when a wait ended.
+ */
+describe('a journal notice reaches the progress event, and its absence clears it', () => {
+  const NOTICE = "Ubuntu's package archive is out of sync — waiting 2 min before retrying. Nothing is stuck."
+  const journal = (notice?: string): AgentState => ({
+    planVersion: 1,
+    serverId: row.id,
+    step: 'tool:build-essential',
+    status: 'running',
+    updatedAt: new Date().toISOString(),
+    ...(notice ? { notice } : {}),
+    steps: [{ id: 'tool:build-essential', reports: 'installing_tools', status: 'running' }],
+  })
+
+  /** The wire is typed loosely at the events service; read it back as the event it is. */
+  const progressEvents = (broadcast: { mock: { calls: unknown[][] } }) =>
+    broadcast.mock.calls
+      .map((c) => c[1] as { type: string; notice?: string })
+      .filter((e) => e.type === 'bootstrap-progress')
+
+  it('puts the notice on the wire while the journal carries it', () => {
+    const broadcast = vi.spyOn(events, 'broadcastToUser')
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journal(NOTICE))
+    expect(progressEvents(broadcast)[0]).toMatchObject({
+      step: 'installing_tools',
+      stepId: 'tool:build-essential',
+      notice: NOTICE,
+    })
+  })
+
+  it('sends the next event without one once the journal dropped it', () => {
+    const broadcast = vi.spyOn(events, 'broadcastToUser')
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journal(NOTICE))
+    applyAgentState({ db, events, secrets }, getServer(db, row.id)!, journal())
+    const sent = progressEvents(broadcast)
+    expect(sent).toHaveLength(2)
+    expect(sent[1]).not.toHaveProperty('notice')
   })
 })

@@ -228,6 +228,7 @@ export function applyAgentState(deps: PushRunnerDeps, row: ServerRow, state: Age
       // The log tail is diagnostic and can contain a lot; the event carries it because it is
       // the only record of WHY a step failed once the box is gone.
       ...(state.logTail ? { logTail: state.logTail } : {}),
+      ...(state.notice ? { notice: state.notice } : {}),
     },
   })
 
@@ -247,6 +248,9 @@ export function applyAgentState(deps: PushRunnerDeps, row: ServerRow, state: Age
       stepId: state.step,
       status: updated?.status ?? row.status,
       publicIp: updated?.publicIp ?? row.publicIp,
+      // Absent means "nothing unusual", and the SPA clears what it was showing — so a journal
+      // that dropped its notice is a progress event without one, not a stale line on screen.
+      notice: state.notice,
     }),
   )
 

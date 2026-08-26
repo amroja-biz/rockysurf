@@ -55,6 +55,8 @@ export function ServerDetailPage() {
   const [server, setServer] = useState<Server | null>(null)
   const [pack, setPack] = useState<SurgePack | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
+  /** One line under the active step while it deliberately waits (#129); cleared by the next event. */
+  const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState<string | null>(null)
@@ -123,6 +125,8 @@ export function ServerDetailPage() {
         // machine core had just released.
         void refresh()
       }
+      // Every progress event either carries a reason for waiting or clears the last one.
+      if (event.type === 'bootstrap-progress') setNotice(event.notice ?? null)
       setServer((current) => {
         if (!current) return current
         if (event.type === 'server-status') {
@@ -435,7 +439,7 @@ export function ServerDetailPage() {
       )}
 
       {server.status === 'provisioning' && (
-        <ProvisioningTimeline current={server.provisioningStep} logLines={logLines} />
+        <ProvisioningTimeline current={server.provisioningStep} notice={notice} logLines={logLines} />
       )}
 
       {server.status === 'running' && (
@@ -699,7 +703,15 @@ export function ServerDetailPage() {
  * share one label — so this shows progress through the labels and puts the live log
  * underneath for anyone who needs to know which step is actually running.
  */
-function ProvisioningTimeline({ current, logLines }: { current?: ProvisioningStep; logLines: string[] }) {
+function ProvisioningTimeline({
+  current,
+  notice,
+  logLines,
+}: {
+  current?: ProvisioningStep
+  notice?: string | null
+  logLines: string[]
+}) {
   const reachedIndex = current ? STEP_ORDER.indexOf(current) : -1
 
   return (
@@ -720,6 +732,11 @@ function ProvisioningTimeline({ current, logLines }: { current?: ProvisioningSte
               aria-current={state === 'active' ? 'step' : undefined}
             >
               {STEP_LABELS[step]}
+              {state === 'active' && notice && (
+                <span className="step-notice" role="status">
+                  {notice}
+                </span>
+              )}
             </li>
           )
         })}

@@ -57,6 +57,11 @@ export interface AgentState {
   updatedAt: string
   failedStep?: string
   logTail?: string
+  /**
+   * One line on why the current step is taking longer than it looks — the agent's apt wait
+   * (#129) is the first. Present only while the reason applies; the agent deletes it after.
+   */
+  notice?: string
   steps: AgentStepState[]
 }
 
@@ -142,6 +147,7 @@ export function parseAgentState(raw: string): AgentState | null {
     updatedAt: typeof s.updatedAt === 'string' ? s.updatedAt : '',
     failedStep: typeof s.failedStep === 'string' ? s.failedStep : undefined,
     logTail: typeof s.logTail === 'string' ? s.logTail : undefined,
+    notice: typeof s.notice === 'string' && s.notice ? s.notice : undefined,
     steps: s.steps.filter((x): x is AgentStepState => !!x && typeof x.id === 'string'),
   }
 }

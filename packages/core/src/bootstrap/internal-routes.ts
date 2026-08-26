@@ -79,6 +79,8 @@ const statusBody = z.strictObject({
   /** The failed step's log tail, from the agent's journal. Bounded by the agent at 60 lines. */
   logTail: z.string().max(64 * 1024).optional(),
   publicIp: z.string().min(1).optional(),
+  /** Why the current step is waiting, in one line (#129). Shown under the active step. */
+  notice: z.string().max(300).optional(),
 })
 
 /** `?token=` for the GETs: a query parameter is what a `curl` in cloud-init can carry. */
@@ -211,6 +213,7 @@ export function createInternalRoutes(deps: InternalRoutesDeps): Hono {
         ...(body.stepId ? { stepId: body.stepId } : {}),
         status: updated.status,
         publicIp: updated.publicIp,
+        ...(body.notice ? { notice: body.notice } : {}),
       }),
     )
 
