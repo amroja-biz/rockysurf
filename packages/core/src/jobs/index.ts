@@ -2,6 +2,7 @@ import type { Db } from '../db/client.js'
 import { deleteExpiredSessions } from '../db/index.js'
 import type { ServerRow } from '../db/schema.js'
 import type { LimitsConfig } from '../config/index.js'
+import type { BootstrapOnFailure } from '../config/schema.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { EventsService } from '../services/events.js'
 import { createLimitsEnforcer, createSpendTracker, type SpendTracker } from './limits.js'
@@ -44,6 +45,8 @@ export interface JobsDeps {
   sync: (row: ServerRow) => Promise<ServerRow>
   /** The push bootstrap driver (`bootstrap/supervisor.ts`), passed by `createApp`. */
   bootstrap?: BootstrapPoller
+  /** `bootstrap.onFailure` from config: what a failed tool install does to the instance (ADR-0010). */
+  onFailure?: BootstrapOnFailure
   intervals?: Partial<typeof DEFAULT_INTERVALS>
   now?: () => Date
   log?: (message: string) => void
@@ -72,6 +75,7 @@ export function createJobs(deps: JobsDeps): Jobs {
     events: deps.events,
     sync: deps.sync,
     ...(deps.bootstrap ? { bootstrap: deps.bootstrap } : {}),
+    ...(deps.onFailure ? { onFailure: deps.onFailure } : {}),
     ...(deps.now ? { now: deps.now } : {}),
     ...(deps.log ? { log: deps.log } : {}),
   })

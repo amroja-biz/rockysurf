@@ -13,7 +13,8 @@ import {
   tokenMatches,
   verifyCallbackToken,
 } from '../db/repositories/bootstrap-tokens.js'
-import { getServer, insertServer, setInstallPlan, updateServerStatus } from '../db/repositories/servers.js'
+import { getBootstrapReport, getServer, insertServer, setInstallPlan, updateServerStatus } from '../db/repositories/servers.js'
+import type { BootstrapReport } from './failure-report.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import type { ServerRow } from '../db/schema.js'
 import { createSecretsStore } from '../secrets/store.js'
@@ -229,6 +230,48 @@ describe('POST /internal/servers/:id/status', () => {
     expect(getServer(opened.db, server.id)!.planTokenHash).toBeNull()
     expect((await created.app.request(`/internal/servers/${server.id}/secrets?token=${planToken}`)).status).toBe(401)
     expect((await created.app.request(`/internal/servers/${server.id}/plan?token=${planToken}`)).status).toBe(401)
+  })
+
+  it('fails the row with the report when the plan reports failure — instead of waiting for the timeout (ADR-0010)', async () => {
+    const res = await post(`/internal/servers/${server.id}/status`, {
+      step: 'installing_tools',
+      stepId: 'tool:node',
+      status: 'failed',
+      stepStatus: 'failed',
+      logTail: 'npm ERR! code E404\nnpm ERR! 404 Not Found - GET https://registry.npmjs.org/nope',
+      token: callbackToken,
+      runId: RUN_ID,
+    })
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({ accepted: true, status: 'failed' })
+
+    const row = getServer(opened.db, server.id)!
+    expect(row.status).toBe('failed')
+    expect(row.errorMessage).toContain('node could not be installed')
+    const report = getBootstrapReport<BootstrapReport>(row)!
+    expect(report.failure?.stepId).toBe('tool:node')
+    expect(report.failure?.log).toContain('404 Not Found')
+    // Callback mode has no SSH channel: the agent's tail is all there is, and the report says so.
+    expect(report.failure?.logComplete).toBe(false)
+  })
+
+  it('records a failed optional step as a warning and lets the plan go on', async () => {
+    const res = await post(`/internal/servers/${server.id}/status`, {
+      step: 'cloning_repos',
+      stepId: 'repo:my-app',
+      status: 'running',
+      stepStatus: 'failed',
+      logTail: "fatal: repository 'https://github.com/acme/my-app/' not found",
+      token: callbackToken,
+      runId: RUN_ID,
+    })
+    expect(res.status).toBe(200)
+    const row = getServer(opened.db, server.id)!
+    expect(row.status).toBe('provisioning')
+    const report = getBootstrapReport<BootstrapReport>(row)!
+    expect(report.failure).toBeUndefined()
+    expect(report.warnings.map((w) => w.stepId)).toEqual(['repo:my-app'])
+    expect(report.warnings[0]?.cause).toBe('git-not-found')
   })
 
   it('rejects a step the state machine does not know', async () => {

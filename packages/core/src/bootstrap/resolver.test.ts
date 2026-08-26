@@ -332,6 +332,11 @@ describe('step content', () => {
     expect(rdp.runAs).toBe('root')
   })
 
+  it('marks repository clones optional — a repo that does not clone is a warning, not a failed box (ADR-0010)', () => {
+    const plan = resolveInstallPlan(base({ repositories: ['https://github.com/example/thing.git'] }))
+    expect(plan.steps.find((s) => s.id === 'repo:thing')?.optional).toBe(true)
+  })
+
   it('marks branding optional — a plain MOTD is not a failed bootstrap', () => {
     expect(resolveInstallPlan(base()).steps.find((s) => s.id === 'branding')?.optional).toBe(true)
   })

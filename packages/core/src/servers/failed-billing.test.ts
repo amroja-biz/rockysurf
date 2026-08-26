@@ -18,9 +18,11 @@ import { createEventsService, type EventsService } from '../services/events.js'
  * A FAILED ROW WITH A LIVE INSTANCE BILLS, AND MUST SAY SO (rockysurf-4byx).
  *
  * The owner's live test: a repository-URL typo made bootstrap fail at the clone step. The row
- * went to `failed` and the EC2 stayed RUNNING — which is the design, not the bug. Failed boxes
- * are kept so a person can log in and find out what went wrong, and the spend-cap doctrine
- * (`jobs/limits.ts`) never stops a server on the strength of an estimate. The bug was that the
+ * went to `failed` and the EC2 stayed RUNNING — which was the design then, and for every failure
+ * below the plan or outside a tool install it still is (ADR-0010 releases the machine only for a
+ * failed TOOL install, and only with the report captured first). A kept box bills, and the
+ * spend-cap doctrine (`jobs/limits.ts`) never stops a server on the strength of an estimate. The
+ * bug was that the
  * card then read `Uptime 0s` and `Estimated cost $0.00`, because the uptime ticker selected
  * `status = 'running'`. The single state in which a user is paying for nothing at all was the
  * single state that reported nothing at all — the dec8 class of defect, a structural zero around
@@ -288,7 +290,12 @@ describe('the sweep, which is what stops the meter when the machine really goes'
     })
     await reconcile()
 
-    expect(row(serverId!).status).toBe('terminated')
+    // The row STAYS failed (ADR-0010): `terminated` rows are hidden from the dashboard, and
+    // hiding a failed row the moment its machine goes would hide the explanation with it — and
+    // the machine going is now the ordinary end of a failed tool install. What changes is the
+    // meter: the provider state is recorded as terminated, so the row stops billing.
+    expect(row(serverId!).status).toBe('failed')
+    expect(row(serverId!).providerState).toBe('terminated')
     expect(listBillingServers(opened.db).map((r) => r.id)).not.toContain(serverId)
 
     await accrueFor(5)

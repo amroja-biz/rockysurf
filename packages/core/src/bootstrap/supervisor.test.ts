@@ -16,6 +16,9 @@ import { HostKeyMismatchError, type AgentState, type PushResult } from './push.j
 import { MissingKeyMaterialError, type runPushBootstrap } from './push-runner.js'
 import { NO_MATCHING_TOKEN_PREFIX } from './resolver.js'
 import { createPushBootstrapSupervisor } from './supervisor.js'
+import type { BootstrapFailureInput } from './failure.js'
+import { getBootstrapReport } from '../db/repositories/servers.js'
+import type { BootstrapReport } from './failure-report.js'
 
 /**
  * The adapter between the provision ticker and the push runner (rockysurf-55fx.13).
@@ -81,7 +84,7 @@ async function pollUntilOutcome(poller: { poll: (r: ServerRow) => Promise<unknow
   return await vi.waitFor(async () => {
     const outcome = await poller.poll(getServer(db, row.id)!)
     expect(outcome).toBeTruthy()
-    return outcome as { failed?: boolean; error?: string }
+    return outcome as { failed?: boolean; error?: string; report?: BootstrapFailureInput }
   })
 }
 
@@ -173,7 +176,11 @@ describe('failure', () => {
 
     const outcome = await pollUntilOutcome(poller)
     expect(outcome.failed).toBe(true)
-    expect(outcome.error).toContain('tool:node')
+    // The outcome names the tool in words and carries the whole account for the ticker
+    // (ADR-0010); the step id lives on the report, not in the sentence.
+    expect(outcome.error).toContain('node could not be installed')
+    expect(outcome.report?.failure.stepId).toBe('tool:node')
+    expect(outcome.report?.failure.phase).toBe('tool')
     // The row is NOT failed here: failing it is the ticker's job, and it owns the event and the
     // instance teardown that go with it.
     expect(getServer(db, row.id)?.status).toBe('provisioning')
@@ -222,6 +229,49 @@ describe('failure', () => {
     expect(outcome.error).toContain(sentence)
     // The raw git line stays out of the status field — the sentence replaced it, not joined it.
     expect(outcome.error).not.toContain('could not read Username')
+  })
+
+  it('carries the logs the drive read off the box into the report, whole (ADR-0010)', async () => {
+    const poller = supervisor(
+      fakeRun(async () =>
+        result({
+          state: state({ status: 'failed', failedStep: 'tool:node', logTail: 'npm ERR! 404' }),
+          stepLogs: { 'tool:node': { log: 'npm ERR! code E404\nnpm ERR! 404 Not Found - GET https://registry.npmjs.org/nope', complete: true } },
+          agentLogTail: '[10:00:01] --- tool:node: FAILED (rc=1)',
+        }),
+      ),
+    )
+    await poller.poll(row)
+
+    const outcome = await pollUntilOutcome(poller)
+    expect(outcome.report?.failure.log).toContain('registry.npmjs.org/nope')
+    expect(outcome.report?.failure.logComplete).toBe(true)
+    expect(outcome.report?.failure.exitCode).toBe(1)
+    expect(outcome.report?.agentLogTail).toContain('rc=1')
+  })
+
+  it('records the repositories that did not clone as warnings on a box that came up', async () => {
+    const poller = supervisor(
+      fakeRun(async () =>
+        result({
+          state: state({
+            status: 'done',
+            steps: [
+              { id: 'repo:my-app', reports: 'cloning_repos', status: 'failed', logTail: "fatal: repository 'https://x/my-app/' not found" },
+              { id: 'tool:node', reports: 'installing_tools', status: 'done' },
+            ],
+          }),
+        }),
+      ),
+    )
+    await poller.poll(row)
+    await vi.waitFor(() => expect(getServer(db, row.id)?.status).toBe('running'))
+
+    const after = getServer(db, row.id)!
+    const report = getBootstrapReport<BootstrapReport>(after)!
+    expect(report.failure).toBeUndefined()
+    expect(report.warnings.map((w) => w.stepId)).toEqual(['repo:my-app'])
+    expect(report.warnings[0]?.cause).toBe('git-not-found')
   })
 
   it('gives up immediately on a host-key mismatch instead of retrying it', async () => {

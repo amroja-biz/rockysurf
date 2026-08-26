@@ -115,7 +115,7 @@ report_progress() {
   [ -n "$CALLBACK_URL" ] || return 0 # push mode: core reads state.json itself
   command -v curl >/dev/null 2>&1 || return 0
 
-  local step label status runid
+  local step label status runid stepstatus tail_txt
   step=$(jq -r '.step // ""' <<<"$STATE")
   [ -n "$step" ] || return 0
   # Core's vocabulary on the wire (the plan's `reports`), the agent's own id alongside it.
@@ -124,11 +124,19 @@ report_progress() {
   label=$(jq -r --arg id "$step" 'first(.steps[] | select(.id == $id) | .reports) // $id' <<<"$STATE")
   status=$(jq -r '.status // ""' <<<"$STATE")
   runid=$(jq -r '.runId // ""' <<<"$STATE")
+  # The step's OWN outcome and, when it failed, its log tail (ADR-0010): `status` above is the
+  # plan's, which stays `running` past an optional step's failure, and core has no other way
+  # to learn in callback mode that a repository did not clone.
+  stepstatus=$(jq -r --arg id "$step" 'first(.steps[] | select(.id == $id) | .status) // ""' <<<"$STATE")
+  tail_txt=$(jq -r --arg id "$step" 'first(.steps[] | select(.id == $id) | .logTail) // ""' <<<"$STATE")
 
   # Body on stdin, never in argv: a `-d` with the token in it is readable through `ps` by
   # every user on the box, including the unprivileged steps this agent is about to run.
   if ! jq -nc --arg s "$label" --arg sid "$step" --arg st "$status" --arg t "$CALLBACK_TOKEN" --arg r "$runid" \
-    '{step:$s, stepId:$sid, status:$st, token:$t, runId:$r}' |
+    --arg ss "$stepstatus" --arg lt "$tail_txt" \
+    '{step:$s, stepId:$sid, status:$st, token:$t, runId:$r}
+     + (if $ss != "" then {stepStatus:$ss} else {} end)
+     + (if $lt != "" then {logTail:$lt} else {} end)' |
     curl -fsS --max-time 15 --retry 3 --retry-delay 2 --retry-connrefused \
       -H 'Content-Type: application/json' --data @- "$CALLBACK_URL" >/dev/null; then
     # Progress is telemetry, not control flow. A box that cannot reach core still finishes
@@ -293,13 +301,20 @@ step_status() {
   jq -r --arg id "$1" 'first(.steps[] | select(.id == $id) | .status) // "pending"' <<<"$STATE"
 }
 
+# $3 (optional) = the step's log. On `failed` its last 60 lines ride in the step's journal
+# entry, so callback mode — where core never has an SSH channel to read the log itself — still
+# gets the evidence (ADR-0010). Push mode reads the whole file over SSH and ignores this. It is
+# per-STEP, not just the plan-level `logTail`, because an optional step that fails does not stop
+# the plan and its reason would otherwise be lost the moment the next step started.
 set_step() {
-  local id="$1" st="$2" ts
+  local id="$1" st="$2" step_log="${3:-}" ts tail_txt=''
   ts=$(now)
-  STATE=$(jq -c --arg id "$id" --arg st "$st" --arg ts "$ts" '
+  [ "$st" = failed ] && [ -n "$step_log" ] && [ -f "$step_log" ] && tail_txt=$(tail -n 60 "$step_log")
+  STATE=$(jq -c --arg id "$id" --arg st "$st" --arg ts "$ts" --arg t "$tail_txt" '
     .step = $id | .updatedAt = $ts |
     .steps = [ .steps[] | if .id == $id
         then .status = $st | (if $st == "running" then .startedAt = $ts else .finishedAt = $ts end)
+             | (if $t != "" then .logTail = $t else . end)
         else . end ]
   ' <<<"$STATE")
   flush_state
@@ -404,7 +419,7 @@ run_plan() {
       continue
     fi
 
-    set_step "$id" failed
+    set_step "$id" failed "$step_log"
     log "--- $id: FAILED (rc=$rc)"
     if [ "$optional" = "true" ]; then
       log "--- $id is optional — continuing"

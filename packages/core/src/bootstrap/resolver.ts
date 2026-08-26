@@ -105,6 +105,12 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
       reports: REPORTS.repos,
       runAs: 'rocky',
       run: cloneScript(url),
+      // A repository that does not clone is not a reason to withhold the machine (owner
+      // ruling, ADR-0010): the box comes up with its tools, and the row says plainly which
+      // repository is not on it and why — the clone's log is captured as a warning. The user
+      // can clone by hand or fix the URL and create again. Contrast a failed TOOL install,
+      // which is required and releases the machine.
+      optional: true,
       timeoutSeconds: 600,
     })
   }

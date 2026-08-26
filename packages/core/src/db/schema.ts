@@ -212,6 +212,16 @@ export const servers = sqliteTable(
      * and null for a supplied-key server until its bootstrap's last step confirms the removal.
      */
     managedSshKeyRetiredAt: text('managed_ssh_key_retired_at'),
+    /**
+     * The complete account of how this box's bootstrap went wrong, as JSON (`BootstrapReport`
+     * in `bootstrap/failure-report.ts`; ADR-0010, issue #119). Written once by `failBootstrap`
+     * — the failed step, its whole log captured over SSH before the instance was released, the
+     * classified cause, and what core did with the machine — and by `recordWarnings` for the
+     * optional steps (repository clones) that failed on a box that otherwise came up. Null
+     * until something goes wrong. `errorMessage` above is the one-paragraph summary of the
+     * same fact; this is the evidence.
+     */
+    bootstrapReport: text('bootstrap_report'),
 
     /* --- callback-mode credentials (ADR-0002 Decision 5, amendments E8/E9) --- */
     /**

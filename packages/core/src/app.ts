@@ -226,6 +226,7 @@ export function createApp(deps: AppDeps): CreatedApp {
         return lifecycleRef.sync(row)
       },
       ...(bootstrap ? { bootstrap } : {}),
+      onFailure: config.bootstrap.onFailure,
     })
 
   const lifecycle =
@@ -400,6 +401,10 @@ export function createApp(deps: AppDeps): CreatedApp {
       events,
       loadServerSecrets: deps.loadServerSecrets,
       ...(deps.secretsStore ? { secrets: deps.secretsStore } : {}),
+      // So a callback-mode tool failure releases the machine the same way push mode's does
+      // (ADR-0010): one rule, both topologies.
+      registry,
+      onFailure: config.bootstrap.onFailure,
     }),
   )
   /*

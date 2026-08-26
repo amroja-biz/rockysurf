@@ -1,3 +1,5 @@
+import { failBootstrap, type BootstrapFailureInput } from '../bootstrap/failure.js'
+import type { BootstrapOnFailure } from '../config/schema.js'
 import type { Db } from '../db/client.js'
 import { getProviderData, listServersNeedingRecovery, updateServerStatus } from '../db/index.js'
 import type { ServerRow } from '../db/schema.js'
@@ -42,7 +44,20 @@ export interface BootstrapPoller {
    * Read the box's own progress journal. Returns undefined when there is nothing to report
    * yet — a box that is not reachable is not an error, it is a box that is still booting.
    */
-  poll(row: ServerRow): Promise<{ step?: string; failed?: boolean; error?: string } | undefined>
+  poll(row: ServerRow): Promise<
+    | {
+        step?: string
+        failed?: boolean
+        error?: string
+        /**
+         * The complete account of what failed, when the drive got far enough to have one
+         * (ADR-0010). Absent for failures below the plan — no key, no address, a host that
+         * never answered — which have no step to report on and keep the old one-line path.
+         */
+        report?: BootstrapFailureInput
+      }
+    | undefined
+  >
 }
 
 export interface ProvisionTickerDeps {
@@ -57,6 +72,8 @@ export interface ProvisionTickerDeps {
    * so `createApp` passes one whenever it can build it.
    */
   bootstrap?: BootstrapPoller
+  /** `bootstrap.onFailure` from config. Absent means `terminate` (ADR-0010). */
+  onFailure?: BootstrapOnFailure
   timeoutMs?: number
   now?: () => Date
   log?: (message: string) => void
@@ -133,7 +150,18 @@ export function createProvisionTick(deps: ProvisionTickerDeps): () => Promise<Pr
           const progress = await deps.bootstrap.poll(current)
           if (progress) {
             bootstrapPolled++
-            if (progress.failed) {
+            if (progress.failed && progress.report) {
+              // A step failed and the drive brought back the evidence: one path decides what
+              // happens to the machine and writes the whole account (ADR-0010).
+              await failBootstrap(
+                { db, events, registry, log, ...(deps.onFailure ? { onFailure: deps.onFailure } : {}) },
+                current,
+                progress.report,
+              )
+            } else if (progress.failed) {
+              // Below the plan — nothing to connect with, or a host that never answered. There
+              // is no step to explain and the box may be perfectly healthy, so the row carries
+              // the one-line reason and keeps its machine, as it always has.
               const reason = progress.error ?? 'bootstrap reported failure'
               const failed = updateServerStatus(db, current.id, 'failed', { errorMessage: reason })
               await events.broadcastToUser(failed.userId, {

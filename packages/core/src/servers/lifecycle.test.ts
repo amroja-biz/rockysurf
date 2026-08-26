@@ -5,7 +5,15 @@ import { openTestDatabase, type Db, type OpenedDatabase } from '../db/client.js'
 import { createSecretsStore } from '../secrets/store.js'
 import { generateServerKeys } from '../ssh/keys.js'
 import { getServerKeyMaterial, InvalidPublicKeyError } from '../ssh/server-keys.js'
-import { getServer, getServerByIdempotencyKey, listServersByUser, recordProgress } from '../db/repositories/servers.js'
+import {
+  getProviderData,
+  getServer,
+  getServerByIdempotencyKey,
+  isBillingRow,
+  listServersByUser,
+  recordProgress,
+  updateServerStatus,
+} from '../db/repositories/servers.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { markBootstrapReady } from '../bootstrap/supervisor.js'
 import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
@@ -227,6 +235,19 @@ describe('the absence grace (amendment A4)', () => {
     const synced = await lifecycle.sync(row)
     expect(synced.status).toBe('terminated')
   }, 30_000)
+
+  it('keeps a FAILED row failed when its machine goes away, and stops billing it (ADR-0010)', async () => {
+    const row = await create()
+    const failed = updateServerStatus(db, row.id, 'failed', { errorMessage: 'tool install failed' })
+    // Released — by core after a failed tool install, or by the user in the provider console.
+    await fake.terminate(getProviderData(failed)!)
+
+    const synced = await lifecycle.sync(failed)
+    // Not `terminated`: that status is hidden from the dashboard and would hide the explanation.
+    expect(synced.status).toBe('failed')
+    expect(synced.providerState).toBe('terminated')
+    expect(isBillingRow(synced)).toBe(false)
+  })
 
   it('uses the SDK reference grace values', () => {
     expect(DESCRIBE_ABSENCE_GRACE).toEqual({ attempts: 4, delayMs: 2000 })

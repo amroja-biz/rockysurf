@@ -7,7 +7,8 @@ import { DEFAULT_SSH_PORT } from '../bootstrap/push.js'
 import { InvalidTransitionError } from '../db/transitions.js'
 import { LimitExceededError } from '../jobs/limits.js'
 import type { ServerRow, StoredSize } from '../db/schema.js'
-import { getServerRepositories, getServerTools, isBillingRow } from '../db/repositories/servers.js'
+import { getBootstrapReport, getServerRepositories, getServerTools, isBillingRow } from '../db/repositories/servers.js'
+import type { BootstrapReport } from '../bootstrap/failure-report.js'
 import { badRequest, created, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import type { IndexedRefusal } from '../git/preflight.js'
@@ -289,6 +290,13 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
           }
         : undefined,
     errorMessage: row.errorMessage ?? undefined,
+    /**
+     * The complete account of a bootstrap that went wrong (ADR-0010, issue #119): the failed
+     * step by name, the classified cause, the decisive lines, the whole captured log, and what
+     * core did with the machine — or, on a box that came up, the repositories that did not
+     * clone. `errorMessage` is the paragraph; this is the evidence. Absent on a clean row.
+     */
+    bootstrapReport: getBootstrapReport<BootstrapReport>(row),
     createdAt: row.createdAt,
     startedAt: row.startedAt ?? undefined,
     stoppedAt: row.stoppedAt ?? undefined,

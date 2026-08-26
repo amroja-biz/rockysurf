@@ -44,6 +44,8 @@ export interface AgentStepState {
   status: 'pending' | 'running' | 'done' | 'failed'
   startedAt?: string
   finishedAt?: string
+  /** The step's own log tail, journalled by the agent when the step fails (ADR-0010). */
+  logTail?: string
 }
 
 export interface AgentState {
@@ -74,6 +76,14 @@ export interface PushResult {
   runId: string
   /** Steps the agent skipped because the journal already had them done. */
   skipped: string[]
+  /**
+   * The logs of every step the journal says failed, read off the box before the connection
+   * closed (ADR-0010). Keyed by step id; `complete` says whether the tail is the whole file.
+   * Absent when nothing failed.
+   */
+  stepLogs?: Record<string, { log: string; complete: boolean }>
+  /** The agent's own log, last lines — where the exit codes live. */
+  agentLogTail?: string
 }
 
 export class HostKeyMismatchError extends Error {
@@ -290,10 +300,73 @@ export async function pushBootstrap(client: Client, opts: PushOptions): Promise<
   const stopStreaming = opts.onLog ? streamLogs(client, dir, launcher, opts.onLog) : undefined
   try {
     const state = await pollState(client, dir, opts, launcher, runId)
-    return { launcher, state, durationMs: Date.now() - started, runId, skipped: alreadyDone }
+    // The evidence, read while the connection is still open (ADR-0010). A failed tool install
+    // terminates the box a tick after this returns, so whatever is not read here is gone; and
+    // an optional step that failed — a repository that did not clone — has its reason only in
+    // its own log file. The journal's 25-line tail was never enough to say why.
+    const captured = await captureStepLogs(client, dir, state)
+    return {
+      launcher,
+      state,
+      durationMs: Date.now() - started,
+      runId,
+      skipped: alreadyDone,
+      ...(Object.keys(captured.stepLogs).length > 0 ? { stepLogs: captured.stepLogs } : {}),
+      ...(captured.agentLogTail ? { agentLogTail: captured.agentLogTail } : {}),
+    }
   } finally {
     stopStreaming?.()
   }
+}
+
+/** How much of a step's log core keeps. A whole build log can run to megabytes; the verdict is at the end. */
+export const STEP_LOG_CAPTURE_BYTES = 64 * 1024
+const AGENT_LOG_TAIL_LINES = 200
+
+/**
+ * The tail of a remote file plus whether that tail IS the file. One round trip: the size on
+ * the first line, the bytes after it, so `logComplete` is a fact core measured rather than a
+ * guess from the tail's length.
+ */
+async function readRemoteTail(client: Client, path: string, bytes: number): Promise<{ log: string; complete: boolean } | undefined> {
+  const r = await exec(client, `f=${q(path)}; [ -f "$f" ] || exit 3; wc -c <"$f"; tail -c ${bytes} "$f"`)
+  if (r.code !== 0) return undefined
+  const newline = r.stdout.indexOf('\n')
+  if (newline < 0) return undefined
+  const size = Number(r.stdout.slice(0, newline).trim())
+  const log = r.stdout.slice(newline + 1)
+  return { log, complete: Number.isFinite(size) ? size <= bytes : false }
+}
+
+async function captureStepLogs(
+  client: Client,
+  dir: string,
+  state: AgentState,
+): Promise<{ stepLogs: Record<string, { log: string; complete: boolean }>; agentLogTail?: string }> {
+  const failed = state.steps.filter((s) => s.status === 'failed').map((s) => s.id)
+  if (state.status === 'failed') {
+    const id = state.failedStep ?? state.step
+    if (id && !failed.includes(id)) failed.push(id)
+  }
+  if (failed.length === 0) return { stepLogs: {} }
+
+  const stepLogs: Record<string, { log: string; complete: boolean }> = {}
+  for (const id of failed) {
+    try {
+      const captured = await readRemoteTail(client, `${dir}/steps/${id}.log`, STEP_LOG_CAPTURE_BYTES)
+      if (captured) stepLogs[id] = captured
+    } catch {
+      // Best effort: a log that cannot be read leaves the journal's own tail as the evidence.
+    }
+  }
+  let agentLogTail: string | undefined
+  try {
+    const r = await exec(client, `tail -n ${AGENT_LOG_TAIL_LINES} ${q(`${dir}/agent.log`)} 2>/dev/null`)
+    if (r.code === 0 && r.stdout.trim()) agentLogTail = r.stdout
+  } catch {
+    // Same.
+  }
+  return { stepLogs, ...(agentLogTail ? { agentLogTail } : {}) }
 }
 
 async function readRemote(client: Client, path: string): Promise<string> {

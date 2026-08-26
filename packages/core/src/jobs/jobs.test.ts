@@ -9,6 +9,8 @@ import { createJobs } from './index.js'
 import { LimitExceededError, createLimitsEnforcer, createSpendTracker } from './limits.js'
 import { createProvisionTick, PROVISIONING_TIMEOUT_MS } from './provision-ticker.js'
 import { createUptimeTick } from './uptime-ticker.js'
+import { explainStep, type BootstrapReport } from '../bootstrap/failure-report.js'
+import { getBootstrapReport } from '../db/repositories/servers.js'
 
 /**
  * The tickers against a real in-memory database, with time injected rather than faked, because
@@ -483,6 +485,70 @@ describe('provisionTicker', () => {
     const after = reload(row.id)
     expect(after.status).toBe('failed')
     expect(after.errorMessage).toBe('agent died')
+  })
+
+  it('releases the machine when the drive reports a failed TOOL install, with the whole account (ADR-0010)', async () => {
+    const row = seedServer({ status: 'provisioning' })
+    const terminate = vi.fn(async () => {})
+    const failure = explainStep({
+      stepId: 'tool:node',
+      captured: { log: 'npm ERR! code E404\nnpm ERR! 404 Not Found', complete: true },
+    })
+    const tick = createProvisionTick({
+      db: opened.db,
+      registry: { has: () => true, get: () => ({ terminate }) } as never,
+      events,
+      sync: async (r) => r,
+      bootstrap: { poll: async () => ({ failed: true, error: failure.summary, report: { failure } }) },
+      log: () => {},
+    })
+
+    await tick()
+    expect(terminate).toHaveBeenCalledOnce()
+    const after = reload(row.id)
+    expect(after.status).toBe('failed')
+    expect(after.providerState).toBe('terminated')
+    expect(after.errorMessage).toContain('not billing')
+    expect(getBootstrapReport<BootstrapReport>(after)?.failure?.instance).toBe('terminated')
+  })
+
+  it('keeps the machine for a failed tool install when config says keep', async () => {
+    const row = seedServer({ status: 'provisioning' })
+    const terminate = vi.fn(async () => {})
+    const failure = explainStep({ stepId: 'tool:node', captured: { log: 'boom', complete: true } })
+    const tick = createProvisionTick({
+      db: opened.db,
+      registry: { has: () => true, get: () => ({ terminate }) } as never,
+      events,
+      sync: async (r) => r,
+      bootstrap: { poll: async () => ({ failed: true, report: { failure } }) },
+      onFailure: 'keep',
+      log: () => {},
+    })
+
+    await tick()
+    expect(terminate).not.toHaveBeenCalled()
+    expect(reload(row.id).status).toBe('failed')
+  })
+
+  it('keeps the machine for a failure that is not a tool install', async () => {
+    const row = seedServer({ status: 'provisioning' })
+    const terminate = vi.fn(async () => {})
+    const failure = explainStep({ stepId: 'branding', captured: { log: 'boom', complete: true } })
+    const tick = createProvisionTick({
+      db: opened.db,
+      registry: { has: () => true, get: () => ({ terminate }) } as never,
+      events,
+      sync: async (r) => r,
+      bootstrap: { poll: async () => ({ failed: true, report: { failure } }) },
+      log: () => {},
+    })
+
+    await tick()
+    expect(terminate).not.toHaveBeenCalled()
+    const after = reload(row.id)
+    expect(after.status).toBe('failed')
+    expect(after.errorMessage).toContain('still billing')
   })
 
   it('treats an unreachable box as normal, not as a failure', async () => {

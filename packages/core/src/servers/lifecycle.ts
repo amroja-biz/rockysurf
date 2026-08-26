@@ -629,7 +629,14 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       nextStatus &&
       nextStatus !== current.status &&
       canTransition(current.status, nextStatus) &&
-      !suppressesPromotionToRunning(current, nextStatus)
+      !suppressesPromotionToRunning(current, nextStatus) &&
+      // A FAILED row stays failed when its machine goes away (ADR-0010). The machine going
+      // away is now the ordinary outcome of a failed tool install — core released it — and
+      // `terminated` rows are hidden from the dashboard, which would hide the explanation with
+      // it. The provider state recorded just above still goes to `terminated`, so billing stops
+      // and the still-billing notice clears; only the STATUS holds, until the user dismisses the
+      // row through `terminate`, which is the one way out of `failed`.
+      !(current.status === 'failed' && nextStatus === 'terminated')
     ) {
       current = await transition(current, nextStatus)
     }
