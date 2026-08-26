@@ -130,6 +130,33 @@ describe('the rockysurf binary', () => {
     expect(run.stdout).toMatch(/--size is a floor/)
   })
 
+  /**
+   * A COMMAND WRITTEN AFTER THE OPTIONS (issue #112), from the shipped binary.
+   *
+   * `rockysurf --config <path> token` answered `unknown option: token` and then printed help
+   * that lists `token` as a command — the error pointed away from its own fix, and the operator
+   * who hit it during a real Azure setup had no way to tell what the rule was. The dispatch
+   * happens on `argv[0]` in this package before core parses anything, so the order is a real
+   * constraint; what changed is that it is now stated, both in the refusal and in the help.
+   *
+   * Spawned rather than unit-tested for the same reason as the block above: what is being
+   * proved is that this package's subcommand table reaches core's parser.
+   */
+  it('says a command written after the options is misplaced, and prints the line that works', () => {
+    const run = spawnSync(process.execPath, [binPath, '--config', '/nowhere.yaml', 'token'], {
+      encoding: 'utf8',
+    })
+    expect(run.status).toBe(2)
+    expect(run.stderr).toContain('token is a command, not an option')
+    expect(run.stderr).toContain('rockysurf token --config /nowhere.yaml')
+    expect(run.stderr).not.toContain('unknown option: token')
+  })
+
+  it('documents the command-first rule in the help itself', () => {
+    const run = spawnSync(process.execPath, [binPath, '--help'], { encoding: 'utf8' })
+    expect(run.stdout).toContain('A command comes FIRST')
+  })
+
   it('exits 2 with usage on an unknown option', () => {
     const run = spawnSync(process.execPath, [binPath, '--nope'], { encoding: 'utf8' })
     expect(run.status).toBe(2)

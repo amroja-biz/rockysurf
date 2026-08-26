@@ -91,6 +91,16 @@ function commandsSection(subcommands: readonly CliSubcommand[]): string {
     '',
     'Commands',
     ...subcommands.map((c) => `  rockysurf ${c.name.padEnd(width)}   ${c.summary}`),
+    '',
+    // THE ORDER IS NOT OPTIONAL, so it is written down (issue #112).
+    //
+    // A command is dispatched off argv[0] in the composition root, before core's own option
+    // parsing is reached, so `rockysurf --config <path> token` never reaches the dispatch —
+    // it parses as an unknown option. Saying so here, and in the refusal `parseArgs` writes
+    // for exactly that case, is the whole remedy: the alternative is teaching core to skip
+    // over options it may not otherwise interpret in order to find a word it does not know.
+    '  A command comes FIRST, and options follow it:',
+    `  rockysurf ${subcommands[0]!.name} --config ./rockysurf.config.yaml`,
   ].join('\n')
 }
 
@@ -127,7 +137,18 @@ export interface ParsedArgs {
   error?: string
 }
 
-export function parseArgs(argv: string[]): ParsedArgs {
+/**
+ * Parse the control plane's own options.
+ *
+ * `subcommands` is not used to dispatch anything — by the time this runs, the composition root
+ * has already dispatched every command it recognises off `argv[0]`. It is here for ONE message
+ * (issue #112): `rockysurf --config ./rockysurf.config.yaml token` failed with
+ * `unknown option: token` followed by help that lists `token` as a command, which pointed the
+ * reader away from the fix rather than at it. Knowing the names lets the refusal say the actual
+ * thing that is wrong — the word is a command and it is in the wrong place — and print the
+ * line that works, with the operator's own options carried across.
+ */
+export function parseArgs(argv: string[], subcommands: readonly CliSubcommand[] = []): ParsedArgs {
   const parsed: ParsedArgs = { command: 'serve' }
 
   for (let i = 0; i < argv.length; i++) {
@@ -154,10 +175,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
         parsed.port = port
         break
       }
-      default:
+      default: {
         // `serve` is accepted so muscle memory from other tools works.
         if (arg === 'serve') break
+        if (subcommands.some((c) => c.name === arg)) {
+          // Their own arguments, in their own order, with the command lifted to the front —
+          // so the fix is a line they can run rather than a rule they have to apply.
+          const rest = argv.filter((_, index) => index !== i)
+          return {
+            command: 'serve',
+            error: [
+              `${arg} is a command, not an option — a command has to come first.`,
+              '',
+              `  rockysurf ${[arg, ...rest].join(' ')}`,
+            ].join('\n'),
+          }
+        }
         return { command: 'serve', error: `unknown option: ${arg}` }
+      }
     }
   }
 
@@ -246,7 +281,7 @@ export async function runCli(argv: string[], options: RunCliOptions = {}): Promi
     return 1
   }
 
-  const args = parseArgs(argv)
+  const args = parseArgs(argv, options.subcommands)
   if (args.error) {
     io.err(args.error)
     io.err('')

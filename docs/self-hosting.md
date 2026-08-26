@@ -125,6 +125,19 @@ file anywhere it starts on defaults, says where a config file would go, and offe
 in-memory provider — so you can create a server, watch it boot and terminate it before
 deciding whether to paste a cloud token.
 
+### The commands
+
+`rockysurf --help` is the list, and it is generated from the dispatch table itself
+(`packages/rockysurf/src/cli.ts`), so it cannot fall behind the commands that exist. With no
+command, it starts the control plane; `mcp`, `token`, `list`, `create`, `stop`, `ssh`,
+`ssh-config`, `offerings` and `pack` are the rest. `rockysurf token` is how you mint the
+credential the client commands and the MCP server both require.
+
+**A command comes first, and options follow it.** `rockysurf token --config ./rockysurf.config.yaml`
+works; `rockysurf --config ./rockysurf.config.yaml token` does not, because the dispatch reads
+the first argument before any option parsing happens. Written the wrong way round it refuses with
+the command named as misplaced and prints the line that works, options and all.
+
 ### Where the config file is read from
 
 First match wins, and a start prints the file it read on one line (`config: <path>`) so you
