@@ -28,7 +28,14 @@ import {
   type Server,
   type SurgePack,
 } from '../lib/api'
-import { formatCostCell, formatDate, formatUptime, isProvisioningStep, STEP_LABELS, STEP_ORDER } from '../lib/format'
+import {
+  formatCostCell,
+  formatTimestamp,
+  formatUptime,
+  isProvisioningStep,
+  STEP_LABELS,
+  STEP_ORDER,
+} from '../lib/format'
 
 /**
  * One server: what it is, how to connect to it, and what it is doing right now.
@@ -303,7 +310,9 @@ export function ServerDetailPage() {
           </div>
           <div>
             <dt>Created</dt>
-            <dd>{formatDate(server.createdAt)}</dd>
+            {/* The same stamp the card shows (issue #121): two pages disagreeing about how a
+                date is written is the drift `lib/format` exists to prevent. */}
+            <dd>{formatTimestamp(server.createdAt)}</dd>
           </div>
         </dl>
         {/* The whole account when there is one (ADR-0010); the one-line reason when there is

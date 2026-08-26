@@ -24,10 +24,11 @@ import {
   stopServer,
   terminateServer,
   type ProviderCapabilities,
+  type ProviderInfo,
   type Server,
   type ServerSummary,
 } from '../lib/api'
-import { formatCostCell, formatUptime, STEP_LABELS } from '../lib/format'
+import { formatCostCell, formatTimestamp, formatUptime, STEP_LABELS } from '../lib/format'
 
 /**
  * The server list.
@@ -132,15 +133,71 @@ export function DashboardPage() {
         </p>
       )}
 
-      <div className="server-grid">
-        {live.map((server) => (
-          <ServerCard key={server.serverId} server={server} capabilities={capabilities} onChanged={refresh} />
-        ))}
-      </div>
+      {groupByProvider(live, providers).map((group) => (
+        <section className="provider-group" key={group.id} data-testid={`provider-group-${group.id}`}>
+          <h2 className="provider-group-heading">
+            {group.label}
+            <span className="provider-group-count">
+              {group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}
+            </span>
+          </h2>
+          <div className="server-grid">
+            {group.servers.map((server) => (
+              <ServerCard key={server.serverId} server={server} capabilities={capabilities} onChanged={refresh} />
+            ))}
+          </div>
+        </section>
+      ))}
 
       <ActivityFeed servers={servers} />
     </AppShell>
   )
+}
+
+/** The bucket a row lands in when it names no provider at all — see `groupByProvider`. */
+const UNGROUPED = '__none__'
+
+/**
+ * The fleet, split by the cloud each box is on (issue #121).
+ *
+ * The page listed every server in one grid and never said which cloud any of them was on, so a
+ * fleet spread over three providers read as one undifferentiated wall of cards — the fact was
+ * on the row the whole time. A heading per cloud says it once for a group rather than repeating
+ * a badge on every card, and it gives the answer at the altitude the question is asked at:
+ * "what do I have running on Azure" is a question about a group, not about a row.
+ *
+ * NAMES COME FROM THE PROVIDER LIST, ids are the fallback. `displayName` is what every other
+ * page calls a cloud, and a row whose provider is not in that list — a bring-your-own box, or a
+ * cloud the operator has since removed from their config — is a row this page must still show.
+ * It groups under its own id rather than disappearing into an "unknown" bucket that would hide
+ * which cloud it actually was; only a row naming NO provider gets the generic heading.
+ *
+ * Ordering is by name, with the nameless group last, so the page does not reshuffle itself when
+ * a create lands or a terminate removes the last box on some cloud.
+ */
+export function groupByProvider(
+  servers: ServerSummary[],
+  providers: ProviderInfo[],
+): Array<{ id: string; label: string; servers: ServerSummary[] }> {
+  const buckets = new Map<string, ServerSummary[]>()
+  for (const server of servers) {
+    const id = server.provider || UNGROUPED
+    const bucket = buckets.get(id)
+    if (bucket) bucket.push(server)
+    else buckets.set(id, [server])
+  }
+
+  return [...buckets.entries()]
+    .map(([id, rows]) => ({
+      id,
+      label: id === UNGROUPED ? 'Other' : (providers.find((p) => p.id === id)?.displayName ?? id),
+      servers: rows,
+    }))
+    .sort((a, b) => {
+      if (a.id === UNGROUPED) return 1
+      if (b.id === UNGROUPED) return -1
+      return a.label.localeCompare(b.label)
+    })
 }
 
 type PendingAction = TransitionAction | 'terminate'
@@ -276,6 +333,16 @@ function ServerCard({
         <div>
           <dt>Cost</dt>
           <dd title={cost.title}>{cost.text}</dd>
+        </div>
+        {/*
+          When this box was started (issue #121). Uptime above says how long it has been up,
+          which is a different fact on a box that has been stopped and started again — the one
+          the owner uses to tell this morning's experiment from the one they left running last
+          week.
+        */}
+        <div>
+          <dt>Created</dt>
+          <dd>{formatTimestamp(server.createdAt)}</dd>
         </div>
       </dl>
 
