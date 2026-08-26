@@ -32,7 +32,7 @@ export function IpChangeAlert({
   return (
     <div className="ip-change-alert" role="status">
       <div className="ip-change-content">
-        <span className="ip-change-icon">⚠️</span>
+        <span className="ip-change-icon">⚠︎</span>
         <span>
           <strong>IP address changed:</strong> <code className="ip-old">{previousIp}</code> →{' '}
           <code className="ip-new">{currentIp}</code>

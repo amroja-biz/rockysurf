@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { AppShell } from '../components/AppShell'
+import { Moon, Waterline } from '../components/etched'
 import { NEAR_CAP_FRACTION, SpendCapBanner } from '../components/SpendCapBanner'
 import { useEvents } from '../contexts/EventsContext'
 import { getCosts, type CostsResponse, type ServerCost } from '../lib/api'
@@ -38,26 +39,42 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
   const spent = costs.monthToDate.byCurrency[cap.currency] ?? 0
   const fraction = costs.cap.fraction ?? 0
   const pct = Math.min(100, Math.round(fraction * 100))
-  const tone = costs.cap.overCap ? '#f85149' : fraction >= NEAR_CAP_FRACTION ? '#d29922' : '#3fb950'
+  // The product's status tokens, not literal hexes: green acts, yellow warns, red refuses,
+  // whichever skin is on.
+  const tone = costs.cap.overCap
+    ? 'var(--rs-red)'
+    : fraction >= NEAR_CAP_FRACTION
+      ? 'var(--rs-yellow)'
+      : 'var(--rs-green-bright)'
 
   return (
     <section>
       <h2>Spend cap</h2>
-      <p data-testid="cap-summary">
-        <strong>{money(spent, cap.currency)}</strong> of {money(cap.amount, cap.currency)} this month
-        {' '}({pct}%)
-      </p>
-      {/* A meter, not an input: the cap is configuration. A control here would imply core can
-          raise its own ceiling. */}
-      <div
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={cap.amount}
-        aria-valuenow={spent}
-        aria-label="Spend against cap"
-        style={{ background: '#21262d', borderRadius: 6, height: 10, overflow: 'hidden', maxWidth: 420 }}
-      >
-        <div style={{ width: `${pct}%`, height: '100%', background: tone }} />
+      {/* THE ONE PLACE A LEVEL IS DRAWN (#174): the cap is named in the same breath as the
+          spend, so a waterline against it is a fact, not a decoration. The moon gives the
+          glance, the text gives the number. */}
+      <div className="cap-meter" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        <span style={{ color: 'var(--rs-heading)', flexShrink: 0 }}>
+          <Moon fraction={fraction} size={62} />
+        </span>
+        <div>
+          <p data-testid="cap-summary" style={{ margin: '0 0 0.5rem' }}>
+            <strong>{money(spent, cap.currency)}</strong> of {money(cap.amount, cap.currency)} this month
+            {' '}({pct}%)
+          </p>
+          {/* A meter, not an input: the cap is configuration. A control here would imply core
+              can raise its own ceiling. */}
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={cap.amount}
+            aria-valuenow={spent}
+            aria-label="Spend against cap"
+            style={{ color: tone }}
+          >
+            <Waterline fraction={fraction} width={260} />
+          </div>
+        </div>
       </div>
       <p style={{ fontSize: '0.875rem' }}>
         Max servers: <strong>{costs.limits.maxServers}</strong>. Both limits are read-only here —

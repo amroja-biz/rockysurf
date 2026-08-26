@@ -225,6 +225,38 @@ body[data-rs-skin='etched'] {
   background: repeating-linear-gradient(45deg, rgba(63, 185, 80, 0.14) 0 1px, transparent 1px 5px);
 }
 
+/* ── The etched parts ──────────────────────────────────────────────────────────────────
+   Rules for the parts in components/etched.tsx that App.css would otherwise fight. Each part
+   carries its own look inline; these only switch off what the stylesheet draws for the
+   vocabulary the parts keep emitting (.step, .empty, .server-card), and set the type. */
+
+/* Beacon: the beam is the rail now. No dots, no bar, no left padding for them. */
+[data-rs-skin='etched'] .beacon .step { padding: 0; display: flex; flex-direction: column; justify-content: center; }
+[data-rs-skin='etched'] .beacon .step::before,
+[data-rs-skin='etched'] .beacon .step::after { content: none; }
+[data-rs-skin='etched'] .beacon .step {
+  text-transform: uppercase; letter-spacing: 0.11em; font-size: 0.7rem; line-height: 1.3;
+}
+/* The reason for a wait is a sentence (#129). Caps never carry a sentence. */
+[data-rs-skin='etched'] .beacon .step-notice {
+  text-transform: none; letter-spacing: normal; font-size: 0.8125rem; margin-top: 0.2rem;
+}
+
+/* Tally: beside the value, in the label's ink, not the value's. */
+[data-rs-skin='etched'] .uptime { display: flex; align-items: center; gap: 0.5rem; }
+/* The card's values are right-aligned; the detail page's read left, beside their labels. */
+[data-rs-skin='etched'] .server-meta .uptime { justify-content: flex-end; }
+[data-rs-skin='etched'] .uptime .tally { color: var(--rs-muted); flex-shrink: 0; }
+
+/* Shore: the rock bleeds to the frame, so the frame has no inner radius to leak past. */
+[data-rs-skin='etched'] .shore { border-radius: 0; }
+
+/* Plate: its border and ground are inline; the hover from App.css still turns the rule gold. */
+[data-rs-skin='etched'] .plate.server-card:hover { border-color: var(--rs-beam) !important; }
+
+/* Swell under a cut label: the wave is the rule under the heading. */
+[data-rs-skin='etched'] .provider-group-heading + .swell { margin: -0.25rem 0 0.75rem; }
+
 /* ── KNOWN GAPS ────────────────────────────────────────────────────────────────────────
  * Components that hardcode a hex instead of reading a token do not follow the skin. As of
  * the port these were CostsPage and SpendCapBanner (#f85149 / #d29922 / #3fb950 inline).

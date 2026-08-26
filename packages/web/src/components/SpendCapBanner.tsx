@@ -33,7 +33,11 @@ export function SpendCapBanner({ fraction, overCap, cap, spent }: SpendCapBanner
   if (!cap) return null
   if (!overCap && (fraction ?? 0) < NEAR_CAP_FRACTION) return null
 
-  const tone = overCap ? '#f85149' : '#d29922'
+  // The product's status tokens for the words and the rule; the band underneath is the same
+  // hatched wash every other notice wears under the skin (#174). The two rgba values are the
+  // status colours themselves, which the skin deliberately leaves alone.
+  const tone = overCap ? 'var(--rs-red)' : 'var(--rs-yellow)'
+  const wash = overCap ? 'rgba(248, 81, 73, 0.14)' : 'rgba(210, 153, 34, 0.14)'
   const spentText = spent === undefined ? null : money(spent, cap.currency)
 
   return (
@@ -41,9 +45,9 @@ export function SpendCapBanner({ fraction, overCap, cap, spent }: SpendCapBanner
       role="status"
       data-testid={overCap ? 'spend-cap-reached' : 'spend-cap-near'}
       style={{
-        background: overCap ? 'rgba(248, 81, 73, 0.1)' : 'rgba(210, 153, 34, 0.1)',
+        background: `repeating-linear-gradient(45deg, ${wash} 0 1px, transparent 1px 5px)`,
         border: `1px solid ${tone}`,
-        borderRadius: 8,
+        borderRadius: 'var(--rs-radius)',
         padding: '0.75rem 1rem',
         marginBottom: '1rem',
       }}

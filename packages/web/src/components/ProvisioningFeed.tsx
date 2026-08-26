@@ -3,6 +3,7 @@ import { useServerUpdates } from '../hooks/useServerUpdates'
 import { getServer, type BootstrapReport as Report, type ProvisioningStep } from '../lib/api'
 import { isProvisioningStep, STEP_ORDER } from '../lib/format'
 import { BootstrapReport } from './BootstrapReport'
+import { Beacon } from './etched'
 
 /**
  * The live feed a user watches while their server comes up.
@@ -96,25 +97,11 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
     }
   }, serverId)
 
-  const currentIndex = STEP_ORDER.indexOf(step)
-
   return (
     <section className="provisioning-feed">
-      <ol className="step-list">
-        {STEP_ORDER.map((candidate, index) => {
-          const state = failure && index === currentIndex ? 'failed' : index < currentIndex ? 'done' : index === currentIndex ? 'active' : 'pending'
-          return (
-            <li key={candidate} className={`step step-${state}`} aria-current={state === 'active' ? 'step' : undefined}>
-              {STEP_LABELS[candidate]}
-              {state === 'active' && notice && (
-                <span className="step-notice" role="status">
-                  {notice}
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ol>
+      {/* The beam (#174), with this feed's wordier labels; the step a bootstrap died on reads
+          failed, and the one-line reason for a wait sits under the active step (#129). */}
+      <Beacon current={step} steps={STEP_ORDER} labels={STEP_LABELS} failed={failure !== null} notice={notice} />
 
       {/* The one-line reason from the event, until the report — which says the same and much
           more — has arrived to replace it. */}

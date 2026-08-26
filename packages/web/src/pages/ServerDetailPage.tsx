@@ -5,7 +5,7 @@ import { AppShell } from '../components/AppShell'
 import { BootstrapReport } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
-import { StatusBadge } from '../components/StatusBadge'
+import { Beacon, Lamp, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
 import { ToolList } from '../components/ToolList'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
@@ -254,7 +254,7 @@ export function ServerDetailPage() {
       )}
 
       <section className="server-summary">
-        <StatusBadge status={server.status} transition={transition.pending} />
+        <Lamp status={server.status} transition={transition.pending} />
         {transition.stalled && (
           <p className="hint" role="status">
             {TRANSITION_STALLED_HINT}
@@ -373,7 +373,14 @@ export function ServerDetailPage() {
               a live count (issue #125). Same numbers, same accrual — only the tense changes. */}
           <div>
             <dt>{historical ? 'Total uptime' : 'Uptime'}</dt>
-            <dd>{formatUptime(server.totalUptimeSeconds)}</dd>
+            {/* Beside the number, never instead of it — uptime has no ceiling, so it is
+                counted, not gauged (#174). Same rule as the card. */}
+            <dd className="uptime">
+              {Number.isFinite(server.totalUptimeSeconds) && (
+                <Tally hours={(server.totalUptimeSeconds as number) / 3600} />
+              )}
+              {formatUptime(server.totalUptimeSeconds)}
+            </dd>
           </div>
           <div>
             <dt>{historical ? 'Estimated cost, final' : 'Estimated cost'}</dt>
@@ -712,35 +719,14 @@ function ProvisioningTimeline({
   notice?: string | null
   logLines: string[]
 }) {
-  const reachedIndex = current ? STEP_ORDER.indexOf(current) : -1
-
   return (
     <section className="provisioning-timeline">
       <h2>Setting up</h2>
-      {/* `.step-list` + `.step-<state>` is the stylesheet's vocabulary — the rail, the dots and
-          the four colours. This list carried its state on a `data-state` attribute nothing
-          styled, so every step rendered identically and a timeline that HAD advanced still
-          looked like it had not (rockysurf-xinr). The attribute stays for tests to read. */}
-      <ol className="step-list">
-        {STEP_ORDER.map((step, index) => {
-          const state = index < reachedIndex ? 'done' : index === reachedIndex ? 'active' : 'pending'
-          return (
-            <li
-              key={step}
-              className={`step step-${state}`}
-              data-state={state}
-              aria-current={state === 'active' ? 'step' : undefined}
-            >
-              {STEP_LABELS[step]}
-              {state === 'active' && notice && (
-                <span className="step-notice" role="status">
-                  {notice}
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ol>
+      {/* The beam (#174): `Beacon` still emits `.step-list` + `.step-<state>` + `data-state`,
+          the vocabulary the stylesheet and the tests read (rockysurf-xinr), and reads its steps
+          and labels from `lib/format` rather than carrying a third copy. An unrecognised
+          `current` leaves it where it is rather than resetting it — see `isProvisioningStep`. */}
+      <Beacon current={current} steps={STEP_ORDER} labels={STEP_LABELS} notice={notice} />
       {logLines.length > 0 && (
         <details open>
           <summary>Install log</summary>

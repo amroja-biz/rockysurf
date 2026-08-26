@@ -54,16 +54,23 @@ export function App() {
         <EventsProvider>
           {/* Toast styling is a prop, not a stylesheet — react-hot-toast renders its surface
               inline and defaults to white, which is why the port losing this made toasts the
-              one light rectangle on a dark page. Values are the legacy app's (rockysurf-a29w). */}
+              one light rectangle on a dark page (rockysurf-a29w). The surface and text follow
+              the skin's tokens (#174); the two status colours are the product's own and the
+              skin leaves them alone. */}
           <Toaster
             position="bottom-right"
             toastOptions={{
               duration: 4000,
-              style: { background: '#161b22', color: '#c9d1d9', border: '1px solid #30363d' },
-              success: { iconTheme: { primary: '#238636', secondary: '#161b22' } },
+              style: {
+                background: 'var(--rs-surface)',
+                color: 'var(--rs-text)',
+                border: '1px solid var(--rs-border)',
+                borderRadius: 'var(--rs-radius)',
+              },
+              success: { iconTheme: { primary: '#238636', secondary: '#171420' } },
               error: {
                 style: { borderColor: '#f85149' },
-                iconTheme: { primary: '#f85149', secondary: '#161b22' },
+                iconTheme: { primary: '#f85149', secondary: '#171420' },
               },
             }}
           />

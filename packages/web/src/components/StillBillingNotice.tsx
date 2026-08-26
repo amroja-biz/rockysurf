@@ -28,7 +28,7 @@ export function StillBillingNotice({ server, detailed = false }: { server: Serve
   return (
     <div className="still-billing-notice" role="status">
       <span className="still-billing-icon" aria-hidden="true">
-        💸
+        ●
       </span>
       <div>
         <strong>
