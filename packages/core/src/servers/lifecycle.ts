@@ -619,6 +619,27 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       throw err
     }
 
+    /*
+     * A failed row core has already RELEASED stays released (ADR-0010, follow-up to #120).
+     *
+     * `failBootstrap` terminates the machine and records `terminated` on the row in the same
+     * breath, so the meter stops on that tick. But a cloud's `describe()` lags its own DELETE:
+     * on Azure the VM answers `Succeeded`/running for a while after the delete was accepted, and
+     * EC2 reports `shutting-down`. The first sync in that window — the detail page's own GET —
+     * used to record that stale `running` over core's `terminated`, which put the row back on the
+     * meter, brought the still-billing notice back, and relabelled Dismiss as Terminate on a
+     * machine that no longer existed. Seen live on 2026-08-26 (`srv-f5b3dbb3910a`).
+     *
+     * The rule is narrow on purpose: only a FAILED row, only one whose provider state is already
+     * `terminated`, and only against a read that says otherwise. `failed` leaves through
+     * `terminate` alone, so there is no legitimate path by which that machine comes back; a
+     * provider still reporting it is reporting the past. `not_found` above already returns the
+     * row untouched for the same reason.
+     */
+    if (row.status === 'failed' && row.providerState === 'terminated' && view.state !== 'terminated') {
+      return { row, state: view.state }
+    }
+
     // The provider's own word about the machine, recorded BEFORE anything is derived from it
     // (rockysurf-4byx). Whatever the status machine does with this state next — promote,
     // suppress, or refuse the transition outright — the fact that a machine exists and is

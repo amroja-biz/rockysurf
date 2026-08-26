@@ -271,6 +271,47 @@ describe('the step timeline, fed by the live stream', () => {
   })
 })
 
+describe('a failed row whose machine core released (ADR-0010)', () => {
+  it('re-reads the row on the failed frame, so the button says Dismiss and not Terminate', async () => {
+    // While the box was building, core reported it as billing — the truth at the time.
+    row = { ...SERVER, billing: { live: true, providerState: 'running', since: '2026-08-26T11:42:42.509Z' } }
+    renderPage()
+    await screen.findByText('dev-box')
+
+    // Then a tool install failed and core terminated the machine: the row now carries the
+    // report and NO billing block. The frame core broadcasts says only `failed`.
+    row = {
+      ...SERVER,
+      status: 'failed',
+      errorMessage: 'Deliberate apt failure could not be installed. Rocky Surf terminated the machine, so it is not billing.',
+      bootstrapReport: {
+        failure: {
+          stepId: 'tool:deliberate-apt-failure',
+          phase: 'tool',
+          label: 'Deliberate apt failure',
+          exitCode: 100,
+          cause: 'apt',
+          summary: 'Deliberate apt failure could not be installed.',
+          keyLines: ['E: Unable to locate package rockysurf-deliberately-missing-package'],
+          log: 'E: Unable to locate package rockysurf-deliberately-missing-package',
+          logComplete: true,
+          instance: 'terminated',
+          instanceNote: 'Rocky Surf terminated the machine, so it is not billing.',
+        },
+        warnings: [],
+      },
+    }
+    const readsBefore = reads
+    await broadcastUntil({ type: 'server-status', serverId: SERVER_ID, status: 'failed' }, () =>
+      expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy(),
+    )
+    // Patched from the frame alone, the page would still hold the provisioning-time billing
+    // block and label the same button "Terminate" — for a machine that no longer exists.
+    expect(reads).toBeGreaterThan(readsBefore)
+    expect(screen.queryByRole('button', { name: 'Terminate' })).toBeNull()
+  })
+})
+
 describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
   it('is hidden while the box is still building and appears when it is running', async () => {
     renderPage()
