@@ -176,11 +176,14 @@ let streams: Array<(chunk: string) => void> = []
 let accepted: string[]
 /** The rows the stub serves, so a test can start from the fleet it needs. */
 let rows: Array<Record<string, unknown>>
+/** The public pack list — empty by default, like every other test in this file assumes. */
+let packs: Array<Record<string, unknown>>
 
 beforeEach(async () => {
   streams = []
   accepted = []
   rows = [STOPPED]
+  packs = []
   stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const json = (body: unknown) => {
@@ -197,7 +200,7 @@ beforeEach(async () => {
         { id: 'fake', displayName: 'Fake', capabilities: CAPABILITIES },
         { id: 'other', displayName: 'Another Cloud', capabilities: CAPABILITIES },
       ])
-    if (url.pathname === '/api/v1/surge-packs') return json([])
+    if (url.pathname === '/api/v1/surge-packs') return json(packs)
     if (url.pathname === '/api/v1/servers') return json(rows)
 
     // A slow cloud's answer: accepted, and the row still reads `stopped` because that is what
@@ -704,6 +707,46 @@ describe('the fleet, grouped by the cloud each box is on', () => {
     await waitFor(() => expect(detail.container.querySelector('.server-summary')).toBeTruthy())
     const summary = detail.container.querySelector('.server-summary') as HTMLElement
     expect(value(summary, 'Created').textContent).toBe(onTheCard)
+  })
+})
+
+/**
+ * The Surge Pack a box was built from, on the card itself (issue #137) — the owner's revision
+ * of a request to put the pack's usage guide in the SSH login banner: no banner work, just the
+ * pack's NAME where a user is already looking. `ServerDetailPage` has shown this since #46; the
+ * card had shown nothing about the pack at all.
+ */
+describe('the Surge Pack name on a card (issue #137)', () => {
+  it('shows the pack by name once the public list answers', async () => {
+    rows = [{ ...RUNNING, packId: 'claude-code' }]
+    packs = [{ packId: 'claude-code', name: 'Claude Code', tools: [], requiresRepos: false, requiresRdp: false, displayOrder: 0, enabled: true }]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    await waitFor(() => expect(value(cardFor(container, 'dev-box'), 'Pack').textContent).toBe('Claude Code'))
+    // The slug rides along as a hover, the same as the detail page (issue #137).
+    expect(value(cardFor(container, 'dev-box'), 'Pack').getAttribute('title')).toBe('claude-code')
+  })
+
+  it('falls back to the id when the pack that built this box has since been deleted', async () => {
+    rows = [{ ...RUNNING, packId: 'a-pack-nobody-kept' }]
+    packs = [] // deleted, or never synced — either way, absent from the list core still serves
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const cell = value(cardFor(container, 'dev-box'), 'Pack')
+    expect(cell.textContent).toBe('a-pack-nobody-kept')
+    // No name to explain, so no tooltip either — the id IS what's shown, not a second copy of it.
+    expect(cell.getAttribute('title')).toBeNull()
+  })
+
+  it('renders no Pack row at all for a box with no pack on record', async () => {
+    rows = [RUNNING] // BASE carries no packId
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const card = cardFor(container, 'dev-box')
+    expect([...card.querySelectorAll('dt')].some((dt) => dt.textContent === 'Pack')).toBe(false)
   })
 })
 

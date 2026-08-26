@@ -21,6 +21,7 @@ import {
   ApiError,
   getServer,
   listServers,
+  listSurgePacks,
   startServer,
   stopServer,
   terminateServer,
@@ -28,6 +29,7 @@ import {
   type ProviderInfo,
   type Server,
   type ServerSummary,
+  type SurgePack,
 } from '../lib/api'
 import { formatCostCell, formatTimestamp, formatUptime, STEP_LABELS } from '../lib/format'
 import { destructiveAction } from '../lib/serverActions'
@@ -50,6 +52,7 @@ export function DashboardPage() {
   const [servers, setServers] = useState<ServerSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [packNameById, setPackNameById] = useState<Map<string, string>>(new Map())
   const { byId: capabilities, providers } = useProviderCapabilities()
 
   const refresh = useCallback(async () => {
@@ -82,6 +85,26 @@ export function DashboardPage() {
       setServers((current) => current.map((server) => (server.serverId === serverId ? row : server)))
     } catch {
       // Deliberately silent: nothing the user can act on, and the row still reads what it read.
+    }
+  }, [])
+
+  /**
+   * Pack names for the cards (issue #137): fetched once, not per card, and matched by id — the
+   * same "id first, name once the list answers" shape `ServerDetailPage` already uses. A pack
+   * since deleted just leaves its id out of the map, and the card falls back to `packId`.
+   */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const packs = await listSurgePacks()
+        if (!cancelled) setPackNameById(new Map(packs.map((p: SurgePack) => [p.packId, p.name])))
+      } catch {
+        // The cards are still useful without pack names; they fall back to showing the id.
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -179,7 +202,13 @@ export function DashboardPage() {
           </h2>
           <div className="server-grid">
             {group.servers.map((server) => (
-              <ServerCard key={server.serverId} server={server} capabilities={capabilities} onChanged={refresh} />
+              <ServerCard
+                key={server.serverId}
+                server={server}
+                capabilities={capabilities}
+                packName={server.packId ? packNameById.get(server.packId) : undefined}
+                onChanged={refresh}
+              />
             ))}
           </div>
         </section>
@@ -241,10 +270,13 @@ type PendingAction = TransitionAction | 'terminate'
 function ServerCard({
   server,
   capabilities,
+  packName,
   onChanged,
 }: {
   server: ServerSummary
   capabilities: Map<string, ProviderCapabilities>
+  /** The pack's display name, when the dashboard's pack list still has it (issue #137). */
+  packName?: string
   onChanged: () => void | Promise<void>
 }) {
   const [pending, setPending] = useState<PendingAction | null>(null)
@@ -370,6 +402,17 @@ function ServerCard({
           <dt>Address</dt>
           <dd>{server.publicIp ?? '—'}</dd>
         </div>
+        {/* By name when the dashboard's pack list has it, by id when it doesn't — a pack since
+            deleted still built this box (issue #137). Same fallback rule as the detail page's
+            Surge Pack line, one row here because the card has no room for a link and a byline. */}
+        {server.packId && (
+          <div>
+            <dt>Pack</dt>
+            <dd data-testid="card-pack" title={packName ? server.packId : undefined}>
+              {packName ?? server.packId}
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Uptime</dt>
           <dd>{formatUptime(server.totalUptimeSeconds)}</dd>

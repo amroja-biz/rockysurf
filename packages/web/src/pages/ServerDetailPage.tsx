@@ -351,12 +351,17 @@ export function ServerDetailPage() {
           {/* The pack this box was built from (issue #46) — by name when the pack list has
               it, by id when it doesn't (a pack since deleted still built this box). Linked to
               the catalogue page the nav already offers everyone (rockysurf-idxd), which since
-              rockysurf-4d8h is the per-pack detail view rather than the admin table. */}
+              rockysurf-4d8h is the per-pack detail view rather than the admin table. The slug
+              rides along as a title (issue #137): the name is what a reader wants, but the
+              slug is what a pack file, a CLI flag and a URL all call this pack, so it stays one
+              hover away instead of disappearing once a name is known. */}
           {server.packId && (
             <div>
               <dt>Surge Pack</dt>
               <dd data-testid="server-pack">
-                <Link to={`/packs/${server.packId}`}>{pack?.name ?? server.packId}</Link>
+                <Link to={`/packs/${server.packId}`} title={pack?.name ? server.packId : undefined}>
+                  {pack?.name ?? server.packId}
+                </Link>
               </dd>
             </div>
           )}

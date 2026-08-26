@@ -451,6 +451,29 @@ describe('the display fields (issue #46)', () => {
     await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('A Pack'))
     // Linked to the same page the nav offers (rockysurf-idxd).
     expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('href')).toBe('/packs/a-pack')
+    // The slug rides along as a hover once the name is known (issue #137).
+    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('title')).toBe('a-pack')
+  })
+
+  /**
+   * A pack since deleted — imported once, then removed from the catalogue — still built this
+   * box, and the row still names it (issue #137). The public list core serves no longer has an
+   * entry for it, so the id is the only honest label left; the page must keep showing that
+   * rather than blanking the row or hanging on "a-pack" forever waiting for a name that will
+   * never arrive.
+   */
+  it("falls back to the pack's id when the pack that built this box has since been deleted", async () => {
+    // Same server, but the public list no longer carries an `a-pack` entry.
+    packRow = { ...PACK, packId: 'some-other-pack' }
+    renderPage()
+
+    await screen.findByText('dev-box')
+    // The list answered — it is just missing this id — so the row keeps its own id, not
+    // whatever pack happens to be first in an unrelated list.
+    await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('a-pack'))
+    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('href')).toBe('/packs/a-pack')
+    // No name to explain, so no tooltip either — the id IS what's on screen, not a duplicate of it.
+    expect(screen.getByTestId('server-pack').querySelector('a')?.getAttribute('title')).toBeNull()
   })
 
   /** One pack tool, as the public list expands them — enough to pin name, link and caveat. */
