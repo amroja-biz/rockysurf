@@ -1222,6 +1222,13 @@ tbody tr:hover td {
 
 .machine-picker-table-wrap {
   overflow-x: auto;
+  /* The scroller is also the containing block for what it scrolls. Without this, the Select
+     column's `.sr-only` header — `position: absolute`, so it looks for the nearest POSITIONED
+     ancestor and finds none — lands at its static position measured against the page, which is
+     off the right of a narrow screen once the table is wider than the form column. That gave
+     the whole page a horizontal scrollbar to reach a span nobody can see. Positioned here, the
+     span belongs to the scroller and is clipped with everything else. */
+  position: relative;
 }
 
 /*
