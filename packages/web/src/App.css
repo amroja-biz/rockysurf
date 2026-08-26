@@ -1145,6 +1145,47 @@ tbody tr:hover td {
   overflow-x: auto;
 }
 
+/*
+ * The table states its own width; the wrapper above scrolls when that does not fit (issue #113).
+ *
+ * The shared `table { width: 100% }` rule made the browser fit eight columns into the form
+ * column no matter how little room that left each one, and the wrapper's `overflow-x` never
+ * had anything to scroll: instead every cell wrapped. `30 GB` broke into two lines, the arch
+ * badge split into `x86-` and `64`, and the header row stopped lining up with anything under
+ * it. `min-width: 100%` keeps the table filling the form on a wide screen; `width: auto` lets
+ * the columns win on a narrow one, which is what the scroll container was built for.
+ */
+.machine-picker-table-wrap table {
+  width: auto;
+  min-width: 100%;
+}
+
+/* Values, not prose: a size, a core count and a region are read as units and are never worth
+   breaking. The reason cell below is the one exception, and says so. */
+.machine-picker-table-wrap td {
+  white-space: nowrap;
+}
+
+/*
+ * Why a row cannot be bought, as text rather than as a banner (issue #113).
+ *
+ * This carried `.warning`, which is a page-level notice: a block with a border, a background
+ * and a rem of horizontal padding. On an inline `<span>` inside a table cell that padding and
+ * border render outside the line box, so the yellow box hung over the edge of the table and
+ * across the rows above and below it — the artefact in the report. The colour is what carries
+ * the meaning here; the box was never doing anything but leaking. It is also the one cell that
+ * must wrap, because a provider's reason is a sentence (Azure names the quota family and the
+ * approved limit, issue #116) rather than a value.
+ */
+.machine-picker .unavailable {
+  display: inline-block;
+  max-width: 18rem;
+  white-space: normal;
+  color: var(--rs-yellow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
 .machine-picker tr.selected td {
   background: var(--rs-surface);
   font-weight: 500;
