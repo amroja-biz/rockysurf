@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useSearchParams } from 'react-router'
 import { Link } from 'react-router'
@@ -34,6 +34,7 @@ import {
 import { AppShell } from '../components/AppShell'
 import { PackIcon } from '../components/PackIcon'
 import { ProvisioningFeed } from '../components/ProvisioningFeed'
+import { Tabs } from '../components/Tabs'
 
 /**
  * Create a server.
@@ -301,93 +302,6 @@ function RepositoryPicker({
           </ul>
         </>
       )}
-    </div>
-  )
-}
-
-/**
- * A tab list, written to the WAI-ARIA tabs pattern by hand (rockysurf-jn71).
- *
- * THE FIRST ONE IN THIS APP, which is why it is a component and not a pair of buttons inline:
- * `role="tab"` without the roving tabindex and the arrow keys is a control that looks like tabs
- * and does not behave like them, and the next screen that wants tabs should copy something that
- * already works. It is deliberately generic — it knows about keys and labels, nothing about
- * packs — so moving it into `components/` the day a second page needs it is a cut and paste.
- *
- * NO DEPENDENCY. The repo has no UI kit, `App.css` is hand-written, and the one widget library
- * anybody has proposed is deferred to v0.2 (rockysurf-57zw); forty lines is not worth a package.
- *
- * AUTOMATIC ACTIVATION — selection follows focus, so an arrow key both moves and switches. The
- * pattern recommends it when the panels are cheap to render, and these are: the panel is a list
- * of radio cards already in memory. Manual activation would mean arrowing then pressing Enter,
- * which is two keystrokes for a control with two positions.
- *
- * ONE PANEL, and both tabs point `aria-controls` at it. There is genuinely one region here whose
- * contents change, so this is a truer description than two panels of which one is unmounted —
- * and it means no tab ever carries an `aria-controls` that resolves to nothing.
- */
-function Tabs<K extends string>({
-  label,
-  panelId,
-  tabs,
-  active,
-  onSelect,
-}: {
-  label: string
-  /** The id of the single `role="tabpanel"` the caller renders below this list. */
-  panelId: string
-  tabs: readonly { key: K; label: string }[]
-  active: K
-  onSelect: (key: K) => void
-}) {
-  const buttons = useRef(new Map<K, HTMLButtonElement | null>())
-
-  // Wraps, because the pattern says a tab list wraps: End-to-Home by arrowing off the edge is
-  // the behaviour a keyboard user already has everywhere else.
-  const moveTo = (index: number) => {
-    const next = tabs[(index + tabs.length) % tabs.length]
-    if (!next) return
-    onSelect(next.key)
-    buttons.current.get(next.key)?.focus()
-  }
-
-  return (
-    <div className="tablist" role="tablist" aria-label={label}>
-      {tabs.map((tab, index) => (
-        <button
-          key={tab.key}
-          type="button"
-          role="tab"
-          id={`${panelId}-tab-${tab.key}`}
-          className={`tab ${tab.key === active ? 'selected' : ''}`}
-          aria-selected={tab.key === active}
-          aria-controls={panelId}
-          // Roving tabindex: one stop for the whole list, so Tab moves past the control rather
-          // than through every tab in it.
-          tabIndex={tab.key === active ? 0 : -1}
-          ref={(el) => {
-            buttons.current.set(tab.key, el)
-          }}
-          onClick={() => onSelect(tab.key)}
-          onKeyDown={(event) => {
-            const to =
-              event.key === 'ArrowRight'
-                ? index + 1
-                : event.key === 'ArrowLeft'
-                  ? index - 1
-                  : event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : null
-            if (to === null) return
-            event.preventDefault()
-            moveTo(to)
-          }}
-        >
-          {tab.label}
-        </button>
-      ))}
     </div>
   )
 }

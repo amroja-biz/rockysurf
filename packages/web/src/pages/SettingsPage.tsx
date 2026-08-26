@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
+import { Tabs } from '../components/Tabs'
 import {
   ApiError,
   disconnectGithub,
@@ -74,6 +76,31 @@ import {
  * and the self-hosting guide, so the file, the docs and this page cannot disagree.
  * ──────────────────────────────────────────────────────────────────────────────────────
  *
+ * ── ONE SECTION AT A TIME, AND THE SERVER DECIDES WHAT THE SECTIONS ARE (issue #122) ──
+ * The page used to be one column a screen and a half long, with ten headings in it and no way
+ * to get to the tenth but scrolling. It is now a tab per section — a column of tabs beside the
+ * form on a wide screen, a scrolling strip above it on a narrow one — and the four rules it
+ * follows are all consequences of the same decision, that **the navigation is the inventory**:
+ *
+ *  1. **Nothing here lists the sections.** They come from `view.sections`, in the server's
+ *     order, and a section whose id is inside another one's (`providers.byo.hosts` inside
+ *     `providers.byo`) is a card on that tab rather than a tab of its own. Add a section to
+ *     `settings/fields.ts` and it appears here — with its fields in it — with no edit to this
+ *     file. That is the property issue #124 needs, and `SettingsPage.wiring.test.tsx` asserts
+ *     it against a section this page has never heard of.
+ *  2. **Every field in the inventory is drawn by somebody.** The blocks below are hand-written,
+ *     for the reasons the m29b note above gives, and each one records the paths it drew;
+ *     anything left over is rendered generically into the section it belongs to. A field added
+ *     to core is therefore editable here immediately, and a hand-written control for it later
+ *     is an improvement rather than a fix.
+ *  3. **Every panel stays mounted.** Only `hidden` moves. Switching tabs with a half-typed port
+ *     or an unsaved token cannot lose either — the edit map is above all of this anyway, and a
+ *     tab carries a dot when it holds unsaved work or a rejected field, so the one Save button
+ *     at the foot of the page never saves something the operator cannot see.
+ *  4. **The tab is in the URL** (`?section=`), so a link goes to a section, a reload comes back
+ *     to it, and a save the server rejects switches to the tab holding the first bad field.
+ * ──────────────────────────────────────────────────────────────────────────────────────
+ *
  * ── WHY THE CONTROLS ARE FUNCTIONS AND NOT COMPONENTS ─────────────────────────────────
  * `textField(...)` is called; it is not `<TextField/>`. A component DECLARED inside this
  * function is a new component type on every render, so React unmounts and remounts its subtree
@@ -91,19 +118,58 @@ const keyOf = (path: (string | number)[]) => path.join('.')
 /** The same path with list indices generalised, which is how the server names a field spec. */
 const patternOf = (path: (string | number)[]) => path.map((s) => (typeof s === 'number' ? '*' : s)).join('.')
 
-/** The sections this page draws, in order. Titles and help come from the server's inventory. */
-const SECTION_ORDER = [
-  'server',
-  'github',
-  'providers.hetzner',
-  'providers.aws',
-  'providers.azure',
-  'providers.gcp',
-  'providers.byo',
-  'providers.byo.hosts',
-  'limits',
-  'mcp',
-] as const
+/** The query parameter carrying the open section, so a link and a reload both land on it. */
+const SECTION_PARAM = 'section'
+
+/**
+ * The section a dotted path belongs to: the LONGEST section id that prefixes it.
+ *
+ * Longest, not first, because the sections nest — `providers.byo.hosts.0.name` is a host's
+ * field and not a stray `providers.byo` one, and a first-match rule would put every host field
+ * on the wrong card the moment the two sections were listed in the wrong order.
+ */
+function sectionOf(path: string, ids: readonly string[]): string | undefined {
+  let best: string | undefined
+  for (const id of ids) {
+    if (path !== id && !path.startsWith(`${id}.`)) continue
+    if (best === undefined || id.length > best.length) best = id
+  }
+  return best
+}
+
+/**
+ * The tab a section is drawn on: itself, or the outermost section that contains it.
+ *
+ * A nested section is a card on its parent's tab rather than a tab of its own — "Your own
+ * machines" and "Hosts" are one subject, and splitting them across two tabs would ask an
+ * operator to enable a provider on one and satisfy its requirement on another.
+ */
+function tabOf(id: string, ids: readonly string[]): string {
+  let current = id
+  for (;;) {
+    const parent = ids.reduce<string | undefined>(
+      (best, other) =>
+        other !== current && current.startsWith(`${other}.`) && (best === undefined || other.length < best.length)
+          ? other
+          : best,
+      undefined,
+    )
+    if (parent === undefined) return current
+    current = parent
+  }
+}
+
+/**
+ * `sshAllowedCidr` → `Ssh Allowed Cidr`.
+ *
+ * ONLY EVER A FALLBACK. Every field this page has a hand-written block for has a hand-written
+ * label; this is what a field core added after this build shipped gets, so that it renders with
+ * a readable name instead of not rendering at all.
+ */
+function humanize(segment: string): string {
+  const spaced = segment.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
 
 /** An edit key belonging to the unified token list, which saves per entry rather than in bulk. */
 const isTokenKey = (key: string) => key === 'github.pat' || key.startsWith('github.tokens.')
@@ -165,6 +231,25 @@ export function SettingsPage() {
   const [connection, setConnection] = useState<GithubConnection | null>(null)
   const [draft, setDraft] = useState<TokenDraft | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
+  /**
+   * WHICH SECTION IS OPEN LIVES IN THE URL, not in a `useState` beside it (issue #122).
+   *
+   * One place, so there is nothing to keep in step: a pasted `?section=providers.aws` opens AWS,
+   * a reload after a save comes back to the tab it was on, and the browser's own history holds
+   * the answer rather than a state variable that a remount would reset to the first tab.
+   *
+   * `replace` on selection, so a Back press leaves Settings rather than walking back up through
+   * every tab the operator looked at on the way in.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openSection = useCallback(
+    (id: string) => {
+      const next = new URLSearchParams(searchParams)
+      next.set(SECTION_PARAM, id)
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const load = useCallback(async () => {
     try {
@@ -316,6 +401,12 @@ export function SettingsPage() {
         const body = err.data as { issues?: { path: string; message: string }[] } | undefined
         setFieldErrors(Object.fromEntries((body?.issues ?? []).map((i) => [i.path, i.message])))
         setFormError(err.detail)
+        // A rejected field on a tab nobody is looking at is a rejection nobody can read, and the
+        // page has one Save button for every section. So the first bad field decides the tab.
+        const firstBad = body?.issues?.[0]?.path
+        const ids = view.sections.map((section) => section.id)
+        const landsOn = firstBad === undefined ? undefined : sectionOf(firstBad, ids)
+        if (landsOn !== undefined) openSection(tabOf(landsOn, ids))
         // A 409 means the file moved underneath and nothing was written. Show it as it is now,
         // with the pending edits still in the form so nothing typed here is thrown away.
         if (err.status === 409) await load()
@@ -345,6 +436,23 @@ export function SettingsPage() {
   }
 
   const { values, defaults } = view
+
+  /**
+   * Every inventory path a hand-written control drew, this render (issue #122).
+   *
+   * THE LEDGER BEHIND RULE 2 at the top of this file. The blocks below name their fields one by
+   * one — that is the m29b decision and it stands — which means the page can fall behind the
+   * inventory silently, and a setting nobody can see is a setting nobody can fix. So each
+   * control records itself here as it is built, and whatever the inventory has that this set
+   * does not is drawn generically into the section it belongs to.
+   *
+   * A PLAIN SET MUTATED DURING RENDER, deliberately. It is filled while the section bodies are
+   * BUILT (they are called, not mounted — see the note above), read once afterwards in the same
+   * pass, and thrown away with the render that made it, so there is no state to get stale and a
+   * double render in StrictMode simply builds it twice.
+   */
+  const drawn = new Set<string>()
+  const draw = (pattern: string) => drawn.add(pattern)
 
   /**
    * The server's warnings, by the same dotted key the errors use (rockysurf-1z5q).
@@ -388,6 +496,7 @@ export function SettingsPage() {
   function wrap(path: (string | number)[], label: string, control: ReactNode): ReactNode {
     const pattern = patternOf(path)
     const spec = specs.get(pattern)
+    draw(pattern)
     // A hidden field is not drawn even when a call site asks for it: the inventory decides.
     if (spec?.hidden) return null
     const key = keyOf(path)
@@ -408,6 +517,7 @@ export function SettingsPage() {
   function readOnlyField(path: (string | number)[], label: string): ReactNode {
     const pattern = patternOf(path)
     const spec = specs.get(pattern)
+    draw(pattern)
     if (spec?.hidden) return null
     const key = keyOf(path)
     const current = valueAt(values, path) ?? valueAt(defaults, path)
@@ -509,6 +619,7 @@ export function SettingsPage() {
     const edit = edits[key]
     const cleared = edit?.unset === true
     const literal = acceptsLiteral(specPath)
+    draw(specPath)
 
     const typed = edit && !cleared ? String(edit.value ?? '') : undefined
     const fromFile =
@@ -631,6 +742,7 @@ export function SettingsPage() {
   /** One half of a spend cap that does not exist in the file yet — see the note at its use. */
   function newCapField(name: 'amount' | 'currency', label: string, type: 'text' | 'number'): ReactNode {
     const id = `limits.spendCap.${name}`
+    draw(id)
     const pending = (edits['limits.spendCap']?.value ?? {}) as { amount?: number; currency?: string }
     return (
       <div className="form-group" data-field={id} key={id}>
@@ -651,6 +763,64 @@ export function SettingsPage() {
           }}
         />
         {fieldErrors[id] && <p className="error settings-field-error">{fieldErrors[id]}</p>}
+      </div>
+    )
+  }
+
+  /**
+   * A control for a field the blocks below do not name — rule 2 at the top of this file.
+   *
+   * IT IS NOT A FORM GENERATOR, and the m29b note about why this page has none still holds: the
+   * hand-written blocks decide what the settings page LOOKS like, and this decides only what
+   * happens to a field they have not caught up with. The difference that matters is that this
+   * one cannot invent a control the inventory did not describe — it reads `kind`, `writable` and
+   * `hidden` off the same spec every other control here obeys, and its label is the field's own
+   * last path segment because a spec carries no label. A hand-written block for the field later
+   * takes over silently, because a drawn field is no longer left over.
+   */
+  function fallbackField(spec: SettingsField): ReactNode {
+    if (spec.hidden) return null
+    const path = spec.path.split('.')
+    const label = humanize(path[path.length - 1] ?? spec.path)
+    if (!spec.writable) return readOnlyField(path, label)
+    switch (spec.kind) {
+      case 'boolean':
+        return boolField(path, label)
+      case 'number':
+        return textField(path, label, 'number')
+      case 'secret':
+        return secretField(path, label, 'A_VARIABLE_NAME')
+      // A list and a whole optional block are the two shapes a generic control would have to
+      // guess at — how many entries, and what half a block means — so this says what the file
+      // holds and where to change it rather than offering a box that would write the wrong
+      // shape. `mcp.scopes` and `limits.spendCap` have hand-written editors and never land here.
+      case 'stringList':
+      case 'group':
+        return uneditableFallback(spec, label)
+      default:
+        return textField(path, label)
+    }
+  }
+
+  /** The value, and the honest sentence that this build has no control for a field of this shape. */
+  function uneditableFallback(spec: SettingsField, label: string): ReactNode {
+    const path = spec.path.split('.')
+    const current = valueAt(values, path) ?? valueAt(defaults, path)
+    const shown =
+      current === undefined
+        ? 'not set'
+        : Array.isArray(current)
+          ? current.join(', ')
+          : JSON.stringify(current)
+    return (
+      <div className="form-group" data-field={spec.path} key={spec.path}>
+        <label>{label}</label>
+        {helpFor(spec.path, spec.path)}
+        <p className="settings-value">{shown}</p>
+        <p className="read-only">
+          This page has no editor for a setting of this shape yet. Change <code>{spec.path}</code>{' '}
+          in the configuration file itself.
+        </p>
       </div>
     )
   }
@@ -999,9 +1169,10 @@ export function SettingsPage() {
       ? 'Save or discard your other changes to this list first'
       : undefined
 
+    // The section wrapper and the header belong to the panel that draws this list, so a list is
+    // a section's CONTENTS here — the same shape every other block below has.
     return (
-      <section>
-        {sectionHeader(path.join('.'))}
+      <>
         {entries.length === 0 && <p className="hint">{empty}</p>}
         {entries.map((entry, index) => (
           <div className="settings-entry" key={index}>
@@ -1036,19 +1207,25 @@ export function SettingsPage() {
         >
           Add
         </button>
-      </section>
+      </>
     )
   }
 
   /* ---------------------------------------------------------------------------- render */
 
-  /** A section's title and what the whole section is for, both from the server's inventory. */
+  /**
+   * A section's title and what the whole section is for, both from the server's inventory.
+   *
+   * A title is fabricated from the id only for a section that does not exist in the inventory —
+   * the synthetic home of a field whose path no `SectionSpec` claims. Everything else is core's
+   * words, which is what keeps the file, the docs and this page saying the same thing.
+   */
   function sectionHeader(id: string): ReactNode {
-    const section = sections.get(id) ?? { title: id, help: '' }
+    const section = sections.get(id)
     return (
       <header className="settings-section-header" data-section={id}>
-        <h2>{section.title}</h2>
-        {section.help && <p className="field-help">{section.help}</p>}
+        <h2>{section?.title ?? humanize(id.split('.').pop() ?? id)}</h2>
+        {section?.help && <p className="field-help">{section.help}</p>}
       </header>
     )
   }
@@ -1061,6 +1238,350 @@ export function SettingsPage() {
 
   /** Issues about the file that no rendered field claims — the page still has to report them. */
   const unplacedIssues = (view.issues ?? []).filter((i) => !specs.has(patternOf(i.path.split('.'))))
+
+  /* ------------------------------------------------------- what each section actually holds */
+
+  // The two controls that go through neither `wrap` nor `secretInput` — a checkbox over a whole
+  // block, and a fieldset of four boxes — so they enter the ledger by hand rather than being
+  // drawn twice, once here and once as a leftover.
+  draw('limits.spendCap')
+  draw('mcp.scopes')
+
+  /**
+   * THE HAND-WRITTEN BLOCKS, keyed by the section id core gave them.
+   *
+   * Contents only: the card, its heading and its place among the tabs are the panel's job below,
+   * which is what lets a section core adds render in exactly the same frame as these without a
+   * line here. A key with no entry is not a hole — it is a section drawn from the inventory.
+   */
+  const handWritten: Record<string, ReactNode> = {
+    server: (
+      <>
+        {textField(['server', 'port'], 'Port', 'number')}
+        {textField(['server', 'host'], 'Listen address')}
+        {textField(['server', 'publicUrl'], 'Public URL')}
+        {readOnlyField(['server', 'dataDir'], 'Data directory')}
+      </>
+    ),
+
+    /*
+      ONE LIST, TWO SHAPES IN THE FILE. Each entry saves on its own — every card's button is its
+      own PUT — because a list where one Save button covers additions, removals and edits has to
+      guess what an index meant by the time it is applied. See `lib/githubTokens.ts`.
+    */
+    github: (
+      <>
+        {/*
+          FIRST IN THE SECTION, because it is the catch-all and everything below it is the
+          exceptions. It is also the only thing in this section that does NOT need a restart:
+          its token goes to the encrypted store, which core reads live at server-create, while
+          the pasted PATs below go to the file and keep the restart notice they always had.
+        */}
+        <ConnectGitHubCard
+          connection={connection}
+          onChanged={loadConnection}
+          onDisconnect={() =>
+            setPendingRemoval({
+              title: 'Disconnect this GitHub account?',
+              label: `@${connection?.login ?? 'this account'}`,
+              confirmLabel: 'Disconnect',
+              message: DISCONNECT_CONFIRMATION,
+              confirm: async () => {
+                try {
+                  await disconnectGithub()
+                  await loadConnection()
+                  toast.success('Rocky Surf has forgotten this GitHub token')
+                } catch {
+                  setFormError('Could not disconnect the GitHub account.')
+                }
+              },
+            })
+          }
+        />
+        {/*
+          The client ID the card above is disabled without. It renders here, in the same
+          section, because that is what makes the card's instruction actionable without
+          leaving the browser — and it is an ordinary text box rather than a credential box
+          because a device-flow client ID is public.
+
+          It DOES need a restart, unlike the token the button then obtains: this one goes to
+          the config file, which is read once at boot.
+        */}
+        {textField(['github', 'oauth', 'clientId'], 'OAuth App client ID')}
+        {tokenEntries.map(tokenCard)}
+        {draftCard()}
+        {!draft && (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={Boolean(tokenListBusy) || saving}
+            title={tokenListBusy}
+            onClick={() => {
+              setDraftError(null)
+              setDraft({ scope: '', host: '', pat: '' })
+            }}
+          >
+            Add a token
+          </button>
+        )}
+      </>
+    ),
+
+    'providers.hetzner': (
+      <>
+        {boolField(['providers', 'hetzner', 'enabled'], 'Enabled')}
+        {/*
+          THE SAME POLICY AS THE TOKEN LIST, and the same label. It is the same kind of thing —
+          a provider credential in a file that gets backed up — so a second rule here would be a
+          second rule for no reason. (rockysurf-4o3o, directive 3.)
+        */}
+        {secretField(['providers', 'hetzner', 'token'], 'Token Environment Variable', 'HETZNER_TOKEN')}
+        {textField(['providers', 'hetzner', 'location'], 'Location')}
+        {textField(['providers', 'hetzner', 'consoleProjectId'], 'Console project id', 'number')}
+      </>
+    ),
+
+    'providers.aws': (
+      <>
+        {boolField(['providers', 'aws', 'enabled'], 'Enabled')}
+        {textField(['providers', 'aws', 'region'], 'Region')}
+        {textField(['providers', 'aws', 'profile'], 'Profile')}
+        {textField(['providers', 'aws', 'sshAllowedCidr'], 'SSH allowed from')}
+        {readOnlyField(['providers', 'aws', 'sizes'], 'Offered instance types')}
+      </>
+    ),
+
+    'providers.azure': (
+      <>
+        {boolField(['providers', 'azure', 'enabled'], 'Enabled')}
+        {/*
+          No credential field, and that is the point. Azure credentials come from the
+          environment, a managed identity or `az login` — there is nowhere in the config file
+          to put a client secret, so there is no box here inviting someone to paste one.
+        */}
+        {textField(['providers', 'azure', 'subscriptionId'], 'Subscription id')}
+        {textField(['providers', 'azure', 'resourceGroup'], 'Resource group')}
+        {textField(['providers', 'azure', 'location'], 'Location')}
+        {textField(['providers', 'azure', 'sshAllowedCidr'], 'SSH allowed from')}
+        {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
+      </>
+    ),
+
+    'providers.gcp': (
+      <>
+        {boolField(['providers', 'gcp', 'enabled'], 'Enabled')}
+        {/*
+          No credential field here either, for the same reason as Azure. GCP credentials come
+          from Application Default Credentials — the same chain `gcloud` uses — and the config
+          file has no field that can hold key material, so there is no box inviting a paste.
+        */}
+        {textField(['providers', 'gcp', 'projectId'], 'Project id')}
+        {textField(['providers', 'gcp', 'zone'], 'Zone')}
+        {textField(['providers', 'gcp', 'sshAllowedCidr'], 'SSH allowed from')}
+        {readOnlyField(['providers', 'gcp', 'sizes'], 'Offered machine types')}
+      </>
+    ),
+
+    'providers.byo': (
+      <>
+        {boolField(['providers', 'byo', 'enabled'], 'Enabled')}
+        {textField(['providers', 'byo', 'identityFile'], 'Default private key path')}
+      </>
+    ),
+
+    /* Nested under `providers.byo`, so it is a second card on that tab rather than a tab of its
+       own: enabling the provider and satisfying its one requirement are the same errand. */
+    'providers.byo.hosts': listSection(
+      ['providers', 'byo', 'hosts'],
+      [
+        { name: 'name', label: 'Name' },
+        { name: 'host', label: 'Address' },
+        { name: 'user', label: 'Admin login' },
+        { name: 'port', label: 'SSH port' },
+        { name: 'fingerprint', label: 'Host key fingerprint' },
+        { name: 'identityFile', label: 'Private key path' },
+      ],
+      (entry, i) => String(entry['name'] ?? `host ${i + 1}`),
+      { name: 'change-me', host: '10.0.0.1' },
+      'None yet. Enabling this provider requires at least one host.',
+    ),
+
+    limits: (
+      <>
+        {textField(['limits', 'maxServers'], 'Most servers at once', 'number')}
+        {textField(['limits', 'createRatePerHour'], 'Most created per hour', 'number')}
+
+        <div className="form-group" data-field="limits.spendCap">
+          <label htmlFor="limits.spendCap">Stop creating servers over a spend cap</label>
+          {helpFor('limits.spendCap', 'limits.spendCap')}
+          <input
+            id="limits.spendCap"
+            type="checkbox"
+            aria-describedby={helpId('limits.spendCap', 'limits.spendCap')}
+            checked={capOn}
+            onChange={(e) =>
+              setEdit(
+                ['limits', 'spendCap'],
+                e.target.checked
+                  ? {
+                      path: ['limits', 'spendCap'],
+                      // Written whole: half a cap is not a smaller cap, it is a file that
+                      // will not load.
+                      value: { amount: spendCap?.amount ?? 50, currency: spendCap?.currency ?? 'USD' },
+                    }
+                  : { path: ['limits', 'spendCap'], unset: true },
+              )
+            }
+          />
+          {fieldErrors['limits.spendCap'] && <p className="error">{fieldErrors['limits.spendCap']}</p>}
+        </div>
+        {/*
+          Two ways to edit the same two numbers, because there are two situations. A cap the
+          file already has is edited field by field, like everything else. A cap being turned
+          on does not exist yet, so its fields edit the pending block — otherwise enabling a
+          cap would take two saves, the first of which writes a figure nobody chose.
+        */}
+        {capOn && spendCap !== undefined && (
+          <>
+            {textField(['limits', 'spendCap', 'amount'], 'Cap', 'number')}
+            {textField(['limits', 'spendCap', 'currency'], 'Currency')}
+          </>
+        )}
+        {capOn && spendCap === undefined && capEdit?.value !== undefined && (
+          <>
+            {newCapField('amount', 'Cap', 'number')}
+            {newCapField('currency', 'Currency', 'text')}
+          </>
+        )}
+      </>
+    ),
+
+    mcp: (
+      <div className="form-group" data-field="mcp.scopes">
+        <fieldset aria-describedby={helpId('mcp.scopes', 'mcp.scopes')}>
+          <legend>What an MCP client may do</legend>
+          {helpFor('mcp.scopes', 'mcp.scopes')}
+          {(['read', 'stop', 'create', 'terminate'] as const).map((scope) => (
+            <label key={scope} className="settings-scope">
+              <input
+                type="checkbox"
+                checked={pendingScopes.includes(scope)}
+                onChange={(e) =>
+                  setEdit(['mcp', 'scopes'], {
+                    path: ['mcp', 'scopes'],
+                    value: e.target.checked
+                      ? [...pendingScopes, scope]
+                      : pendingScopes.filter((s) => s !== scope),
+                  })
+                }
+              />
+              {scope}
+            </label>
+          ))}
+        </fieldset>
+        {specs.get('mcp.scopes')?.warning && (
+          <p className="hint settings-warning">{specs.get('mcp.scopes')!.warning}</p>
+        )}
+        {fieldErrors['mcp.scopes'] && <p className="error">{fieldErrors['mcp.scopes']}</p>}
+      </div>
+    ),
+  }
+
+  /* ----------------------------------------------- the sections, the leftovers, and the tabs */
+
+  /**
+   * A group owns its halves, so they are not leftovers when it chose not to draw them.
+   *
+   * `limits.spendCap.amount` is absent from the page whenever the cap is off, and that is what a
+   * `group` IS — a block written and removed whole. Only a group this page actually drew gets
+   * that authority; a group core adds that nothing here knows about does not get to hide its own
+   * fields, so its halves render as ordinary settings rather than as nothing at all.
+   */
+  const ownedByADrawnGroup = (path: string) =>
+    view.fields.some((f) => f.kind === 'group' && drawn.has(f.path) && path.startsWith(`${f.path}.`))
+
+  /**
+   * Everything in the inventory that no block above drew — rule 2 at the top of this file.
+   *
+   * `*` paths are excluded because a list-item spec describes a shape rather than a setting:
+   * `github.tokens.*.pat` is drawn once per entry by the list that owns it, or not at all when
+   * the list is empty, and a control for the pattern itself would edit nothing.
+   */
+  const leftovers = view.fields.filter(
+    (f) => !f.hidden && !f.path.includes('*') && !drawn.has(f.path) && !ownedByADrawnGroup(f.path),
+  )
+
+  /**
+   * A home for a leftover whose path no `SectionSpec` claims: its first path segment, as a
+   * section of its own.
+   *
+   * The honest answer to a field with nowhere to go. It is worse than a real section — the title
+   * is invented and there is no sentence saying what the group is for — and it is much better
+   * than a setting that exists, is writable, and cannot be seen. Giving the field a section in
+   * `settings/fields.ts` replaces it with the real thing, here and in the docs at once.
+   */
+  const sectionIds = view.sections.map((section) => section.id)
+  const strays = [
+    ...new Set(
+      leftovers.filter((f) => sectionOf(f.path, sectionIds) === undefined).map((f) => f.path.split('.')[0]!),
+    ),
+  ]
+  const allSections = [...sectionIds, ...strays]
+  const leftoversIn = (id: string) => leftovers.filter((f) => sectionOf(f.path, allSections) === id)
+
+  /** One tab per outermost section, in the inventory's order, with its nested sections on it. */
+  const tabIds = [...new Set(allSections.map((id) => tabOf(id, allSections)))]
+  const cardsOn = (tab: string) => allSections.filter((id) => tabOf(id, allSections) === tab)
+  const panelId = (tab: string) => `settings-panel-${tab}`
+
+  /** The tab a dotted key's news belongs on, so a dot can be put over it. */
+  const tabForKey = (key: string) => {
+    const section = sectionOf(key, allSections)
+    return section === undefined ? undefined : tabOf(section, allSections)
+  }
+  const tabsFor = (keys: string[]) =>
+    new Set(keys.map(tabForKey).filter((tab): tab is string => tab !== undefined))
+  /** Tabs holding something typed and not yet saved. */
+  const unsavedTabs = tabsFor(Object.keys(edits))
+  /** Tabs holding a field the server refused, or a field the file on disk gets wrong. */
+  const troubledTabs = tabsFor([...Object.keys(fieldErrors), ...(view.issues ?? []).map((i) => i.path)])
+
+  /**
+   * WHICH TAB IS OPEN. The URL says, and a value naming nothing falls back to the first tab
+   * rather than to a blank page — a link that has outlived the section it pointed at is a bad
+   * link, not a broken settings page. A deep link to a NESTED section opens the tab that holds
+   * it, so `?section=providers.byo.hosts` lands on Your own machines with the hosts in view.
+   */
+  const requested = searchParams.get(SECTION_PARAM)
+  const active =
+    (requested !== null && allSections.includes(requested) ? tabOf(requested, allSections) : undefined) ??
+    tabIds[0] ??
+    ''
+
+  const tabs = tabIds.map((id) => {
+    const marker = troubledTabs.has(id) ? 'error' : unsavedTabs.has(id) ? 'unsaved' : null
+    return {
+      key: id,
+      controls: panelId(id),
+      label: (
+        <>
+          {sections.get(id)?.title ?? humanize(id.split('.').pop() ?? id)}
+          {/* The dot is decoration; the words beside it are what a screen reader reads, because
+              a coloured circle is not a message. */}
+          {marker && (
+            <>
+              <span className={`tab-marker ${marker}`} aria-hidden="true">
+                ●
+              </span>
+              <span className="sr-only">
+                {marker === 'error' ? ', has a rejected field' : ', has unsaved changes'}
+              </span>
+            </>
+          )}
+        </>
+      ),
+    }
+  })
 
   return (
     <AppShell title="Settings" className="page settings">
@@ -1114,227 +1635,43 @@ export function SettingsPage() {
           void submit()
         }}
       >
-        <section>
-          {sectionHeader('server')}
-          {textField(['server', 'port'], 'Port', 'number')}
-          {textField(['server', 'host'], 'Listen address')}
-          {textField(['server', 'publicUrl'], 'Public URL')}
-          {readOnlyField(['server', 'dataDir'], 'Data directory')}
-        </section>
-
         {/*
-          ONE LIST, TWO SHAPES IN THE FILE. Each entry saves on its own — every card's button is
-          its own PUT — because a list where one Save button covers additions, removals and edits
-          has to guess what an index meant by the time it is applied. See `lib/githubTokens.ts`.
+          ONE FORM, ONE SAVE BUTTON, TEN PANELS. The tabs decide what is on screen and nothing
+          else: every panel stays mounted, the edit map lives above all of them, and the footer
+          below saves whatever is pending wherever it was typed. Switching tabs is therefore not
+          a thing that can lose work — and the tab holding the unsaved work wears a dot, so the
+          Save button never covers something the operator cannot see.
         */}
-        <section>
-          {sectionHeader('github')}
-          {/*
-            FIRST IN THE SECTION, because it is the catch-all and everything below it is the
-            exceptions. It is also the only thing in this section that does NOT need a restart:
-            its token goes to the encrypted store, which core reads live at server-create, while
-            the pasted PATs below go to the file and keep the restart notice they always had.
-          */}
-          <ConnectGitHubCard
-            connection={connection}
-            onChanged={loadConnection}
-            onDisconnect={() =>
-              setPendingRemoval({
-                title: 'Disconnect this GitHub account?',
-                label: `@${connection?.login ?? 'this account'}`,
-                confirmLabel: 'Disconnect',
-                message: DISCONNECT_CONFIRMATION,
-                confirm: async () => {
-                  try {
-                    await disconnectGithub()
-                    await loadConnection()
-                    toast.success('Rocky Surf has forgotten this GitHub token')
-                  } catch {
-                    setFormError('Could not disconnect the GitHub account.')
-                  }
-                },
-              })
-            }
+        <div className="settings-layout">
+          <Tabs
+            label="Settings sections"
+            panelId="settings"
+            className="settings-nav"
+            tabs={tabs}
+            active={active}
+            onSelect={openSection}
           />
-          {/*
-            The client ID the card above is disabled without. It renders here, in the same
-            section, because that is what makes the card's instruction actionable without
-            leaving the browser — and it is an ordinary text box rather than a credential box
-            because a device-flow client ID is public.
-
-            It DOES need a restart, unlike the token the button then obtains: this one goes to
-            the config file, which is read once at boot.
-          */}
-          {textField(['github', 'oauth', 'clientId'], 'OAuth App client ID')}
-          {tokenEntries.map(tokenCard)}
-          {draftCard()}
-          {!draft && (
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={Boolean(tokenListBusy) || saving}
-              title={tokenListBusy}
-              onClick={() => {
-                setDraftError(null)
-                setDraft({ scope: '', host: '', pat: '' })
-              }}
-            >
-              Add a token
-            </button>
-          )}
-        </section>
-
-        <section>
-          {sectionHeader('providers.hetzner')}
-          {boolField(['providers', 'hetzner', 'enabled'], 'Enabled')}
-          {/*
-            THE SAME POLICY AS THE TOKEN LIST, and the same label. It is the same kind of thing —
-            a provider credential in a file that gets backed up — so a second rule here would be a
-            second rule for no reason. (rockysurf-4o3o, directive 3.)
-          */}
-          {secretField(['providers', 'hetzner', 'token'], 'Token Environment Variable', 'HETZNER_TOKEN')}
-          {textField(['providers', 'hetzner', 'location'], 'Location')}
-          {textField(['providers', 'hetzner', 'consoleProjectId'], 'Console project id', 'number')}
-        </section>
-
-        <section>
-          {sectionHeader('providers.aws')}
-          {boolField(['providers', 'aws', 'enabled'], 'Enabled')}
-          {textField(['providers', 'aws', 'region'], 'Region')}
-          {textField(['providers', 'aws', 'profile'], 'Profile')}
-          {textField(['providers', 'aws', 'sshAllowedCidr'], 'SSH allowed from')}
-          {readOnlyField(['providers', 'aws', 'sizes'], 'Offered instance types')}
-        </section>
-
-        <section>
-          {sectionHeader('providers.azure')}
-          {boolField(['providers', 'azure', 'enabled'], 'Enabled')}
-          {/*
-            No credential field, and that is the point. Azure credentials come from the
-            environment, a managed identity or `az login` — there is nowhere in the config file
-            to put a client secret, so there is no box here inviting someone to paste one.
-          */}
-          {textField(['providers', 'azure', 'subscriptionId'], 'Subscription id')}
-          {textField(['providers', 'azure', 'resourceGroup'], 'Resource group')}
-          {textField(['providers', 'azure', 'location'], 'Location')}
-          {textField(['providers', 'azure', 'sshAllowedCidr'], 'SSH allowed from')}
-          {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
-        </section>
-
-        <section>
-          {sectionHeader('providers.gcp')}
-          {boolField(['providers', 'gcp', 'enabled'], 'Enabled')}
-          {/*
-            No credential field here either, for the same reason as Azure. GCP credentials come
-            from Application Default Credentials — the same chain `gcloud` uses — and the config
-            file has no field that can hold key material, so there is no box inviting a paste.
-          */}
-          {textField(['providers', 'gcp', 'projectId'], 'Project id')}
-          {textField(['providers', 'gcp', 'zone'], 'Zone')}
-          {textField(['providers', 'gcp', 'sshAllowedCidr'], 'SSH allowed from')}
-          {readOnlyField(['providers', 'gcp', 'sizes'], 'Offered machine types')}
-        </section>
-
-        <section>
-          {sectionHeader('providers.byo')}
-          {boolField(['providers', 'byo', 'enabled'], 'Enabled')}
-          {textField(['providers', 'byo', 'identityFile'], 'Default private key path')}
-        </section>
-
-        {listSection(
-          ['providers', 'byo', 'hosts'],
-          [
-            { name: 'name', label: 'Name' },
-            { name: 'host', label: 'Address' },
-            { name: 'user', label: 'Admin login' },
-            { name: 'port', label: 'SSH port' },
-            { name: 'fingerprint', label: 'Host key fingerprint' },
-            { name: 'identityFile', label: 'Private key path' },
-          ],
-          (entry, i) => String(entry['name'] ?? `host ${i + 1}`),
-          { name: 'change-me', host: '10.0.0.1' },
-          'None yet. Enabling this provider requires at least one host.',
-        )}
-
-        <section>
-          {sectionHeader('limits')}
-          {textField(['limits', 'maxServers'], 'Most servers at once', 'number')}
-          {textField(['limits', 'createRatePerHour'], 'Most created per hour', 'number')}
-
-          <div className="form-group" data-field="limits.spendCap">
-            <label htmlFor="limits.spendCap">Stop creating servers over a spend cap</label>
-            {helpFor('limits.spendCap', 'limits.spendCap')}
-            <input
-              id="limits.spendCap"
-              type="checkbox"
-              aria-describedby={helpId('limits.spendCap', 'limits.spendCap')}
-              checked={capOn}
-              onChange={(e) =>
-                setEdit(
-                  ['limits', 'spendCap'],
-                  e.target.checked
-                    ? {
-                        path: ['limits', 'spendCap'],
-                        // Written whole: half a cap is not a smaller cap, it is a file that
-                        // will not load.
-                        value: { amount: spendCap?.amount ?? 50, currency: spendCap?.currency ?? 'USD' },
-                      }
-                    : { path: ['limits', 'spendCap'], unset: true },
-                )
-              }
-            />
-            {fieldErrors['limits.spendCap'] && <p className="error">{fieldErrors['limits.spendCap']}</p>}
+          <div className="settings-panels">
+            {tabIds.map((tab) => (
+              <div
+                key={tab}
+                className="settings-panel"
+                role="tabpanel"
+                id={panelId(tab)}
+                aria-labelledby={`settings-tab-${tab}`}
+                hidden={tab !== active}
+              >
+                {cardsOn(tab).map((id) => (
+                  <section key={id}>
+                    {sectionHeader(id)}
+                    {handWritten[id]}
+                    {leftoversIn(id).map((spec) => fallbackField(spec))}
+                  </section>
+                ))}
+              </div>
+            ))}
           </div>
-          {/*
-            Two ways to edit the same two numbers, because there are two situations. A cap the
-            file already has is edited field by field, like everything else. A cap being turned
-            on does not exist yet, so its fields edit the pending block — otherwise enabling a
-            cap would take two saves, the first of which writes a figure nobody chose.
-          */}
-          {capOn && spendCap !== undefined && (
-            <>
-              {textField(['limits', 'spendCap', 'amount'], 'Cap', 'number')}
-              {textField(['limits', 'spendCap', 'currency'], 'Currency')}
-            </>
-          )}
-          {capOn && spendCap === undefined && capEdit?.value !== undefined && (
-            <>
-              {newCapField('amount', 'Cap', 'number')}
-              {newCapField('currency', 'Currency', 'text')}
-            </>
-          )}
-        </section>
-
-        <section>
-          {sectionHeader('mcp')}
-          <div className="form-group" data-field="mcp.scopes">
-            <fieldset aria-describedby={helpId('mcp.scopes', 'mcp.scopes')}>
-              <legend>What an MCP client may do</legend>
-              {helpFor('mcp.scopes', 'mcp.scopes')}
-              {(['read', 'stop', 'create', 'terminate'] as const).map((scope) => (
-                <label key={scope} className="settings-scope">
-                  <input
-                    type="checkbox"
-                    checked={pendingScopes.includes(scope)}
-                    onChange={(e) =>
-                      setEdit(['mcp', 'scopes'], {
-                        path: ['mcp', 'scopes'],
-                        value: e.target.checked
-                          ? [...pendingScopes, scope]
-                          : pendingScopes.filter((s) => s !== scope),
-                      })
-                    }
-                  />
-                  {scope}
-                </label>
-              ))}
-            </fieldset>
-            {specs.get('mcp.scopes')?.warning && (
-              <p className="hint settings-warning">{specs.get('mcp.scopes')!.warning}</p>
-            )}
-            {fieldErrors['mcp.scopes'] && <p className="error">{fieldErrors['mcp.scopes']}</p>}
-          </div>
-        </section>
+        </div>
 
         <footer className="settings-actions">
           <button type="submit" className="btn-primary" disabled={!dirty || saving}>

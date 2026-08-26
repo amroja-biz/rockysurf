@@ -1823,6 +1823,104 @@ p.hint {
    section` gives them, because both pages are a long form read top to bottom. Nothing new
    is invented here: every colour is a token, and the controls are the form rules above. */
 
+/*
+ * ONE SECTION AT A TIME (issue #122). The page was one column with ten headings in it, and the
+ * tenth was three screens down. It is now a tab per section: a COLUMN of tabs beside the form
+ * where there is room for one, and the same strip of tabs the create page uses above the form
+ * where there is not. Same DOM in both, so the breakpoint is the whole difference — and the
+ * same `.tablist`/`.tab` tokens either way, because a settings page that invented its own tab
+ * would be a second widget for the thing the app already has one of.
+ *
+ * Wider than `.page`'s 760px, so the form keeps roughly the measure it had before a navigation
+ * column was put beside it.
+ */
+.settings {
+  max-width: 980px;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* The narrow case is the default: a strip that scrolls sideways rather than a column of tabs
+   eating a third of a phone screen. */
+.settings-nav {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.settings-panels {
+  min-width: 0;
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* The gap above is the spacing now; `main section`'s bottom margin would double it. */
+.settings-panel > section {
+  margin-bottom: 0;
+}
+
+/* Author styles beat the UA sheet whatever the specificity, so a `display` on the line above
+   would make `hidden` decorative. Every panel is mounted — switching tabs must not be able to
+   throw away something half-typed — and this is what keeps the other nine out of the way. */
+.settings-panel[hidden] {
+  display: none;
+}
+
+/* Unsaved work, or a field the server refused, on a tab that is not the one in front of you.
+   The dot is decoration and says so (`aria-hidden`); the sentence beside it in `.sr-only` is
+   what a screen reader gets, because a coloured circle is not a message. */
+.tab-marker {
+  margin-left: 0.375rem;
+  font-size: 0.625rem;
+  vertical-align: middle;
+  color: var(--rs-link);
+}
+
+.tab-marker.error {
+  color: var(--rs-red);
+}
+
+@media (min-width: 60rem) {
+  .settings-layout {
+    grid-template-columns: 13rem minmax(0, 1fr);
+  }
+
+  /* A column, and it stays put while a long section scrolls past it — the point of the change
+     was to stop making people scroll to change subject. */
+  .settings-nav {
+    flex-direction: column;
+    gap: 0;
+    position: sticky;
+    top: 1.5rem;
+    overflow-x: visible;
+    border-bottom: none;
+    border-right: 1px solid var(--rs-border);
+    margin-bottom: 0;
+  }
+
+  /* The underline becomes a marker down the side of the list: the same idea rotated, so the
+     selected tab still sits ON the list's own border rather than beside a second one. */
+  .settings-nav .tab {
+    text-align: left;
+    border-bottom: none;
+    border-right: 2px solid transparent;
+    margin-bottom: 0;
+    margin-right: -1px;
+  }
+
+  .settings-nav .tab.selected {
+    border-right-color: var(--rs-link);
+  }
+}
+
 .settings section {
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);
