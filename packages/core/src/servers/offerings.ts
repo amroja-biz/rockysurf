@@ -98,10 +98,16 @@ export function resolveOffering(offerings: readonly Offering[], requirements: Re
   const available = matching.filter((o) => o.available).sort(byPrice)
   const chosen = available[0]
   if (!chosen) {
+    // Lead with the provider's reason when every candidate gives the same one (Azure: no core
+    // quota, issue #116) — its remedy is a portal request, not waiting for stock.
+    const why = matching[0]?.unavailableReason
+    const unanimous = why !== undefined && matching.every((o) => o.unavailableReason === why)
     return {
       ok: false,
       soldOut: true,
-      reason: `every machine type meeting ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote} is sold out right now — try another size or architecture`,
+      reason: unanimous
+        ? `every machine type meeting ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote} is unavailable: ${why} — try another size or architecture`
+        : `every machine type meeting ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote} is sold out right now — try another size or architecture`,
     }
   }
 

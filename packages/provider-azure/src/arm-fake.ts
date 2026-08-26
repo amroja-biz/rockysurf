@@ -59,8 +59,21 @@ export interface FakeArmOptions {
     restricted?: boolean
     /** Defaults to `['V1', 'V2']` — the common case. Set to `['V1']` for a Gen1-only fixture. */
     hyperVGenerations?: string[]
+    /** Quota family. Defaults to one derived from the name, so every size has its own row. */
+    family?: string
   }[]
+  /**
+   * Core quota rows served from `locations/{location}/usages` (issue #116). When absent, every
+   * SKU family gets `limit: 10, currentValue: 0` and the regional total 100 — a subscription
+   * with room, which is what the tests written before quota existed assumed.
+   */
+  usages?: { family: string; limit: number; currentValue?: number }[]
+  /** The regional `cores` row. Defaults to limit 100. */
+  regionalCores?: { limit: number; currentValue?: number }
 }
+
+/** The quota family a fake SKU draws from, when the fixture did not name one. */
+const familyOf = (name: string): string => `fake${name.replace(/^Standard_/, '')}Family`
 
 const DEFAULT_SKUS: NonNullable<FakeArmOptions['skus']> = [
   { name: 'Standard_B2ls_v2', cpu: 2, memoryGb: 4, arch: 'x64' },
@@ -91,6 +104,8 @@ export class FakeArm {
   readonly resources = new Map<string, FakeResource>()
 
   private readonly skus: NonNullable<FakeArmOptions['skus']>
+  private readonly usages: FakeArmOptions['usages']
+  private readonly regionalCores: NonNullable<FakeArmOptions['regionalCores']>
   private readonly failures: ScriptedFailure[] = []
   private resourceGroupExists: boolean
   private addressCounter = 0
@@ -102,6 +117,8 @@ export class FakeArm {
     this.location = options.location ?? 'eastus'
     this.resourceGroupExists = options.resourceGroupExists ?? true
     this.skus = options.skus ?? DEFAULT_SKUS
+    this.usages = options.usages
+    this.regionalCores = options.regionalCores ?? { limit: 100 }
   }
 
   /** How many bearer tokens the fake Entra endpoint has issued. Proves the token cache works. */
@@ -214,6 +231,7 @@ export class FakeArm {
         value: this.skus.map((sku) => ({
           name: sku.name,
           resourceType: 'virtualMachines',
+          family: sku.family ?? familyOf(sku.name),
           locations: [this.location],
           capabilities: [
             { name: 'vCPUs', value: String(sku.cpu) },
@@ -231,6 +249,25 @@ export class FakeArm {
               ]
             : [],
         })),
+      })
+    }
+
+    // GET /subscriptions/{s}/providers/Microsoft.Compute/locations/{l}/usages — core quota
+    if (method === 'GET' && /\/providers\/Microsoft\.Compute\/locations\/[^/]+\/usages$/.test(pathOnly)) {
+      const families =
+        this.usages ??
+        this.skus.map((sku) => ({ family: sku.family ?? familyOf(sku.name), limit: 10, currentValue: 0 }))
+      const row = (value: string, limit: number, currentValue: number) => ({
+        name: { value, localizedValue: value },
+        currentValue,
+        limit,
+        unit: 'Count',
+      })
+      return json(200, {
+        value: [
+          row('cores', this.regionalCores.limit, this.regionalCores.currentValue ?? 0),
+          ...families.map((f) => row(f.family, f.limit, f.currentValue ?? 0)),
+        ],
       })
     }
 

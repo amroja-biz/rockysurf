@@ -58,6 +58,13 @@ export interface ArmVirtualMachine extends ArmResource {
 export interface ArmResourceSku {
   name?: string
   resourceType?: string
+  /**
+   * The quota family this size draws its cores from — `standardBpsv2Family`,
+   * `StandardDalsv7Family`. The key that joins a SKU to its row in `ArmUsage` (issue #116).
+   * Azure is not consistent about the leading capital between the two endpoints, so the join
+   * is case-insensitive.
+   */
+  family?: string
   locations?: string[]
   capabilities?: { name?: string; value?: string }[]
   restrictions?: {
@@ -67,6 +74,21 @@ export interface ArmResourceSku {
     reasonCode?: string
     restrictionInfo?: { locations?: string[]; zones?: string[] }
   }[]
+}
+
+/**
+ * One row of `Microsoft.Compute/locations/{location}/usages`: how many of something this
+ * subscription may run in the region, and how many it is running (issue #116).
+ *
+ * The rows that matter here are the per-family core quotas (`name.value` ending in `Family`)
+ * and the regional total (`cores`). A create that would take either past `limit` fails at the
+ * VM PUT with `OperationNotAllowed`, whatever `Microsoft.Compute/skus` said about the size.
+ */
+export interface ArmUsage {
+  name?: { value?: string; localizedValue?: string }
+  currentValue?: number
+  limit?: number
+  unit?: string
 }
 
 /* -------------------------------------------------------------------------------- network */

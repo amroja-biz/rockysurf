@@ -527,6 +527,8 @@ export interface Offering {
   /** `null` means the provider quoted no price. Unknown, never free. */
   hourly: Price | null
   available: boolean
+  /** The provider's own reason `available` is false, when it has one (Azure: core quota). */
+  unavailableReason?: string
   region: string
 }
 

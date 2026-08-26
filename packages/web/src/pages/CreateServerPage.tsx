@@ -513,10 +513,11 @@ function MachineTypePicker({
                       </td>
                       <td>
                         {!offering.available ? (
-                          // Every provider's own reason lands here where one exists (none does
-                          // on the wire today — see the component doc), so this generic
-                          // sentence is what every disabled row carries.
-                          <span className="warning">sold out right now</span>
+                          // The provider's own reason where it gives one — Azure says which
+                          // quota gate refused (issue #116) — and the generic sentence where
+                          // it does not. "Sold out" for a size the subscription has no quota
+                          // for would tell the user to wait for stock that never comes.
+                          <span className="warning">{offering.unavailableReason ?? 'sold out right now'}</span>
                         ) : (
                           <button
                             type="button"

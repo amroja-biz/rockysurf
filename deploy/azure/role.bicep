@@ -21,11 +21,12 @@ targetScope = 'subscription'
 // have to be granted resource-group write at SUBSCRIPTION scope, which means permission to
 // delete any resource group in the account.
 //
-// But two of the reads Rocky Surf needs are of resources that live ABOVE a resource group —
-// the list of VM sizes your subscription may order, and the list of regions it may use. No
-// resource-group-scoped role can grant those, whatever actions it names. So they are a second,
-// separate, read-only role at subscription scope. It reads AZURE'S OWN CATALOGUE, not the
-// contents of your account: what Microsoft sells you, not what you own.
+// But three of the reads Rocky Surf needs are of resources that live ABOVE a resource group —
+// the list of VM sizes your subscription may order, the core quota it may spend on them, and
+// the list of regions it may use. No resource-group-scoped role can grant those, whatever
+// actions it names. So they are a second, separate, read-only role at subscription scope. It
+// reads AZURE'S OWN CATALOGUE, not the contents of your account: what Microsoft sells you and
+// how much of it you are allowed, not what you own.
 //
 // STATUS: this role is REASONED FROM THE API CALLS THE PROVIDER MAKES and has NOT yet been
 // proven under a restricted principal. See the status note in docs/providers/azure.md.
@@ -122,16 +123,24 @@ var operationalActions = [
 ]
 
 // ---------------------------------------------------------------------------------------------
-// The catalogue role — read-only, subscription-scoped, two actions.
+// The catalogue role — read-only, subscription-scoped, three actions.
 //
 // These read what Azure will sell this subscription, never what the subscription contains: the
-// VM sizes available in a region together with any per-subscription restriction on them, and the
-// list of regions itself. Both live above a resource group, so no resource-group-scoped role can
-// grant them.
+// VM sizes available in a region together with any per-subscription restriction on them, the
+// core quota approved for each VM family there, and the list of regions itself. All three live
+// above a resource group, so no resource-group-scoped role can grant them.
 // ---------------------------------------------------------------------------------------------
 var catalogueActions = [
   'Microsoft.Compute/skus/read'
   'Microsoft.Resources/subscriptions/locations/read'
+  // Core quota per VM family and per region (issue #116). Azure gates a create twice — SKU
+  // restrictions, then approved quota — and only the first is visible through skus/read. On a
+  // fresh subscription most families sit at quota 0, so without this the size list offers
+  // machines the VM PUT will refuse. Read-only, subscription-scoped like the other two, and
+  // still Azure's catalogue rather than the account's contents: how many cores the
+  // subscription MAY run, not what it runs. A credential without it still works — the size
+  // list falls back to the SKU gate alone and the log says which action is missing.
+  'Microsoft.Compute/locations/usages/read'
 ]
 
 resource targetResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = {

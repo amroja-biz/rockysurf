@@ -98,29 +98,41 @@ the size list looks implausibly empty, check registration before believing it.
 
 ### Core quota is a separate gate from SKU availability
 
-**A size Rocky Surf offers you can still be refused by Azure**, and the two gates are not the same:
+**Azure gates a create twice**, and the two gates are not the same:
 
 | gate | what it answers | where Rocky Surf reads it |
 |---|---|---|
 | SKU restrictions | "do we sell this size in this region, to this subscription?" | `Microsoft.Compute/skus`, on the call that builds the size list |
-| core quota | "how many vCPUs of this FAMILY may this subscription run here?" | nowhere — see below |
+| core quota | "how many vCPUs of this FAMILY — and in this region in total — may this subscription run?" | `Microsoft.Compute/locations/{location}/usages`, on the same size-list call (issue #116) |
 
-The size list reflects only the first. A size can be perfectly unrestricted and still fail at
-create because the approved core quota for its VM family in that region is zero:
+A size can be perfectly unrestricted and still be refused at create because the approved core
+quota for its VM family in that region is zero. Azure's own words for that:
 
 ```
 OperationNotAllowed: Operation could not be completed as it results in exceeding approved
 standardBpsv2Family Cores quota. Location: eastus, Current Limit: 0, Additional Required: 2
 ```
 
-That message is passed through verbatim, and it carries the portal link that raises the limit.
-Raising quota is a human action with an approval behind it — sometimes instant, sometimes hours.
+**The size list now reads both gates.** A size whose family (or whose region as a whole) has no
+room for its vCPUs is listed as unavailable with the reason beside it — "no core quota for
+`standardBpsv2Family` in eastus (approved limit is 0 …)" — rather than as "sold out", because the
+remedy is different: sold-out stock comes back on its own; quota comes back when a human asks
+for it in the portal and Microsoft approves. Raising quota is sometimes instant and sometimes
+hours. The `small`/`medium`/`large` resolver skips those sizes, so the cheapest size *you can
+actually order* is what gets picked.
 
-**Rocky Surf does not read your quota, and that is a deliberate trade.** Quota lives in
-`Microsoft.Compute/locations/{location}/usages`, a different endpoint from the size catalogue, and
-granting it would widen the published `Rocky Surf Catalogue Reader` role. A narrower role that
-occasionally offers a size you cannot order was judged the better trade for v0.1; the alternative
-is tracked on `rockysurf-xmk0`.
+This is why the catalogue role holds `Microsoft.Compute/locations/usages/read`. It is read-only,
+subscription-scoped, and still Azure's catalogue rather than your account's contents — how many
+cores you *may* run, not what you run. **A credential without it is not broken**: the size list
+falls back to the SKU gate alone (the v0.1 behaviour: an occasional offered-but-unorderable
+size, refused at create with Azure's verbatim message and portal link), and the log names the
+missing action once. Redeploy `deploy/azure/role.bicep` to add it.
+
+How big the difference is: on a fresh Pay-As-You-Go subscription probed on 2026-08-26, **104 of
+232 quota rows sat at `limit: 0`**, including both B-series burstable families the resolver would
+otherwise pick first. The two families at 0 were exactly the two that failed at create; every
+family that succeeded reported 10. That agreement is what makes the endpoint trustworthy enough
+to gate on.
 
 Two practical consequences:
 
@@ -217,7 +229,8 @@ unavoidable rather than a convenience.
     "scope": "subscription",
     "actions": [
       "Microsoft.Compute/skus/read",
-      "Microsoft.Resources/subscriptions/locations/read"
+      "Microsoft.Resources/subscriptions/locations/read",
+      "Microsoft.Compute/locations/usages/read"
     ]
   }
 }
@@ -235,6 +248,12 @@ unavoidable rather than a convenience.
 > needs. Two honest limits on that claim: the run exercised the lifecycle, not every branch that
 > can call Azure, and it made no attempt to prove each action is individually necessary — an
 > entry could still be redundant without any run noticing.
+>
+> **One action postdates that run.** `Microsoft.Compute/locations/usages/read` was added to the
+> catalogue role on 2026-08-26 (issue #116) so the size list can read core quota, and has not yet
+> been exercised under a restricted principal. It is read-only and subscription-scoped like its
+> two neighbours. A credential without it is not broken: the size list falls back to SKU
+> availability alone and the log names the missing action once.
 >
 > **The AWS equivalent found a real bug the first time it was run**, which is why this block used
 > to warn that Azure was likely to have one too. Azure did — but not in the action list. The
@@ -263,17 +282,18 @@ from a fact about RBAC rather than from a design choice.
 to exactly that group. It cannot see, touch or delete anything else in your subscription. That
 scoping is why Rocky Surf does not create the group itself.
 
-**But two of the reads it needs are of things that live above a resource group.** To offer you a
-list of machine sizes, it asks Azure which VM sizes this subscription may order in your region
-and what each one's vCPU and memory are — `Microsoft.Compute/skus`. To tell you that a region
-name is wrong before it tries to build anything, it asks for the region list. Neither of those is
-*in* a resource group, so **no resource-group-scoped role can grant them**, whatever actions it
-names.
+**But three of the reads it needs are of things that live above a resource group.** To offer you
+a list of machine sizes, it asks Azure which VM sizes this subscription may order in your region
+and what each one's vCPU and memory are — `Microsoft.Compute/skus` — and how many cores of each
+family it is allowed to run there — `Microsoft.Compute/locations/usages`. To tell you that a
+region name is wrong before it tries to build anything, it asks for the region list. None of
+those is *in* a resource group, so **no resource-group-scoped role can grant them**, whatever
+actions it names.
 
-So they are a second role, at subscription scope, holding two read actions and nothing else.
+So they are a second role, at subscription scope, holding three read actions and nothing else.
 What it reads is **Azure's own catalogue, not the contents of your account**: what Microsoft will
-sell you, not what you own. It cannot enumerate your resources, read your data, or change
-anything.
+sell you and how much of it you are allowed, not what you own. It cannot enumerate your
+resources, read your data, or change anything.
 
 The alternative was granting the whole operational role at subscription scope so that one
 assignment covers everything. That would trade a role confined to one resource group for a role
@@ -326,6 +346,7 @@ The provider makes these calls and no others.
 | list the group's contents | `resourceGroups/resources/read` | The reconciler's whole input. See [below](#what-terminate-actually-deletes) for why it is a listing rather than a tag filter. |
 | list VM sizes | `skus/read` *(catalogue role)* | Both halves of an offering: vCPU and memory, and whether **this subscription** may order the size at all. |
 | list regions | `subscriptions/locations/read` *(catalogue role)* | So a typo'd region is an error at startup rather than a failed launch. |
+| read core quota | `locations/usages/read` *(catalogue role)* | The second gate on a create (issue #116): approved vCPUs per VM family and per region. A size with no room is listed as unavailable with the reason, instead of failing at the VM PUT. Optional in practice — without it the size list reflects the SKU gate alone. |
 | create the machine | `virtualMachines/write`, `disks/write` | Rocky Surf never PUTs a disk — the VM creates it from the image — but Azure evaluates that as a disk write. |
 | read it | `virtualMachines/read`, `virtualMachines/instanceView/read` | State and power state. |
 | power-cycle it | `virtualMachines/deallocate/action`, `virtualMachines/start/action` | **Deallocate, not power off.** Both preserve the disk and only one stops the compute bill: an Azure VM that is merely powered off is charged the full rate for doing nothing. |

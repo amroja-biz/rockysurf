@@ -63,6 +63,16 @@ export interface Offering {
    * them, so a size selector can explain itself.
    */
   available: boolean
+  /**
+   * Why `available` is false, in the provider's own words, when the provider can say.
+   *
+   * Optional and only meaningful beside `available: false`. A size selector that reads
+   * "sold out right now" for a size a subscription has no quota for is telling the user to
+   * wait for stock that will never come; the remedy for quota is a portal request, and only
+   * the provider knows which gate refused. Azure fills this in (issue #116); a provider with
+   * nothing better than "unavailable" to say leaves it out.
+   */
+  unavailableReason?: string
   /** Provider-native region/location id: 'us-east-1', 'fsn1'. */
   region: string
 }

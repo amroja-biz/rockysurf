@@ -801,3 +801,114 @@ describe('state mapping', () => {
     expect(vmNameFrom(undefined)).toBeUndefined()
   })
 })
+
+describe('core quota is the second gate on a create (issue #116)', () => {
+  const skus = [
+    { name: 'Standard_B2ps_v2', cpu: 2, memoryGb: 8, arch: 'Arm64' as const, family: 'standardBpsv2Family' },
+    { name: 'Standard_D2ps_v5', cpu: 2, memoryGb: 8, arch: 'Arm64' as const, family: 'standardDPSv5Family' },
+  ]
+
+  it('lists a size whose family has no approved quota as unavailable, and says why', async () => {
+    // The owner's subscription on 2026-08-26: B-series at 0, D-series at 10. The SKU gate said
+    // nothing about either; the VM PUT refused the first with OperationNotAllowed.
+    const fake = new FakeArm({
+      skus,
+      usages: [
+        { family: 'standardBpsv2Family', limit: 0 },
+        { family: 'standardDPSv5Family', limit: 10 },
+      ],
+    })
+    const offerings = await providerFor(fake).listOfferings()
+
+    const refused = offerings.find((o) => o.id === 'Standard_B2ps_v2')!
+    expect(refused.available).toBe(false)
+    expect(refused.unavailableReason).toContain('no core quota for standardBpsv2Family in eastus')
+    expect(refused.unavailableReason).toContain('Azure portal')
+
+    const allowed = offerings.find((o) => o.id === 'Standard_D2ps_v5')!
+    expect(allowed.available).toBe(true)
+    expect(allowed.unavailableReason).toBeUndefined()
+  })
+
+  it('counts cores already in use, so the last two cores of a family are not offered twice', async () => {
+    const fake = new FakeArm({ skus, usages: [{ family: 'standardBpsv2Family', limit: 4, currentValue: 3 }] })
+    const refused = (await providerFor(fake).listOfferings()).find((o) => o.id === 'Standard_B2ps_v2')!
+    expect(refused.available).toBe(false)
+    expect(refused.unavailableReason).toContain('limit 4, 3 in use, this size needs 2')
+  })
+
+  it("joins the family case-insensitively, because Azure's two endpoints disagree on the capital", async () => {
+    const fake = new FakeArm({ skus, usages: [{ family: 'STANDARDBPSV2FAMILY', limit: 0 }] })
+    const refused = (await providerFor(fake).listOfferings()).find((o) => o.id === 'Standard_B2ps_v2')!
+    expect(refused.available).toBe(false)
+  })
+
+  it('applies the regional total as well as the family', async () => {
+    const fake = new FakeArm({ skus, regionalCores: { limit: 10, currentValue: 9 } })
+    const offerings = await providerFor(fake).listOfferings()
+    expect(offerings.every((o) => !o.available)).toBe(true)
+    expect(offerings[0]!.unavailableReason).toContain('core quota for the region in eastus is exhausted')
+  })
+
+  it('does not refuse a family with no quota row — absence of evidence is not a refusal', async () => {
+    const fake = new FakeArm({ skus, usages: [{ family: 'somethingElseFamily', limit: 0 }] })
+    const offerings = await providerFor(fake).listOfferings()
+    expect(offerings.every((o) => o.available)).toBe(true)
+  })
+
+  it('gives the SKU restriction as the reason when that gate refuses first', async () => {
+    const fake = new FakeArm({ skus: [{ ...skus[0]!, restricted: true }] })
+    const refused = (await providerFor(fake).listOfferings())[0]!
+    expect(refused.available).toBe(false)
+    expect(refused.unavailableReason).toBe('not available to this subscription in eastus')
+  })
+
+  it('falls back to the SKU gate alone when the credential cannot read quota, and says so once', async () => {
+    // An installation still on the two-action Catalogue Reader role. The size list must not
+    // go dark, and nothing may be marked unavailable on the strength of a read that failed.
+    const fake = new FakeArm({ skus, usages: [{ family: 'standardBpsv2Family', limit: 0 }] })
+    fake.failNext('GET', '/usages', {
+      status: 403,
+      code: 'AuthorizationFailed',
+      message: "The client does not have authorization to perform action 'Microsoft.Compute/locations/usages/read'",
+    })
+    const warnings: string[] = []
+    const provider = makeAzureProvider({
+      config: configFor(fake),
+      priceFeed: feedOf(FEED),
+      fetchImpl: fake.fetch,
+      credentials: new CredentialChain({
+        fetchImpl: fake.fetch,
+        env: { AZURE_TENANT_ID: 'tenant', AZURE_CLIENT_ID: 'client', AZURE_CLIENT_SECRET: 'secret' },
+        allowAzureCli: false,
+      }),
+      sleep: async () => {},
+      maxRetries: 0,
+      log: (message) => warnings.push(message),
+    })
+
+    const first = await provider.listOfferings()
+    expect(first.every((o) => o.available)).toBe(true)
+    expect(first.every((o) => o.unavailableReason === undefined)).toBe(true)
+
+    await provider.listOfferings()
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('Microsoft.Compute/locations/usages/read')
+  })
+
+  it('makes the size resolver skip a quota-less family rather than offer it', async () => {
+    // Before this change `small` on Azure resolved to the cheapest B-series size, which is the
+    // family a fresh subscription has no quota for — the create then failed at the VM PUT.
+    const fake = new FakeArm({
+      skus,
+      usages: [
+        { family: 'standardBpsv2Family', limit: 0 },
+        { family: 'standardDPSv5Family', limit: 10 },
+      ],
+    })
+    const offerings = await providerFor(fake).listOfferings()
+    const cheapestAvailable = offerings.filter((o) => o.available).sort((a, b) => a.hourly!.amount - b.hourly!.amount)[0]
+    expect(cheapestAvailable?.id).toBe('Standard_D2ps_v5')
+  })
+})
+

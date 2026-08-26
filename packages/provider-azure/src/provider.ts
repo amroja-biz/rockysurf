@@ -28,6 +28,7 @@ import type {
   ArmResourceSku,
   ArmVirtualMachine,
   ArmVirtualNetwork,
+ ArmUsage,
 } from './types.js'
 
 /**
@@ -234,7 +235,14 @@ export interface AzureProviderOptions {
   absenceGrace?: { attempts: number; delayMs: number }
   /** Injected by tests; production builds a `PriceFeedClient` from the config. */
   priceFeed?: { get(): Promise<PriceFeedDoc | null> }
+  /** Where one-line operational warnings go. Defaults to `console.warn`. */
+  log?: (message: string) => void
 }
+
+/** How long a quota read is believed. `currentValue` moves with every create, including ours. */
+const QUOTA_TTL_MS = 60_000
+/** How long an unreadable quota is not retried, so a sick endpoint costs one attempt a minute. */
+const QUOTA_RETRY_MS = 30_000
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
@@ -242,6 +250,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
   const { config } = options
   const { subscriptionId, resourceGroup, location, managedBy } = config
   const priceFeed = options.priceFeed ?? new PriceFeedClient(config.pricesUrl, config.pricesRefreshHours)
+  const log = options.log ?? ((message: string) => console.warn(message))
 
   const credentials =
     options.credentials ??
@@ -285,6 +294,9 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
   let subnetId: string | undefined
   let nsgId: string | undefined
   let skuCache: ArmResourceSku[] | undefined
+  let quota: { until: number; value: readonly ArmUsage[] | null } | undefined
+  let quotaInflight: Promise<readonly ArmUsage[] | null> | undefined
+  let quotaUnreadableReported = false
 
   const groupPath = () => resourceGroupPath(subscriptionId, resourceGroup)
   const vmPath = (name: string) =>
@@ -542,6 +554,52 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     return skuCache
   }
 
+  /**
+   * The region's core quota — the second gate on a create, which `Microsoft.Compute/skus`
+   * knows nothing about (issue #116). See `quotaRefusal()` in offerings.ts for what is done
+   * with it.
+   *
+   * Cached briefly rather than per process like the SKUs: `currentValue` moves with every
+   * machine this subscription creates, including ours, so a catalogue read a minute after a
+   * launch should see the cores it consumed. Single-flight, same as the price feed.
+   *
+   * NULL MEANS "COULD NOT READ", NEVER "NO QUOTA". The published `Rocky Surf Catalogue Reader`
+   * role gained `locations/usages/read` with this change, and an installation still on the
+   * previous role gets `AuthorizationFailed` here. That must not take the create form down or
+   * mark every size unavailable: it degrades to the SKU gate alone — the v0.1 behaviour — and
+   * says so once in the log, naming the action to add. Any other failure degrades the same way
+   * for a shorter window; the catalogue is more useful stale than absent.
+   */
+  async function coreQuota(): Promise<readonly ArmUsage[] | null> {
+    if (quota && Date.now() < quota.until) return quota.value
+    quotaInflight ??= (async () => {
+      try {
+        const value = await api.collect<ArmUsage>(
+          `/subscriptions/${subscriptionId}/providers/Microsoft.Compute/locations/${location}/usages`,
+          API_VERSIONS.compute,
+        )
+        quota = { until: Date.now() + QUOTA_TTL_MS, value }
+        return value
+      } catch (err) {
+        const unauthorised = err instanceof ProviderError && err.code === 'auth'
+        if (unauthorised && !quotaUnreadableReported) {
+          quotaUnreadableReported = true
+          log(
+            `[azure] core quota for ${location} is not readable by this credential, so the size list ` +
+              'reflects SKU availability only and a size may still be refused for quota at create. ' +
+              'Grant Microsoft.Compute/locations/usages/read (the current Rocky Surf Catalogue Reader ' +
+              `role has it; redeploy deploy/azure/role.bicep). ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+        quota = { until: Date.now() + (unauthorised ? QUOTA_TTL_MS : QUOTA_RETRY_MS), value: null }
+        return null
+      } finally {
+        quotaInflight = undefined
+      }
+    })()
+    return quotaInflight
+  }
+
   const provider: ComputeProvider = {
     id: AZURE_PROVIDER_ID,
     displayName: 'Microsoft Azure',
@@ -631,7 +689,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     },
 
     async listOfferings(): Promise<Offering[]> {
-      return buildOfferings(await resourceSkus(), location, config.osDiskGb, await priceFeed.get())
+      return buildOfferings(await resourceSkus(), location, config.osDiskGb, await priceFeed.get(), await coreQuota())
     },
 
     /**
