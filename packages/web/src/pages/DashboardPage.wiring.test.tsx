@@ -117,6 +117,19 @@ const STALE = {
   syncError: 'could not obtain Google Cloud credentials. Run `gcloud auth application-default login`.',
 }
 
+/** A second cloud, so "grouped by provider" (issue #121) is a claim with two sides to it. */
+const ON_ANOTHER_CLOUD = { ...RUNNING, serverId: 'srv-other', name: 'other-box', provider: 'other' }
+
+/**
+ * A box on a cloud the provider list does not carry — a bring-your-own machine, or a provider
+ * the operator has since removed from their config. The row is still real and must still be on
+ * the page; there is simply no display name to put over it.
+ */
+const ON_AN_UNLISTED_CLOUD = { ...RUNNING, serverId: 'srv-byo', name: 'byo-box', provider: 'byo' }
+
+/** And the degenerate case: a row that names no provider at all. */
+const ON_NO_CLOUD = { ...RUNNING, serverId: 'srv-none', name: 'nameless-box', provider: '' }
+
 const CAPABILITIES = {
   stop: true,
   ipStableAcrossStop: true,
@@ -145,8 +158,14 @@ beforeEach(async () => {
     }
 
     if (url.pathname === '/api/v1/auth/me') return json({ user: USER })
+    // Two configured clouds, because the grouping this page does (issue #121) is only a real
+    // question once there is more than one — and because a display name is only demonstrably
+    // looked up per group when the two names differ.
     if (url.pathname === '/api/v1/providers')
-      return json([{ id: 'fake', displayName: 'Fake', capabilities: CAPABILITIES }])
+      return json([
+        { id: 'fake', displayName: 'Fake', capabilities: CAPABILITIES },
+        { id: 'other', displayName: 'Another Cloud', capabilities: CAPABILITIES },
+      ])
     if (url.pathname === '/api/v1/surge-packs') return json([])
     if (url.pathname === '/api/v1/servers') return json(rows)
 
@@ -366,6 +385,21 @@ describe('a failed row whose machine is still running', () => {
     expect(reason!.textContent).toBe('clone failed: repository not found')
   })
 
+  it('keeps the whole reason on the element it folds, so the truncation loses nothing (issue #128)', async () => {
+    // A provider's refusal can be a page of prose — Azure's quota message is nine sentences and
+    // three URLs — and the card shows its first lines so one bad row does not become a card
+    // thirty times the height of the one beside it. The text itself stays in the DOM for a
+    // screen reader, and in `title` for a hover; the detail page renders the account in full.
+    const reason = 'quota: ' + 'https://aka.ms/ProdportalCRP/#blade/Microsoft_Azure_Capacity/'.repeat(6)
+    rows = [{ ...FAILED_BUT_BILLING, errorMessage: reason }]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const alert = cardFor(container, 'dev-box').querySelector('[role="alert"]')!
+    expect(alert.textContent).toBe(reason)
+    expect(alert.getAttribute('title')).toBe(reason)
+  })
+
   it('says nothing of the kind on a healthy running box', async () => {
     rows = [RUNNING]
     const { container } = renderPage()
@@ -446,6 +480,100 @@ describe('a provider whose credentials expired (rockysurf-gg9x)', () => {
   })
 })
 
+/**
+ * Which cloud a box is on, and when it was created (issue #121).
+ *
+ * The report: "the servers page lists running servers but doesn't say which cloud they are
+ * on". The fact was on every row all along — `provider` — and the page put every card in one
+ * undifferentiated grid. What these pin is the wiring between the row's `provider`, the
+ * display name the provider list gives it, and the heading the group renders under; and the
+ * shape of the created stamp, whose formatter has its own unit test in `lib/format.test.ts`.
+ */
+describe('the fleet, grouped by the cloud each box is on', () => {
+  const groups = (container: HTMLElement) => [...container.querySelectorAll('.provider-group')] as HTMLElement[]
+  const headings = (container: HTMLElement) =>
+    groups(container).map((group) => group.querySelector('.provider-group-heading')!.firstChild!.textContent)
+
+  it('gives each cloud its own heading, by the display name the provider list reports', async () => {
+    rows = [RUNNING, ON_ANOTHER_CLOUD]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(groups(container)).toHaveLength(2))
+    // Alphabetical by name, so a create landing or a terminate emptying a cloud does not
+    // reshuffle the page under the reader.
+    expect(headings(container)).toEqual(['Another Cloud', 'Fake'])
+
+    // And each card is inside its own cloud's group, which is the claim the heading makes.
+    const [another, fake] = groups(container)
+    expect(cardFor(another!, 'other-box')).toBeTruthy()
+    expect(cardFor(fake!, 'dev-box')).toBeTruthy()
+    expect(another!.querySelectorAll('.server-card')).toHaveLength(1)
+  })
+
+  it('counts the boxes in each group, singular and plural', async () => {
+    rows = [RUNNING, UNPRICED, ON_ANOTHER_CLOUD]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(groups(container)).toHaveLength(2))
+    const counts = groups(container).map((group) => group.querySelector('.provider-group-count')!.textContent)
+    expect(counts).toEqual(['1 server', '2 servers'])
+  })
+
+  it('still shows a box on a cloud the provider list has never heard of', async () => {
+    // A bring-your-own machine, or a cloud the operator has removed from their config since
+    // this row was created. There is no display name to look up, so the group wears the id —
+    // which still answers the question — rather than swallowing the row.
+    rows = [RUNNING, ON_AN_UNLISTED_CLOUD]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(groups(container)).toHaveLength(2))
+    expect(headings(container)).toContain('byo')
+    const byo = groups(container).find((group) => group.textContent?.includes('byo-box'))!
+    expect(cardFor(byo, 'byo-box')).toBeTruthy()
+  })
+
+  it('puts a row naming no cloud at all in one generic group, last', async () => {
+    rows = [ON_NO_CLOUD, RUNNING]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(groups(container)).toHaveLength(2))
+    // Last, because a heading that says nothing should not be the first thing read.
+    expect(headings(container)).toEqual(['Fake', 'Other'])
+    expect(cardFor(groups(container)[1]!, 'nameless-box')).toBeTruthy()
+  })
+
+  it('stamps each card with when the box was created, as YYYY-MON-DD HH:MI', async () => {
+    rows = [RUNNING]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    // Built from local parts so the expectation holds in CI's UTC and on a laptop alike —
+    // the stamp is deliberately in the reader's own timezone.
+    const created = new Date(BASE.createdAt)
+    const pad = (value: number) => String(value).padStart(2, '0')
+    const month = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][
+      created.getMonth()
+    ]
+    const expected = `${created.getFullYear()}-${month}-${pad(created.getDate())} ${pad(created.getHours())}:${pad(created.getMinutes())}`
+
+    expect(value(cardFor(container, 'dev-box'), 'Created').textContent).toBe(expected)
+    expect(expected).toMatch(/^\d{4}-[A-Z]{3}-\d{2} \d{2}:\d{2}$/)
+  })
+
+  it('writes the same stamp on the detail page, which is served the same row', async () => {
+    rows = [RUNNING]
+    const list = renderPage()
+    await waitFor(() => expect(cardFor(list.container, 'dev-box')).toBeTruthy())
+    const onTheCard = value(cardFor(list.container, 'dev-box'), 'Created').textContent
+    list.unmount()
+
+    const detail = renderDetail(SERVER_ID)
+    await waitFor(() => expect(detail.container.querySelector('.server-summary')).toBeTruthy())
+    const summary = detail.container.querySelector('.server-summary') as HTMLElement
+    expect(value(summary, 'Created').textContent).toBe(onTheCard)
+  })
+})
+
 describe("the row shape the SPA declares", () => {
   function corePresentKeys(): string[] {
     const relative = '../../../core/src/servers/routes.ts'
@@ -483,7 +611,16 @@ describe("the row shape the SPA declares", () => {
 
   it('and so are the fixtures in this file', () => {
     const sent = corePresentKeys()
-    for (const row of [STOPPED, RUNNING, UNPRICED, FAILED_BUT_BILLING, STALE]) {
+    for (const row of [
+      STOPPED,
+      RUNNING,
+      UNPRICED,
+      FAILED_BUT_BILLING,
+      STALE,
+      ON_ANOTHER_CLOUD,
+      ON_AN_UNLISTED_CLOUD,
+      ON_NO_CLOUD,
+    ]) {
       expect(Object.keys(row).filter((key) => !sent.includes(key))).toEqual([])
     }
   })

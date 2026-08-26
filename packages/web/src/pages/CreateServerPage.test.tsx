@@ -1285,6 +1285,19 @@ describe('the machine type picker', () => {
     expect(within(row).queryByRole('button', { name: /^select$/i })).toBeNull()
   })
 
+  it('states the reason as text, not as a page-level warning banner (issue #113)', async () => {
+    await openPicker()
+
+    // `.warning` is a block notice — border, background, a rem of horizontal padding — and an
+    // inline span inside a table cell wearing it painted that box outside the table, over the
+    // rows above and below. The colour is what carries the meaning in a cell; the box was only
+    // ever leaking.
+    const row = screen.getByRole('cell', { name: 'sold-out-type' }).closest('tr')!
+    const reason = within(row).getByText(/sold out right now/i)
+    expect(reason.classList.contains('warning')).toBe(false)
+    expect(reason.classList.contains('unavailable')).toBe(true)
+  })
+
   it("shows the provider's own reason instead of \"sold out\" when it gives one (issue #116)", async () => {
     await openPicker()
 

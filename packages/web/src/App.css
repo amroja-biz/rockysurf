@@ -648,6 +648,33 @@ button.destructive:hover:not(:disabled),
 /* ── Server cards ──────────────────────────────────────────────────────────────────────
    Ported from the legacy grid and card, which the port kept by name. */
 
+/* One heading per cloud, above that cloud's grid (issue #121). The dashboard listed every
+   box in a single grid and never said which provider any of them was on; the heading answers
+   that once for a group rather than putting a badge on every card, and it uses the section
+   vocabulary the rest of the app already has — a quiet rule under a heading — rather than
+   introducing tabs or colour-coding. */
+.provider-group + .provider-group {
+  margin-top: 1.75rem;
+}
+
+.provider-group-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rs-border-subtle);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--rs-heading);
+}
+
+.provider-group-count {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
 .server-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -662,6 +689,35 @@ button.destructive:hover:not(:disabled),
   padding: 1rem;
   color: inherit;
   transition: border-color 0.15s ease;
+  /* A card is a grid item, and a grid item's default `min-width: auto` means "at least as wide
+     as my longest unbreakable run of characters". An Azure quota refusal arrives as one
+     400-character URL, so the card grew past its track and its text ran out over the page and
+     over the card beside it (issue #128). `min-width: 0` lets the track decide the width;
+     `overflow-wrap: anywhere` gives that URL — and a long server name, an offering id, a
+     v6 address — somewhere to break, so the card gets taller instead of wider. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The failure reason, clamped (issue #128).
+ *
+ * A provider's refusal can be a full page of prose — Azure's quota message is nine sentences
+ * and three URLs — and rendering all of it made one card thirty times the height of the card
+ * beside it, which is what turned the grid into the ragged column in the report. The first
+ * lines are the diagnosis; the rest is for the detail page, which has a column to itself and
+ * renders the whole report. The full text stays in the DOM for a screen reader and in the
+ * `title` for a hover, so nothing is lost — only folded.
+ */
+.server-card-error {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--rs-red);
 }
 
 .server-card:hover {
@@ -698,8 +754,28 @@ button.destructive:hover:not(:disabled),
   font-size: 0.875rem;
 }
 
-.server-meta dt {
+/*
+ * The pairs, hoisted into the grid above (issue #128).
+ *
+ * HTML groups a term with its description by wrapping the two in a `<div>`, and that wrapper
+ * was also the grid's item — so the grid laid out the three WRAPPERS in its `auto 1fr`
+ * columns, not the six terms inside them. `Address` and `Uptime` ended up side by side as if
+ * they were a label and a value, each with its own value stacked underneath and pushed to the
+ * right, and `Cost` started a second row on its own. That is the misaligned card in the
+ * report. `display: contents` drops the wrapper box and lets its dt and dd be the grid's items,
+ * which is the layout the two columns were written for: label left, value right, one pair per
+ * row. Same wrapper, same bug, on the detail page's summary list.
+ */
+.server-meta > div,
+.server-summary dl > div {
+  display: contents;
+}
+
+.server-meta dt,
+.server-summary dl dt {
   color: var(--rs-muted);
+  /* The labels are two words at most; wrapping one to save a few pixels costs a whole row. */
+  white-space: nowrap;
 }
 
 .server-meta dd {
@@ -708,7 +784,10 @@ button.destructive:hover:not(:disabled),
   text-align: right;
   font-family: var(--rs-mono);
   font-size: 0.8125rem;
-  word-break: break-all;
+  /* `break-all` was breaking `2026-AUG-26` after the `2026-` on a narrow card, because it
+     breaks anywhere at all rather than only where nothing else will do. `anywhere` takes the
+     word boundary when there is one and splits a 60-character offering id when there is not. */
+  overflow-wrap: anywhere;
 }
 
 .provisioning-step {
@@ -1143,6 +1222,54 @@ tbody tr:hover td {
 
 .machine-picker-table-wrap {
   overflow-x: auto;
+  /* The scroller is also the containing block for what it scrolls. Without this, the Select
+     column's `.sr-only` header — `position: absolute`, so it looks for the nearest POSITIONED
+     ancestor and finds none — lands at its static position measured against the page, which is
+     off the right of a narrow screen once the table is wider than the form column. That gave
+     the whole page a horizontal scrollbar to reach a span nobody can see. Positioned here, the
+     span belongs to the scroller and is clipped with everything else. */
+  position: relative;
+}
+
+/*
+ * The table states its own width; the wrapper above scrolls when that does not fit (issue #113).
+ *
+ * The shared `table { width: 100% }` rule made the browser fit eight columns into the form
+ * column no matter how little room that left each one, and the wrapper's `overflow-x` never
+ * had anything to scroll: instead every cell wrapped. `30 GB` broke into two lines, the arch
+ * badge split into `x86-` and `64`, and the header row stopped lining up with anything under
+ * it. `min-width: 100%` keeps the table filling the form on a wide screen; `width: auto` lets
+ * the columns win on a narrow one, which is what the scroll container was built for.
+ */
+.machine-picker-table-wrap table {
+  width: auto;
+  min-width: 100%;
+}
+
+/* Values, not prose: a size, a core count and a region are read as units and are never worth
+   breaking. The reason cell below is the one exception, and says so. */
+.machine-picker-table-wrap td {
+  white-space: nowrap;
+}
+
+/*
+ * Why a row cannot be bought, as text rather than as a banner (issue #113).
+ *
+ * This carried `.warning`, which is a page-level notice: a block with a border, a background
+ * and a rem of horizontal padding. On an inline `<span>` inside a table cell that padding and
+ * border render outside the line box, so the yellow box hung over the edge of the table and
+ * across the rows above and below it — the artefact in the report. The colour is what carries
+ * the meaning here; the box was never doing anything but leaking. It is also the one cell that
+ * must wrap, because a provider's reason is a sentence (Azure names the quota family and the
+ * approved limit, issue #116) rather than a value.
+ */
+.machine-picker .unavailable {
+  display: inline-block;
+  max-width: 18rem;
+  white-space: normal;
+  color: var(--rs-yellow);
+  font-size: 0.8125rem;
+  line-height: 1.4;
 }
 
 .machine-picker tr.selected td {

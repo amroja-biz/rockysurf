@@ -117,15 +117,13 @@ export function formatCostCell(server: { hourlyCost?: Price; estimatedTotalCost:
   return { text: formatCost(server.estimatedTotalCost, server.hourlyCost.currency), title: ESTIMATE_HINT }
 }
 
-export function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
 /**
  * Date AND time of day, for a fact whose hour matters.
  *
- * `formatDate` is right for "created 12 Aug"; it is wrong for "billing confirmed from", where
+ * A bare date is right for "created 12 Aug"; it is wrong for "billing confirmed from", where
  * the whole point is how many hours have been counted and how many have not (rockysurf-4byx).
+ * This is the prose form, for a sentence; `formatTimestamp` below is the column form, for a
+ * value beside a label.
  */
 export function formatDateTime(isoString: string): string {
   return new Date(isoString).toLocaleString(undefined, {
@@ -134,4 +132,55 @@ export function formatDateTime(isoString: string): string {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+/**
+ * The month names `formatTimestamp` writes, deliberately not locale ones.
+ *
+ * `Intl` would happily give a localised abbreviation, and that is exactly what this format is
+ * not: the shape below is a fixed, sortable stamp whose month is spelled out so `03` can never
+ * be read as a day. Half-localising it — a French month inside an ISO-shaped stamp — would be
+ * a third format nobody asked for.
+ */
+const MONTH_ABBREVIATIONS = [
+  'JAN',
+  'FEB',
+  'MAR',
+  'APR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AUG',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DEC',
+]
+
+/**
+ * `YYYY-MON-DD HH:MI`, in the reader's own timezone (issue #121).
+ *
+ * The card and the detail page both show when a box was created, and "12 Aug 2026" answers a
+ * different question than the one an owner looking at a fleet asks: which of these did I start
+ * this morning. So the stamp carries the hour, sorts as text because the year leads, and names
+ * the month rather than numbering it — the one part of an ISO stamp that is ambiguous between
+ * conventions.
+ *
+ * LOCAL TIME, not UTC. Core stores and sends UTC; a person reading their own dashboard is
+ * comparing this against their own clock, and a stamp three hours off theirs is worse than no
+ * stamp. There is no suffix because there is no choice to disclose: every timestamp the SPA
+ * renders is already local.
+ *
+ * A dash for anything that is not a date — an absent field, or a string `Date` could not parse
+ * — rather than the literal `Invalid Date` that reached the DOM before this existed.
+ */
+export function formatTimestamp(isoString: string | null | undefined): string {
+  if (!isoString) return '—'
+  const date = new Date(isoString)
+  if (Number.isNaN(date.getTime())) return '—'
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return (
+    `${date.getFullYear()}-${MONTH_ABBREVIATIONS[date.getMonth()]}-${pad(date.getDate())}` +
+    ` ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  )
 }

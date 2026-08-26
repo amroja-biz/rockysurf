@@ -517,7 +517,10 @@ function MachineTypePicker({
                           // quota gate refused (issue #116) — and the generic sentence where
                           // it does not. "Sold out" for a size the subscription has no quota
                           // for would tell the user to wait for stock that never comes.
-                          <span className="warning">{offering.unavailableReason ?? 'sold out right now'}</span>
+                          // `.unavailable`, not `.warning`: the latter is a page-level notice
+                          // with a border and a rem of padding, and an inline span wearing it
+                          // inside a table cell painted a box outside the table (issue #113).
+                          <span className="unavailable">{offering.unavailableReason ?? 'sold out right now'}</span>
                         ) : (
                           <button
                             type="button"
