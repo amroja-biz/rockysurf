@@ -312,6 +312,101 @@ describe('a failed row whose machine core released (ADR-0010)', () => {
   })
 })
 
+/**
+ * A TERMINATED SERVER, READ BACK AS HISTORY (issue #125).
+ *
+ * The report: the recent-activity list names boxes that have come and gone, and clicking one
+ * led nowhere. Making it lead HERE is only half the fix — the page a user lands on was built
+ * to drive a live machine, and a control panel offering Terminate, an SSH command and a
+ * download for a box whose disk is gone is worse than no page at all.
+ *
+ * So this is the other half: the same page, in a mode where it reports rather than controls.
+ * The assertions are deliberately split in two — what the record MUST still say (placement,
+ * size, pack, tools, repositories, what it cost, when it ended) and what must have gone (every
+ * affordance that needs a machine to exist). A test that only checked the first half would pass
+ * on a page that still offered to SSH into nothing.
+ */
+describe('a terminated server, read back as history (issue #125)', () => {
+  /** The row core serves for a box that is gone: no address left to act on, totals frozen. */
+  const TERMINATED = {
+    ...SERVER,
+    status: 'terminated',
+    provisioningStep: 'ready',
+    region: 'fake-1',
+    description: 'the box that built the release',
+    repositories: ['https://github.com/example/app'],
+    publicIp: '203.0.113.9',
+    consoleUrl: 'https://console.example.test/i/abc',
+    hourlyCost: { amount: 0.1, currency: 'USD', fetchedAt: '2026-08-12T00:00:00Z' },
+    totalUptimeSeconds: 5400,
+    estimatedTotalCost: 0.15,
+    startedAt: '2026-08-12T00:05:00.000Z',
+    terminatedAt: '2026-08-12T01:35:00.000Z',
+  }
+
+  it('says plainly that the machine is gone, and dates it', async () => {
+    row = { ...TERMINATED }
+    renderPage()
+
+    const notice = await screen.findByTestId('historical-notice')
+    expect(notice.textContent).toContain('terminated')
+    // Not "something went wrong": this is a record being read back, and the page says what it is.
+    expect(notice.textContent).toContain('record of how it was configured')
+  })
+
+  it('still answers how the box was configured, which is the whole point of keeping the row', async () => {
+    row = { ...TERMINATED }
+    renderPage()
+
+    // Placement: the cloud and the region. `region` had never been on the wire before this.
+    await waitFor(() => expect(screen.getByTestId('server-placement').textContent).toContain('Fake'))
+    expect(screen.getByTestId('server-placement').textContent).toContain('fake-1')
+    // The machine that was bought, and the pack that was installed on it.
+    expect(screen.getByText(/fake-small/)).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('server-pack').textContent).toBe('A Pack'))
+    // What it was built to work on.
+    expect(screen.getByText('https://github.com/example/app')).toBeTruthy()
+    // The user's own words about it, still shown — just no longer editable.
+    expect(screen.getByTestId('server-description').textContent).toContain('the box that built the release')
+    // The two ends of its life, and what the meter ended up at.
+    expect(screen.getByTestId('server-terminated-at')).toBeTruthy()
+    expect(screen.getByText('Total uptime')).toBeTruthy()
+    expect(screen.getByText('Estimated cost, final')).toBeTruthy()
+    expect(screen.getByText('$0.15')).toBeTruthy()
+  })
+
+  it('offers nothing that needs the machine to exist', async () => {
+    row = { ...TERMINATED }
+    renderPage()
+    await screen.findByTestId('historical-notice')
+
+    // Lifecycle actions: there is nothing left to stop, start, terminate or dismiss.
+    for (const label of ['Stop', 'Start', 'Terminate', 'Dismiss']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    }
+    // Connect: no SSH command, and no key to download for a disk that is gone.
+    expect(screen.queryByText('Connect')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Download .*\.pem/ })).toBeNull()
+    // The record is read-only — renaming a box that no longer exists rewrites history for nobody.
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    // And no link into a provider console for an instance the provider no longer has.
+    expect(screen.queryByRole('link', { name: /console/ })).toBeNull()
+  })
+
+  it('keeps every one of those affordances on a running box', async () => {
+    // The control half of the pair: the same page, the same fixtures, one field different.
+    row = { ...TERMINATED, status: 'running', terminatedAt: undefined }
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminate' })).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy()
+    expect(screen.getByText('Connect')).toBeTruthy()
+    expect(screen.queryByTestId('historical-notice')).toBeNull()
+    // Placement is not a historical-only fact — a live box says where it is too.
+    expect(screen.getByTestId('server-placement').textContent).toContain('fake-1')
+  })
+})
+
 describe("the pack's post-boot guide (rockysurf-7ckx)", () => {
   it('is hidden while the box is still building and appears when it is running', async () => {
     renderPage()

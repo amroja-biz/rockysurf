@@ -176,9 +176,10 @@ describe('login, then a live event', () => {
 
     // Signed in: the dashboard replaced the login form, and it lists the server.
     expect(await screen.findByRole('heading', { name: /servers/i })).toBeDefined()
-    // By role: the name also appears in the activity feed, and the card's link is the one
-    // that means "this server is listed".
-    expect(await screen.findByRole('link', { name: 'dev-box' })).toBeDefined()
+    // By HEADING, not by link: the name appears in the activity feed too, and since issue #125
+    // that entry is a link as well — so "the only link with this name" stopped identifying the
+    // card. The card's name is its `<h3>`, which is what "this server is listed" means here.
+    expect(await screen.findByRole('heading', { name: 'dev-box' })).toBeDefined()
     expect(await screen.findByText('Provisioning')).toBeDefined()
 
     // The stream opened and core greeted us.

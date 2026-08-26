@@ -215,13 +215,27 @@ function safeFingerprint(publicKeyLine: string): string | undefined {
  * API, and on the size-only create path that is a second read of a list the route just fetched —
  * paid knowingly, because a create is not a hot path and pricing every caller by construction is
  * worth one catalogue call.
+ *
+ * It also carries the REGION back (issue #125), from the same catalogue read rather than a
+ * second one. `servers.region` has existed since the first migration and nothing has ever
+ * written it — which nobody noticed while every question about placement could be answered from
+ * a live box's address and console link, and which becomes the missing fact the moment the box
+ * is gone and the row is all that is left. An `Offering` is "one machine type in one region", so
+ * the offering the create resolved is the authority on where the box went; core never infers one
+ * from configuration, which would record what the file says today rather than what was bought.
+ * Undefined when the catalogue could not be read, exactly like the price — same read, same
+ * failure, and a guessed region on a cost-bearing row is worse than none.
  */
-async function priceOffering(provider: ComputeProvider, offeringId: string): Promise<Price | null> {
+async function describeOffering(
+  provider: ComputeProvider,
+  offeringId: string,
+): Promise<{ hourly: Price | null; region?: string }> {
   try {
     const offerings = await provider.listOfferings()
-    return offerings.find((offering) => offering.id === offeringId)?.hourly ?? null
+    const offering = offerings.find((candidate) => candidate.id === offeringId)
+    return { hourly: offering?.hourly ?? null, ...(offering?.region ? { region: offering.region } : {}) }
   } catch {
-    return null
+    return { hourly: null }
   }
 }
 
@@ -726,9 +740,10 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // core has a public URL and the caller asked for callback (ADR-0002).
       const bootstrapMode = deps.selectBootstrapMode?.() ?? 'push'
 
-      // The price, before the row is written, because it is a column on it too. After the
-      // limits check so a refused create never asks a provider anything (see `priceOffering`).
-      const hourlyCost = await priceOffering(provider, input.offeringId)
+      // The price AND the region, before the row is written, because both are columns on it.
+      // After the limits check so a refused create never asks a provider anything (see
+      // `describeOffering`) — and one catalogue read for the two of them.
+      const { hourly: hourlyCost, region } = await describeOffering(provider, input.offeringId)
 
       /* ---- STEP 1: the row, FIRST, in `requested`. ---- */
       const row = insertServer(db, {
@@ -739,6 +754,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         size: input.size,
         offeringId: input.offeringId,
         arch: input.arch,
+        ...(region ? { region } : {}),
         idempotencyKey,
         bootstrapMode,
         hourlyCost,

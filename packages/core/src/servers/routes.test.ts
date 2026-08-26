@@ -103,6 +103,51 @@ describe('the routes the SPA already calls', () => {
     expect((await get('/api/v1/servers/srv-nope')).status).toBe(404)
   })
 
+  /**
+   * A TERMINATED ROW IS STILL READABLE, AND STILL SAYS HOW THE BOX WAS BUILT (issue #125).
+   *
+   * The report: the servers page lists boxes that have come and gone, and there was no way to
+   * click one and see what it was. The route was never the obstacle — `syncObserved` skips the
+   * provider call for a terminated row and serves what is stored, and nothing in the repository
+   * ever deletes a server — but nothing pinned either fact, so a later "prune terminated rows"
+   * or a stricter status filter would take the history with it and no test would notice.
+   *
+   * What is asserted is the CONFIGURATION, not the status: provider, region, size, offering,
+   * architecture, pack, tools, repositories and the two timestamps that bracket the box's life.
+   * That list is the answer to "how was this thing configured", which is the question the issue
+   * asks and the one a row with a dead machine can still answer.
+   */
+  it('serves a terminated server as the record of how it was configured', async () => {
+    const created = (await (
+      await post('/api/v1/servers', { ...CREATE, name: 'gone-box', repositories: [] })
+    ).json()) as { serverId: string }
+    await post(`/api/v1/servers/${created.serverId}/terminate`)
+
+    const res = await get(`/api/v1/servers/${created.serverId}`)
+    // Not a 404, and not filtered out of the list either: the row outlives the machine.
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['status']).toBe('terminated')
+    expect(body['terminatedAt']).toEqual(expect.any(String))
+    expect(body['createdAt']).toEqual(expect.any(String))
+
+    // The placement and the shape of the machine, which is what "how was it configured" means.
+    expect(body['provider']).toBe('fake')
+    // Stamped at create from the resolved offering — the column existed and nothing wrote it.
+    expect(body['region']).toBe('fake-1')
+    expect(body['size']).toBe('small')
+    expect(body['offeringId']).toBe('fake-small')
+    expect(body['arch']).toBeTruthy()
+    expect(body['packId']).toBe('ai-coding-agents')
+    expect(body['tools']).toEqual(expect.any(Array))
+    expect(body['repositories']).toEqual(expect.any(Array))
+
+    // And it is still the user's own row: another account's terminated server is still a 404,
+    // which is the ownership check this feature must not quietly widen.
+    const listed = (await (await get('/api/v1/servers')).json()) as Array<{ serverId: string }>
+    expect(listed.some((row) => row.serverId === created.serverId)).toBe(true)
+  })
+
   it('runs start, stop and terminate', async () => {
     const { serverId } = (await (await post('/api/v1/servers', CREATE)).json()) as { serverId: string }
     await get(`/api/v1/servers/${serverId}`) // syncs the address; the row stays provisioning

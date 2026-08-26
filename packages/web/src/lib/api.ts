@@ -205,6 +205,11 @@ export interface Server {
    *  thing to branch on directly. */
   provider: string
   /**
+   * The region this box was placed in, when its provider has regions (issue #125). Absent for a
+   * BYO host and for any provider that takes no region — never rendered as a guess.
+   */
+  region?: string
+  /**
    * `'custom'` means this server was created by naming an `offeringId` directly, with no
    * t-shirt size behind it at all (rockysurf-kh3u) — render it as `offeringId`, never as the
    * literal word.
