@@ -652,13 +652,16 @@ the fingerprint core minted, on both architectures. GCE's guest agent does not r
 out from under it — the failure that would have made the capability `false` and dropped the
 security posture to trust-on-first-use. It did not happen.
 
-**What is still not measured: stop and start.** No GCP box has been stopped and restarted. The
-run created boxes, bootstrapped them and destroyed them, and deliberately never power-cycled one.
-So `compute.instances.stop` and `compute.instances.start` in the role above are the two
-permissions no launch has exercised, and `ipStableAcrossStop: false` — the claim that an
-ephemeral external IP is released on stop and a different one assigned on start — remains read
-from Google's documentation rather than watched. Treat that one row of
-[the capability matrix](capability-matrix.md) as reasoning, and the rest of this page as checked.
+**Stop and start were measured later, by the nightly.** The 2026-08-14 run deliberately never
+power-cycled a box. The nightly's first GCP run (2026-08-26, run 33002562621, `t2a-standard-1`)
+did: `compute.instances.stop` reached a provider-confirmed `stopped`, `compute.instances.start`
+brought the box back `running`, and both permissions in the role above are therefore exercised
+under the published identity. What that cycle did *not* show is the address moving: the box came
+back on the same ephemeral external IP. `ipStableAcrossStop: false` stays — Google releases an
+ephemeral address on stop and does not promise the next one, and getting the old one back seconds
+later is the ordinary case rather than a guarantee — but that one row of
+[the capability matrix](capability-matrix.md) is still Google's word rather than an observation
+of the address actually changing.
 
 **C4A is derived, not measured, and is newer than the run above.** `c4a-standard-*` and the
 Hyperdisk-only boot disk path (rockysurf-h6mb) were added after the 2026-08-14 run and were not
@@ -672,17 +675,17 @@ is the honest word until a real launch says otherwise.
 have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and
 [`spike/recordings/`](../../spike/recordings/) that you can read; this run was driven by hand and
 through the MCP server, and **no transcript of it was recorded into the repository**. What is
-written above is a report of it, not a thing you can check for yourself. Hetzner and AWS go
-further still — they are re-run nightly, so their claim is continuous rather than dated.
+written above is a report of it, not a thing you can check for yourself.
 
-**A GCP leg now exists in that nightly, and it has not run yet.** The workflow, the sweep and the
-one-command project setup are in the repository (gh issue #132; see [the nightly section
-above](#the-nightly-real-cloud-run-maintainers)), and the leg runs the full lifecycle on both
-architectures under exactly the role published on this page. It stays skipped until the
-repository owner creates the CI-only project and sets four repository variables, so **nothing on
-this page is yet continuously verified** — the date above is still the evidence. When the leg does
-run, the two gaps named below narrow on their own: stop/start is part of the lifecycle it drives,
-and so is the `ipStableAcrossStop` comparison.
+**The nightly's GCP leg is what makes this page continuous rather than dated.** The workflow, the
+sweep and the one-command project setup are in the repository (gh issue #132; see [the nightly
+section above](#the-nightly-real-cloud-run-maintainers)), and the leg runs the full lifecycle on
+both architectures under exactly the role published on this page. It first ran on 2026-08-26
+(run 33002562621) once the four repository variables were set: create, push bootstrap to `ready`,
+`claude --version` over SSH, stop, start, terminate, and a zero-orphan sweep, all under the
+published role. Its lifecycle log is uploaded as a run artifact (`gcp-lifecycle-log-<arch>`), so
+unlike the 2026-08-14 run there is a transcript to read. Every morning it stays green, the claims
+on this page are re-verified against real Compute Engine.
 
 Two smaller things the run did not settle, both harmless:
 
