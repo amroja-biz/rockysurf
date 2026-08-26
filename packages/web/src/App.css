@@ -1477,6 +1477,62 @@ p.hint {
   text-decoration: underline;
 }
 
+/* Stale-servers notice (issue #126) — informational rather than a warning, so it takes the
+   link blue rather than the yellow `backup-reminder`/`ip-change-alert` share: nothing here is
+   wrong yet, it is a standing fact about what the dashboard can and can't promise. */
+.stale-servers-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  background: #58a6ff1a;
+  border: 1px solid var(--rs-link);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--rs-link);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.stale-servers-notice-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.stale-servers-notice-icon {
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.stale-servers-notice a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.stale-servers-notice-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.stale-servers-notice-action {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--rs-radius);
+  color: inherit;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stale-servers-notice-action:hover {
+  background: #58a6ff26;
+}
+
 /* IP change alert — ported verbatim; the port kept every class name in it. */
 .ip-change-alert {
   display: flex;

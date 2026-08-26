@@ -7,6 +7,7 @@ import { warningsSummary } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { AppShell } from '../components/AppShell'
+import { StaleServersNotice } from '../components/StaleServersNotice'
 import { StatusBadge } from '../components/StatusBadge'
 import { StillBillingNotice } from '../components/StillBillingNotice'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
@@ -111,6 +112,12 @@ export function DashboardPage() {
         "once per app load" actually means once, rather than once per page.
       */}
       <BackupReminder />
+      {/*
+        Near the server list, not inside it (issue #126): the notice is about what the list
+        as a whole can and can't promise, so it sits above the cards rather than inside
+        `ServerCard` or the grouping logic below, both of which belong to other in-flight work.
+      */}
+      <StaleServersNotice />
 
       <div className="dashboard-actions">
         <Link className="button primary" to="/servers/new">
