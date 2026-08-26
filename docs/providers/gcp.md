@@ -653,15 +653,16 @@ out from under it — the failure that would have made the capability `false` an
 security posture to trust-on-first-use. It did not happen.
 
 **Stop and start were measured later, by the nightly.** The 2026-08-14 run deliberately never
-power-cycled a box. The nightly's first GCP run (2026-08-26, run 33002562621, `t2a-standard-1`)
-did: `compute.instances.stop` reached a provider-confirmed `stopped`, `compute.instances.start`
-brought the box back `running`, and both permissions in the role above are therefore exercised
-under the published identity. What that cycle did *not* show is the address moving: the box came
-back on the same ephemeral external IP. `ipStableAcrossStop: false` stays — Google releases an
-ephemeral address on stop and does not promise the next one, and getting the old one back seconds
-later is the ordinary case rather than a guarantee — but that one row of
-[the capability matrix](capability-matrix.md) is still Google's word rather than an observation
-of the address actually changing.
+power-cycled a box. The nightly's first GCP run (2026-08-26, run 33002562621) did, on both
+architectures: `compute.instances.stop` reached a provider-confirmed `stopped`,
+`compute.instances.start` brought each box back `running`, and both permissions in the role
+above are therefore exercised under the published identity. The same run settled
+`ipStableAcrossStop: false` by observation rather than by Google's word: the arm64 box came back
+on the same ephemeral external IP, the amd64 box on a different one (`34.55.161.76 ->
+35.224.229.36` — the address the arm64 box had released minutes earlier), and core recorded the
+move as `previousIp`. Google releases an ephemeral address on stop and does not promise the next
+one; getting the old one back is common, not guaranteed. That row of
+[the capability matrix](capability-matrix.md) is now measured.
 
 **C4A is derived, not measured, and is newer than the run above.** `c4a-standard-*` and the
 Hyperdisk-only boot disk path (rockysurf-h6mb) were added after the 2026-08-14 run and were not

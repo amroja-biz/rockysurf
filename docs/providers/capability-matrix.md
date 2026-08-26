@@ -17,7 +17,7 @@ and the two real-cloud capstone transcripts beside it.
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
 | `stop` | `true` | `true` | `true` | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` |
+| `ipStableAcrossStop` | **`false`** | `true` | **`false`** | `true` † | `true` |
 | `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
@@ -65,16 +65,18 @@ they rested on the same fact, that cloud-init's GCE datasource reads the `user-d
 key, and a box cannot present a host key core minted unless that holds.
 
 **What that run did not do is stop and start a box.** The nightly's GCP leg (gh #132) did, on
-2026-08-26 (run 33002562621, `t2a-standard-1`): `instances.stop` reached a provider-confirmed
-`stopped`, and `instances.start` brought the box back `running` — so `stop` lost its dagger.
-`ipStableAcrossStop` keeps it, and for a reason worth stating: the box **came back on the same
-ephemeral address**. That is not evidence for `true` — Google releases an ephemeral external IP
-on stop and documents the next one as unassigned, and getting the old one back seconds later is
-the common case, not a promise — but it means the `false` reading has still never been
-*observed* to bite. It stays `false` on Google's word, not ours, and the nightly's check reads
-`false` as "may move, and if it does core records the previous address", not "must move"
-(`scripts/e2e/lifecycle.mjs`). `userDataMaxBytes` is unchanged and undaggered: Google's
-documented per-metadata-value ceiling, structural and never approached.
+2026-08-26 (run 33002562621), on both architectures, and the two boxes between them settled
+both daggers. `instances.stop` reached a provider-confirmed `stopped` and `instances.start`
+brought each box back `running` — `stop` is observed. And `ipStableAcrossStop: false` is
+observed in the only way a "may" can be: the arm64 box came back on the **same** ephemeral
+address, and the amd64 box came back on a **different** one — `34.55.161.76 -> 35.224.229.36`,
+which was the address the arm64 box had released minutes earlier — with core's `previousIp`
+breadcrumb recording the move. Google releases an ephemeral external IP on stop and does not
+promise the next one; getting the old one back is common, not guaranteed. The nightly's check
+therefore reads `false` as "may move, and if it does core records the previous address", not
+"must move" (`scripts/e2e/lifecycle.mjs`) — the first run, with the check still written as
+"must", went red on the box whose address happened not to move. `userDataMaxBytes` is unchanged
+and undaggered: Google's documented per-metadata-value ceiling, structural and never approached.
 
 One difference in the *form* of the evidence, since this table is where people come to compare
 it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `aws`, `hetzner` and
