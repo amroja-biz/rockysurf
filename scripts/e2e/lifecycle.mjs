@@ -447,9 +447,18 @@ async function main() {
           `${addressBeforeStop} -> ${after.publicIp ?? '-'}`,
         )
       } else {
+        // `false` promises nothing either way. EC2 releases the address on every stop and
+        // hands out a fresh one, but GCE releases an ephemeral address and frequently hands
+        // the SAME one back seconds later — the first real GCP power cycle (2026-08-26, run
+        // 33002562621) came back on its own address and this check, then written as "must
+        // change", turned a correct run red. What `false` actually claims is the breadcrumb:
+        // the box comes back with an address, and IF it moved, core recorded where from.
+        const moved = after.publicIp !== addressBeforeStop
         check(
-          Boolean(after.publicIp) && after.publicIp !== addressBeforeStop,
-          'address changed across the restart, as ipStableAcrossStop claims',
+          Boolean(after.publicIp) && (!moved || after.previousIp === addressBeforeStop),
+          moved
+            ? 'address moved across the restart and core recorded the previous one'
+            : 'address came back unchanged, which ipStableAcrossStop=false permits',
           `${addressBeforeStop} -> ${after.publicIp ?? '-'} (previous ${after.previousIp ?? '-'})`,
         )
       }

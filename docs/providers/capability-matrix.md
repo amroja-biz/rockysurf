@@ -16,7 +16,7 @@ and the two real-cloud capstone transcripts beside it.
 
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
-| `stop` | `true` | `true` | `true` † | `true` | **`false`** |
+| `stop` | `true` | `true` | `true` | `true` | **`false`** |
 | `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` |
 | `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
@@ -64,18 +64,21 @@ used to carry daggers, `canInjectHostKeys` and `generatesUserData`, were the one
 they rested on the same fact, that cloud-init's GCE datasource reads the `user-data` metadata
 key, and a box cannot present a host key core minted unless that holds.
 
-**What the run did not do is stop and start a box**, so `stop` and `ipStableAcrossStop` are the
-daggered pair now. No GCP instance has ever been stopped and restarted by this provider. Both
-values remain as well-founded as they were — `stop` is `instances.stop`, and
-`ipStableAcrossStop` follows from asking for an ephemeral external IP — and both are still
-reasoning rather than observation. A lifecycle run is not evidence for a power cycle it never
-performed, and flipping a whole column on the strength of one is the move this table exists to
-prevent. `userDataMaxBytes` is unchanged and undaggered: Google's documented
-per-metadata-value ceiling, structural and never approached.
+**What that run did not do is stop and start a box.** The nightly's GCP leg (gh #132) did, on
+2026-08-26 (run 33002562621, `t2a-standard-1`): `instances.stop` reached a provider-confirmed
+`stopped`, and `instances.start` brought the box back `running` — so `stop` lost its dagger.
+`ipStableAcrossStop` keeps it, and for a reason worth stating: the box **came back on the same
+ephemeral address**. That is not evidence for `true` — Google releases an ephemeral external IP
+on stop and documents the next one as unassigned, and getting the old one back seconds later is
+the common case, not a promise — but it means the `false` reading has still never been
+*observed* to bite. It stays `false` on Google's word, not ours, and the nightly's check reads
+`false` as "may move, and if it does core records the previous address", not "must move"
+(`scripts/e2e/lifecycle.mjs`). `userDataMaxBytes` is unchanged and undaggered: Google's
+documented per-metadata-value ceiling, structural and never approached.
 
 One difference in the *form* of the evidence, since this table is where people come to compare
-it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `hetzner` is re-run
-nightly.
+it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `aws`, `hetzner` and
+`gcp` are re-run nightly.
 The GCP run was driven by hand and through the MCP server, and no transcript of it was recorded
 into the repository — what backs the column is a report of a run rather than an artefact of one.
 [The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) has it
