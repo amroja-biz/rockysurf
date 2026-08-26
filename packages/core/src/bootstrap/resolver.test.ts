@@ -13,6 +13,7 @@ import { installPlanSchema, parseInstallPlan, serializeInstallPlan } from './pla
 import {
   GIT_CREDENTIAL_HELPER,
   NO_MATCHING_TOKEN_PREFIX,
+  SETUP_GIT_AUTH_PREAMBLE,
   repoDirName,
   resolveInstallPlan,
   type ResolveInstallPlanInput,
@@ -208,8 +209,86 @@ describe('step content', () => {
       }),
     )
     const setup = plan.steps.find((s) => s.id === 'tool-setup:claude-code')!
-    expect(setup.run).toBe("export REPOS='https://github.com/example/one.git,https://github.com/example/two'\necho \"$REPOS\"\n")
+    expect(setup.run.startsWith("export REPOS='https://github.com/example/one.git,https://github.com/example/two'\n")).toBe(true)
+    expect(setup.run.endsWith('\necho "$REPOS"\n')).toBe(true)
     expect(setup.runAs).toBe('rocky')
+  })
+
+  it('hands setup scripts the clone step\'s git credentials through the environment (issue #142)', () => {
+    // A setup script exists to do per-repository work, and `gt rig add` does that work by
+    // cloning the repository again on its own. The clone step's helper was wired with `-c`
+    // for one invocation only, so git run from phase 4 had the tokens in its environment and
+    // no way to use them — and died on a username prompt with no TTY.
+    const plan = resolveInstallPlan(
+      base({
+        pack: { id: 'p', tools: ['gas-town'], requiresRdp: false },
+        tools: [tool({ id: 'gas-town', runAs: 'rocky', setupScript: 'gt rig add x "$REPOS"\n' })],
+        repositories: ['https://github.com/example/private.git'],
+      }),
+    )
+    const setup = plan.steps.find((s) => s.id === 'tool-setup:gas-town')!
+    expect(setup.run).toContain(SETUP_GIT_AUTH_PREAMBLE)
+    // The clone step's own guard, verbatim: a box with no tokens gets anonymous git, and the
+    // two steps can never disagree about when a helper is offered.
+    expect(setup.run).toContain('if [ -n "${GITHUB_TOKEN:-}" ] || [ "${ROCKYSURF_GITHUB_TOKEN_COUNT:-0}" -gt 0 ]; then')
+    // The environment form of `-c`, which reaches every git in the step's process tree — the
+    // ones a tool starts included — not only the ones the script names.
+    expect(setup.run).toContain('export GIT_CONFIG_COUNT=2')
+    expect(setup.run).toContain('GIT_CONFIG_KEY_0=credential.useHttpPath GIT_CONFIG_VALUE_0=true')
+    expect(setup.run).toContain(`GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1='${GIT_CREDENTIAL_HELPER}'`)
+    // And the stable failure wording for the case that remains: no token for this repository.
+    expect(setup.run).toContain('export GIT_TERMINAL_PROMPT=0')
+    // Custody: the token is read by the helper at run time — never in argv, never persisted.
+    expect(setup.run).not.toMatch(/\$GITHUB_TOKEN/)
+    expect(setup.run).not.toContain('git config')
+    // The preamble comes BEFORE the script, so the script's own `set -u` cannot trip on it and
+    // a script that sets its own git configuration still wins.
+    expect(setup.run.indexOf(SETUP_GIT_AUTH_PREAMBLE)).toBeLessThan(setup.run.indexOf('gt rig add'))
+  })
+
+  it('lets REAL git started by a CHILD process of a setup script authenticate (issue #142)', () => {
+    // Text assertions cannot see whether git honours GIT_CONFIG_* from an inherited
+    // environment, or whether the multi-line helper survives being an environment value. So:
+    // the generated preamble, then a nested bash standing in for `gt`, asking git for
+    // credentials the way a clone would. Per-repository selection must still work — that is
+    // what `credential.useHttpPath` in the preamble is for.
+    const home = mkdtempSync(join(tmpdir(), 'rockysurf-git-'))
+    const ask = (url: string, env: Record<string, string>): { status: number | null; password: string | undefined; stderr: string } => {
+      const result = spawnSync(
+        'bash',
+        ['-c', `${SETUP_GIT_AUTH_PREAMBLE}bash -c 'printf "url=%s\\n\\n" "$1" | git credential fill' bash "$1"`, 'bash', url],
+        {
+          encoding: 'utf8',
+          env: {
+            PATH: process.env['PATH'] ?? '/usr/bin:/bin',
+            HOME: home,
+            GIT_CONFIG_GLOBAL: '/dev/null',
+            GIT_CONFIG_SYSTEM: '/dev/null',
+            ...env,
+          },
+        },
+      )
+      return { status: result.status, password: /^password=(.*)$/m.exec(result.stdout)?.[1], stderr: result.stderr }
+    }
+    const tokens = {
+      GITHUB_TOKEN: 'ghp_fallback',
+      ROCKYSURF_GITHUB_TOKEN_COUNT: '1',
+      ROCKYSURF_GITHUB_TOKEN_1: 'ghp_acme',
+      ROCKYSURF_GITHUB_TOKEN_1_SCOPE: 'github.com/acme/*',
+    }
+    let got = ask('https://github.com/acme/widgets.git', tokens)
+    expect(got.status, got.stderr).toBe(0)
+    expect(got.password).toBe('ghp_acme')
+    got = ask('https://github.com/stranger/thing.git', tokens)
+    expect(got.status, got.stderr).toBe(0)
+    expect(got.password).toBe('ghp_fallback')
+
+    // No tokens: no helper is wired at all, and with prompts disabled git says so and fails
+    // instead of hanging on a username prompt that has no terminal to appear on.
+    got = ask('https://github.com/stranger/thing.git', {})
+    expect(got.status).not.toBe(0)
+    expect(got.password).toBeUndefined()
+    expect(got.stderr).toContain('terminal prompts disabled')
   })
 
   it('clones idempotently, because an interrupted step re-runs from the top', () => {

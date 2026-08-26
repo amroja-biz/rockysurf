@@ -84,7 +84,10 @@ else, and infer what you reasonably can from what the user already said.
   way a pack fails.
 - **Do they want repositories cloned?** If yes the pack sets `requiresRepos: true` and the user
   picks repositories at create time. The install plan clones them for you — you write no clone
-  code — and `$REPOS` reaches your scripts so you can do extra work per repository.
+  code — and `$REPOS` reaches your scripts so you can do extra work per repository. A `git`
+  your setup script runs against one of those URLs, itself or through a tool that clones on its
+  own (`gt rig add` does), authenticates the way the clone did: the bootstrap hands the step the
+  clone's credential helper through `GIT_CONFIG_*`. Write no credential code (issue #142).
 - **How much of the shared base toolchain do they want?** See below. This is the highest-leverage
   question in the whole file and the easiest one to skip: it decides both what the box can do and
   how long every smoke run takes.

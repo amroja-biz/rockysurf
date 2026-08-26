@@ -111,7 +111,7 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 1 | Runtime-guaranteed base tools | `tool:<toolId>` | `bootstrap: true` tools; reserved for the runtime |
 | 2 | Pack tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base tools before agents; that is a consequence of the numbers, not a second rule |
 | 3 | Repository clones | `repo:<basename>` | One step per repository the user chose |
-| 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS` |
+| 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS`. The step body opens with a preamble that exports `$REPOS`, sets `GIT_TERMINAL_PROMPT=0`, and — under the clone step's own guard, when the box carries any token — wires the clone step's credential helper into git's `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` environment, so a git run by the script or by any program it starts authenticates the way the clone did (issue #142: `gt rig add` re-clones the repository itself and had no credentials). The environment dies with the step; nothing is written to any git config |
 | 5 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
 | 6 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
 | 7 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
@@ -678,7 +678,8 @@ Rules that follow, and the reason each exists:
   `ROCKYSURF_GITHUB_TOKEN_<n>_SCOPE` (`host/owner/repo`, `*` for any). They are deliberately
   outside the table above: the table is a closed promise to pack authors, and this is a
   variable-length encoding with exactly one reader — the git credential helper the clone step
-  wires in. The `ROCKYSURF_` prefix says whose they are. `GITHUB_TOKEN` remains the one name a
+  wires in with `-c`, and the setup-step preamble hands to every git in the step through
+  `GIT_CONFIG_*` (issue #142). The `ROCKYSURF_` prefix says whose they are. `GITHUB_TOKEN` remains the one name a
   pack should read, and it still carries the unscoped fallback and nothing else.
 - **The SET a box receives is narrowed to its own repositories** (`rockysurf-18lq`). The entries
   written into one server's `secrets.env` are the ones its declared repositories select, run
