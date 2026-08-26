@@ -151,6 +151,9 @@ if they are all lost, the box still finishes and the journal still describes wha
   "updatedAt": "2026-08-12T02:48:47Z",
   "failedStep": "tool:node",       // present only when status is "failed"
   "logTail": "curl: (6) Could not resolve host…",  // last ~25 lines of the failing step
+  "notice": "Ubuntu's package archive is out of sync — waiting 2 min before retrying. Nothing is stuck.",
+                                   // present only WHILE the current step is deliberately waiting (#129);
+                                   // the agent deletes it when the wait ends. Bumps updatedAt.
   "steps": [
     {
       "id": "tool:claude-code",
@@ -464,6 +467,8 @@ Normative points specific to callback:
   `status`) and, when that step failed, its `logTail` (ADR-0010). Core builds the failure report
   from these; without them a callback-mode failure has no evidence and a failed optional step is
   invisible.
+- Reports SHOULD carry `notice` whenever the journal does (#129): the one line the timeline
+  shows under the active step while it waits. A report without one clears it.
 - A failed report MUST NOT stop the install. Progress is telemetry; the journal is the record.
 - **Timing that makes this work:** sshd comes up in cloud-init's *init* stage while `runcmd` runs
   in the *final* stage. On the verified AWS run core had its ingress path open at 23.9s and the
@@ -571,7 +576,7 @@ These are requirements, not recommendations. Each was learned from something tha
 |---|---|---|
 | Required step fails | records `failed`, attaches `logTail` (plan-level and on the step), stops the plan, exits 1 | reads the step's whole log off the box (push) or takes the agent's tail (callback), builds the `BootstrapReport`, fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
 | Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
-| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **once per bootstrap**: rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one, refreshes the lists, re-runs the step and its check; a second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower; `agent.log` says the fallback engaged and which files it rewrote |
+| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **once per bootstrap**: rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one, refreshes the lists, re-runs the step and its check; a second failure is recorded as a required or optional failure above. When the sources already name the global mirror there is nothing to swap — the failure is then an archive index published ahead of its pool (a `404` on one named `.deb`, #129) or the global mirror itself sick — and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
@@ -607,7 +612,8 @@ An implementation conforms when all of the following hold.
 - [ ] A step with a `check` is `done` only when both the script and the check exit 0.
 - [ ] The agent bootstraps its own JSON parser and assumes nothing else about the image.
 - [ ] The apt mirror fallback engages at most once per bootstrap, only for a step whose own
-      output carries an apt fetch-failure signature, and is announced in the agent log.
+      output carries an apt fetch-failure signature, and is announced in the agent log. With no
+      regional mirror to swap it waits before the retry, and says so.
 - [ ] A failed step's own log tail is journalled on the step entry, and a callback report carries
       `stepStatus` and that tail; core builds one `BootstrapReport` from either topology.
 - [ ] A failed `tool:*` step releases the instance before the row is failed, unless

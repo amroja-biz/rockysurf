@@ -27,6 +27,13 @@ export interface BootstrapProgressEvent {
   /** The SERVER's status, not the agent's: the SPA reads this as the row's state. */
   status?: ServerStatus
   publicIp?: string
+  /**
+   * Why the active step is taking longer than it looks, in one user-readable line — the
+   * agent's bounded apt wait (#129) is the first. Absent when nothing is unusual, and absence
+   * is meaningful: the SPA shows it under the active step and clears it on the next progress
+   * event that does not carry one.
+   */
+  notice?: string
 }
 
 export interface ServerStatusEvent {
@@ -43,6 +50,7 @@ export function bootstrapProgressEvent(input: {
   stepId?: string
   status?: ServerStatus
   publicIp?: string | null
+  notice?: string
 }): BootstrapProgressEvent {
   return {
     type: 'bootstrap-progress',
@@ -51,6 +59,7 @@ export function bootstrapProgressEvent(input: {
     ...(input.stepId ? { stepId: input.stepId } : {}),
     ...(input.status ? { status: input.status } : {}),
     ...(input.publicIp ? { publicIp: input.publicIp } : {}),
+    ...(input.notice ? { notice: input.notice } : {}),
   }
 }
 

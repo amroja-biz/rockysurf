@@ -48,6 +48,8 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
   const [failure, setFailure] = useState<string | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
   const [report, setReport] = useState<Report | null>(null)
+  /** Under the active step while it lasts: "waiting 2 min for the package archive", not silence. */
+  const [notice, setNotice] = useState<string | null>(null)
   const notifiedReady = useRef(false)
 
   /**
@@ -69,6 +71,10 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
         // step this UI does not know. An unrecognised value leaves the list where it is
         // rather than resetting it to the start, which would look like going backwards.
         if (isProvisioningStep(event.step)) setStep(event.step)
+        // Every progress event either carries a reason or clears the last one. A two-minute
+        // apt wait that said nothing looked like a hang (#129); a notice left on screen after
+        // the wait would be the opposite lie.
+        setNotice(event.notice ?? null)
         break
       case 'bootstrap-log':
         if (event.line) setLogLines((previous) => [...previous, event.line!].slice(-MAX_LOG_LINES))
@@ -100,6 +106,11 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
           return (
             <li key={candidate} className={`step step-${state}`} aria-current={state === 'active' ? 'step' : undefined}>
               {STEP_LABELS[candidate]}
+              {state === 'active' && notice && (
+                <span className="step-notice" role="status">
+                  {notice}
+                </span>
+              )}
             </li>
           )
         })}

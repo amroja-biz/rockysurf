@@ -40,6 +40,11 @@ export interface BootstrapProgressMessage {
   /** The plan step id. Labels are lossy — several steps share one — so this disambiguates. */
   stepId?: string
   status?: string
+  /**
+   * Why the active step is taking longer than it looks, in one line. Absent means nothing is
+   * unusual — and clears whatever was showing, so a notice never outlives its cause.
+   */
+  notice?: string
 }
 
 /** A line of install output, for the live log view. */
