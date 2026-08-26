@@ -97,6 +97,18 @@ const FIELDS: SettingsField[] = (
     { path: 'limits.spendCap', kind: 'group', writable: true },
     { path: 'limits.spendCap.amount', kind: 'number', writable: true },
     { path: 'limits.spendCap.currency', kind: 'string', writable: true },
+    // Where packs may come from (issue #88). The URL box carries a warning for the same reason
+    // the MCP scopes do: what is behind it runs as root on every box created with the pack.
+    { path: 'registry.enabled', kind: 'boolean', writable: true },
+    { path: 'registry.sources.*.name', kind: 'string', writable: true },
+    {
+      path: 'registry.sources.*.url',
+      kind: 'string',
+      writable: true,
+      warning: 'A pack is install scripts, and they run as ROOT on every box you create with it.',
+    },
+    { path: 'registry.sources.*.trust', kind: 'string', writable: true },
+    { path: 'registry.cacheTtlSeconds', kind: 'number', writable: true },
     { path: 'mcp.scopes', kind: 'stringList', writable: true, warning: 'create spends money and terminate destroys a box.' },
   ] satisfies Omit<SettingsField, 'help'>[]
 ).map((field) => ({ ...field, help: `What ${field.path} is for.` }))
@@ -111,6 +123,8 @@ const SECTIONS: SettingsSection[] = [
   { id: 'providers.byo', title: 'Your own machines', help: 'Machines you already have.' },
   { id: 'providers.byo.hosts', title: 'Hosts', help: 'The machines Rocky Surf may claim.' },
   { id: 'limits', title: 'Limits', help: 'Guardrails, enforced server-side.' },
+  { id: 'registry', title: 'Pack sources', help: 'Where Surge Packs may come from.' },
+  { id: 'registry.sources', title: 'Sources', help: 'The sources this instance browses.' },
   { id: 'mcp', title: 'MCP', help: 'What an MCP client may do.' },
 ]
 
@@ -130,6 +144,10 @@ const VIEW: SettingsView = {
       byo: { enabled: false, hosts: [{ name: 'workshop', host: '10.0.0.9' }] },
     },
     limits: { maxServers: 5 },
+    registry: {
+      enabled: true,
+      sources: [{ name: 'Rocky Surf Pack Shop', url: 'https://raw.githubusercontent.com/x/shop/main', trust: 'community' }],
+    },
     mcp: { scopes: ['read', 'stop'] },
   },
   defaults: {
@@ -145,6 +163,7 @@ const VIEW: SettingsView = {
   lists: [
     { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
     { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
+    { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
   ],
   drifted: false,
   restartHint: 'Changes apply after a restart: stop the process with Ctrl-C and run ./start.sh again.',
@@ -1383,8 +1402,9 @@ describe('finding your way around the page', () => {
     renderPage()
     await loaded()
 
-    // Nine tabs for ten sections: `providers.byo.hosts` is inside `providers.byo`, so Hosts is a
-    // card on Your own machines rather than a tab beside it.
+    // Ten tabs for twelve sections: `providers.byo.hosts` is inside `providers.byo` and
+    // `registry.sources` inside `registry`, so each is a card on its parent's tab rather than a
+    // tab beside it.
     expect(tabNames()).toEqual([
       'Server',
       'GitHub access tokens',
@@ -1394,6 +1414,7 @@ describe('finding your way around the page', () => {
       'Google Cloud',
       'Your own machines',
       'Limits',
+      'Pack sources',
       'MCP',
     ])
     expect(selected()!.textContent).toContain('Server')
@@ -1677,5 +1698,68 @@ describe('finding your way around the page', () => {
     expect(panelOf('limits').textContent).toContain('eu-west-1')
     expect(panelOf('limits').textContent).toContain('no editor for a setting of this shape yet')
     expect(control('limits.blockedRegions')).toBeNull()
+  })
+})
+
+/**
+ * PACK SOURCES (issue #88).
+ *
+ * The list a person adds their own packs to. It was config-file-only, so getting your own pack
+ * onto your own instance meant sshing in and hand-editing YAML; these tests are about what the
+ * page sends when it is done here instead — an append of a whole entry, and a field edit that
+ * names the entry it belongs to — plus the one sentence that must reach the screen, which is
+ * what a URL in this box actually means.
+ */
+describe('pack sources', () => {
+  const panelOf = (id: string) => document.getElementById(`settings-panel-${id}`)!
+
+  it('draws the sources on their own tab, with the source already configured on it', async () => {
+    renderPage()
+    await loaded()
+    open('Pack sources')
+
+    expect(control('registry.enabled')).toBeTruthy()
+    expect(control('registry.sources.0.url').value).toBe('https://raw.githubusercontent.com/x/shop/main')
+    expect(control('registry.sources.0.trust').value).toBe('community')
+  })
+
+  it('says beside the URL box what a source actually is, before anyone pastes one in', async () => {
+    // The warning is core's words, carried through unchanged. A URL box here is a box for
+    // somebody else's root shell, and the page must not draw it as though it were a hostname.
+    renderPage()
+    await loaded()
+    open('Pack sources')
+
+    expect(control('registry.sources.0.url').closest('.form-group')!.textContent).toContain('run as ROOT')
+  })
+
+  it('adds a source as one whole entry appended to the list', async () => {
+    renderPage()
+    await loaded()
+    open('Pack sources')
+
+    fireEvent.click(within(panelOf('registry')).getByRole('button', { name: 'Add' }))
+
+    expect((await onlySave()).changes).toEqual([
+      {
+        path: ['registry', 'sources', 1],
+        value: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      },
+    ])
+  })
+
+  it('points an existing source at a personal pack file, naming the entry it edits', async () => {
+    renderPage()
+    await loaded()
+    open('Pack sources')
+
+    fireEvent.change(control('registry.sources.0.url'), {
+      target: { value: 'https://packs.example.com/my-pack.yaml' },
+    })
+    save()
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['registry', 'sources', 0, 'url'], value: 'https://packs.example.com/my-pack.yaml' },
+    ])
   })
 })

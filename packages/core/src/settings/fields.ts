@@ -601,6 +601,68 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     help: 'An ISO 4217 code — providers do not all quote in USD.',
   },
 
+  /* ------------------------------------------------------------------------ registry */
+  /**
+   * WHERE PACKS MAY COME FROM, edited here since issue #88.
+   *
+   * The list was config-file-only, on the reasoning that a source is a thing an operator should
+   * have to write down. Editing it here IS writing it down: the page is admin-only, it writes
+   * the same file, and it writes the value an operator would have typed. What issue #88 asked
+   * for is a person's OWN packs — a single YAML file they published, or a directory of them —
+   * and telling them to ssh in and hand-edit YAML for that was the whole of the gap.
+   *
+   * NOTHING IS FETCHED BY A SAVE. Adding a source records a URL. The packs behind it arrive
+   * only when an admin opens Surge Packs, reads every script the disclosure shows them, and
+   * installs one. That ordering is the security property, and it is why a URL box here is not
+   * a remote-code-execution button.
+   */
+  {
+    path: 'registry.enabled',
+    kind: 'boolean',
+    writable: true,
+    help:
+      'Whether Rocky Surf browses pack sources at all. Off is the air-gapped setting: the shop says ' +
+      'it is switched off, and packs that shipped with your release or were imported here are ' +
+      'unaffected. Nothing is fetched at startup either way.',
+  },
+  {
+    path: 'registry.sources.*.name',
+    kind: 'string',
+    writable: true,
+    help: 'What you will call this source in the UI. It is also how an installed pack is attributed.',
+  },
+  {
+    path: 'registry.sources.*.url',
+    kind: 'string',
+    writable: true,
+    help:
+      'An https URL. Ending in `.yaml` means the URL IS one pack — how you publish your own; ' +
+      'anything else is a directory serving `index.json` beside its pack files, the way the shop ' +
+      'does. Public hosts only: an address on your own network is refused.',
+    warning:
+      'A pack is install scripts, and they run as ROOT on every box you create with it. Add a ' +
+      'source only if you would run its scripts by hand, and read them in the shop before you ' +
+      'install: Rocky Surf shows you every one, verbatim, and never runs anything on its own.',
+  },
+  {
+    path: 'registry.sources.*.trust',
+    kind: 'string',
+    writable: true,
+    help:
+      "Your own label for this source — `community` or `internal`. It is the only place a source's " +
+      'trustworthiness is recorded, deliberately not something the source itself publishes. There is ' +
+      'no `official`: that means "shipped in the Rocky Surf release", which nothing you add here is.',
+  },
+  {
+    path: 'registry.cacheTtlSeconds',
+    kind: 'number',
+    writable: true,
+    help:
+      'How long a fetched listing is reused before the shop refetches it. The Refresh button ignores ' +
+      'it, so this is about not hammering a host while somebody browses, not about how fresh a pack ' +
+      'you can get.',
+  },
+
   /* --------------------------------------------------------------------- preferences */
   ...TIER_PREFERENCE_FIELDS,
 
@@ -711,6 +773,26 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       `quota-refused or no longer offered falls back to that default, and the New Server page ` +
       `says which and why rather than substituting in silence.`,
   })),
+  /**
+   * A TAB, and its sources are a card on it — the same nesting `providers.byo.hosts` uses, for
+   * the same reason: switching the shop on and saying what it points at are one errand.
+   */
+  {
+    id: 'registry',
+    title: 'Pack sources',
+    help:
+      'Where Surge Packs may come from, besides the ones that shipped with your release. A source ' +
+      'is one pack file you published, or a directory of them like the community shop. Nothing is ' +
+      'fetched until an admin opens Surge Packs, and nothing installs until they have read the ' +
+      'scripts it would run as root.',
+  },
+  {
+    id: 'registry.sources',
+    title: 'Sources',
+    help:
+      'The sources this instance browses, in order. Removing one does not remove packs already ' +
+      'installed from it — those are yours until you delete them on the Surge Packs page.',
+  },
   {
     id: 'mcp',
     title: 'MCP',
@@ -729,6 +811,7 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
 export const SETTINGS_LISTS: readonly { path: string; itemFields: readonly string[] }[] = [
   { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
   { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
+  { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
 ] as const
 
 /**

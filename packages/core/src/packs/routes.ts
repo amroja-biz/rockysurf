@@ -18,6 +18,7 @@ import { validate } from '../http/validate.js'
 import { describePack } from './disclosure.js'
 import { parsePackFile, renderPackFile } from './loader.js'
 import type { RegistryClient } from './registry.js'
+import { sha256Text } from './registry-index.js'
 import { fetchPublicText } from './safe-fetch.js'
 import { packSchema, toolSchema, type PackFile, type ToolDefinition } from './schema.js'
 import type { RegistryProvenance } from '../db/repositories/packs.js'
@@ -176,6 +177,16 @@ const updateToolBody = toolSchema.omit({ toolId: true }).partial().strict()
 
 const createPackBody = packSchema.partial({ packId: true, enabled: true, displayOrder: true }).strict()
 const updatePackBody = packSchema.omit({ packId: true }).partial().strict()
+
+/**
+ * The `registrySource` a URL import records, so the row can say it came from off this machine.
+ *
+ * A SENTENCE FRAGMENT RATHER THAN A NAME, deliberately: every other value in this column is the
+ * name of a source the operator configured, and one that reads like a name would invite the UI
+ * to treat a one-off fetch as a shelf it could go back to. There is no shelf — the URL beside it
+ * is the whole of what was recorded. The SPA keys its wording off this exact string.
+ */
+export const URL_IMPORT_SOURCE = 'a URL import'
 
 const importBody = z
   .union([z.strictObject({ yaml: z.string().min(1) }), z.strictObject({ url: z.url() })])
@@ -523,7 +534,37 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
       return badRequest(c, 'Invalid pack file', real.map((i) => ({ path: i.file, message: i.message })))
     }
 
-    const installed = installPackFile(file)
+    /**
+     * AN IMPORT FROM A URL REMEMBERS THE URL (issue #88).
+     *
+     * Before this, a pack fetched from somebody's personal URL and a pack typed into the create
+     * form were the same row: `local`, "created here, in this installation". That is false about
+     * the first one and it is the false half operators care about — where did this shell that
+     * runs as root on my boxes actually come from?
+     *
+     * The registry columns are the right home for it (ADR-0006: never `sourceFile`, which the
+     * boot reconcile would delete the row for). `trust` is snapshotted as `unverified` rather
+     * than borrowed from `REGISTRY_TRUST`: those two labels mean "what the operator wrote next
+     * to a source they configured", and a one-off URL import has no such line. Claiming one
+     * would put words in the operator's mouth, and `official` remains unreachable from here as
+     * it is from everywhere else.
+     *
+     * A PASTED OR UPLOADED FILE STILL RECORDS NOTHING, because there is nothing true to record:
+     * the bytes came from the admin's own machine, and this installation cannot say where they
+     * had been before that.
+     */
+    const provenance: RegistryProvenance | undefined =
+      'url' in body
+        ? {
+            source: URL_IMPORT_SOURCE,
+            url: body.url,
+            sha256: sha256Text(text),
+            trust: 'unverified',
+            installedAt: new Date().toISOString(),
+          }
+        : undefined
+
+    const installed = installPackFile(file, provenance)
     if (!installed.ok) return badRequest(c, installed.problem)
     return success(c, adminPack(installed.pack))
   })

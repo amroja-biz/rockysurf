@@ -12,6 +12,7 @@ import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
 import { issueSession } from '../auth/sessions.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { loadPacksFromDir } from './loader.js'
+import { sha256Text } from './registry-index.js'
 import { createPackRoutes, type PackRoutesDeps } from './routes.js'
 import { syncPacksToDb } from './sync.js'
 
@@ -504,6 +505,35 @@ describe('import from URL', () => {
     }, 'https://packs.example.com/open-claw.yaml')
     expect(res.status).toBe(200)
     expect(((await res.json()) as any).packId).toBe('open-claw')
+  })
+
+  it('records the URL it came from, so the row does not read as one somebody typed here', async () => {
+    // Issue #88. A pack fetched from off this machine and a pack created in the admin form used
+    // to be the same row — `local`, "created here" — which is false about the first, and false
+    // in the direction an operator cares about: this is shell that will run as root on a box.
+    const exported = await (await send('GET', '/api/v1/admin/surge-packs/open-claw/export', undefined, auth())).text()
+    expect((await send('DELETE', '/api/v1/admin/surge-packs/open-claw', undefined, auth())).status).toBe(204)
+
+    const url = 'https://packs.example.com/open-claw.yaml'
+    const res = await importVia(async () => ({ ok: true, text: exported }), url)
+    const body = (await res.json()) as any
+    expect(body.registry).toMatchObject({
+      source: 'a URL import',
+      url,
+      sha256: sha256Text(exported),
+      // Never one of the labels an operator wrote next to a source they configured, and never
+      // `official`: a one-off fetch has no such line anywhere.
+      trust: 'unverified',
+    })
+  })
+
+  it('records nothing for a pasted file, because there is nothing true to record', async () => {
+    const exported = await (await send('GET', '/api/v1/admin/surge-packs/open-claw/export', undefined, auth())).text()
+    expect((await send('DELETE', '/api/v1/admin/surge-packs/open-claw', undefined, auth())).status).toBe(204)
+
+    const res = await send('POST', '/api/v1/admin/surge-packs/import', { yaml: exported }, auth())
+    expect(res.status).toBe(200)
+    expect((await json(res)).registry).toBeNull()
   })
 
   it('surfaces the guard refusal reason for an unreachable URL', async () => {

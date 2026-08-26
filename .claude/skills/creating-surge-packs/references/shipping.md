@@ -7,6 +7,7 @@
 - [1. A pull request against `packs/`](#1-a-pull-request-against-packs)
 - [2. Import into a running instance](#2-import-into-a-running-instance)
 - [3. Drop the file into `packs/` of a deployment](#3-drop-the-file-into-packs-of-a-deployment)
+- [4. Add it as a pack source](#4-add-it-as-a-pack-source)
 - [Sharing a pack with other people](#sharing-a-pack-with-other-people)
 - [Exporting a pack that was edited in the UI](#exporting-a-pack-that-was-edited-in-the-ui)
 
@@ -58,9 +59,12 @@ is wrong, and every shipped guide says `gh auth login` for this reason — a tes
 | Pull request against `packs/` | yes, forever | yes | yes, to everyone |
 | Import into a running instance | no | yes, as a database row | as a file or a URL |
 | File dropped into a deployment's `packs/` | no | yes, re-read at boot | by shipping the file |
+| Added as a pack source (an https URL) | no | yes, as a database row | yes, to anyone with the URL |
 
 The pull request is the intended path and the only one where somebody else's change cannot
-silently break the pack. Import is right for a pack that is genuinely private to one operator.
+silently break the pack. Import is right for a pack that is genuinely private to one operator. A
+pack source is right for a pack still being edited, or one other people should be able to
+subscribe to without a merge here.
 
 ## 1. A pull request against `packs/`
 
@@ -107,6 +111,11 @@ tools: …`.
 One convenience: the `packId`-must-match-the-filename rule is dropped on import, since a paste has
 no filename.
 
+An import **from a URL** also records that URL against the pack, so Manage packs shows it as
+*imported from `https://…`* rather than as a pack created in the UI. It is still fetched exactly
+once — editing the file at that URL changes nothing until it is imported again. For a pack that
+should track its source, use a pack source (below) instead.
+
 ### What the SSRF guard allows
 
 The control plane holds cloud credentials, so an operator-supplied URL is screened before it is
@@ -148,10 +157,48 @@ Two things to warn them about:
   is fixed**. Combined with the cascade above, one bad edit can take out more packs than the one
   being edited. The boot log names every file and every issue.
 
+## 4. Add it as a pack source
+
+A **source** is a URL the instance browses, rather than a file it swallows once. Configure it in
+`registry.sources` — or on the **Pack sources** tab of the admin Settings page, which writes the
+same file:
+
+```yaml
+registry:
+  enabled: true
+  sources:
+    - name: My packs
+      url: https://raw.githubusercontent.com/me/my-packs/main/my-pack.yaml
+      trust: community
+```
+
+**The URL's shape decides what it is.** Ending in `.yaml` or `.yml`, the URL *is* the pack — one
+file, nothing else to publish. Anything else is a directory, read the way the community shop is:
+`<url>/index.json` (generate it with `rockysurf pack index`), then the paths that listing names,
+each pinned by the digest the index records.
+
+What this buys over a one-off import: the pack appears in the shop, **Refresh** picks up your
+latest edit, and reinstalling is a click — so it is the right answer while a pack is still moving.
+What to tell the user about it:
+
+- **`https` only.** An `installScript` is root shell on their boxes; http would let anything on
+  the network rewrite it in transit, digest included.
+- **Admin-only, and it applies at the next restart** — the same as every other setting in that
+  file.
+- **Adding a source fetches and runs nothing.** The pack is fetched when somebody opens the shop,
+  installed only after the disclosure has shown them every script, and executed only when a box is
+  created with it. Refresh refetches a listing; it never installs.
+- **A one-file source has no separately-generated index**, so its digest cannot prove the file
+  matches a listing somebody else made. What it does prove is that the bytes installed are the
+  bytes that were shown: the file is refetched at install and refused if it changed in between.
+- The `trust` label (`community` or `internal`) is the operator's own word, snapshotted when they
+  install. There is no `official` — that means "shipped in the release" and no source can claim it.
+
 ## Sharing a pack with other people
 
 Publish the `.yaml` somewhere public and fetchable — a raw URL in a repository, or a public gist —
-and tell people to import it from that URL. It is one file; that is the whole distribution story.
+and tell people either to import it from that URL, or to add it as a pack source if they want
+your later edits. It is one file; that is the whole distribution story.
 
 Two things to check before publishing a pack for other people's instances:
 

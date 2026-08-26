@@ -130,6 +130,17 @@ describe('the default configuration', () => {
     expect(parsed.success).toBe(false)
   })
 
+  it('refuses a source served over plain http, whatever else is right about it', () => {
+    // A pack is install scripts that run as ROOT. Over http anything on the path can rewrite
+    // them in flight — including the digest that is supposed to catch that, since it arrives
+    // over the same connection. TLS is what makes the rest of the chain worth anything.
+    const parsed = configSchema.safeParse({
+      registry: { sources: [{ name: 'mine', url: 'http://example.com/my-pack.yaml' }] },
+    })
+    expect(parsed.success).toBe(false)
+    expect(parsed.success === false && JSON.stringify(parsed.error.issues)).toContain('https')
+  })
+
   it('treats an explicitly empty source list as none, not as the default', () => {
     // An operator who wrote `sources:` with everything commented out meant "no registries",
     // and handing the public shop back would be answering a different question.
@@ -380,6 +391,131 @@ describe('fetching a pack', () => {
     const result = await client.getPack('Acme internal', 'rust-dev')
     expect(result.ok && result.entry.sourceName).toBe('Acme internal')
     expect(calls.every((c) => c.startsWith(INTERNAL.url))).toBe(true)
+  })
+})
+
+/**
+ * A PERSONAL SOURCE: one pack file, at one URL, with no index describing it (issue #88).
+ *
+ * The case the shop's shape cannot serve. A person who wrote a pack has one file and no CI to
+ * generate a listing, and asking them to hand-write an `index.json` — with a digest they must
+ * regenerate on every edit — is asking for two documents that will disagree. So the URL says
+ * which it is, and everything downstream of the fetch is the code that was already there.
+ */
+describe('a source that is one pack file', () => {
+  const MINE = { name: 'My packs', url: 'https://packs.example.com/my-pack.yaml', trust: 'community' as const }
+  const mineOnly = (yaml: string) => stubFetch({ [MINE.url]: yaml })
+
+  it('fetches the file itself, never an index.json beside it', async () => {
+    const { fetchText, calls } = mineOnly(PACK_YAML)
+    const client = createRegistryClient({ config: config({ sources: [MINE] }), fetchText })
+
+    const shelves = await client.browse()
+    expect(calls).toEqual([MINE.url])
+    expect(shelves[0]!.failure).toBeUndefined()
+    expect(shelves[0]!.packs).toHaveLength(1)
+  })
+
+  it('describes the pack from the file, and labels it the way the operator labelled the source', async () => {
+    const { fetchText } = mineOnly(PACK_YAML)
+    const client = createRegistryClient({
+      config: config({ sources: [{ ...MINE, trust: 'internal' }] }),
+      fetchText,
+    })
+
+    const [shelf] = await client.browse()
+    expect(shelf!.packs[0]).toMatchObject({
+      packId: 'rust-dev',
+      name: 'Rust Dev',
+      path: 'my-pack.yaml',
+      sha256: sha256Text(PACK_YAML),
+      definesTools: ['rustup'],
+      referencesTools: [],
+      sourceName: 'My packs',
+      // Still the operator's word, exactly as for a directory source. A file cannot promote
+      // itself any more than an index can.
+      trust: 'internal',
+    })
+  })
+
+  it('installs from the same URL, with the frozen format validated as for any other pack', async () => {
+    const { fetchText, calls } = mineOnly(PACK_YAML)
+    const client = createRegistryClient({ config: config({ sources: [MINE] }), fetchText })
+
+    await client.browse()
+    const result = await client.getPack('My packs', 'rust-dev')
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.file.pack.packId).toBe('rust-dev')
+    expect(result.ok && result.yaml).toBe(PACK_YAML)
+    expect(calls).toEqual([MINE.url, MINE.url])
+  })
+
+  it('refuses a file that changed between being listed and being installed', async () => {
+    // The honest version of the digest check for a source with no published index: what it
+    // catches is the file moving under a reader, so the scripts an admin consented to are the
+    // scripts that get installed. It fails CLOSED and says to look again.
+    const responses: Record<string, string> = { [MINE.url]: PACK_YAML }
+    const fetchText = vi.fn(async (url: string) => ({ ok: true as const, text: responses[url]! }))
+    const client = createRegistryClient({ config: config({ sources: [MINE] }), fetchText })
+
+    await client.browse()
+    responses[MINE.url] = `${PACK_YAML}# a different pack now\n`
+    const result = await client.getPack('My packs', 'rust-dev')
+    expect(result).toMatchObject({ ok: false, kind: 'digest-mismatch' })
+    expect(!result.ok && result.reason).toContain('changed since it was listed')
+  })
+
+  it('reports a file that is not a valid pack, rather than throwing or half-listing it', async () => {
+    const { fetchText } = mineOnly('version: 1\npack:\n  packId: broken\n')
+    const client = createRegistryClient({ config: config({ sources: [MINE] }), fetchText })
+
+    const [shelf] = await client.browse()
+    expect(shelf!.packs).toEqual([])
+    expect(shelf!.failure).toMatchObject({ kind: 'invalid' })
+    expect(shelf!.failure!.reason).toContain(MINE.url)
+  })
+
+  it('reports an unreachable personal source without touching the shelves beside it', async () => {
+    const { fetchText } = stubFetch(OK) // MINE is absent, so it fails
+    const client = createRegistryClient({
+      config: config({ sources: [{ name: SHOP, url: BASE }, MINE] }),
+      fetchText,
+    })
+
+    const shelves = await client.browse()
+    expect(shelves[0]!.packs).toHaveLength(1)
+    expect(shelves[1]!.failure).toMatchObject({ kind: 'unreachable' })
+  })
+
+  it('caches inside the TTL and refetches on refresh, the same as a directory source', async () => {
+    // A personal pack is the one somebody edits every ten minutes, so Refresh has to mean it.
+    let clock = 0
+    const { fetchText } = mineOnly(PACK_YAML)
+    const client = createRegistryClient({
+      config: config({ sources: [MINE], cacheTtlSeconds: 300 }),
+      fetchText,
+      now: () => clock,
+    })
+
+    await client.browse()
+    await client.browse()
+    expect(fetchText).toHaveBeenCalledTimes(1)
+
+    await client.browse({ force: true })
+    expect(fetchText).toHaveBeenCalledTimes(2)
+
+    clock += 301_000
+    await client.browse()
+    expect(fetchText).toHaveBeenCalledTimes(3)
+  })
+
+  it('is disabled with everything else, and does not fetch to discover that', async () => {
+    const { fetchText } = mineOnly(PACK_YAML)
+    const client = createRegistryClient({ config: config({ enabled: false, sources: [MINE] }), fetchText })
+
+    expect((await client.browse())[0]!.failure).toMatchObject({ kind: 'disabled' })
+    expect(await client.getPack('My packs', 'rust-dev')).toMatchObject({ kind: 'disabled' })
+    expect(fetchText).not.toHaveBeenCalled()
   })
 })
 

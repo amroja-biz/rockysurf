@@ -566,7 +566,27 @@ const registrySourceSchema = z.strictObject({
    * publishes a generated index rather than expecting a client to walk a tree.
    */
   url: z
-    .url({ error: 'a registry source url must be an http(s) URL' })
+    .url({ error: 'a registry source url must be an https URL' })
+    /**
+     * HTTPS ONLY, and this is a security control rather than a style rule (issue #88).
+     *
+     * What arrives from this URL is a pack file, and a pack file is `installScript` — arbitrary
+     * shell that a bootstrap later runs AS ROOT on a machine the user paid for. Over plain http
+     * anything on the path between here and the host can rewrite those scripts in flight, and
+     * neither the schema check nor the digest check would notice: the digest lives in the index
+     * fetched over the same http connection, so an attacker who can change one can change both.
+     * TLS is what makes the digest worth checking at all.
+     *
+     * The default shop was already https, and so is every plausible personal source (raw
+     * GitHub, a gist, a static site). An operator serving packs over http on their LAN is not
+     * losing a working setup here — the SSRF guard already refuses private addresses, so that
+     * configuration could not fetch anything in the first place.
+     */
+    .refine((v) => v.startsWith('https://'), {
+      error:
+        'a pack source must be https — its scripts run as root on your boxes, and http gives ' +
+        'anything on the network the ability to rewrite them in transit',
+    })
     // A trailing slash would produce `…//index.json`, which most servers tolerate and some do
     // not. Normalised once here rather than at each call site.
     .transform((v) => v.replace(/\/+$/, '')),
@@ -587,8 +607,18 @@ const registrySourceSchema = z.strictObject({
  * The pack registries this installation browses (rockysurf-arym.3).
  *
  * A LIST, with the community shop as the sole default, so an organisation can add an internal
- * registry without giving up the public one. Config-only for now: there is no UI for adding a
- * registry, because a registry is a thing an operator should have to write down.
+ * registry — or one person their own packs — without giving up the public one. Since issue #88
+ * the admin Settings page edits this list too, which is the same act as writing it down: the
+ * page is admin-only, it writes this file, and the value it writes is the one an operator would
+ * have typed. What it does NOT do is fetch anything on save; adding a source records a URL, and
+ * the packs behind it arrive only when an admin opens the shop and installs one.
+ *
+ * A SOURCE IS EITHER A DIRECTORY OR ONE FILE, decided by its URL and nothing else (issue #88).
+ * A URL ending in `.yaml`/`.yml` IS the pack — one personal pack published as one file, which is
+ * how a person shares their own — and anything else is the base of a directory publishing
+ * `index.json`, exactly as the shop does. There is no second format and no per-source `kind`
+ * field: the URL already says which it is, and a field that could disagree with the URL would be
+ * a field that eventually does.
  *
  * NOTHING HERE IS READ AT BOOT. The registries are fetched when an admin opens the shop, never
  * during startup. A control plane behind a proxy, or with no route off the machine at all, must

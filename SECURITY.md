@@ -385,6 +385,16 @@ configured — including an internal registry on an RFC1918 address, because vou
 a decision with its own design rather than a default to fall into. Nothing is fetched at boot,
 only when an admin opens the shop.
 
+**A source URL must be `https`,** which is stricter than the import guard's `http`-or-`https` and
+deliberately so: a source is fetched again and again, and the digest that pins a pack to its
+listing arrives over the same connection as the listing, so plain http would let anything on the
+path rewrite both. A source URL ending in `.yaml` is read as the pack itself rather than as a
+directory (issue #88); the file goes through the same schema validation as every other pack, and
+its digest is what the install refetch is checked against, so the bytes an admin read in the
+disclosure are the bytes that get written. Adding a source is admin-only — it is a line in the
+config file, whether it is typed there or saved from the admin Settings page — and it fetches
+nothing by itself.
+
 A registry's packs carry the trust label the OPERATOR wrote next to that registry in their config
 file, never one the registry published about itself: a trust field inside a registry's own index
 would be a claim about trustworthiness written by the party being trusted. `official` is not a

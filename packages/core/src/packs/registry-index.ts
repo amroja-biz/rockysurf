@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { loadPacksFromDir, type LoadedPack } from './loader.js'
+import type { PackFile } from './schema.js'
 
 /**
  * `index.json` — what a pack registry publishes and what core reads.
@@ -215,6 +216,41 @@ function entryFor(
     referencesTools: pack.tools.filter((id) => !definesSet.has(id)).sort(),
     requiresRepos: pack.requiresRepos,
     requiresRdp: pack.requiresRdp,
+  }
+}
+
+/**
+ * The index entry for a pack that arrived as ONE FILE, with no index describing it (issue #88).
+ *
+ * A personal source is a URL ending in `.yaml`: someone's own pack, published as the single file
+ * they wrote, with no CI and no generated listing. Describing it with the same `RegistryEntry`
+ * the shop's index publishes is what keeps that case from becoming a second code path — browse,
+ * disclosure, install and provenance all take an entry, and they take this one unchanged.
+ *
+ * WHAT THE DIGEST MEANS HERE, because it means less than it does for an indexed pack and saying
+ * so is the point. In an index it pins a file to a listing SOMEONE ELSE generated, so a file
+ * swapped without regenerating the listing fails closed. Here both halves come from the same
+ * fetch, so it cannot prove that. What it still does is pin the bytes an admin was SHOWN to the
+ * bytes that get installed: the file is refetched at install and refused if it no longer matches
+ * what browsing put on screen. That is a real check — it catches a source that changed under a
+ * reader mid-decision — and it is the whole of what is claimed for it.
+ *
+ * The description names the file's own shape rather than inventing one, the same sentence
+ * `entryFor` builds, because the frozen format still has no description field (ADR-0004).
+ */
+export function entryForFetchedPack(file: PackFile, path: string, yaml: string): RegistryEntry {
+  const defines = file.tools.map((t) => t.toolId).sort()
+  const definesSet = new Set(defines)
+  return {
+    packId: file.pack.packId,
+    name: file.pack.name,
+    description: `Installs ${file.pack.tools.length} tool(s): ${file.pack.tools.join(', ')}`,
+    path,
+    sha256: sha256Text(yaml),
+    definesTools: defines,
+    referencesTools: file.pack.tools.filter((id) => !definesSet.has(id)).sort(),
+    requiresRepos: file.pack.requiresRepos,
+    requiresRdp: file.pack.requiresRdp,
   }
 }
 

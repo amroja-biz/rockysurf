@@ -337,13 +337,23 @@ registry:
   # `packs/` and packs you create in the admin UI are unaffected.
   enabled: true
 
-  # The registries to browse, in order. The default is the community shop and nothing else. Add
-  # your own to serve packs internally; every URL goes through the same SSRF guard as pack
-  # import, so one resolving to a private address is refused.
+  # The sources to browse, in order. The default is the community shop and nothing else. Add your
+  # own to serve packs internally — or to publish your own packs (issue #88). The admin Settings
+  # page edits this list too, under "Pack sources"; either way it is this file that changes, and
+  # a change here applies at the next restart.
   #
-  # `trust` is YOUR label for a registry, and it is the only place a registry's trustworthiness
-  # is recorded — deliberately not a field the registry itself publishes, which would be a claim
-  # about trustworthiness written by the party being trusted. One of: community, internal.
+  # A SOURCE IS EITHER ONE FILE OR A DIRECTORY, and the URL is what says which:
+  #   - ending in `.yaml` / `.yml`, the URL IS the pack — how you publish one of your own;
+  #   - anything else is a directory serving `index.json` beside its pack files, like the shop.
+  #
+  # HTTPS ONLY. A pack is install scripts that run as ROOT on every box created with it, and over
+  # plain http anything on the network can rewrite them in transit — including the digest that is
+  # supposed to catch that. Every URL also goes through the same SSRF guard as pack import, so one
+  # resolving to a private address is refused whatever you set.
+  #
+  # `trust` is YOUR label for a source, and it is the only place a source's trustworthiness is
+  # recorded — deliberately not a field the source itself publishes, which would be a claim about
+  # trustworthiness written by the party being trusted. One of: community, internal.
   # sources:
   #   - name: Rocky Surf Pack Shop
   #     url: https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main
@@ -351,6 +361,9 @@ registry:
   #   - name: Acme internal
   #     url: https://packs.acme.example/shop
   #     trust: internal
+  #   - name: My packs
+  #     url: https://raw.githubusercontent.com/me/my-packs/main/my-pack.yaml
+  #     trust: community
 
   # How long a fetched index is reused before the next request refetches it. Browsing the shop is
   # several requests over a minute or two; one HTTP call per page view would be rude to a CDN and

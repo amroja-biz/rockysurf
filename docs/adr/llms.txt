@@ -26,7 +26,7 @@
 ## Packs & Extensibility
 
 - [0004 Packs are PR-able YAML files; the database is a cache and edit layer](0004-packs-as-pr-able-yaml.md): [Accepted] `packs/*.yaml` become the source of truth for shipped packs, format frozen at v0.1, with a CI-enforced author contract (idempotent, $ARCH-aware, non-interactive, runAs-honest).
-- [0006 Packs come from two places, and only the operator says which is trusted](0006-pack-registry-split-horizon.md): [Accepted] Official packs ship in the tarball; `rockysurf-shop` is community-only with no mirror. The trust label lives in the operator's config, never in a registry's index. Scanning discloses (every script verbatim, root steps, fetched URLs) rather than certifying; provenance gets its own columns because `sourceFile` would make the boot reconcile delete the pack. Format unchanged, so ADR-0004 stands.
+- [0006 Packs come from two places, and only the operator says which is trusted](0006-pack-registry-split-horizon.md): [Accepted] Official packs ship in the tarball; `rockysurf-shop` is community-only with no mirror. The trust label lives in the operator's config, never in a registry's index. Scanning discloses (every script verbatim, root steps, fetched URLs) rather than certifying; provenance gets its own columns because `sourceFile` would make the boot reconcile delete the pack. Format unchanged, so ADR-0004 stands. **Amended 2026-08-26 (issue #88):** a source URL ending in `.yaml` IS the pack, so a person with one file and no CI needs no `index.json`; source URLs are https-only because a pack is root shell; the source list is editable on the admin Settings page, which writes the same config file; and a URL import records the URL it came from.
 
 ## Credentials
 

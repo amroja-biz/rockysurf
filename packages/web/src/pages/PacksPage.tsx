@@ -78,9 +78,28 @@ interface PackView {
  * principle carry both a `sourceFile` and stale registry columns, and what is on disk is what
  * the boot sync will enforce on the next start.
  */
+/**
+ * The exact string core stamps on a pack fetched from a one-off URL import, rather than from a
+ * source somebody configured (`packs/routes.ts`). Duplicated because the SPA does not import
+ * from core; the sentence below is the only thing that depends on it, and a drift shows up as
+ * the generic "installed from …" wording rather than as a broken page.
+ */
+const URL_IMPORT_SOURCE = 'a URL import'
+
 function originOf(pack: AdminSurgePack): string {
   if (pack.sourceFile) return `shipped with this release · ${pack.sourceFile}`
-  if (pack.registry?.source) return `installed from ${pack.registry.source}`
+  /**
+   * THE URL IS PART OF THE ANSWER (issue #88). "Installed from My packs" says which shelf an
+   * admin clicked; it does not say what this installation actually fetched, and with personal
+   * sources that is the question — these are install scripts that run as root on every box
+   * created with the pack. The URL is admin-only, like everything else in this sentence.
+   */
+  if (pack.registry?.source === URL_IMPORT_SOURCE && pack.registry.url) return `imported from ${pack.registry.url}`
+  if (pack.registry?.source) {
+    return pack.registry.url
+      ? `installed from ${pack.registry.source} · ${pack.registry.url}`
+      : `installed from ${pack.registry.source}`
+  }
   return 'created here, in this installation'
 }
 

@@ -237,6 +237,36 @@ describe('provenance labelling', () => {
     expect(card.querySelector('[data-testid="trust-registry"]')).toBeTruthy()
     expect(card.querySelector('[data-testid="trust-official"]')).toBeNull()
     expect(card.textContent).toContain('installed from Rocky Surf Pack Shop')
+    // And the URL, since issue #88: which shelf was clicked is not the same question as what
+    // this installation actually fetched, and with a personal source it is the second one that
+    // an operator is asking. Admin-only, like the rest of this sentence.
+    expect(card.textContent).toContain('https://example.com/shop')
+  })
+
+  it('says an imported pack came from its URL, rather than calling it something made here', async () => {
+    // Issue #88. `a URL import` is the exact string core stamps for a one-off fetch; the point
+    // of the sentence is that a pack full of root shell fetched from somebody else's host does
+    // not read as "created here, in this installation".
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
+      officialAdmin(),
+      registryAdmin({
+        packId: 'mine',
+        name: 'Mine',
+        registry: {
+          source: 'a URL import',
+          url: 'https://packs.example.com/my-pack.yaml',
+          sha256: 'c'.repeat(64),
+          trust: 'unverified',
+          installedAt: '2026-08-26T00:00:00.000Z',
+        },
+      }),
+    ])
+    vi.mocked(api.listSurgePacks).mockResolvedValue([officialPublic(), localPublic({ provenance: 'registry' })])
+
+    renderList()
+    const card = await screen.findByTestId('pack-card-mine')
+    expect(card.textContent).toContain('imported from https://packs.example.com/my-pack.yaml')
+    expect(card.textContent).not.toContain('created here')
   })
 
   it('reads an admin-created pack "local" rather than guessing at a source', async () => {
