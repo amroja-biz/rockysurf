@@ -249,6 +249,24 @@ different ways:
 - **The environment differs.** Unprivileged steps run with `-H`, so `$HOME` is `/home/rocky`.
   A root step's `$HOME` is `/root`, and `~/.bashrc` means something different.
 
+#### How to decide
+
+Ask one question: **on your own laptop, would you run this command as yourself, or would you
+type `sudo` first?** The first is `rocky`; the second is `root`.
+
+| `root` | `rocky` |
+|---|---|
+| `apt-get install` | a `curl … \| bash` installer that writes to `~/.local/bin` |
+| anything under `/usr/local`, `/opt`, `/etc` | `pipx install`, `cargo install`, `npm install -g` under nvm |
+| `usermod`, `groupadd`, a systemd unit | a `git clone` into `~`, a line in `~/.bashrc` |
+| an installer whose own docs say `sudo` | an installer whose own docs say "no sudo needed" |
+
+Most coding agents are the second kind: their installers are written for a developer's own
+machine and put everything in `$HOME`. Run one of those as `root` and it installs perfectly —
+into `/root`, where `rocky` can never reach it. That is the single most common `runAs` mistake,
+and it does not fail in CI, because the install *succeeds*; it fails when the user logs in and
+the tool is not there.
+
 If a single tool genuinely needs both — install system packages as root, then configure them
 for the user — that is two steps: an `installScript` running as `root` and a `setupScript`
 running as `rocky`. That split is exactly what `setupScript` is for.

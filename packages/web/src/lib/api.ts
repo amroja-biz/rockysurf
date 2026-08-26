@@ -21,17 +21,25 @@
 const ENV_BASE = import.meta.env['VITE_API_BASE_URL'] as string | undefined
 const API_BASE_URL = (ENV_BASE ?? '/api/v1').replace(/\/$/, '')
 
+/** What `detail` says when the request never reached core at all (status 0). */
+export const UNREACHABLE_DETAIL = 'Could not reach Rocky Surf — is it running?'
+
 export class ApiError extends Error {
   status: number
   statusText: string
   data?: unknown
 
-  constructor(status: number, statusText: string, data?: unknown) {
-    super(`API Error: ${status} ${statusText}`)
+  constructor(status: number, statusText: string, data?: unknown, cause?: unknown) {
+    super(`API Error: ${status} ${statusText}`, cause === undefined ? undefined : { cause })
     this.name = 'ApiError'
     this.status = status
     this.statusText = statusText
     this.data = data
+  }
+
+  /** True when no server answered — as opposed to core answering with an error. */
+  get unreachable(): boolean {
+    return this.status === 0
   }
 
   /** Core's error envelope is `{ error, code }`; fall back to the status line. */
@@ -120,11 +128,22 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   // why `credentials: 'include'` is unconditional.
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    })
+  } catch (cause) {
+    // `fetch` rejects with a bare TypeError when the request never reached a server — core is
+    // not running, the port is wrong, the network dropped. Every form in the SPA renders
+    // `err.detail` for an ApiError and a generic "could not save X" for anything else, so
+    // without this an operator whose core was simply stopped read "Could not save this tool"
+    // and went looking for a validation problem that did not exist. Status 0 is the browser's
+    // own convention for "no response", so no caller mistakes it for something core said.
+    throw new ApiError(0, UNREACHABLE_DETAIL, undefined, cause)
+  }
 
   if (response.status === 401) {
     onUnauthorized?.()

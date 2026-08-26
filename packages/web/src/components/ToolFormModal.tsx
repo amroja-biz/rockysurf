@@ -128,11 +128,41 @@ export function ToolFormModal({
             <option value="root">root — system packages, global installs</option>
             <option value="rocky">rocky — anything in the user&apos;s home</option>
           </select>
-          <p className="hint">
-            The agent dispatches privilege from this field before the script runs. A script that
-            declares <code>rocky</code> and then calls <code>sudo</code> fails in the container CI uses,
-            which has no sudo at all.
-          </p>
+          <details className="hint" open={!editing}>
+            <summary>Which one? The rule of thumb</summary>
+            <ul>
+              <li>
+                <strong>
+                  <code>root</code>
+                </strong>{' '}
+                — <code>apt-get install</code>, anything written under <code>/usr/local</code>,{' '}
+                <code>/opt</code> or <code>/etc</code>, adding a user to a group, or an installer whose own
+                instructions say <code>sudo</code>.
+              </li>
+              <li>
+                <strong>
+                  <code>rocky</code>
+                </strong>{' '}
+                — anything that lands in the user&apos;s home: a <code>curl … | bash</code> installer that
+                writes to <code>~/.local/bin</code>, <code>pipx</code>, <code>cargo install</code>,{' '}
+                <code>npm install -g</code> under nvm, a git clone into <code>~</code>, an edit to{' '}
+                <code>~/.bashrc</code>.
+              </li>
+            </ul>
+            <p>
+              Ask: would you run this as yourself on your own laptop, or would you type <code>sudo</code> first?
+              The first is <code>rocky</code>, the second is <code>root</code>. Most coding agents are the first
+              kind. A tool that needs both — packages as root, then per-user configuration — is two steps:
+              this install script as <code>root</code> and the setup script below, which runs as{' '}
+              <code>rocky</code>.
+            </p>
+            <p>
+              The agent dispatches privilege from this field before the script runs. A script that declares{' '}
+              <code>rocky</code> and then calls <code>sudo</code> fails in the container CI uses, which has no
+              sudo at all. A <code>root</code> script that installs into <code>/root</code> leaves the tool where{' '}
+              <code>rocky</code> can never reach it.
+            </p>
+          </details>
 
           <label htmlFor="tool-install-order">Install order</label>
           <input
