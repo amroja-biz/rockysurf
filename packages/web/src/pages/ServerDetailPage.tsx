@@ -37,6 +37,7 @@ import {
   STEP_LABELS,
   STEP_ORDER,
 } from '../lib/format'
+import { destructiveAction } from '../lib/serverActions'
 
 /**
  * One server: what it is, how to connect to it, and what it is doing right now.
@@ -167,6 +168,13 @@ export function ServerDetailPage() {
    * the live page already shows — minus the ones that need a machine to be true.
    */
   const historical = server.status === 'terminated'
+  /**
+   * Terminate, or Dismiss for a failed row core already released (ADR-0010). The rule and its
+   * wording moved to `lib/serverActions.ts` when the dashboard card had to ask it too (issue
+   * #154) — it was implemented here and nowhere else, so the same row read `Dismiss` on this
+   * page and `Terminate` on its card.
+   */
+  const destructive = destructiveAction(server)
   const providerCanStop = canStop(capabilities, server.provider)
   const busy = pending !== null || transition.pending !== null
   const cost = formatCostCell(server)
@@ -416,7 +424,7 @@ export function ServerDetailPage() {
               either — the button clears the row, and says so (ADR-0010). Same call underneath,
               because core's terminate is idempotent. */}
           <button className="destructive" disabled={busy} onClick={() => setConfirming('terminate')}>
-            {server.status === 'failed' && !server.billing ? 'Dismiss' : 'Terminate'}
+            {destructive.label}
           </button>
         </section>
       )}
@@ -657,26 +665,24 @@ export function ServerDetailPage() {
           onConfirm={() => void run('stop', () => stopServer(server.serverId), 'Stopping')}
         />
       )}
-      {confirming === 'terminate' &&
-        (server.status === 'failed' && !server.billing ? (
-          <ConfirmModal
-            title={`Dismiss ${server.name}?`}
-            message="The machine is already gone. This clears the failed server and its report from your list."
-            confirmLabel="Dismiss"
-            isDestructive
-            onCancel={() => setConfirming(null)}
-            onConfirm={() => void run('terminate', () => terminateServer(server.serverId), 'Dismissed')}
-          />
-        ) : (
-          <ConfirmModal
-            title={`Terminate ${server.name}?`}
-            message="This destroys the server and its disk. It cannot be undone."
-            confirmLabel="Terminate"
-            isDestructive
-            onCancel={() => setConfirming(null)}
-            onConfirm={() => void run('terminate', () => terminateServer(server.serverId), 'Terminating')}
-          />
-        ))}
+      {confirming === 'terminate' && (
+        <ConfirmModal
+          title={destructive.confirmTitle}
+          message={destructive.confirmMessage}
+          confirmLabel={destructive.label}
+          isDestructive
+          onCancel={() => setConfirming(null)}
+          onConfirm={() =>
+            // One call for both endings: core's terminate is idempotent, so clearing a row
+            // whose machine is already gone is the same request (ADR-0010).
+            void run(
+              'terminate',
+              () => terminateServer(server.serverId),
+              destructive.label === 'Dismiss' ? 'Dismissed' : 'Terminating',
+            )
+          }
+        />
+      )}
     </AppShell>
   )
 }
