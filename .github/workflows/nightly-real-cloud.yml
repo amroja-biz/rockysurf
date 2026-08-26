@@ -2,7 +2,9 @@ name: Nightly real-cloud lifecycle
 
 # THIS WORKFLOW SPENDS MONEY. Every run creates real servers on real clouds and destroys them
 # again. It is deliberately NOT on pull_request: a fork must never be able to bill this account
-# by opening a PR, and a per-commit real-cloud test would be both slow and expensive.
+# by opening a PR, and a per-commit real-cloud test would be both slow and expensive. For how
+# much — measured, not guessed — see "What the nightly costs" in docs/providers/gcp.md, under
+# "The nightly real-cloud run (maintainers)".
 #
 # What it protects is the thing unit tests structurally cannot see — that the SHIPPED article
 # works. The milestone exit runs (rockysurf-55fx.9, rockysurf-gyp1.4) found four separate

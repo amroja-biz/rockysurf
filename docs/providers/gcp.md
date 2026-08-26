@@ -552,6 +552,56 @@ remains unmeasured** by the nightly, exactly as it is today.
 `GCP_CI_ZONE` somewhere without it and the arm64 leg fails on the catalogue's own `available`
 flag before it creates anything, which is the cheapest possible place to find out.
 
+### What the nightly costs — measured 2026-08-26
+
+Answering [gh issue #141](https://github.com/amroja-biz/rockysurf/issues/141). Full derivation
+and sourcing is in
+[the issue comment](https://github.com/amroja-biz/rockysurf/issues/141#issuecomment-5425987411);
+this is its one dated home — see
+[`docs/memories/2026-08-13-measured-numbers-in-prose.md`](../memories/2026-08-13-measured-numbers-in-prose.md)
+for why it lives here once instead of being copied into prose elsewhere.
+
+From 4 clean `nightly-real-cloud.yml` runs, 2026-08-22 through 2026-08-26:
+
+| Box | Avg lifetime | Per-run cost |
+|---|---|---|
+| Hetzner `cpx12` (eu) | ~3.2 min, billed a full hour (hourly rounding) | ≈ $0.022 |
+| AWS `t4g.small` (us-east-1, arm64) | ~5.8 min, billed per-second | ≈ $0.0023 |
+| AWS `t3.small` (us-east-1, amd64) | ~4.1 min, billed per-second | ≈ $0.0019 |
+| **All three boxes, per night** | | **≈ $0.026** |
+
+**Per month:** ~30 scheduled nights plus occasional manual reruns ≈ **under $2/month**, most
+likely close to $0.78/month. **GitHub Actions minutes: $0** — `amroja-biz/rockysurf` is public,
+and GitHub-hosted Linux/ARM runners are free and unmetered on every plan for public repos (still
+true as of Aug 2026). This applies to every workflow in the repo, not just this one.
+
+**Assumptions:** AWS prices from this repo's own hosted feed
+(`https://amroja-biz.github.io/rockysurf/prices/v1/aws.json`, `t4g.small` $0.0168/hr, `t3.small`
+$0.0208/hr, us-east-1), plus public-IPv4 ($0.005/hr) and `gp3` root-volume cost for the box's few
+minutes of life. Hetzner `cpx12` is **not** in this repo's feed (see "Pricing" above) — its
+≈$0.0215/hr comes from a third-party tracker (sparecores.com, post the June-2026 repricing), so
+treat that one number as an estimate rather than a measurement, with Hetzner's documented
+hourly-rounded billing applied on top.
+
+**Not yet included: the GCP leg.** As the section above says, it stays skipped until the
+CI-only project exists, so it has run zero times and contributes nothing to the numbers above.
+Once it runs, using the same method: `t2a-standard-1` + `e2-small` in `us-central1-a`, each for a
+lifetime similar to the AWS legs — a few minutes, GCP bills per-second with a 1-minute minimum —
+at the rates in this repo's own GCP price feed (`scripts/gcp-transcribed-prices.json`, hand-
+transcribed 2026-08-13 from Google's published pricing page for `us-central1`: `t2a-standard-1`
+$0.0385/hr, `e2-small` $0.016753/hr; no sustained-use discount applies to either type). At an
+AWS-like ~5-minute lifetime each, that's roughly $0.0032 + $0.0014 ≈ **$0.005/run** for compute
+alone, plus a small, similarly-rounding-error external-IP and `pd-balanced` boot-disk charge for
+the few minutes each box exists (boot disk is billed separately from the compute rate above; see
+the pricing note on this page). Call it **another $0.005–0.01/run**, which keeps the nightly's
+total in the same "a few cents a night, well under $1/month" range — it does not change the
+headline.
+
+**How to re-measure:** pull the last few runs' step timings with
+`gh run list --workflow=nightly-real-cloud.yml` and `gh run view <id> --json jobs`, multiply each
+box's lifetime by its rate from the price feed (or Hetzner's API / a tracker, per above), and
+re-apply each provider's billing granularity (AWS/GCP per-second, Hetzner hourly-rounded).
+
 ---
 
 ## What is deliberately absent
