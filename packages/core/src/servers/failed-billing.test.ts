@@ -5,7 +5,7 @@ import { ensureLocalAdmin } from '../auth/admin.js'
 import { MemorySecretStore } from '../auth/secret-store.js'
 import { configSchema } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
-import { getProviderData, getServer, listBillingServers } from '../db/repositories/servers.js'
+import { getProviderData, getServer, listBillingServers, recordProviderState } from '../db/repositories/servers.js'
 import { createProvisionTick } from '../jobs/provision-ticker.js'
 import { createReconcileTick } from '../jobs/reconciler.js'
 import { createUptimeTick } from '../jobs/uptime-ticker.js'
@@ -300,5 +300,44 @@ describe('the sweep, which is what stops the meter when the machine really goes'
 
     await accrueFor(5)
     expect(row(serverId!).totalUptimeSeconds).toBe(3600) // frozen where the machine died
+  })
+})
+
+describe('a failed row core itself released stays released (ADR-0010, seen live 2026-08-26)', () => {
+  it('does not let a provider read that lags the terminate put the row back on the meter', async () => {
+    const { serverId } = await createServer()
+    await failBootstrap()
+    // What `failBootstrap`'s terminate path writes the moment the release call returns. The
+    // fake instance is deliberately left running underneath, because that is what a cloud looks
+    // like from core's side in the seconds after a DELETE is accepted — Azure answers
+    // Succeeded/running, EC2 answers shutting-down — and the bug was that this window was
+    // believed: the detail page's own GET synced the row, recorded `running` over `terminated`,
+    // and the page relabelled Dismiss as Terminate on a machine that no longer existed.
+    recordProviderState(opened.db, serverId!, 'terminated')
+    expect((await provider.describe(getProviderData(row(serverId!))!)).state).toBe('running')
+
+    const res = await request(`/api/v1/servers/${serverId}`)
+    const body = (await res.json()) as Record<string, unknown>
+
+    expect(row(serverId!).status).toBe('failed')
+    expect(row(serverId!).providerState).toBe('terminated')
+    expect(body['billing']).toBeUndefined()
+    expect(listBillingServers(opened.db).map((r) => r.id)).not.toContain(serverId)
+
+    // And the meter stays stopped: an hour of wall clock accrues nothing.
+    pretendItHasBeenUpSinceTheStartOfTheMonth(serverId!)
+    await accrueFor(1)
+    expect(row(serverId!).totalUptimeSeconds).toBe(0)
+  })
+
+  it('leaves the rule out of it for a failed row core did NOT release, which keeps billing', async () => {
+    const { serverId } = await createServer()
+    await failBootstrap()
+
+    const res = await request(`/api/v1/servers/${serverId}`)
+    const body = (await res.json()) as Record<string, unknown>
+
+    expect(row(serverId!).providerState).toBe('running')
+    expect(body['billing']).toMatchObject({ live: true, providerState: 'running' })
   })
 })

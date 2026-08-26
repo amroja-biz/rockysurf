@@ -106,6 +106,14 @@ export function ServerDetailPage() {
         setLogLines((current) => [...current, event.line ?? ''].slice(-200))
         return
       }
+      if (event.type === 'server-status' && (event.status === 'failed' || event.status === 'terminated')) {
+        // A terminal frame is the cue to read the row again (ADR-0010): the report, and the
+        // verdict on whether the machine still bills, live on the row and not on the frame.
+        // Patching only `status` onto the object this page already holds kept the `billing`
+        // block from the provisioning phase, and the button below read "Terminate" for a
+        // machine core had just released.
+        void refresh()
+      }
       setServer((current) => {
         if (!current) return current
         if (event.type === 'server-status') {
@@ -122,7 +130,7 @@ export function ServerDetailPage() {
         }
         return current
       })
-    }, []),
+    }, [refresh]),
     serverId,
   )
 
