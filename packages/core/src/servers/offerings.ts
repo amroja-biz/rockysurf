@@ -115,6 +115,95 @@ export function resolveOffering(offerings: readonly Offering[], requirements: Re
 }
 
 /**
+ * A size resolution that also says what happened to the user's saved preference (issue #124).
+ *
+ * `preferred` is what the user asked for last time and got again; a `note` is the sentence
+ * explaining why they did not. Exactly one of them is ever interesting, and both are absent on
+ * an installation where nobody has saved anything — which is every installation until someone
+ * does, and the reason this is additive rather than a replacement for `OfferingResolution`.
+ */
+export type SizeResolution =
+  | { ok: true; offering: Offering; preferred: boolean; note?: string }
+  | { ok: false; reason: string; soldOut: boolean; note?: string }
+
+export interface SizeOptions {
+  arch?: Architecture
+  /** The machine type this user saved for this size on this cloud, if they saved one. */
+  preference?: string
+}
+
+/**
+ * Why a saved preference cannot be used right now, or `undefined` when it can.
+ *
+ * THE FLOOR IS NOT CHECKED, on purpose. A size's `SIZE_REQUIREMENTS` row exists to stop a
+ * caller with no opinion being handed something smaller than they asked for; a caller who
+ * SAVED `t4g.large` as their small has the opinion, and re-refusing it against the floor would
+ * be the product arguing with a setting it asked the user to make.
+ *
+ * The three things that ARE checked are the three that make the preference impossible rather
+ * than merely unusual: it is not sold here, it is not sellable right now, or its architecture
+ * contradicts one the caller named explicitly on this create.
+ */
+function preferenceProblem(
+  offerings: readonly Offering[],
+  preference: string,
+  size: ServerSize,
+  arch: Architecture | undefined,
+): string | undefined {
+  const chosen = offerings.find((o) => o.id === preference)
+  const saved = `your saved ${size} type "${preference}"`
+  if (!chosen) return `${saved} is not one this installation offers`
+  if (!chosen.available) {
+    // The provider's own reason where it has one (Azure: which quota gate refused, issue #116) —
+    // "sold out" would send someone to wait for stock that a quota request is the only cure for.
+    return `${saved} is unavailable: ${chosen.unavailableReason ?? 'it is sold out right now'}`
+  }
+  if (arch !== undefined && chosen.arch !== arch) {
+    return `${saved} is ${archLabel(chosen.arch)} and this create asked for ${archLabel(arch)}`
+  }
+  return undefined
+}
+
+/**
+ * Resolve a t-shirt size, honouring the user's saved type for it where one is usable.
+ *
+ * THE ORDER IS: preference if set and usable, then the ordinary cheapest-that-fits default.
+ * A preference never becomes a refusal — an unusable one falls back and SAYS SO, because the
+ * failure mode this has to avoid is a user who saved `t4g.large`, quietly got a `t4g.small` for
+ * six weeks, and found out from the invoice.
+ *
+ * Every caller passes through here: the SPA resolves in the browser with the mirror of this
+ * function in `packages/web/src/lib/requirements.ts` and posts a concrete `offeringId`, and the
+ * CLI and the MCP server post a `size` that reaches this one through the create route. Same
+ * preference, same order, three surfaces.
+ */
+export function resolveSize(
+  offerings: readonly Offering[],
+  size: ServerSize,
+  options: SizeOptions = {},
+): SizeResolution {
+  const { arch, preference } = options
+  const fallback = resolveOffering(offerings, {
+    ...SIZE_REQUIREMENTS[size],
+    ...(arch ? { arch } : {}),
+  })
+
+  if (!preference) return fallback.ok ? { ...fallback, preferred: false } : fallback
+
+  const problem = preferenceProblem(offerings, preference, size, arch)
+  if (!problem) {
+    // `preferenceProblem` already found it and vouched for it; re-finding it keeps this
+    // function's return type honest without a non-null assertion on a search done twice.
+    const chosen = offerings.find((o) => o.id === preference)!
+    return { ok: true, offering: chosen, preferred: true }
+  }
+
+  return fallback.ok
+    ? { ...fallback, preferred: false, note: `${problem}, so ${fallback.offering.id} was used instead` }
+    : { ...fallback, note: problem }
+}
+
+/**
  * Narrow a catalogue to the offerings this installation permits (rockysurf-j10e).
  *
  * `providers.<cloud>.sizes` has been declared in the config schema, carried through the

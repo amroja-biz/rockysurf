@@ -6,7 +6,7 @@ import type { AppEnv } from '../app.js'
 import { DEFAULT_SSH_PORT } from '../bootstrap/push.js'
 import { InvalidTransitionError } from '../db/transitions.js'
 import { LimitExceededError } from '../jobs/limits.js'
-import type { ServerRow, StoredSize } from '../db/schema.js'
+import { SERVER_SIZES, type ServerRow, type ServerSize, type StoredSize } from '../db/schema.js'
 import { getBootstrapReport, getServerRepositories, getServerTools, isBillingRow } from '../db/repositories/servers.js'
 import type { BootstrapReport } from '../bootstrap/failure-report.js'
 import { badRequest, created, notFound, success } from '../http/responses.js'
@@ -21,7 +21,7 @@ import {
   type LifecycleService,
 } from './lifecycle.js'
 import type { ProviderRegistry } from '../providers/registry.js'
-import { allowedOfferings, describeCatalogue, resolveOffering, SIZE_REQUIREMENTS } from './offerings.js'
+import { allowedOfferings, describeCatalogue, resolveSize } from './offerings.js'
 import type { Context } from 'hono'
 
 /**
@@ -173,6 +173,15 @@ export interface ServerRoutesDeps {
    * the file has, and this route only ever passes a registry id back in.
    */
   offeringAllowlist?: (providerId: string) => readonly string[] | undefined
+  /**
+   * The machine type the user has saved for a size on a cloud — `preferences.tiers` (issue #124).
+   *
+   * A FUNCTION for the same reason `offeringAllowlist` is one: the answer lives in the config
+   * file, the route must not grow a dependency on it, and passing a registry id back in keeps
+   * every cloud's name out of core. Absent, or `undefined` for a pair, means "no preference",
+   * which is the default resolution this route has always done.
+   */
+  tierPreference?: (providerId: string, size: ServerSize) => string | undefined
 }
 
 /**
@@ -379,15 +388,33 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
    * New Server page" is finally true. The create route applies the same allowlist, because a
    * limit only the UI honours is not a limit.
    */
+  /**
+   * The saved types for one cloud, as `{ small?, medium?, large? }` (issue #124).
+   *
+   * Rides along with the catalogue for exactly the reason the catalogue rides along with the
+   * provider: the create page resolves in the browser, so it needs the preference and the
+   * offering it names in the same response, and two requests would only create a window where
+   * it has one and not the other. Omitted entirely for a cloud with nothing saved.
+   */
+  const tierPreferencesFor = (providerId: string) => {
+    if (!deps.tierPreference) return undefined
+    const saved = SERVER_SIZES.map((size) => [size, deps.tierPreference!(providerId, size)] as const).filter(
+      (entry): entry is readonly [ServerSize, string] => entry[1] !== undefined,
+    )
+    return saved.length > 0 ? Object.fromEntries(saved) : undefined
+  }
+
   routes.get('/api/v1/providers', async (c) => {
     const providers = await Promise.all(
       registry.list().map(async (p) => {
+        const preferences = tierPreferencesFor(p.id)
         try {
           return {
             id: p.id,
             displayName: p.displayName,
             capabilities: p.capabilities,
             offerings: allowedOfferings(await p.listOfferings(), deps.offeringAllowlist?.(p.id)),
+            ...(preferences ? { tierPreferences: preferences } : {}),
           }
         } catch (err) {
           return {
@@ -396,6 +423,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
             capabilities: p.capabilities,
             offerings: [],
             offeringsError: isProviderError(err) ? err.message : String(err),
+            ...(preferences ? { tierPreferences: preferences } : {}),
           }
         }
       }),
@@ -555,6 +583,16 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
      * column is display sugar, and there is no reason to overwrite a size the caller stated.
      */
     let size: StoredSize
+    /**
+     * Why the machine created is not the one the user saved for this size (issue #124).
+     *
+     * ON THE RESPONSE, not only in the SPA, because the caller that most needs it is the one
+     * with no screen: `rockysurf create --size small` and the `create_server` MCP tool both
+     * post a size and get a row back, and a preference that silently stopped applying — the
+     * type retired, out of stock, or quota-refused — would otherwise show up first on a bill.
+     * Absent whenever the preference was honoured or never set, which is the ordinary case.
+     */
+    let sizeNote: string | undefined
 
     if (body.offeringId && body.arch) {
       /*
@@ -627,17 +665,28 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       } catch (err) {
         return fail(c, err)
       }
-      const resolution = resolveOffering(catalogue, {
-        ...SIZE_REQUIREMENTS[requestedSize],
+      /*
+       * The user's own answer for this size on this cloud comes FIRST (issue #124), and the
+       * catalogue it is checked against is the allowlisted one — a preference the operator has
+       * since excluded with `providers.<cloud>.sizes` is not quietly reinstated here.
+       */
+      const preference = deps.tierPreference?.(providerId, requestedSize)
+      const resolution = resolveSize(catalogue, requestedSize, {
         ...(body.arch ? { arch: body.arch } : {}),
+        ...(preference ? { preference } : {}),
       })
       if (!resolution.ok) {
         const scope = allowlist ? ` (of the ${allowlist.length} this installation offers)` : ''
-        const message = `${providerId}: ${resolution.reason}${scope}`
+        // The preference note leads when there is one: "your saved large type is unavailable"
+        // is the fact that explains the refusal, and "no machine type meets 4 vCPU" alone would
+        // send someone to look at a floor they never set.
+        const why = resolution.note ? `${resolution.note}; ${resolution.reason}` : resolution.reason
+        const message = `${providerId}: ${why}${scope}`
         // Sold out is retryable and unsatisfiable is not, so they must not share a status.
         if (resolution.soldOut) return c.json({ error: message, code: 'capacity' }, 503)
-        return badRequest(c, message, [{ path: 'size', message: resolution.reason }])
+        return badRequest(c, message, [{ path: 'size', message: why }])
       }
+      sizeNote = resolution.note
       offeringId = resolution.offering.id
       arch = resolution.offering.arch
       size = requestedSize
@@ -678,7 +727,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         // nothing — the standard header, so a client can be safe without inventing a scheme.
         ...(c.req.header('idempotency-key') ? { idempotencyKey: c.req.header('idempotency-key')! } : {}),
       })
-      return created(c, present(row, deps))
+      return created(c, { ...present(row, deps), ...(sizeNote ? { sizeNote } : {}) })
     } catch (err) {
       return fail(c, err)
     }

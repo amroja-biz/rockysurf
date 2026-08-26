@@ -288,8 +288,45 @@ describe('every setting on the page explains itself', () => {
       'providers.byo',
       'providers.byo.hosts',
       'limits',
+      'preferences',
+      'preferences.tiers.hetzner',
+      'preferences.tiers.aws',
+      'preferences.tiers.azure',
+      'preferences.tiers.gcp',
+      'preferences.tiers.byo',
       'mcp',
     ])
+  })
+
+  /**
+   * The saved-type fields, held to the same shape as everything else here (issue #124).
+   *
+   * They are the one block in the inventory generated from a table rather than written out
+   * entry by entry, so this checks the generated result is a full inventory entry — one
+   * writable string field per (cloud, size), with the cloud's own vocabulary in the help — and
+   * not twelve rows of the same placeholder.
+   */
+  it('offers a saved machine type for every size on every cloud', () => {
+    const paths = SETTINGS_FIELDS.filter((f) => f.path.startsWith('preferences.tiers.')).map((f) => f.path)
+    for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
+      for (const size of ['small', 'medium', 'large']) {
+        const path = `preferences.tiers.${cloud}.${size}`
+        const field = SETTINGS_FIELDS.find((f) => f.path === path)
+        expect(field, `${path} is missing from the inventory`).toBeDefined()
+        expect(field!.kind).toBe('string')
+        expect(field!.writable, `${path} would be shown and never written`).toBe(true)
+        expect(field!.help, `${path}'s help does not say what happens when it is blank`).toContain('blank')
+      }
+    }
+    expect(paths).toHaveLength(15)
+    // Every one of them is a real machine type in that cloud's own words, not "a machine type".
+    const examples = ['cpx21', 't4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']
+    for (const example of examples) {
+      expect(
+        SETTINGS_FIELDS.some((f) => f.path.startsWith('preferences.tiers.') && f.help.includes(example)),
+        `no saved-type field names ${example}, so its box says nothing about what goes in it`,
+      ).toBe(true)
+    }
   })
 
   it('puts every field inside a section the page draws', () => {

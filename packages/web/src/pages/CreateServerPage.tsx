@@ -10,6 +10,8 @@ import {
   listProviders,
   listSurgePacks,
   resolveRepositories,
+  getSettings,
+  saveSettings,
   type ConfiguredScope,
   type CreateServerRequest,
   type Offering,
@@ -24,13 +26,14 @@ import {
   formatHourly,
   formatMonthly,
   formatPricesAsOf,
-  resolveOffering,
+  resolveSize,
   SIZE_REQUIREMENTS,
   SIZES,
   type Architecture,
-  type Resolution,
   type ServerSize,
+  type SizeResolution,
 } from '../lib/requirements'
+import { useAuth } from '../contexts/AuthContext'
 import { AppShell } from '../components/AppShell'
 import { PackIcon } from '../components/PackIcon'
 import { ProviderErrorNotice } from '../components/ProviderErrorNotice'
@@ -464,6 +467,9 @@ const MACHINE_PICKER_RENDER_CAP = 50
 export function CreateServerPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  // Only for deciding whether to OFFER the "remember this" button: the config file is admin
+  // territory, and the route enforces that regardless of what this page draws.
+  const { user } = useAuth()
 
   /* ---------------------------------------------------------------- catalogue */
   const [providers, setProviders] = useState<ProviderInfo[]>([])
@@ -540,6 +546,15 @@ export function CreateServerPage() {
   const [withoutReposOffered, setWithoutReposOffered] = useState(false)
   const [createWithoutRepos, setCreateWithoutRepos] = useState(false)
   const [createdServerId, setCreatedServerId] = useState<string | null>(null)
+  /**
+   * Types remembered from this page since it loaded, by provider then size (issue #124).
+   *
+   * Local because `/providers` is fetched once; core has the authoritative copy the moment the
+   * save returns, and this only keeps the page the save was made from in step with it.
+   */
+  const [savedTiers, setSavedTiers] = useState<Record<string, Partial<Record<ServerSize, string>>>>({})
+  /** Which (size) button is mid-save, so it can be disabled and say so. */
+  const [savingTier, setSavingTier] = useState<ServerSize | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -619,15 +634,32 @@ export function CreateServerPage() {
   // with the machine it would land on, and three floors that all read "at least 2 vCPU" cannot be
   // compared without clicking through them one at a time. One resolver over one catalogue at one
   // arch, so a label and the plan card below can never quote different machines for the same size.
+  /**
+   * The saved types for THIS cloud (issue #124): whatever core sent, plus anything remembered
+   * on this page since it loaded.
+   *
+   * The local half exists because the page does not re-fetch `/providers` after a save. Core
+   * re-reads `preferences.tiers` from the file on every create, so a saved type is live for
+   * every other surface immediately; this keeps the screen in front of the person who just
+   * saved it honest too, rather than showing them the old default until they reload.
+   */
+  const tierPreferences = useMemo(
+    () => ({ ...(provider?.tierPreferences ?? {}), ...(providerId ? (savedTiers[providerId] ?? {}) : {}) }),
+    [provider, providerId, savedTiers],
+  )
+
   const sizeResolutions = useMemo(() => {
     if (!provider) return null
     return new Map(
-      SIZES.map((option): [ServerSize, Resolution] => [
+      SIZES.map((option): [ServerSize, SizeResolution] => [
         option,
-        resolveOffering(provider.offerings, { ...SIZE_REQUIREMENTS[option], ...(arch ? { arch } : {}) }),
+        resolveSize(provider.offerings, option, {
+          ...(arch ? { arch } : {}),
+          ...(tierPreferences[option] ? { preference: tierPreferences[option]! } : {}),
+        }),
       ]),
     )
-  }, [provider, arch])
+  }, [provider, arch, tierPreferences])
 
   const resolution = sizeResolutions?.get(size) ?? null
 
@@ -748,6 +780,43 @@ export function CreateServerPage() {
       const body = current.replace(/\s+$/, '')
       return body === '' ? url : `${body}\n${url}`
     })
+  }
+
+  /**
+   * REMEMBER THIS MACHINE TYPE AS MY <size> FOR <cloud> (issue #124).
+   *
+   * The low-friction half of the feature. The Settings page can set the same thing in a text
+   * box, but nobody opens Settings to answer a question they are already looking at: the moment
+   * a user picks `t4g.large` by hand on the New Server page IS the moment they know it is what
+   * they want, and this asks them there in one click.
+   *
+   * IT WRITES THE CONFIG FILE, through the same guarded route the Settings page uses — read for
+   * the mtime, then save against it, so a hand-edit in another window is refused rather than
+   * clobbered. Two round trips, deliberately: the concurrency token is the whole reason that
+   * route is safe, and inventing a second unguarded way in would be a way to lose someone's
+   * file.
+   *
+   * ADMIN ONLY, because the route is. A non-admin never sees the button rather than seeing one
+   * that 403s — the difference between a control that does nothing and a control that is not
+   * offered.
+   */
+  async function rememberTier(size: ServerSize, offeringId: string) {
+    if (!providerId) return
+    setSavingTier(size)
+    try {
+      const view = await getSettings()
+      await saveSettings(view.file.mtimeMs, [
+        { path: ['preferences', 'tiers', providerId, size], value: offeringId },
+      ])
+      setSavedTiers((current) => ({ ...current, [providerId]: { ...current[providerId], [size]: offeringId } }))
+      setCustomOfferingId(null)
+      setSize(size)
+      toast.success(`${offeringId} is now your ${size} on ${provider?.displayName ?? providerId}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save that preference')
+    } finally {
+      setSavingTier(null)
+    }
   }
 
   function validate(): string | null {
@@ -996,9 +1065,34 @@ export function CreateServerPage() {
                     {lands.offering.id} · {lands.offering.hourly ? formatHourly(lands.offering.hourly) : 'price unknown'}
                   </span>
                 )}
+                {/* The type this user saved, being used (issue #124). On the row rather than in
+                    the plan card, because the question it answers — "why is my medium bigger
+                    than the floor says?" — is asked while reading the three rows. */}
+                {lands?.ok && lands.preferred && (
+                  <span className="size-detail" data-testid={`size-preferred-${option}`}>
+                    your saved type
+                  </span>
+                )}
               </label>
             )
           })}
+          {/*
+            A saved type that could not be used, and what was used instead (issue #124).
+
+            SHOWN FOR THE SELECTED SIZE ONLY, and only while a size is what drives the request:
+            a machine type picked by hand has already overridden every size, so a sentence about
+            what one of them would have resolved to is answering a question nobody asked.
+
+            NEVER AS AN ERROR: nothing is broken, the create will succeed, and the machine is
+            simply not the one the preference names.
+            Silence here is the failure mode the whole note exists to prevent — a user who saved
+            a type, got a different one, and found out from the invoice.
+          */}
+          {!customOfferingId && resolution?.note && (
+            <p className="hint" data-testid="tier-preference-note">
+              {resolution.note}
+            </p>
+          )}
         </fieldset>
 
         {provider && (
@@ -1008,6 +1102,49 @@ export function CreateServerPage() {
             onSelect={(offering) => setCustomOfferingId(offering.id)}
             onClear={() => setCustomOfferingId(null)}
           />
+        )}
+
+        {/*
+          "MAKE THIS MY DEFAULT" (issue #124) — the one-click half of the preference.
+
+          Offered exactly when there is something to remember: a specific machine type has been
+          picked by hand, which is the moment the user has demonstrably decided. Three buttons
+          rather than one, because the type alone does not say WHICH size it is the answer for,
+          and asking that question in the same click is cheaper than a second screen.
+
+          A size whose saved type is already this one gets no button — there is nothing to save,
+          and a button that would write what is already written is a button that lies about
+          having done something.
+        */}
+        {provider && customOffering && user?.isAdmin && (
+          <div className="tier-preference" data-testid="remember-tier">
+            <p className="hint">
+              Use <code>{customOffering.id}</code> every time you ask {provider.displayName} for a:
+            </p>
+            <div className="tier-preference-actions">
+              {SIZES.map((option) =>
+                tierPreferences[option] === customOffering.id ? (
+                  <span key={option} className="hint" data-testid={`tier-saved-${option}`}>
+                    {option} — saved
+                  </span>
+                ) : (
+                  <button
+                    key={option}
+                    type="button"
+                    className="button secondary"
+                    disabled={savingTier !== null}
+                    onClick={() => void rememberTier(option, customOffering.id)}
+                  >
+                    {savingTier === option ? 'Saving…' : option}
+                  </button>
+                ),
+              )}
+            </div>
+            <p className="hint">
+              Saved to <code>rockysurf.config.yaml</code>, and used by the CLI and MCP too. Change or clear it
+              under Preferences in <Link to="/settings?section=preferences">Settings</Link>.
+            </p>
+          </div>
         )}
 
         {/* Architecture, offered only where the provider actually sells more than one, and

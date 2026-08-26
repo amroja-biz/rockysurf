@@ -51,12 +51,21 @@ export {
 } from './interpolate.js'
 
 export {
+  createPreferenceReader,
+  type PreferenceReader,
+  type PreferenceReaderDeps,
+} from './live-preferences.js'
+
+export {
   DEFAULT_REGISTRY_URL,
   REGISTRY_TRUST,
   configSchema,
   expandTilde,
+  preferencesSchema,
   type ByoHost,
   type Config,
+  type PreferencesConfig,
+  type TierPreferences,
   type LimitsConfig,
   type McpConfig,
   type McpScope,

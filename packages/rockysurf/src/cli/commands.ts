@@ -55,6 +55,14 @@ interface ServerSummary {
   sshPort?: number
   size?: string
   hourlyCost?: { amount: number; currency: string } | undefined
+  /**
+   * Why the machine is not the type saved for this size (issue #124).
+   *
+   * Present only when a preference existed and could not be used — sold out, quota-refused, or
+   * no longer offered. Printed rather than dropped, because a shell caller has no size picker
+   * to read the fallback off: without this the first sign would be the invoice.
+   */
+  sizeNote?: string
 }
 
 const unwrap = <T>(body: unknown, key: string): T =>
@@ -278,6 +286,7 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
   const server = unwrap<ServerSummary>(body, 'server')
 
   deps.out(server.name)
+  if (server.sizeNote) deps.err(server.sizeNote.charAt(0).toUpperCase() + server.sizeNote.slice(1) + '.')
   deps.err(
     `Creating ${server.name} (${server.serverId}). Watch it come up with \`rockysurf list\`, ` +
       `then connect with \`rockysurf ssh ${server.name}\`.` +

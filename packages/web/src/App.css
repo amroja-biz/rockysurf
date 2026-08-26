@@ -470,6 +470,27 @@ input[type='file']::file-selector-button:hover {
   font-size: 0.75rem;
 }
 
+/* "Use this type every time" (issue #124). A dashed edge rather than the solid one the radio
+   cards carry: it sits directly under the machine-type picker and is an aside about the choice
+   just made, not a fourth thing to choose between. */
+.tier-preference {
+  padding: 0.75rem 0.875rem;
+  border: 1px dashed var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+
+.tier-preference p {
+  margin: 0;
+}
+
+.tier-preference-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
 /* The tab list, the app's first (rockysurf-jn71). Same tokens and the same `.selected` modifier
    the radio card above already uses, so a shelf of packs under a tab reads as one control rather
    than as two widgets stacked — the rule the pack-shop block further down states out loud.

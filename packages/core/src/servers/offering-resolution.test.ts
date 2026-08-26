@@ -52,6 +52,8 @@ interface BuildOptions {
   sizes?: string[]
   /** Which config section, and which registry id, the fake provider is registered under. Default `aws`. */
   providerId?: string
+  /** `preferences.tiers.<providerId>` — the user's saved types (issue #124). */
+  tiers?: Record<string, string>
 }
 
 /**
@@ -71,9 +73,21 @@ async function build(options: BuildOptions = {}): Promise<void> {
   const secrets = new MemorySecretStore()
   await ensureLocalAdmin({ db: opened.db, secrets, password: PASSWORD })
 
+  const config = configSchema.parse(options.sizes ? { providers: { [providerId]: { sizes: options.sizes } } } : {})
+  /*
+   * Saved types are set AFTER the parse rather than through it (issue #124).
+   *
+   * Deliberate: the schema refuses a preference outside `providers.<cloud>.sizes` at boot, so
+   * writing that pairing through `configSchema.parse` here would fail before the route ever ran
+   * — and the route's own narrowing is exactly what one of the cases below is for. A hand-edited
+   * file that predates the check reaches the route in precisely this state. That the schema
+   * refuses the pairing is pinned separately, in `config/config.test.ts`.
+   */
+  if (options.tiers) (config.preferences.tiers as Record<string, unknown>)[providerId] = options.tiers
+
   const created = createApp({
     db: opened.db,
-    config: configSchema.parse(options.sizes ? { providers: { [providerId]: { sizes: options.sizes } } } : {}),
+    config,
     secrets,
     events: createEventsService(),
     providers: new ProviderRegistry([provider]),
@@ -96,6 +110,8 @@ interface CreateResult {
   status: number
   serverId?: string
   error?: string
+  /** Why the saved type was not used, when it was not (issue #124). */
+  sizeNote?: string
 }
 
 async function create(body: Record<string, unknown>): Promise<CreateResult> {
@@ -109,6 +125,7 @@ async function create(body: Record<string, unknown>): Promise<CreateResult> {
     status: res.status,
     ...(typeof parsed['serverId'] === 'string' ? { serverId: parsed['serverId'] } : {}),
     ...(typeof parsed['error'] === 'string' ? { error: parsed['error'] } : {}),
+    ...(typeof parsed['sizeNote'] === 'string' ? { sizeNote: parsed['sizeNote'] } : {}),
   }
 }
 
@@ -339,5 +356,143 @@ describe('providers.hetzner.sizes is accepted and applied, same as the other clo
     const { status, error } = await create({ size: 'small', offeringId: 'fake-small' })
     expect(status).toBe(400)
     expect(error).toMatch(/fake-medium/)
+  })
+})
+
+/* --------------------------------------------------------- the user's saved type wins */
+
+/**
+ * `preferences.tiers` — the favourite machine type, honoured on every surface (issue #124).
+ *
+ * AT THE WIRING LEVEL FOR THE SAME REASON THE REST OF THIS FILE IS: the CLI and the MCP server
+ * do not resolve anything themselves, they POST a `size` to this exact route, so a create that
+ * comes back with the saved type HERE is the CLI's and MCP's behaviour too. There is no third
+ * resolver for them to drift from — `mcp/tools.ts` builds `{ size }` and hands it over, and
+ * `cli/commands.ts` does the same.
+ *
+ * The fake catalogue again:
+ *
+ *   fake-small     2 vCPU   4 GB  arm64  $0.01  available
+ *   fake-medium    4 vCPU   8 GB  amd64  $0.04  available
+ *   fake-sold-out  8 vCPU  16 GB  arm64  $0.08  UNAVAILABLE
+ *
+ * so `small` defaults to `fake-small`, and a saved `fake-medium` is a machine the default would
+ * never have chosen — which is exactly the point of saving one.
+ */
+describe('a saved machine type is used for that size (issue #124)', () => {
+  it('uses the saved type instead of the cheapest that fits', async () => {
+    await build({ tiers: { small: 'fake-medium' } })
+    const { status, serverId, sizeNote } = await create({ size: 'small' })
+
+    expect(status).toBe(201)
+    expect(row(serverId!).offeringId).toBe('fake-medium')
+    // Still recorded as the size that was asked for: a preference changes which machine a size
+    // means, not what the row says the user asked for.
+    expect(row(serverId!).size).toBe('small')
+    expect(row(serverId!).arch).toBe('amd64')
+    // Nothing to explain when the preference was honoured.
+    expect(sizeNote).toBeUndefined()
+  })
+
+  it('honours a saved type that does not meet the size floor, because it IS the answer', async () => {
+    // `large` is 4 vCPU / 8 GB and `fake-small` meets neither. Saving it anyway is a legitimate
+    // thing to want, and re-refusing it against the floor would be the product arguing with a
+    // setting it asked the user to make.
+    await build({ tiers: { large: 'fake-small' } })
+    expect(row((await create({ size: 'large' })).serverId!).offeringId).toBe('fake-small')
+  })
+
+  it('changes nothing for a size with no saved type', async () => {
+    await build({ tiers: { large: 'fake-medium' } })
+    // Today's behaviour, untouched: `small` still takes the cheapest that fits.
+    expect(row((await create({ size: 'small' })).serverId!).offeringId).toBe('fake-small')
+  })
+
+  it('changes nothing at all on an installation that has saved nothing', async () => {
+    await build()
+    expect(row((await create({ size: 'small' })).serverId!).offeringId).toBe('fake-small')
+    expect(row((await create({ size: 'large' })).serverId!).offeringId).toBe('fake-medium')
+  })
+
+  it('falls back and says why when the saved type is unavailable', async () => {
+    await build({ tiers: { small: 'fake-sold-out' } })
+    const { status, serverId, sizeNote } = await create({ size: 'small' })
+
+    // NOT A REFUSAL. A preference that cannot be met is a reason to fall back, not a reason to
+    // stop someone creating a server.
+    expect(status).toBe(201)
+    expect(row(serverId!).offeringId).toBe('fake-small')
+    // ...and it is not silent, which is the whole point: the alternative is a user who saved a
+    // type, quietly got another one for six weeks, and found out from the invoice.
+    expect(sizeNote).toContain('fake-sold-out')
+    expect(sizeNote).toContain('fake-small')
+  })
+
+  it('carries the provider own reason when it gives one', async () => {
+    await build({
+      tiers: { small: 'no-quota' },
+      offerings: [
+        { id: 'fake-small', cpu: 2, memoryGb: 4, arch: 'arm64', hourly: null, available: true, region: 'fake-1' },
+        {
+          id: 'no-quota',
+          cpu: 4,
+          memoryGb: 8,
+          arch: 'arm64',
+          hourly: null,
+          available: false,
+          // The shape #139 gave Azure: a refusal whose cure is a portal request, not waiting.
+          unavailableReason: 'this subscription has no core quota for the Dpsv5 family',
+          region: 'fake-1',
+        },
+      ],
+    })
+    const { sizeNote } = await create({ size: 'small' })
+    expect(sizeNote).toContain('no core quota')
+  })
+
+  it('falls back when the saved type is not offered here at all', async () => {
+    await build({ tiers: { small: 'a-type-that-was-retired' } })
+    const { status, serverId, sizeNote } = await create({ size: 'small' })
+    expect(status).toBe(201)
+    expect(row(serverId!).offeringId).toBe('fake-small')
+    expect(sizeNote).toContain('a-type-that-was-retired')
+  })
+
+  it('does not honour a saved type whose arch contradicts the one asked for', async () => {
+    // `fake-medium` is amd64. A caller who explicitly asked for arm64 gets arm64 — the
+    // preference is a default, and an explicit argument outranks a default.
+    await build({ tiers: { small: 'fake-medium' } })
+    const { serverId, sizeNote } = await create({ size: 'small', arch: 'arm64' })
+    expect(row(serverId!).offeringId).toBe('fake-small')
+    expect(row(serverId!).arch).toBe('arm64')
+    expect(sizeNote).toMatch(/x86-64|ARM64/)
+  })
+
+  it('does not reinstate a type the operator excluded with providers.<cloud>.sizes', async () => {
+    // The operator's allowlist is a policy and the preference is a default; a default never
+    // steps over a policy. The catalogue is narrowed before the preference is looked for at all.
+    // (`providers.aws.sizes` also refuses this pairing at boot — see `config.test.ts` — so this
+    // is the belt beside that brace, for a file that predates the check.)
+    await build({ tiers: { small: 'fake-small' }, sizes: ['fake-medium'] })
+    const { status, serverId, sizeNote } = await create({ size: 'small' })
+    expect(status).toBe(201)
+    expect(row(serverId!).offeringId).toBe('fake-medium')
+    expect(sizeNote).toContain('fake-small')
+  })
+
+  it('sends the saved types to the New Server page alongside the catalogue', async () => {
+    await build({ tiers: { small: 'fake-medium', large: 'fake-small' } })
+    const res = await app.request('/api/v1/providers', { headers: { cookie } })
+    const body = (await res.json()) as { tierPreferences?: Record<string, string> }[]
+    // The SPA resolves in the browser, so it needs the preference and the offering it names in
+    // the same response — a second request would only create a window where it has one.
+    expect(body[0]!.tierPreferences).toEqual({ small: 'fake-medium', large: 'fake-small' })
+  })
+
+  it('omits tierPreferences entirely for a cloud with nothing saved', async () => {
+    await build()
+    const res = await app.request('/api/v1/providers', { headers: { cookie } })
+    const body = (await res.json()) as Record<string, unknown>[]
+    expect(body[0]!['tierPreferences']).toBeUndefined()
   })
 })

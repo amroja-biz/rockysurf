@@ -7,6 +7,7 @@ import {
   formatMonthly,
   formatPricesAsOf,
   resolveOffering,
+  resolveSize,
   SIZE_REQUIREMENTS,
 } from './requirements'
 
@@ -128,5 +129,94 @@ describe('price formatting', () => {
   it('omits the note rather than printing an invalid date', () => {
     expect(formatPricesAsOf(undefined)).toBeNull()
     expect(formatPricesAsOf('not a date')).toBeNull()
+  })
+})
+
+/**
+ * `resolveSize` — the size resolver with the user's saved type in it (issue #124).
+ *
+ * The browser's copy of `packages/core/src/servers/offerings.ts`, and it has to agree with it
+ * exactly: the page quotes the price of the machine IT resolved, and if the two disagreed the
+ * user would be shown one number and billed another. The cases below are the same cases core's
+ * `offering-resolution.test.ts` pins, asked of this copy.
+ */
+describe('a saved machine type is preferred over the cheapest that fits (issue #124)', () => {
+  it('uses the saved type', () => {
+    const result = resolveSize(CATALOGUE, 'small', { preference: 't4g.medium' })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.offering.id).toBe('t4g.medium')
+      expect(result.preferred).toBe(true)
+    }
+    expect(result.note).toBeUndefined()
+  })
+
+  it('resolves as it always did when nothing is saved', () => {
+    const result = resolveSize(CATALOGUE, 'small')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.offering.id).toBe('t4g.small')
+      expect(result.preferred).toBe(false)
+    }
+  })
+
+  it('honours a saved type that does not meet the size floor', () => {
+    // `large` is 4 vCPU / 8 GB and nothing in this catalogue meets it — so the default here is
+    // a refusal, and the saved type still wins. Saving a type IS the opinion; the floor exists
+    // for people who have not expressed one.
+    const result = resolveSize(CATALOGUE, 'large', { preference: 't4g.small' })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.offering.id).toBe('t4g.small')
+  })
+
+  it('falls back and says why when the saved type is sold out', () => {
+    const catalogue = [...CATALOGUE, offering({ id: 'c7g.large', cpu: 2, memoryGb: 4, arch: 'arm64', available: false })]
+    const result = resolveSize(catalogue, 'small', { preference: 'c7g.large' })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.offering.id).toBe('t4g.small')
+      expect(result.preferred).toBe(false)
+    }
+    expect(result.note).toContain('c7g.large')
+    expect(result.note).toContain('t4g.small')
+  })
+
+  it('quotes the provider’s own reason when it has one', () => {
+    const catalogue = [
+      ...CATALOGUE,
+      offering({
+        id: 'no-quota',
+        cpu: 2,
+        memoryGb: 4,
+        arch: 'arm64',
+        available: false,
+        unavailableReason: 'this subscription has no core quota for the Dpsv5 family',
+      }),
+    ]
+    // Azure's second gate (#139): the remedy is a portal request, not waiting for stock, so
+    // "sold out" would send the user to wait for something that is never coming.
+    expect(resolveSize(catalogue, 'small', { preference: 'no-quota' }).note).toContain('no core quota')
+  })
+
+  it('falls back when the saved type is not in the catalogue at all', () => {
+    const result = resolveSize(CATALOGUE, 'small', { preference: 'a-type-that-was-retired' })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.offering.id).toBe('t4g.small')
+    expect(result.note).toContain('a-type-that-was-retired')
+  })
+
+  it('does not honour a saved type whose arch contradicts an explicit one', () => {
+    // An argument the user just made outranks a default they made once.
+    const result = resolveSize(CATALOGUE, 'small', { preference: 't3.small', arch: 'arm64' })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.offering.arch).toBe('arm64')
+    expect(result.note).toMatch(/x86-64/)
+  })
+
+  it('keeps the note when the fallback itself fails, so the refusal explains both', () => {
+    const result = resolveSize([], 'small', { preference: 't4g.medium' })
+    expect(result.ok).toBe(false)
+    expect(result.note).toContain('t4g.medium')
   })
 })

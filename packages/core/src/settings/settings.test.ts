@@ -781,3 +781,80 @@ describe('admin only', () => {
     expect((await created.app.request('/api/v1/settings')).status).toBe(401)
   })
 })
+
+/* ------------------------------------------------------------------ saved machine types */
+
+/**
+ * `preferences.tiers`, through the real save route (issue #124).
+ *
+ * TWO SURFACES WRITE THIS BLOCK — the Settings page's own box, and the New Server page's
+ * "use this every time" button — and both do it by naming a path in this request. So what is
+ * pinned here is that the path is one the inventory ALLOWS (a path it does not know is refused
+ * as "this settings page does not edit that field", which is what the button would have hit),
+ * that the write lands in the file, and that a preference the operator's own allowlist would
+ * refuse is rejected here rather than accepted and silently ignored on every create.
+ */
+describe('saving a favourite machine type (issue #124)', () => {
+  it('writes a saved type into a file that had no preferences block at all', async () => {
+    await saveOk([{ path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.medium' }])
+    expect(file()).toContain('t4g.medium')
+    const view = await readView()
+    expect(view.values['preferences']['tiers']['aws']['small']).toBe('t4g.medium')
+  })
+
+  it('replaces one that is already there without touching the others', async () => {
+    await saveOk([
+      { path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.small' },
+      { path: ['preferences', 'tiers', 'aws', 'large'], value: 'c7g.xlarge' },
+    ])
+    await saveOk([{ path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.medium' }])
+    const view = await readView()
+    expect(view.values['preferences']['tiers']['aws']['small']).toBe('t4g.medium')
+    expect(view.values['preferences']['tiers']['aws']['large']).toBe('c7g.xlarge')
+  })
+
+  it('clears one, which is how a user goes back to the default', async () => {
+    await saveOk([{ path: ['preferences', 'tiers', 'gcp', 'medium'], value: 't2a-standard-2' }])
+    await saveOk([{ path: ['preferences', 'tiers', 'gcp', 'medium'], unset: true }])
+    const view = await readView()
+    expect(view.values['preferences']?.['tiers']?.['gcp']?.['medium']).toBeUndefined()
+  })
+
+  it('refuses a size the product does not have, with the schema own words', async () => {
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['preferences', 'tiers', 'aws', 'enormous'], value: 'x1e.32xlarge' }],
+    })
+    // Refused by the INVENTORY, before the file is touched: `preferences.tiers.aws.enormous` is
+    // not a field this page offers, and this route is not a general-purpose YAML writer.
+    expect(res.status).toBe(400)
+    expect(file()).not.toContain('x1e.32xlarge')
+  })
+
+  it('refuses a saved type the operator own allowlist excludes', async () => {
+    // Written into the FILE rather than saved through the route, because `providers.aws.sizes`
+    // is read-only here on purpose — an operator who set the allowlist set it by hand, and this
+    // is the file such an operator's page is then opened against.
+    writeFileSync(configPath, 'providers:\n  aws:\n    sizes: ["t4g.small"]\n')
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['preferences', 'tiers', 'aws', 'small'], value: 'm7g.large' }],
+    })
+    // Validated by `configSchema` itself, which is rule 5 of this route: a saved type outside
+    // the allowlist could never be created, so accepting it here would write a setting that
+    // falls back on every create for as long as nobody notices.
+    expect(res.status).toBe(400)
+    expect(await res.text()).toContain('providers.aws.sizes')
+    expect(file()).not.toContain('m7g.large')
+  })
+
+  it('offers the block as its own section, with a card per cloud', async () => {
+    const view = await readView()
+    const ids = view.sections.map((s) => s.id)
+    expect(ids).toContain('preferences')
+    expect(ids).toContain('preferences.tiers.aws')
+    // The one sentence the rest of the page cannot say for it: this block, alone in the file,
+    // does not wait for a restart.
+    expect(view.sections.find((s) => s.id === 'preferences')?.help).toContain('re-read')
+  })
+})

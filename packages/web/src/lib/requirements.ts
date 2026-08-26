@@ -111,6 +111,76 @@ export function resolveOffering(offerings: Offering[], requirements: Requirement
   return { ok: true, offering: offering!, alternatives }
 }
 
+/**
+ * A size resolution that also says what became of the user's saved type (issue #124).
+ *
+ * The mirror of `SizeResolution` in `packages/core/src/servers/offerings.ts`. Two copies for
+ * the reason the size table has two: the page must resolve before submit to show the machine
+ * and its price, and the dependency lint keeps core out of the browser bundle.
+ */
+export type SizeResolution =
+  | (ResolutionSuccess & { preferred: boolean; note?: string })
+  | (ResolutionFailure & { note?: string })
+
+export interface SizeOptions {
+  arch?: Architecture
+  /** The machine type saved for this size on this cloud, from `ProviderInfo.tierPreferences`. */
+  preference?: string
+}
+
+/**
+ * Why a saved preference cannot be used right now, or `undefined` when it can.
+ *
+ * THE SIZE'S FLOOR IS NOT CHECKED, deliberately and identically to core: the floors exist so a
+ * user with no opinion is not under-served, and "my small is t4g.large" is the opinion. Only
+ * the three impossibilities are checked — not sold here, not sellable now, or an architecture
+ * contradicting one this create named explicitly.
+ */
+function preferenceProblem(
+  offerings: Offering[],
+  preference: string,
+  size: ServerSize,
+  arch: Architecture | undefined,
+): string | undefined {
+  const chosen = offerings.find((o) => o.id === preference)
+  const saved = `Your saved ${size} type “${preference}”`
+  if (!chosen) return `${saved} is not one this installation offers`
+  if (!chosen.available) {
+    // The provider's own words where it has them (Azure: which quota gate refused). "Sold out"
+    // would send someone to wait for stock when a quota request is the only thing that helps.
+    return `${saved} is unavailable: ${chosen.unavailableReason ?? 'it is sold out right now'}`
+  }
+  if (arch !== undefined && chosen.arch !== arch) {
+    return `${saved} is ${archLabel(chosen.arch)} and you asked for ${archLabel(arch)}`
+  }
+  return undefined
+}
+
+/**
+ * Resolve a size, honouring the saved type for it where one is usable.
+ *
+ * Preference first, then the ordinary cheapest-that-fits default. A preference never becomes a
+ * refusal: an unusable one falls back and carries a `note` saying why, because the failure this
+ * has to avoid is a user who saved a type, quietly got a different one for six weeks, and found
+ * out from the invoice.
+ */
+export function resolveSize(offerings: Offering[], size: ServerSize, options: SizeOptions = {}): SizeResolution {
+  const { arch, preference } = options
+  const fallback = resolveOffering(offerings, { ...SIZE_REQUIREMENTS[size], ...(arch ? { arch } : {}) })
+
+  if (!preference) return fallback.ok ? { ...fallback, preferred: false } : fallback
+
+  const problem = preferenceProblem(offerings, preference, size, arch)
+  if (!problem) {
+    const chosen = offerings.find((o) => o.id === preference)!
+    return { ok: true, offering: chosen, alternatives: [], preferred: true }
+  }
+
+  return fallback.ok
+    ? { ...fallback, preferred: false, note: `${problem}, so ${fallback.offering.id} is used instead.` }
+    : { ...fallback, note: `${problem}.` }
+}
+
 /** Architectures a provider's catalogue actually contains, so the picker offers only real ones. */
 export function availableArchitectures(offerings: Offering[]): Architecture[] {
   const seen = new Set<Architecture>()

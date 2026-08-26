@@ -586,6 +586,15 @@ export interface ProviderInfo {
   offerings: Offering[]
   /** Present when this provider's catalogue could not be read; the others still work. */
   offeringsError?: string
+  /**
+   * The machine type saved for each size on this cloud — `preferences.tiers` (issue #124).
+   *
+   * Rides with the catalogue rather than living at its own endpoint for the same reason the
+   * catalogue rides with the provider: the create page resolves a size to a concrete machine
+   * BEFORE submit, so it needs the preference and the offering it names in one response.
+   * Absent for a cloud with nothing saved, which is every cloud until someone saves one.
+   */
+  tierPreferences?: Partial<Record<'small' | 'medium' | 'large', string>>
 }
 
 export async function listProviders(): Promise<ProviderInfo[]> {

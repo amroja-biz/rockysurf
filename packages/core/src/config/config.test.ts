@@ -1064,3 +1064,105 @@ describe('schema is directly usable', () => {
     expect(config.auth.mode).toBe('local')
   })
 })
+
+/**
+ * `preferences.tiers` — the saved machine type per size, per cloud (issue #124).
+ *
+ * Three properties, and each is a way this could have gone wrong: an installation that has
+ * never heard of the block still parses; a typo in a cloud's name is an error rather than a
+ * setting that silently does nothing; and a preference the operator's own allowlist would
+ * refuse is caught at boot rather than falling back on every create for a year.
+ */
+describe('saved machine types (issue #124)', () => {
+  it('defaults to nothing saved, so an installation that never used it is unaffected', () => {
+    const config = configSchema.parse({})
+    expect(config.preferences.tiers.aws).toEqual({})
+    expect(config.preferences.tiers.gcp.small).toBeUndefined()
+  })
+
+  it('reads a saved type for a size on a cloud', () => {
+    const config = parseConfig(
+      `
+preferences:
+  tiers:
+    aws:
+      small: t4g.medium
+      large: c7g.2xlarge
+`,
+      'test.yaml',
+      {},
+    )
+    expect(config.preferences.tiers.aws.small).toBe('t4g.medium')
+    expect(config.preferences.tiers.aws.large).toBe('c7g.2xlarge')
+    expect(config.preferences.tiers.aws.medium).toBeUndefined()
+  })
+
+  it('accepts the section written bare, with every size commented out', () => {
+    // The trap `section()` exists for: YAML parses a key with no children as `null`, and all
+    // three of omitted / `{}` / bare mean "nothing saved".
+    const config = parseConfig('preferences:\n  tiers:\n    aws:\n', 'test.yaml', {})
+    expect(config.preferences.tiers.aws).toEqual({})
+  })
+
+  it('refuses a cloud it has never heard of, rather than ignoring the line', () => {
+    expect(() => parseConfig('preferences:\n  tiers:\n    awz:\n      small: t4g.small\n', 'test.yaml', {})).toThrow(
+      ConfigError,
+    )
+  })
+
+  it('refuses a size it has never heard of', () => {
+    expect(() =>
+      parseConfig('preferences:\n  tiers:\n    aws:\n      enormous: x1e.32xlarge\n', 'test.yaml', {}),
+    ).toThrow(ConfigError)
+  })
+
+  /**
+   * THE PAIRING CHECK. `providers.<cloud>.sizes` narrows every catalogue before anything
+   * resolves against it, so a preference outside that list can never be chosen — the resolver
+   * would fall back on every create, silently, forever. Caught at boot with the fix named.
+   */
+  it('refuses a saved type the operator own allowlist excludes, and says how to fix it', () => {
+    let message = ''
+    try {
+      parseConfig(
+        `
+providers:
+  aws:
+    sizes: ["t4g.small", "t4g.medium"]
+preferences:
+  tiers:
+    aws:
+      small: m7g.large
+`,
+        'test.yaml',
+        {},
+      )
+    } catch (err) {
+      message = (err as ConfigError).message
+    }
+    expect(message).toContain('preferences.tiers.aws.small')
+    expect(message).toContain('providers.aws.sizes')
+  })
+
+  it('accepts a saved type that IS in the allowlist', () => {
+    const config = parseConfig(
+      `
+providers:
+  aws:
+    sizes: ["t4g.small", "t4g.medium"]
+preferences:
+  tiers:
+    aws:
+      small: t4g.medium
+`,
+      'test.yaml',
+      {},
+    )
+    expect(config.preferences.tiers.aws.small).toBe('t4g.medium')
+  })
+
+  it('says nothing about a cloud with no allowlist, which offers everything', () => {
+    const config = parseConfig('preferences:\n  tiers:\n    gcp:\n      large: c4a-standard-4\n', 'test.yaml', {})
+    expect(config.preferences.tiers.gcp.large).toBe('c4a-standard-4')
+  })
+})

@@ -122,6 +122,43 @@ export interface SectionSpec {
 }
 
 /**
+ * THE SAVED TYPES, one field per (cloud, size) — `preferences.tiers` (issue #124).
+ *
+ * GENERATED FROM A TABLE, which is the one place this file departs from "hand-written on
+ * purpose" and does so for the reason the rule exists. The objection to a generated form is
+ * that it produces a control per schema field with nothing to say about any of them; here the
+ * words are written by hand, once per cloud, and only the three sizes are looped — the sentence
+ * an operator reads is as specific as any other in this file, and writing the same paragraph
+ * out twelve times would guarantee that eleven of them drift.
+ *
+ * `example` is that cloud's own vocabulary, because "a machine type" means `t4g.small` on AWS,
+ * `cpx21` at Hetzner and `Standard_B2ps_v2` on Azure, and a box that cannot tell you what shape
+ * of thing goes in it is a box people leave empty.
+ */
+const TIER_PREFERENCE_CLOUDS: readonly { id: string; label: string; noun: string; example: string }[] = [
+  { id: 'hetzner', label: 'Hetzner', noun: 'server type', example: 'cpx21' },
+  { id: 'aws', label: 'AWS', noun: 'instance type', example: 't4g.medium' },
+  { id: 'azure', label: 'Azure', noun: 'VM size', example: 'Standard_B2ps_v2' },
+  { id: 'gcp', label: 'Google Cloud', noun: 'machine type', example: 't2a-standard-2' },
+  { id: 'byo', label: 'your own machines', noun: 'host', example: 'the-nuc-under-the-desk' },
+]
+
+const TIER_PREFERENCE_SIZES = ['small', 'medium', 'large'] as const
+
+const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flatMap((cloud) =>
+  TIER_PREFERENCE_SIZES.map((size) => ({
+    path: `preferences.tiers.${cloud.id}.${size}`,
+    kind: 'string' as const,
+    writable: true,
+    help:
+      `The ${cloud.noun} to use whenever you ask ${cloud.label} for a ${size} box — ` +
+      `${cloud.example}, for instance. Leave it blank to take the cheapest ${cloud.noun} that ` +
+      `meets the ${size} floor, which is what Rocky Surf has always done. A saved type does not ` +
+      `have to meet that floor: it is your answer, not a second guess at it.`,
+  })),
+)
+
+/**
  * The v0.1 field inventory.
  *
  * Three fields are deliberately read-only, and each reason is a specific accident rather than
@@ -564,6 +601,9 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     help: 'An ISO 4217 code — providers do not all quote in USD.',
   },
 
+  /* --------------------------------------------------------------------- preferences */
+  ...TIER_PREFERENCE_FIELDS,
+
   /* ----------------------------------------------------------------------------- mcp */
   {
     path: 'mcp.scopes',
@@ -646,6 +686,31 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'Guardrails, enforced server-side. They are what makes it safe to let an agent create its own ' +
       'boxes through the MCP server.',
   },
+  /**
+   * A TAB PER SUBJECT, and this one nests (issue #124): `preferences` is the tab, and each
+   * cloud below it is a card on that tab, the same way `providers.byo.hosts` is a card on Your
+   * own machines. The page derives all of that from these ids alone — the longest id prefixing
+   * a field's path owns the field — so no edit to `SettingsPage.tsx` was needed to add any of
+   * it, which is the property issue #122 built and this section is the first user of.
+   */
+  {
+    id: 'preferences',
+    title: 'Preferences',
+    help:
+      'Your own answers, remembered. Small, medium and large are floors — the cheapest machine ' +
+      'that meets them — until you name the type you actually want, and then that is what you ' +
+      'get every time. Unlike everything else in this file, these are re-read while Rocky Surf ' +
+      'is running, so a saved type applies to the very next server rather than after a restart.',
+  },
+  ...TIER_PREFERENCE_CLOUDS.map((cloud) => ({
+    id: `preferences.tiers.${cloud.id}`,
+    title: cloud.label === 'your own machines' ? 'Your own machines' : cloud.label,
+    help:
+      `Which ${cloud.noun} each size means on ${cloud.label}. Blank is the default: the cheapest ` +
+      `one available that meets the size's floor. A saved ${cloud.noun} that is sold out, ` +
+      `quota-refused or no longer offered falls back to that default, and the New Server page ` +
+      `says which and why rather than substituting in silence.`,
+  })),
   {
     id: 'mcp',
     title: 'MCP',

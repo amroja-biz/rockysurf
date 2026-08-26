@@ -291,6 +291,34 @@ limits:
   # Most servers that may be created per hour. Blunts terminate-and-recreate loops.
   createRatePerHour: 4
 
+# preferences:
+#   # WHAT SMALL, MEDIUM AND LARGE MEAN TO YOU.
+#   #
+#   # A size is a floor, not a machine type: small asks for at least 2 vCPU and 2 GB, medium for
+#   # 2 and 4, large for 4 and 8, and the cheapest machine meeting it wins. Name a type here and
+#   # that is what you get instead, every time, on the web UI, the CLI and MCP alike.
+#   #
+#   # A saved type does NOT have to meet the floor — "my small is t4g.large" is a legitimate
+#   # thing to want. One that is sold out, quota-refused or no longer sold falls back to the
+#   # ordinary default, and the New Server page says which and why rather than substituting in
+#   # silence. It must be a type `providers.<cloud>.sizes` allows, where you have set one.
+#   #
+#   # THIS BLOCK IS RE-READ WHILE ROCKY SURF IS RUNNING — the only one that is — so a type saved
+#   # from the New Server page applies to the very next server rather than after a restart.
+#   tiers:
+#     hetzner:
+#       small: cpx21
+#     aws:
+#       small: t4g.medium
+#       large: c7g.xlarge
+#     azure:
+#       medium: Standard_B2ps_v2
+#     gcp:
+#       small: t2a-standard-2
+#     byo:
+#       # BYO "machine types" are host names, so a preference here is "always claim this one".
+#       large: the-nuc-under-the-desk
+
 registry:
   # The Surge Pack shops — where the admin UI browses community packs and installs them without a
   # restart. Nothing here is read at boot; a registry is fetched when you open the shop.

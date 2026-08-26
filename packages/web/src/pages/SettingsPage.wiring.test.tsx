@@ -1544,6 +1544,84 @@ describe('finding your way around the page', () => {
     expect((await onlySave()).changes).toEqual([{ path: ['boxes', 'small'], value: 'cx22' }])
   })
 
+  /**
+   * THE SHAPE ISSUE #124 ACTUALLY SHIPPED, which the generic test above does not cover.
+   *
+   * `preferences.tiers` is not one flat section: it is a tab (`preferences`) with a card per
+   * cloud nested inside it (`preferences.tiers.aws`, …), the same arrangement `providers.byo`
+   * and `providers.byo.hosts` already use. What is checked here is that the nesting rule —
+   * longest section id prefixing a field's path owns the field — puts each cloud's three boxes
+   * on the right card and puts all of them behind one tab, and that a save names the path the
+   * config file has. Still no edit to `SettingsPage.tsx`.
+   */
+  it('nests a section inside another one core added, and saves the real path', async () => {
+    served.sections.push({
+      id: 'preferences',
+      title: 'Preferences',
+      help: 'Your own answers, remembered, and re-read while Rocky Surf is running.',
+    })
+    for (const cloud of ['aws', 'gcp']) {
+      served.sections.push({
+        id: `preferences.tiers.${cloud}`,
+        title: `${cloud.toUpperCase()} boxes`,
+        help: `Which machine type each size means on ${cloud}, blank for the cheapest that fits.`,
+      })
+      for (const size of ['small', 'medium', 'large']) {
+        served.fields.push({
+          path: `preferences.tiers.${cloud}.${size}`,
+          kind: 'string',
+          writable: true,
+          help: `The type to use whenever you ask ${cloud} for a ${size} box. Leave it blank for the default.`,
+        })
+      }
+    }
+
+    renderPage()
+    await loaded()
+
+    // ONE tab for seven sections' worth of new material — the clouds are cards on it, not tabs
+    // beside it, exactly as `providers.byo.hosts` is a card on Your own machines.
+    expect(tabNames()).toContain('Preferences')
+    expect(tabNames()).not.toContain('AWS boxes')
+    expect(tabNames()).not.toContain('GCP boxes')
+    open('Preferences')
+
+    // Each cloud's boxes are on its own card, chosen by the longest matching section id rather
+    // than by the order the sections happen to be listed in.
+    const card = (id: string) => document.querySelector(`[data-section="${id}"]`)
+    expect(card('preferences.tiers.aws')!.textContent).toContain('Which machine type each size means on aws')
+    expect(card('preferences.tiers.gcp')!.textContent).toContain('on gcp')
+    // Both cards live in the one Preferences panel rather than in panels of their own.
+    expect(panelOf('preferences').textContent).toContain('on gcp')
+
+    fireEvent.change(control('preferences.tiers.aws.small'), { target: { value: 't4g.medium' } })
+    save()
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.medium' },
+    ])
+  })
+
+  /** A deep link straight to the Preferences tab — the link the New Server page points at. */
+  it('opens Preferences from the link the New Server page uses', async () => {
+    served.sections.push({
+      id: 'preferences',
+      title: 'Preferences',
+      help: 'Your own answers, remembered, and re-read while Rocky Surf is running.',
+    })
+    served.fields.push({
+      path: 'preferences.tiers.aws.small',
+      kind: 'string',
+      writable: true,
+      help: 'The type to use whenever you ask AWS for a small box. Leave it blank for the default.',
+    })
+
+    renderPage('/settings?section=preferences')
+    await loaded()
+
+    expect(selected()!.textContent).toContain('Preferences')
+  })
+
   it('draws a field core added to a section it already knows, inside that section', async () => {
     served.fields.push({
       path: 'limits.maxRunningHours',
