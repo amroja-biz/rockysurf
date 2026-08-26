@@ -72,6 +72,26 @@ ARCH=$(detect_arch)
 export ARCH
 
 # --------------------------------------------------------------------------------------
+# the agent's own identity in the environment
+# --------------------------------------------------------------------------------------
+# docs/writing-a-pack.md promises every step `$HOME` — `/root` for a root step — and root steps
+# get it by INHERITING this process's environment. Under the transient systemd unit core
+# launches (docs/bootstrap-contract.md § The systemd unit contract) that environment has no
+# HOME, USER or LOGNAME at all: systemd sets those only for units with `User=`, and this one
+# runs as root without it. A Docker `exec` and a `nohup` shell both happen to carry HOME, which
+# is why every harness stayed green while a real box killed the first root step that read it —
+# an upstream installer piped to `bash` under `set -u` died with "HOME: unbound variable"
+# (issue #158). Establish the contract here, once, from the passwd entry rather than from a
+# guess: unprivileged steps already get theirs from `sudo -H`.
+if [ -z "${HOME:-}" ]; then
+  HOME=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f6)
+  [ -n "$HOME" ] || HOME=/root
+fi
+export HOME
+export USER="${USER:-$(id -un)}"
+export LOGNAME="${LOGNAME:-$USER}"
+
+# --------------------------------------------------------------------------------------
 # secrets
 # --------------------------------------------------------------------------------------
 # Pushed separately from the plan at mode 0600 so the plan itself stays loggable. Values are

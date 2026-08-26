@@ -32,6 +32,10 @@
 - [regional-ubuntu-mirrors-fail-as-a-unit](2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md):
   a cloud image's per-region Ubuntu mirror takes every box in the region down with it, and apt
   never retries a 503 — the bootstrap agent's one-shot mirror fallback is the remedy, not retries.
+- [launchers-hand-the-agent-less-than-a-shell-does](2026-08-26-launchers-hand-the-agent-less-than-a-shell-does.md):
+  the transient systemd unit gives the bootstrap agent no `HOME`, and every harness stood in
+  for it with a shell that does — a harness must strip what the real launcher withholds, and
+  the agent, not the launcher, establishes what the pack contract promises.
 
 ## Writing and documentation
 

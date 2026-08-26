@@ -65,6 +65,11 @@ import {
 const IMAGE = 'ubuntu:24.04'
 /** Only used by the `rdp` step, which the plan includes for any pack with `requiresRdp`. */
 const RDP_PASSWORD = 'pack-smoke-not-a-real-password'
+/**
+ * `env` arguments that strip what a transient root systemd unit never has. Exported so a test
+ * can assert the harness keeps launching the agent this way — see `runAgent` below.
+ */
+export const AGENT_ENV_UNSET = ['-u', 'HOME', '-u', 'USER', '-u', 'LOGNAME'] as const
 
 export const ARCHITECTURES = ['amd64', 'arm64'] as const
 export type Arch = (typeof ARCHITECTURES)[number]
@@ -286,9 +291,17 @@ export function runPackCheck(options: PackCheckOptions): PackCheckReport {
       docker(['cp', join(work, 'sudo'), `${name}:/usr/local/bin/sudo`])
       exec(name, 'chmod 0755 /usr/local/bin/sudo && chmod 0600 /var/lib/rockysurf/secrets.env')
 
+      /**
+       * The agent is started the way the transient systemd unit starts it on a real box: with
+       * NO `HOME`, `USER` or `LOGNAME` in its environment. systemd sets those only for units
+       * with `User=`, and `rockysurf-bootstrap` runs as root without one. `docker exec` fills
+       * all three in by default, which is how a root step that read `$HOME` under `set -u`
+       * passed here on every architecture and died on Hetzner (issue #158). The agent is
+       * contracted to establish them itself; this is where that contract gets exercised.
+       */
       const runAgent = (label: string) => {
         const started = Date.now()
-        const out = docker(['exec', name, 'bash', '/agent.sh'], { allowFailure: true })
+        const out = docker(['exec', name, 'env', ...AGENT_ENV_UNSET, 'bash', '/agent.sh'], { allowFailure: true })
         const seconds = Math.round((Date.now() - started) / 1000)
         const text = `${out.stdout ?? ''}${out.stderr ?? ''}`
         writeFileSync(join(work, `${label}.log`), text)

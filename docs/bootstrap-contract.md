@@ -267,6 +267,14 @@ Consequently the agent MUST:
 - normalise architecture itself and export `ARCH` as `amd64` or `arm64` — Debian's spelling,
   not `uname`'s — so no step has to care which it reads;
 - export `DEBIAN_FRONTEND=noninteractive` for every step;
+- establish its own `HOME`, `USER` and `LOGNAME` — from the passwd entry of the user it runs
+  as — before any step runs, because a root step inherits the agent's environment and the
+  launcher may hand the agent none of them. The transient systemd unit does exactly that:
+  systemd sets those three only for units with `User=`, and this one runs as root without it.
+  A Docker `exec` and a `nohup` shell both carry a `HOME`, which is how an upstream installer
+  piped to `bash` under `set -u` passed every harness and died on a real box with
+  `HOME: unbound variable` (issue #158). The harness now starts the agent with all three
+  unset so that this requirement is the one under test;
 - dispatch privilege from the step's `runAs` before the script has any say: `root` directly,
   otherwise `sudo -u <user> -H env …`;
 - capture stdout and stderr per step, and keep the tail of a failing step for `logTail`.
@@ -492,6 +500,12 @@ Requirements:
   package mirror.
 - **`--collect`** so the unit name is freed once it exits and the next bootstrap can reuse it.
   A leftover unit makes the "already running" guard lie.
+- **No `User=`, and therefore no `HOME`, `USER` or `LOGNAME` from systemd.** The unit's
+  environment is what systemd gives a root service: `PATH`, `LANG`, `INVOCATION_ID` and the
+  like — not the login variables, which systemd sets only when `User=` is present. The agent
+  establishes them itself (see [What the agent may assume](#what-the-agent-may-assume));
+  nothing about this launch line is to be relied on for them, and a `--setenv=HOME=` here
+  would fix one launcher while leaving the contract unstated for the other.
 - Where there is no systemd, the launcher MUST fall back to a fully detached process
   (`setsid`, redirected stdio) and core MUST fall back to tailing the agent's log file. This
   path is verified only in containers; the transient unit is the real one and is verified on
