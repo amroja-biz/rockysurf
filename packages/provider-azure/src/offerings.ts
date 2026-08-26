@@ -100,6 +100,27 @@ export function architectureFromName(name: string | undefined): Architecture | u
  * `available` flag exists for. A `Location` restriction means no; a `Zone` restriction means some
  * zones are out but the region is orderable, and this provider does not pin a zone, so it is not
  * a refusal.
+ *
+ * WHAT THIS DOES NOT READ, and why a `true` here is not a promise (rockysurf-xmk0).
+ *
+ * Azure gates a create TWICE. This function reads the first gate — the SKU's own restrictions.
+ * The second is approved CORE QUOTA per VM family per region, which does not appear in
+ * `Microsoft.Compute/skus` at all. A size can be entirely unrestricted here and still fail at
+ * the virtual machine PUT with:
+ *
+ *   OperationNotAllowed: exceeding approved standardBpsv2Family Cores quota.
+ *   Location: eastus, Current Limit: 0, Additional Required: 2
+ *
+ * This was observed on a real subscription: six of the twelve catalogue sizes reported no
+ * restriction in a region where the approved quota for every one of them was zero.
+ *
+ * Reading quota would mean calling `Microsoft.Compute/locations/{location}/usages`, which the
+ * published `Rocky Surf Catalogue Reader` role does not grant — it grants `skus/read` and
+ * `subscriptions/locations/read` and nothing else. Widening a published security boundary to
+ * improve a catalogue hint is a decision with an argument attached, not a drive-by fix, so v0.1
+ * keeps the narrow role and lets the create fail with Azure's own words: `OperationNotAllowed`
+ * maps to the `quota` code and the verbatim message carries Microsoft's portal link to raise it.
+ * See docs/providers/azure.md, "Core quota is a separate gate from SKU availability".
  */
 export function isAvailable(sku: ArmResourceSku, location: string): boolean {
   const wanted = location.toLowerCase()

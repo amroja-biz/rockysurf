@@ -4,6 +4,7 @@ What you need to give Rocky Surf so it can create, stop, start and destroy Azure
 your own subscription — and nothing beyond that.
 
 - [Getting started](#getting-started)
+- [Two things Azure gates that are not permissions](#two-things-azure-gates-that-are-not-permissions)
 - [Credentials](#credentials)
 - [The role](#the-role)
 - [Why there are two roles](#why-there-are-two-roles)
@@ -18,9 +19,14 @@ your own subscription — and nothing beyond that.
 
 ## Getting started
 
-Three commands and four config lines.
+Four commands and four config lines.
 
 ```bash
+# 0. Register the two resource provider namespaces, if this subscription has never used them.
+#    A fresh subscription has not. Each takes a minute or two; they run in parallel.
+az provider register --namespace Microsoft.Compute
+az provider register --namespace Microsoft.Network
+
 # 1. The one resource group Rocky Surf owns. You create it; Rocky Surf does not — see below.
 az group create --name rocky-surf-rg --location eastus
 
@@ -64,6 +70,65 @@ resource group in your account. One `az group create` buys a role that cannot re
 group.
 
 ---
+
+## Two things Azure gates that are not permissions
+
+Both of these were found the first time Rocky Surf was pointed at a real Azure subscription, and
+neither is something the role can grant. They are listed together because they produce confident,
+misleading errors that look like the provider is broken.
+
+### Resource provider registration
+
+An Azure subscription must **register** a resource provider namespace before it can create
+anything in it, and a fresh subscription has registered nothing. Without it the very first create
+fails at the virtual network:
+
+```
+MissingSubscriptionRegistration: The subscription is not registered to use namespace
+'Microsoft.Network'.
+```
+
+Step 0 above is the fix. Rocky Surf cannot do this for you and deliberately does not ask to:
+registration is a subscription-level write, and `Microsoft.Network/register/action` is exactly the
+kind of permission that would make the published role reach outside its resource group.
+
+An unregistered `Microsoft.Compute` also makes `Microsoft.Compute/skus` under-report — sizes come
+back marked unavailable to your subscription that become available once registration completes. If
+the size list looks implausibly empty, check registration before believing it.
+
+### Core quota is a separate gate from SKU availability
+
+**A size Rocky Surf offers you can still be refused by Azure**, and the two gates are not the same:
+
+| gate | what it answers | where Rocky Surf reads it |
+|---|---|---|
+| SKU restrictions | "do we sell this size in this region, to this subscription?" | `Microsoft.Compute/skus`, on the call that builds the size list |
+| core quota | "how many vCPUs of this FAMILY may this subscription run here?" | nowhere — see below |
+
+The size list reflects only the first. A size can be perfectly unrestricted and still fail at
+create because the approved core quota for its VM family in that region is zero:
+
+```
+OperationNotAllowed: Operation could not be completed as it results in exceeding approved
+standardBpsv2Family Cores quota. Location: eastus, Current Limit: 0, Additional Required: 2
+```
+
+That message is passed through verbatim, and it carries the portal link that raises the limit.
+Raising quota is a human action with an approval behind it — sometimes instant, sometimes hours.
+
+**Rocky Surf does not read your quota, and that is a deliberate trade.** Quota lives in
+`Microsoft.Compute/locations/{location}/usages`, a different endpoint from the size catalogue, and
+granting it would widen the published `Rocky Surf Catalogue Reader` role. A narrower role that
+occasionally offers a size you cannot order was judged the better trade for v0.1; the alternative
+is tracked on `rockysurf-xmk0`.
+
+Two practical consequences:
+
+- **Upgrading a free account does not grant quota.** It lifts the spending limit. Per-family core
+  quota is still zero until separately approved.
+- **Availability varies by region in ways that look arbitrary**, because it is per-subscription.
+  If one region refuses, another commonly works — and the arm64 (Ampere, `p`-suffixed) families
+  are frequently available where the x64 ones are not. They are also the cheaper, faster default.
 
 ## Credentials
 
