@@ -262,12 +262,20 @@ Your installation fetches its provider's document at runtime and caches it (`pri
 default 6), so a price a cloud changes today reaches you on the next publish plus one cache
 refresh — no upgrade involved. Every estimate in the UI carries the feed's own "as of" stamp.
 
-Four things worth knowing:
+Five things worth knowing:
 
 - **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
   is deliberately no stale bundled fallback: creating, stopping and terminating servers all
   work, the create form says prices are unavailable, and the spend cap reports the affected
   servers in its `unpricedServers` count instead of silently miscounting.
+- **A document that fails validation is treated as a missing one, whole.** Your installation
+  checks every price in the document it fetched and rejects the entire thing if even one is not
+  a positive number, because the spend cap must degrade to *unpriced* rather than to *wrong*. So
+  one cloud showing unavailable prices in **every** region, while the others are fine, means a
+  rejected document rather than a failed fetch — and it is a bug in the publisher, worth
+  [filing](https://github.com/amroja-biz/rockysurf/issues). Issue #140 was exactly this: Azure
+  published thirty preview VM sizes at a price of zero, and thirty zeros unpriced all fourteen
+  Azure regions until the publisher learned to refuse them.
 - **Air-gapped?** Set `pricing.enabled: false` (prices show unavailable, no doomed fetches), or
   mirror the four files somewhere you control and point `pricing.feedUrl` at the mirror.
 - **Hetzner is not on the feed.** Its API returns prices inline on the same call that lists

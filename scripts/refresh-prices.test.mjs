@@ -27,6 +27,7 @@ import {
   isAwsCatalogued,
   isAwsMetal,
   resolvePricedSizes,
+  unreadableFeedEntries,
 } from './refresh-prices.mjs'
 
 /* =============================================================================== AWS (tzzw) === */
@@ -193,6 +194,67 @@ test('resolvePricedSizes excludes rather than guesses when a candidate is not ex
   const byId = Object.fromEntries(skipped.map((s) => [s.id, s.matches]))
   assert.equal(byId.Standard_Retired_Promo, 0)
   assert.equal(byId.Standard_Ambiguous, 2)
+})
+
+/**
+ * THE ISSUE #140 REGRESSION, and the reason it was worth a test rather than a one-line guard.
+ *
+ * The rows below are the real shape the retail feed returned for `Standard_M16bs_v4` in
+ * `eastus` on 2026-08-26: four meters, Linux and Windows, spot and not, every one of them at
+ * `retailPrice: 0` because Azure had announced the Mbv4 series without billing for it yet.
+ * Exactly one survives the Linux/PAYG filter, so the "exactly one meter" rule above is
+ * perfectly happy — and the number it hands over is a zero.
+ *
+ * Thirty sizes did that, and the runtime readers reject a feed document WHOLE on a single
+ * non-positive price, so those thirty zeros unpriced every Azure size in all fourteen regions
+ * for every installation. A size Azure has not priced must be ABSENT, never present at zero.
+ */
+test('resolvePricedSizes excludes a size whose one Linux meter is priced at zero (issue #140)', () => {
+  const { priced, skipped } = resolvePricedSizes({
+    Standard_M16bs_v4: [
+      { skuName: 'Standard_M16bs_v4', productName: 'Virtual Machines Mbsv4 series Linux', retailPrice: 0 },
+      { skuName: 'Standard_M16bs_v4 Spot', productName: 'Virtual Machines Mbsv4 series Windows', retailPrice: 0 },
+      { skuName: 'Standard_M16bs_v4', productName: 'Virtual Machines Mbsv4 series Windows', retailPrice: 0 },
+      { skuName: 'Standard_M16bs_v4 Spot', productName: 'Virtual Machines Mbsv4 series Linux', retailPrice: 0 },
+    ],
+    Standard_B2ps_v2: [{ productName: 'Virtual Machines Bpsv2 Series', retailPrice: 0.0672 }],
+  })
+
+  assert.deepEqual(Object.keys(priced), ['Standard_B2ps_v2'])
+  assert.equal(skipped.length, 1)
+  assert.equal(skipped[0].id, 'Standard_M16bs_v4')
+  assert.match(skipped[0].reason, /no price/)
+})
+
+test('resolvePricedSizes excludes a negative or non-numeric price the same way', () => {
+  const { priced, skipped } = resolvePricedSizes({
+    Standard_Negative: [{ productName: 'Virtual Machines Foo', retailPrice: -1 }],
+    Standard_NotANumber: [{ productName: 'Virtual Machines Foo', retailPrice: 'free' }],
+    Standard_Missing: [{ productName: 'Virtual Machines Foo' }],
+  })
+
+  assert.deepEqual(Object.keys(priced), [])
+  assert.equal(skipped.length, 3)
+})
+
+/**
+ * The generator-side transcription of the readers' own rule (issue #140). It exists so that the
+ * next thing Azure decides to publish at zero fails the workflow — which publishes nothing and
+ * leaves yesterday's good document being served — instead of silently unpricing a cloud.
+ */
+test('unreadableFeedEntries names exactly what the runtime readers would reject', () => {
+  assert.deepEqual(
+    unreadableFeedEntries({
+      eastus: { Standard_B2ps_v2: 0.0672, Standard_M16bs_v4: 0 },
+      westeurope: { Standard_D2s_v5: -0.1, Standard_D4s_v5: 0.19, Standard_Weird: 'free' },
+    }),
+    ['eastus/Standard_M16bs_v4 = 0', 'westeurope/Standard_D2s_v5 = -0.1', 'westeurope/Standard_Weird = "free"'],
+  )
+})
+
+test('unreadableFeedEntries passes a document every reader would accept', () => {
+  assert.deepEqual(unreadableFeedEntries({ eastus: { Standard_B2ps_v2: 0.0672 }, westeurope: {} }), [])
+  assert.deepEqual(unreadableFeedEntries({}), [])
 })
 
 /**
