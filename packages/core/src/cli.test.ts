@@ -204,6 +204,50 @@ describe('the subcommands the help advertises', () => {
     expect(out.join('\n')).toContain('rockysurf ssh-config')
   })
 
+  /**
+   * A command in the wrong place (issue #112).
+   *
+   * `rockysurf --config ./rockysurf.config.yaml token` used to fail with
+   * `unknown option: token` above help that lists `token` as a command — an error that points
+   * away from its own fix. The command has to come first because the composition root
+   * dispatches off `argv[0]` before core parses anything, so the remedy is to SAY that, in the
+   * refusal and in the help.
+   */
+  describe('a command written after the options', () => {
+    it('is named as a misplaced command rather than an unknown option', () => {
+      const { error } = parseArgs(['--config', '/etc/rockysurf.yaml', 'mcp'], SUBCOMMANDS)
+      expect(error).toContain('mcp is a command, not an option')
+      expect(error).toContain('has to come first')
+      // Specifically not the message that sent people looking for a `--token` flag.
+      expect(error).not.toContain('unknown option')
+    })
+
+    it('prints the line that works, carrying their own options across', () => {
+      const { error } = parseArgs(['--config', '/etc/rockysurf.yaml', '--port', '8080', 'mcp'], SUBCOMMANDS)
+      expect(error).toContain('rockysurf mcp --config /etc/rockysurf.yaml --port 8080')
+    })
+
+    it('still calls a genuine typo an unknown option', () => {
+      // `mcpp` is nobody's command, and telling them to move it to the front would be wrong.
+      expect(parseArgs(['mcpp'], SUBCOMMANDS).error).toMatch(/unknown option: mcpp/)
+    })
+
+    it('reaches the operator through runCli, which is the only path that has the names', async () => {
+      const err: string[] = []
+      const code = await runCli(['--config', '/etc/rockysurf.yaml', 'ssh-config'], {
+        io: { out: () => {}, err: (m) => err.push(m) },
+        subcommands: SUBCOMMANDS,
+      })
+      expect(code).toBe(2)
+      expect(err.join('\n')).toContain('ssh-config is a command, not an option')
+    })
+
+    it('is documented in the help, not only in the error', () => {
+      // So it is discoverable before the mistake, which is what the issue asked for.
+      expect(usage(SUBCOMMANDS)).toContain('A command comes FIRST')
+    })
+  })
+
   it('shows them on a usage error too, which is where a mistyped command lands', async () => {
     // `rockysurf lst` is not a subcommand, so it falls through to core and parses as an
     // unknown option — the moment a list of the real commands is most useful.

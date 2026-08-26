@@ -2353,6 +2353,15 @@ main.help section p {
   line-height: 1.6;
 }
 
+/* The provider setup commands (issue #112) read as blocks, the same surface the callout uses. */
+main.help section > pre {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border-subtle);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
 /* The agents callout: the page's one raised surface, keyed purple. */
 .agents-callout {
   background: var(--rs-surface);

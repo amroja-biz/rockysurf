@@ -154,6 +154,85 @@ describe('HelpPage', () => {
     })
   })
 
+  /**
+   * "Enabling a cloud provider" (issue #112). The gap was that an operator had to leave the app
+   * to learn a provider needed a resource group, a role and three config keys — so what is
+   * pinned is the WIRING, not the prose: every shipped provider has a heading, every one links
+   * its canonical `docs/providers/*.md` through `repoDocUrl`, and the keys the provider schemas
+   * actually refuse to boot without are named. A key that stops being required is a test that
+   * fails, which is the point.
+   */
+  describe('the Enabling a cloud provider section', () => {
+    const providersSection = () => {
+      const { container } = renderHelp()
+      return container.querySelector('section[id="providers"]')!
+    }
+    const providers = () => providersSection().textContent ?? ''
+
+    it('gives every shipped provider its own heading', () => {
+      renderHelp()
+      for (const name of [/^Hetzner$/, /^AWS$/, /^Azure$/, /^Google Cloud$/, /your own machines/i]) {
+        expect(screen.getByRole('heading', { name }), `no heading for ${name}`).toBeTruthy()
+      }
+    })
+
+    it('links each canonical provider doc, in the repository', () => {
+      const section = providersSection()
+      for (const doc of ['hetzner.md', 'aws.md', 'azure.md', 'gcp.md', 'byo.md']) {
+        const link = [...section.querySelectorAll('a')].find(
+          (a) => a.getAttribute('href') === `${GITHUB_URL}/blob/main/docs/providers/${doc}`,
+        )
+        expect(link, `no link to docs/providers/${doc}`).toBeTruthy()
+      }
+    })
+
+    it('deep-links the matching Settings tab, which is what `?section=` is for', () => {
+      const section = providersSection()
+      const hrefs = [...section.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      for (const id of [
+        'providers.hetzner',
+        'providers.aws',
+        'providers.azure',
+        'providers.gcp',
+        'providers.byo.hosts',
+      ]) {
+        expect(hrefs, `no Settings deep link for ${id}`).toContain(`/settings?section=${id}`)
+      }
+    })
+
+    it('names the keys the provider schemas refuse to boot without', () => {
+      const text = providers()
+      // packages/provider-*/src/config.ts: these are refusals, not defaults.
+      expect(text).toContain('sshAllowedCidr')
+      expect(text).toContain('allowAllCidr')
+      expect(text).toContain('subscriptionId')
+      expect(text).toContain('resourceGroup')
+      expect(text).toContain('projectId')
+    })
+
+    it('states where credentials come from, and that they are not in the config file', () => {
+      const text = providers()
+      expect(text).toContain('Credentials do not live in the config file')
+      // Config first, then the encrypted store (packages/rockysurf/src/compose.ts).
+      expect(text).toContain('encrypted store')
+      expect(text).toContain('AZURE_CLIENT_SECRET')
+      expect(text).toContain('gcloud auth application-default login')
+    })
+
+    it('names the deployable role for each cloud that ships one', () => {
+      const text = providers()
+      expect(text).toContain('deploy/aws/iam-role.yaml')
+      expect(text).toContain('deploy/azure/role.bicep')
+      expect(text).toContain('./deploy/gcp/setup.sh')
+    })
+
+    it('gives the resource-group prerequisite and says why Rocky Surf will not make it', () => {
+      const text = providers()
+      expect(text).toContain('az group create')
+      expect(text).toContain('cannot be scoped to a group that does not exist yet')
+    })
+  })
+
   it('every table-of-contents entry lands on a section that exists', () => {
     const { container } = renderHelp()
     const tocLinks = [...container.querySelectorAll('.help-toc a')]
