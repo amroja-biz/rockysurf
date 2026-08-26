@@ -232,7 +232,16 @@ function ServerCard({
         what broke. Without this line a failed row was a red pill and nothing else — the reason was
         in the row all along, and only the page the user was not on rendered it.
       */}
-      {server.errorMessage && <p role="alert">{server.errorMessage}</p>}
+      {/*
+        `title` carries the whole message because the card shows only its first lines: a
+        provider's refusal can be a page of prose (issue #128), and the account of it belongs on
+        the detail page this card links to.
+      */}
+      {server.errorMessage && (
+        <p role="alert" className="server-card-error" title={server.errorMessage}>
+          {server.errorMessage}
+        </p>
+      )}
 
       {/*
         A box that came up with something missing (ADR-0010) — a repository that did not clone.

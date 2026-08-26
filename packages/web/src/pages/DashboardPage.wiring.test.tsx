@@ -366,6 +366,21 @@ describe('a failed row whose machine is still running', () => {
     expect(reason!.textContent).toBe('clone failed: repository not found')
   })
 
+  it('keeps the whole reason on the element it folds, so the truncation loses nothing (issue #128)', async () => {
+    // A provider's refusal can be a page of prose — Azure's quota message is nine sentences and
+    // three URLs — and the card shows its first lines so one bad row does not become a card
+    // thirty times the height of the one beside it. The text itself stays in the DOM for a
+    // screen reader, and in `title` for a hover; the detail page renders the account in full.
+    const reason = 'quota: ' + 'https://aka.ms/ProdportalCRP/#blade/Microsoft_Azure_Capacity/'.repeat(6)
+    rows = [{ ...FAILED_BUT_BILLING, errorMessage: reason }]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const alert = cardFor(container, 'dev-box').querySelector('[role="alert"]')!
+    expect(alert.textContent).toBe(reason)
+    expect(alert.getAttribute('title')).toBe(reason)
+  })
+
   it('says nothing of the kind on a healthy running box', async () => {
     rows = [RUNNING]
     const { container } = renderPage()
