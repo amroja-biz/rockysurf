@@ -138,6 +138,74 @@ report_progress() {
 }
 
 # --------------------------------------------------------------------------------------
+# apt mirror fallback
+# --------------------------------------------------------------------------------------
+# Every Ubuntu cloud image points apt at a PER-REGION Canonical mirror — us-east-1.ec2.ports.
+# ubuntu.com, azure.archive.ubuntu.com, europe-west1.gce.archive.ubuntu.com — and when that
+# one mirror's backend is sick its index files keep serving while every .deb in the pool
+# answers 503. apt does not retry a 503 at all (measured on 24.04's apt 2.8.3: one request,
+# then "E: Unable to fetch some archives"; Acquire::Retries only covers connection failures),
+# so the first apt step of the plan — build-essential, in every pack — dies, and with it the
+# whole bootstrap, before anything pack-specific has run. Seen in the wild four times in a
+# week, on two mirror IPs at once and for hours at a stretch (issue #117).
+#
+# The remedy is the one an operator would apply by hand: switch to the global mirror, refresh
+# the lists, try the step again. The agent does that ONCE per bootstrap, ONLY for a failure
+# whose log carries an apt fetch signature, and says so loudly — a step that fails again after
+# the fallback fails for real. The regional mirror stays the default because it is fast and
+# in-region; the global one is reached for only when the regional one is proven sick.
+#
+# Rewriting the sources is safe under the idempotency contract: every step is written to
+# converge, and `apt-get install` against a different mirror of the same archive converges on
+# the same packages. A pack that hard-codes a regional mirror hostname in its own script is
+# already broken on every other cloud (docs/writing-a-pack.md).
+APT_FALLBACK_USED=0
+
+# Anything with a subdomain in front of archive/ports — the regional and per-cloud mirrors —
+# collapses to the bare global host. `archive.ubuntu.com`, `ports.ubuntu.com` and
+# `security.ubuntu.com` do not match, so a box already on the global mirror is left alone.
+REGIONAL_MIRROR_RE='[a-z0-9.-]+\.(archive|ports)\.ubuntu\.com'
+
+# $1 = a log file, $2 = the line count it had before this attempt. Only this attempt's output
+# is inspected: on a resume, an earlier attempt's fetch failure must not trigger the fallback
+# for a step that is now failing for some other reason.
+apt_fetch_failed() {
+  [ -f "$1" ] || return 1
+  tail -n +"$(($2 + 1))" "$1" | grep -qE \
+    'Failed to fetch|Unable to fetch some archives|Some index files failed to download|Mirror sync in progress|File has unexpected size|Hash Sum mismatch'
+}
+
+# Returns 0 when the fallback has just been engaged and the caller should retry, 1 when it has
+# already been spent — the caller then reports the failure it already has.
+apt_mirror_fallback() {
+  [ "$APT_FALLBACK_USED" = 0 ] || return 1
+  APT_FALLBACK_USED=1
+  log "!!! apt fetch failure — engaging the mirror fallback (once per bootstrap)"
+
+  local f rewritten=0
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    [ -f "$f" ] || continue
+    grep -qE "$REGIONAL_MIRROR_RE" "$f" || continue
+    if sed -i -E "s#$REGIONAL_MIRROR_RE#\\1.ubuntu.com#g" "$f"; then
+      rewritten=1
+      log "!!! $f: regional Ubuntu mirror rewritten to the global one"
+    else
+      log "!!! $f: could not rewrite (not root?)"
+    fi
+  done
+  [ "$rewritten" = 1 ] || log "!!! no regional Ubuntu mirror in the apt sources — refreshing lists and retrying as-is"
+
+  # The step's own `apt-updated` stamp is stale by definition now, but the lists it guards are
+  # refreshed here, so the stamp idiom keeps working without every pack knowing about this.
+  if apt-get update -qq 2>&1 | tail -n 5; then
+    log "!!! apt lists refreshed"
+  else
+    log "!!! apt-get update still failing — the retry below will tell"
+  fi
+  return 0
+}
+
+# --------------------------------------------------------------------------------------
 # json
 # --------------------------------------------------------------------------------------
 # The plan is JSON, so the agent cannot read its own instructions until jq exists — and
@@ -146,11 +214,18 @@ report_progress() {
 ensure_jq() {
   command -v jq >/dev/null 2>&1 && return 0
   log "jq missing — bootstrapping it before the plan can be parsed"
-  apt-get update -qq || true
-  apt-get install -y -qq jq || {
-    log "FATAL: could not install jq"
-    return 1
-  }
+  # An image without jq (Hetzner's) on a cloud with a sick mirror would otherwise die here,
+  # before the plan — the same failure as a step's, so it gets the same fallback.
+  local jq_log="$STATE_DIR/steps/jq-bootstrap.log"
+  apt-get update -qq >>"$jq_log" 2>&1 || true
+  apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
+  if apt_fetch_failed "$jq_log" 0 && apt_mirror_fallback; then
+    log "jq: retrying once on the fallback mirror"
+    apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
+  fi
+  log "FATAL: could not install jq"
+  tail -n 10 "$jq_log"
+  return 1
 }
 
 check_plan_version() {
@@ -270,8 +345,25 @@ install_tool() {
   return "${PIPESTATUS[0]}"
 }
 
+# One attempt at a step: the script, then its check. A step is only done when its own check
+# says so. Without this, `npm i -g` exiting 0 after a partial install is reported as working
+# software.
+run_step() {
+  local id="$1" run_as="$2" script="$3" check="$4" timeout_s="$5" step_log="$6" rc
+  install_tool "$id" "$run_as" "$script" "$timeout_s" "$step_log"
+  rc=$?
+  if [ $rc -eq 0 ] && [ -n "$check" ]; then
+    log "--- $id: verifying with: $check"
+    install_tool "$id-check" "$run_as" "$check" "$timeout_s" "$step_log"
+    rc=$?
+  fi
+  return $rc
+}
+
+log_lines() { [ -f "$1" ] && wc -l <"$1" | tr -d ' ' || echo 0; }
+
 run_plan() {
-  local total i id run_as script check optional timeout_s reports step_log rc
+  local total i id run_as script check optional timeout_s reports step_log rc before
   total=$(jq '.steps | length' "$PLAN_FILE")
   log "plan: $total step(s), serverId=$(jq -r '.serverId' "$PLAN_FILE"), arch=$ARCH"
 
@@ -292,14 +384,17 @@ run_plan() {
     fi
 
     set_step "$id" running
-    install_tool "$id" "$run_as" "$script" "$timeout_s" "$step_log"
+    before=$(log_lines "$step_log")
+    run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
     rc=$?
 
-    # A step is only done when its own check says so. Without this, `npm i -g` exiting 0 after
-    # a partial install is reported as working software.
-    if [ $rc -eq 0 ] && [ -n "$check" ]; then
-      log "--- $id: verifying with: $check"
-      install_tool "$id-check" "$run_as" "$check" "$timeout_s" "$step_log"
+    # A fetch failure is the mirror's fault, not the step's: swap mirrors once and give the
+    # step one more go. The fallback is spent after the first use, so a second failing step
+    # goes straight to the failure below. Order matters — the signature check comes first, so
+    # the one fallback is not consumed by a failure it could never have fixed.
+    if [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before" && apt_mirror_fallback; then
+      log "--- $id: retrying once on the fallback mirror"
+      run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
       rc=$?
     fi
 

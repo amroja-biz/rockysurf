@@ -8,7 +8,9 @@
 #
 #   1. a multi-step plan executes and every step's result lands in state.json;
 #   2. killing the agent mid-plan and re-running RESUMES — steps marked `done` are skipped and
-#      a step left `running` re-runs from the top.
+#      a step left `running` re-runs from the top;
+#   3. a sick regional Ubuntu mirror engages the apt mirror fallback (#117) — once, only for an
+#      apt fetch failure — and the plan completes on the global mirror.
 #
 # The counters are the actual evidence: a skipped step's counter does not grow, a re-run
 # step's does. Asserting on log lines alone would pass even if the work happened twice.
@@ -161,6 +163,7 @@ check "plan marked failed" "$(state '.status')" failed
 check "failing step named" "$(state '.failedStep')" tool:broken
 check "later step never ran" "$(state '.steps[] | select(.id=="branding") | .status')" pending
 if [ -n "$(state '.logTail')" ]; then pass "logTail captured"; else fail "logTail captured"; fi
+check "mirror fallback NOT engaged for a non-apt failure" "$(grep -c 'mirror fallback' "$WORK/run3.log")" 0
 
 # ------------------------------------------------------------------------ version enforcement
 echo "==> run 4: an unsupported plan version is refused"
@@ -173,6 +176,72 @@ docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} \
 RUN4_RC=$?
 set -e
 check "agent exited 2 (could not start)" "$RUN4_RC" 2
+
+# --------------------------------------------------------------------- apt mirror fallback (#117)
+# The container plays a cloud image whose apt sources name a regional mirror — the same shape
+# cloud-init writes on EC2, Azure and GCE — and that mirror is dead: `--add-host` points the
+# hostname at the container's own loopback, where nothing listens. jq is installed BEFORE the
+# mirror is broken so the fallback is exercised by a plan step, not by the agent's own jq
+# bootstrap (run 6 covers that path). The apt lists are removed so the step's `apt-get update`
+# genuinely has to reach the mirror.
+DEAD_MIRROR_ARGS=(--add-host smoke.ec2.archive.ubuntu.com:127.0.0.1 --add-host smoke.ec2.ports.ubuntu.com:127.0.0.1)
+BREAK_MIRROR='sed -i -E "s#http://(archive|ports)\.ubuntu\.com#http://smoke.ec2.\1.ubuntu.com#g" /etc/apt/sources.list.d/ubuntu.sources && rm -rf /var/lib/apt/lists/*'
+
+echo "==> run 5: a dead regional mirror engages the fallback and the plan completes"
+rm -f "$WORK/state/state.json" "$WORK/state/apt.count" "$WORK/state/sources.after"
+cat >"$WORK/state/plan.json" <<'EOF'
+{
+  "version": 1, "serverId": "srv-smoke01", "mode": "push", "runId": "run-mirror",
+  "steps": [
+    { "id": "tool:tree", "reports": "installing_tools", "runAs": "root",
+      "run": "set -euo pipefail\nprintf 'x\\n' >> /var/lib/rockysurf/apt.count\n[ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && touch /var/lib/rockysurf/apt-updated; }\napt-get install -y -qq tree >/dev/null",
+      "check": "command -v tree" },
+    { "id": "branding", "reports": "ready", "runAs": "root",
+      "run": "cp /etc/apt/sources.list.d/ubuntu.sources /var/lib/rockysurf/sources.after" }
+  ]
+}
+EOF
+set +e
+docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "${DEAD_MIRROR_ARGS[@]}" \
+  -v "$WORK/state:/var/lib/rockysurf" -v "$WORK/agent.sh:/agent.sh:ro" \
+  "$IMAGE" bash -c "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq jq >/dev/null 2>&1 && $BREAK_MIRROR && bash /agent.sh" >"$WORK/run5.log" 2>&1
+RUN5_RC=$?
+set -e
+check "agent exited 0" "$RUN5_RC" 0
+check "plan complete" "$(state '.status')" "done"
+check "apt step failed once, then succeeded — ran exactly twice" "$(count apt)" 2
+check "fallback announced in the log" "$(grep -c 'engaging the mirror fallback' "$WORK/run5.log")" 1
+check "retry announced in the log" "$(grep -c 'retrying once on the fallback mirror' "$WORK/run5.log")" 1
+check "regional mirror gone from the sources" "$(grep -c 'smoke.ec2' "$WORK/state/sources.after")" 0
+if grep -qE 'http://(archive|ports)\.ubuntu\.com' "$WORK/state/sources.after"; then
+  pass "global mirror in the sources"
+else
+  fail "global mirror in the sources"
+fi
+
+echo "==> run 6: the jq bootstrap gets the same fallback, and the fallback is spent after one use"
+rm -f "$WORK/state/state.json" "$WORK/state/sick.count"
+cat >"$WORK/state/plan.json" <<'EOF'
+{
+  "version": 1, "serverId": "srv-smoke01", "mode": "push", "runId": "run-spent",
+  "steps": [
+    { "id": "tool:sick", "reports": "installing_tools", "runAs": "root",
+      "run": "printf 'x\\n' >> /var/lib/rockysurf/sick.count\necho 'E: Failed to fetch http://mirror.invalid/pool/main/x/x_1_all.deb  503  Service Unavailable' >&2\nexit 100" },
+    { "id": "branding", "reports": "ready", "runAs": "root", "run": "echo unreachable" }
+  ]
+}
+EOF
+set +e
+docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "${DEAD_MIRROR_ARGS[@]}" \
+  -v "$WORK/state:/var/lib/rockysurf" -v "$WORK/agent.sh:/agent.sh:ro" \
+  "$IMAGE" bash -c "$BREAK_MIRROR && bash /agent.sh" >"$WORK/run6.log" 2>&1
+RUN6_RC=$?
+set -e
+check "jq bootstrapped through the fallback" "$(grep -c 'jq: retrying once on the fallback mirror' "$WORK/run6.log")" 1
+check "agent exited 1 (the sick step is a real failure)" "$RUN6_RC" 1
+check "failing step named" "$(state '.failedStep')" tool:sick
+check "fallback engaged exactly once per bootstrap" "$(grep -c 'engaging the mirror fallback' "$WORK/run6.log")" 1
+check "spent fallback — sick step ran once, no retry" "$(count sick)" 1
 
 echo
 if [ "$FAILURES" -eq 0 ]; then

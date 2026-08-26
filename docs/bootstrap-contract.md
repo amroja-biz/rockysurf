@@ -541,6 +541,7 @@ These are requirements, not recommendations. Each was learned from something tha
 |---|---|---|
 | Required step fails | records `failed`, attaches `logTail`, stops the plan, exits 1 | marks the server failed, naming the **step id** — not the shared label |
 | Optional step fails | records `failed`, continues | records it; the server is not failed |
+| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **once per bootstrap**: rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one, refreshes the lists, re-runs the step and its check; a second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower; `agent.log` says the fallback engaged and which files it rewrote |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
@@ -575,6 +576,8 @@ An implementation conforms when all of the following hold.
 - [ ] Every step has a `runAs`, and privilege is dispatched by the agent, not the script.
 - [ ] A step with a `check` is `done` only when both the script and the check exit 0.
 - [ ] The agent bootstraps its own JSON parser and assumes nothing else about the image.
+- [ ] The apt mirror fallback engages at most once per bootstrap, only for a step whose own
+      output carries an apt fetch-failure signature, and is announced in the agent log.
 - [ ] The agent runs under a transient unit with `Restart=on-failure`,
       `After=network-online.target`, and `--collect`, decoupled from the SSH session.
 - [ ] Launcher liveness is checked with privilege, and two consecutive negatives are required
