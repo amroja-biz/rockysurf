@@ -327,23 +327,35 @@ const tabFor = (pack: SurgePack): PackTab => (pack.provenance === 'official' ? '
  * thousand once AWS's generator widens it (issue #24 PR 2a) — searching first and rendering a
  * capped, filtered slice is what keeps that future catalogue from becoming a thousand DOM rows.
  *
- * SOLD-OUT ROWS ARE DISABLED, NOT HIDDEN — an id a person cannot buy today is still a real id,
- * and hiding it would make the catalogue look smaller than it is. `Offering.available` is the
- * only signal any provider puts on the wire for this (no provider attaches a per-row reason
- * string), so every disabled row carries the same honest, generic sentence rather than one this
- * component would have to invent per cloud.
+ * SOLD-OUT ROWS ARE DISABLED, NOT HIDDEN BY DEFAULT — an id a person cannot buy today is still a
+ * real id, and hiding it would make the catalogue look smaller than it is. `Offering.available`
+ * is the only signal any provider puts on the wire for this (no provider attaches a per-row
+ * reason string), so every disabled row carries the same honest, generic sentence rather than
+ * one this component would have to invent per cloud.
+ *
+ * "AVAILABLE ONLY" (issue #153), checked by default, lets a person who does not care to read
+ * every refusal skip straight to what they can actually order — Azure in particular fills this
+ * table with SKU-restricted and quota-refused rows (issue #139) that outnumber the buyable ones
+ * on a fresh subscription. It reads nothing but `available`, so it costs no provider anything to
+ * support. One row is exempt from being hidden by it regardless: the saved/preferred type for
+ * this provider (`preferredIds`, #152's tier preference). Hiding that row would remove the only
+ * place its own unavailable reason is shown *in this table*, contradicting the note the Size
+ * fieldset above already gives about it.
  */
 function MachineTypePicker({
   offerings,
   selectedId,
   onSelect,
   onClear,
+  preferredIds,
 }: {
   offerings: readonly Offering[]
   /** The offering id currently driving the request, or `null` when a size drives it instead. */
   selectedId: string | null
   onSelect: (offering: Offering) => void
   onClear: () => void
+  /** Saved/preferred type ids for this provider (#152) — never hidden by "Available only". */
+  preferredIds: ReadonlySet<string>
 }) {
   // Collapsed by default, and the TABLE ITSELF IS NOT MOUNTED while collapsed — not merely
   // visually hidden. Two reasons, not one: the catalogue this reads from is ~12 rows today and
@@ -353,12 +365,27 @@ function MachineTypePicker({
   // this page's own price display already renders once.
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  // On by default (issue #153): most people opening this table want to know what they can
+  // actually order, not read a refusal per row.
+  const [availableOnly, setAvailableOnly] = useState(true)
 
-  const filtered = useMemo(() => {
+  const searched = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return offerings
     return offerings.filter((o) => o.id.toLowerCase().includes(q) || o.region.toLowerCase().includes(q))
   }, [offerings, query])
+
+  // Rows the "Available only" checkbox removes from the searched set — always excluding the
+  // saved/preferred type, which stays visible (with its reason) regardless of the checkbox.
+  const unavailableHiddenCount = useMemo(() => {
+    if (!availableOnly) return 0
+    return searched.filter((o) => !o.available && !preferredIds.has(o.id)).length
+  }, [searched, availableOnly, preferredIds])
+
+  const filtered = useMemo(() => {
+    if (!availableOnly) return searched
+    return searched.filter((o) => o.available || preferredIds.has(o.id))
+  }, [searched, availableOnly, preferredIds])
 
   const shown = filtered.slice(0, MACHINE_PICKER_RENDER_CAP)
   const hiddenCount = filtered.length - shown.length
@@ -389,6 +416,22 @@ function MachineTypePicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <label className="checkbox-row machine-picker-filter">
+            <input
+              type="checkbox"
+              checked={availableOnly}
+              onChange={(e) => setAvailableOnly(e.target.checked)}
+            />
+            <span>Available only</span>
+          </label>
+          {/* Present only while the checkbox is actually hiding something — a count that is
+              always there, including "0 unavailable hidden", is chrome that stops meaning
+              anything (issue #153). */}
+          {unavailableHiddenCount > 0 && (
+            <p className="hint" data-testid="machine-picker-hidden-count">
+              {unavailableHiddenCount} unavailable hidden
+            </p>
+          )}
           <div className="machine-picker-table-wrap">
             <table>
               <caption className="hint">Estimates only — you are billed by the provider, not by Rocky Surf.</caption>
@@ -648,6 +691,19 @@ export function CreateServerPage() {
   const tierPreferences = useMemo(
     () => ({ ...(provider?.tierPreferences ?? {}), ...(providerId ? (savedTiers[providerId] ?? {}) : {}) }),
     [provider, providerId, savedTiers],
+  )
+
+  /**
+   * Every saved/preferred type id for this provider, across all three sizes (issue #153).
+   *
+   * Handed to `MachineTypePicker` so its "Available only" checkbox never hides one of these
+   * rows: an unavailable preferred type already gets a note in the Size fieldset above (via
+   * `resolveSize`'s `note`), and disappearing its row from the table beneath would make that
+   * note point at nothing a person looking at the table could find.
+   */
+  const preferredOfferingIds = useMemo(
+    () => new Set(Object.values(tierPreferences).filter((id): id is string => Boolean(id))),
+    [tierPreferences],
   )
 
   const sizeResolutions = useMemo(() => {
@@ -1103,6 +1159,7 @@ export function CreateServerPage() {
             selectedId={customOfferingId}
             onSelect={(offering) => setCustomOfferingId(offering.id)}
             onClear={() => setCustomOfferingId(null)}
+            preferredIds={preferredOfferingIds}
           />
         )}
 

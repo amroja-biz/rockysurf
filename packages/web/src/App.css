@@ -1241,6 +1241,12 @@ tbody tr:hover td {
   margin: 0.5rem 0;
 }
 
+/* Sits directly under the search box, not floating a `.checkbox-row`'s usual 0.75rem away from
+   it — the two controls act as one "narrow the table" unit (issue #153). */
+.machine-picker-filter {
+  margin: 0 0 0.5rem;
+}
+
 .machine-picker-table-wrap {
   overflow-x: auto;
   /* The scroller is also the containing block for what it scrolls. Without this, the Select
