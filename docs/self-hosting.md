@@ -169,8 +169,8 @@ Whichever way you started it, the web UI edits that same config file — the one
 open, comments and all — one section at a time: a column of tabs beside the form where the
 window is wide enough for one, the same tabs as a strip above it where it is not. The tabs are
 the file's own blocks — Server, GitHub access tokens, one per cloud provider, Your own machines,
-Limits, MCP — and the open one is in the URL, so `/settings?section=providers.aws` is a link
-straight to the AWS settings and a reload comes back to the section you were on.
+Limits, Preferences, MCP — and the open one is in the URL, so `/settings?section=providers.aws`
+is a link straight to the AWS settings and a reload comes back to the section you were on.
 
 What you type is held until you press **Save to the file**, wherever on the page you typed it.
 Moving between tabs never discards an edit, and a tab holding unsaved work — or a field the last
@@ -178,9 +178,55 @@ save was refused over — carries a dot, so nothing is left waiting on a section
 looking at. The GitHub tokens are the one exception, and each card says so: they save one entry
 at a time, because removing an entry renumbers the ones after it.
 
-Nothing saved here reaches the running process until Rocky Surf is restarted. The page says so
-beside the button, and keeps saying so — read back from the file rather than shown as a message
-a reload could lose — until the restart has happened.
+Nothing saved here reaches the running process until Rocky Surf is restarted — with one
+deliberate exception, `preferences`, described below. The page says so beside the button, and
+keeps saying so — read back from the file rather than shown as a message a reload could lose —
+until the restart has happened.
+
+## What Small, Medium and Large mean
+
+A size is a **floor**, not a machine type: `small` asks for at least 2 vCPU and 2 GB, `medium`
+for 2 and 4, `large` for 4 and 8, and Rocky Surf creates the cheapest machine the chosen cloud
+sells that meets it. That is why one form serves clouds with completely different catalogues —
+EC2's `t4g.small` and Hetzner's `cpx12` are not comparable by name, only by what they provide.
+
+If you would rather it always used a particular type, say so once:
+
+```yaml
+preferences:
+  tiers:
+    aws:
+      small: t4g.medium
+      large: c7g.xlarge
+    hetzner:
+      small: cpx21
+```
+
+Set them on the **Preferences** tab of the Settings page, or — usually easier — on the New
+Server page itself: pick a machine type by hand and it offers to use that one every time you
+ask this cloud for a small, a medium or a large. Both write the same lines into the same file.
+
+Three things worth knowing about them:
+
+- **A saved type does not have to meet the size's floor.** "My small is `t4g.large`" is a
+  perfectly good thing to want. The floors are there so someone who has expressed no opinion is
+  not under-served; expressing one is the whole point of this block.
+- **It falls back rather than failing.** If the saved type is sold out, quota-refused, or no
+  longer sold, Rocky Surf creates the cheapest machine meeting the floor instead — and says
+  which and why, on the New Server page and in the API response, rather than substituting in
+  silence. An architecture you ask for explicitly also wins over a saved type of the other one.
+- **It applies immediately.** This is the one block Rocky Surf re-reads while it is running,
+  because a preference you set on the New Server page has to apply to the next server you
+  create, not to the next time somebody restarts the process. Everything else in the file still
+  waits for a restart.
+
+The saved type must be one this installation would actually create: if you have narrowed a cloud
+with `providers.<cloud>.sizes`, a preference outside that list is refused when the file is read,
+naming both settings. The preference is your default; the allowlist is the installation's
+policy, and a default never steps over a policy.
+
+The CLI and the MCP server go through the same resolution, so `rockysurf create --size small`
+and an agent's `create_server` both get the type you saved.
 
 ## The data directory
 

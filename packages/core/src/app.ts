@@ -5,7 +5,7 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
-import type { Config } from './config/index.js'
+import { createPreferenceReader, type Config } from './config/index.js'
 import type { Db } from './db/client.js'
 import { getUserByGithubUsername } from './db/repositories/users.js'
 import type { ServerRow, Session, User } from './db/schema.js'
@@ -458,6 +458,16 @@ export function createApp(deps: AppDeps): CreatedApp {
        * which the route reads as "offer everything": the documented default, and the one an
        * operator who has never heard of this field gets.
        */
+      /*
+       * The user's saved type for a size on a cloud (issue #124), read from the FILE rather
+       * than from the config this process booted with — see `config/live-preferences.ts` for
+       * why this one block is the exception. Same shape as `offeringAllowlist` above: a
+       * function taking a registry id, so no cloud's name enters core.
+       */
+      tierPreference: createPreferenceReader({
+        booted: config.preferences,
+        ...(deps.configPath ? { configPath: deps.configPath } : {}),
+      }),
       offeringAllowlist: (providerId) => {
         const section: unknown = (config.providers as Record<string, unknown>)[providerId]
         if (typeof section !== 'object' || section === null) return undefined

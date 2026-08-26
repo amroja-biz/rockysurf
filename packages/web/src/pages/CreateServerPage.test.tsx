@@ -1399,3 +1399,157 @@ describe('the machine type picker', () => {
     expect(screen.getByText(/more — refine your search/i)).toBeTruthy()
   })
 })
+
+/* ------------------------------------------------------- saved machine types (issue #124) */
+
+/**
+ * THE SAME TYPES COME UP EVERY TIME, which is the issue in one sentence.
+ *
+ * Two halves, and both are here: the picker HONOURS what core sent, and the page can SAVE a new
+ * one without the user going anywhere. The saving half writes the config file through the same
+ * guarded settings route the Settings page uses — read for the mtime, then save against it —
+ * so what is checked is the path it names and the guard it presents, not just that a button
+ * exists.
+ */
+describe('a saved machine type on the New Server page (issue #124)', () => {
+  const WITH_SAVED: api.ProviderInfo = { ...FAKE_PROVIDER, tierPreferences: { small: 'big-arm' } }
+
+  const settingsView = (mtimeMs: number | null = 1234): api.SettingsView => ({
+    file: { path: '/home/rocky/.rockysurf/config.yaml', exists: true, mtimeMs },
+    values: {},
+    defaults: {},
+    fields: [],
+    sections: [],
+    lists: [],
+    drifted: false,
+    restartHint: 'Changes apply after a restart.',
+  })
+
+  it('resolves small to the saved type instead of the cheapest that fits', async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([WITH_SAVED])
+    renderPage()
+
+    // `small-arm` is cheaper and meets the floor; `big-arm` is what this user asked for.
+    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+    expect(screen.getByTestId('size-resolves-small').textContent).toContain('big-arm')
+    expect(screen.getByTestId('size-preferred-small').textContent).toMatch(/saved/i)
+  })
+
+  it('submits the saved type, so the machine created is the one shown', async () => {
+    const user = userEvent.setup()
+    vi.mocked(api.listProviders).mockResolvedValue([WITH_SAVED])
+    renderPage()
+    await screen.findByRole('heading', { name: /big-arm/ })
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0]).toMatchObject({ offeringId: 'big-arm', size: 'small' })
+  })
+
+  it('leaves a size with nothing saved exactly as it was', async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([WITH_SAVED])
+    renderPage()
+    await screen.findByRole('heading', { name: /big-arm/ })
+
+    // `large` has no saved type, so it still resolves the way it always did.
+    expect(screen.getByTestId('size-resolves-large').textContent).toContain('big-arm')
+    expect(screen.queryByTestId('size-preferred-large')).toBeNull()
+  })
+
+  it('falls back and SAYS WHY when the saved type is unavailable', async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([
+      {
+        ...FAKE_PROVIDER,
+        tierPreferences: { small: 'quota-type' },
+        offerings: [
+          ...FAKE_PROVIDER.offerings,
+          {
+            id: 'quota-type',
+            cpu: 4,
+            memoryGb: 8,
+            arch: 'arm64',
+            hourly: price(0.09),
+            available: false,
+            unavailableReason: 'no core quota for standardBpsv2Family in eastus (approved limit is 0)',
+            region: 'fake-1',
+          },
+        ],
+      },
+    ])
+    renderPage()
+
+    // Not a refusal — the create still works, on the ordinary default.
+    expect(await screen.findByRole('heading', { name: /small-arm/ })).toBeTruthy()
+    const note = screen.getByTestId('tier-preference-note').textContent ?? ''
+    expect(note).toContain('quota-type')
+    // The provider's own reason (#139), not a generic "sold out": the cure is a portal request.
+    expect(note).toContain('no core quota')
+    expect(note).toContain('small-arm')
+  })
+
+  it('offers to remember a machine type once one has been picked by hand', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: /create server/i })
+
+    // Nothing to remember until the user has picked something.
+    expect(screen.queryByTestId('remember-tier')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    await user.click(within(screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!).getByRole('button', { name: /^select$/i }))
+
+    const remember = screen.getByTestId('remember-tier')
+    expect(remember.textContent).toContain('big-arm')
+    expect(remember.textContent).toContain('Fake Cloud')
+  })
+
+  it('writes the preference to the config file, guarded by the mtime it just read', async () => {
+    const user = userEvent.setup()
+    const get = vi.spyOn(api, 'getSettings').mockResolvedValue(settingsView(99))
+    const put = vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(100), saved: true })
+
+    renderPage()
+    await screen.findByRole('button', { name: /create server/i })
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    await user.click(within(screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!).getByRole('button', { name: /^select$/i }))
+
+    await user.click(within(screen.getByTestId('remember-tier')).getByRole('button', { name: /^medium$/i }))
+
+    await waitFor(() => expect(put).toHaveBeenCalled())
+    expect(get).toHaveBeenCalled()
+    // The concurrency token is the whole reason the settings route is safe to write through.
+    expect(put.mock.calls[0]?.[0]).toBe(99)
+    expect(put.mock.calls[0]?.[1]).toEqual([
+      { path: ['preferences', 'tiers', 'fake', 'medium'], value: 'big-arm' },
+    ])
+  })
+
+  it('applies what was just saved to the page it was saved from', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'getSettings').mockResolvedValue(settingsView())
+    vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(), saved: true })
+
+    renderPage()
+    await screen.findByRole('button', { name: /create server/i })
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    await user.click(within(screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!).getByRole('button', { name: /^select$/i }))
+    await user.click(within(screen.getByTestId('remember-tier')).getByRole('button', { name: /^small$/i }))
+
+    // `/providers` is fetched once, so without this the person who just saved a preference would
+    // be the only one still looking at the old default.
+    await waitFor(() => expect(screen.getByTestId('size-resolves-small').textContent).toContain('big-arm'))
+    expect(screen.getByTestId('size-preferred-small')).toBeTruthy()
+  })
+
+  it('does not offer the button to someone who may not write the config file', async () => {
+    // `/api/v1/settings` is admin-only. A control that always 403s is worse than no control.
+    auth.isAdmin = false
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('button', { name: /create server/i })
+    await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    await user.click(within(screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!).getByRole('button', { name: /^select$/i }))
+
+    expect(screen.queryByTestId('remember-tier')).toBeNull()
+  })
+})

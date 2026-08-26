@@ -666,8 +666,57 @@ const bootstrapSchema = section(
   }),
 )
 
-export const configSchema = section(
+/**
+ * A FAVOURITE MACHINE TYPE PER T-SHIRT SIZE, PER CLOUD (issue #124).
+ *
+ * The defaults resolve a size to the CHEAPEST available machine meeting its floor, which is
+ * the right answer for someone who has never thought about it and the wrong one for someone
+ * who has: a user whose `small` is always `t4g.medium` re-picked it by hand on every create,
+ * because nothing remembered. This is where the answer is remembered.
+ *
+ * A PREFERENCE IS A TYPE, NOT A FLOOR, and it deliberately does not have to satisfy the size's
+ * requirements. "My small is `t4g.large`" is a legitimate thing to want — the floors exist so a
+ * caller who has no opinion is not under-served, and someone with an opinion is not being
+ * under-served by definition. `servers/offerings.ts` therefore takes the preferred type as-is
+ * and never re-checks it against `SIZE_REQUIREMENTS`.
+ *
+ * KEYED BY PROVIDER ONLY, matching the resolver: region, zone and resource group are already
+ * per-provider settings in the sections above, so `providers.aws.region` plus
+ * `preferences.tiers.aws.small` is one answer per (cloud, region, size) without a second key.
+ * Architecture is not a key either — a concrete machine type carries its own arch, and a
+ * preference whose arch contradicts an explicitly requested one is skipped rather than honoured.
+ *
+ * STRICT, and keyed by the same provider ids the `providers` block uses, so `preferences:
+ * tiers: awz: …` is a boot error rather than a setting that silently does nothing for a year.
+ */
+const tierPreferenceSchema = section(
   z.strictObject({
+    small: z.string().trim().min(1).optional(),
+    medium: z.string().trim().min(1).optional(),
+    large: z.string().trim().min(1).optional(),
+  }),
+)
+
+const preferencesSchema = section(
+  z.strictObject({
+    tiers: section(
+      z.strictObject({
+        aws: tierPreferenceSchema,
+        azure: tierPreferenceSchema,
+        gcp: tierPreferenceSchema,
+        hetzner: tierPreferenceSchema,
+        /** BYO offerings are host NAMES, so a preference here is "always claim this machine". */
+        byo: tierPreferenceSchema,
+      }),
+    ),
+  }),
+)
+
+/** Just the preferences block, so the live reader can validate it without the whole file. */
+export { preferencesSchema }
+
+const configObject = z
+  .strictObject({
     server: serverSchema,
     auth: authSchema,
     github: githubSchema,
@@ -677,8 +726,40 @@ export const configSchema = section(
     registry: registrySchema,
     pricing: pricingSchema,
     bootstrap: bootstrapSchema,
-  }),
-)
+    preferences: preferencesSchema,
+  })
+  /**
+   * A PREFERENCE THIS INSTALLATION WOULD REFUSE TO CREATE IS A CONFIGURATION ERROR.
+   *
+   * `providers.<cloud>.sizes` is the operator's allowlist, applied to every catalogue before
+   * anything resolves against it (`allowedOfferings`). A preferred type outside it can never be
+   * chosen — the resolver would silently fall back on every single create — so it is caught
+   * here, at boot and on every settings save, with the fix named.
+   *
+   * ONLY AGAINST THE ALLOWLIST, never against the cloud's real catalogue: this schema has no
+   * network and no provider, and a type this file cannot check is still checked at create time
+   * where the catalogue is in hand. An unset allowlist offers everything, so there is nothing
+   * to disagree with.
+   */
+  .superRefine((config, ctx) => {
+    const providers = config.providers as Record<string, { sizes?: readonly string[] } | undefined>
+    for (const [providerId, tiers] of Object.entries(config.preferences.tiers)) {
+      const allowlist = providers[providerId]?.sizes
+      if (!allowlist) continue
+      for (const [size, type] of Object.entries(tiers)) {
+        if (typeof type !== 'string' || allowlist.includes(type)) continue
+        ctx.addIssue({
+          code: 'custom',
+          path: ['preferences', 'tiers', providerId, size],
+          message:
+            `"${type}" is not in providers.${providerId}.sizes, so this installation would never ` +
+            'create it — add it to that list, or prefer a type the list already has',
+        })
+      }
+    }
+  })
+
+export const configSchema = section(configObject)
 
 export type Config = z.output<typeof configSchema>
 export type BootstrapConfig = Config['bootstrap']
@@ -693,3 +774,6 @@ export type RegistrySource = RegistryConfig['sources'][number]
 export type McpScope = McpConfig['scopes'][number]
 export type ByoHost = Config['providers']['byo']['hosts'][number]
 export type PricingConfig = Config['pricing']
+export type PreferencesConfig = Config['preferences']
+/** One cloud's remembered types, as `{ small?, medium?, large? }`. */
+export type TierPreferences = PreferencesConfig['tiers'][keyof PreferencesConfig['tiers']]

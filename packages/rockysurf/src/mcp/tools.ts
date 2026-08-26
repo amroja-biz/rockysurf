@@ -274,9 +274,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
           'How big a machine, as a floor rather than an exact type: small is at least 2 vCPU and ' +
             '2 GB, medium at least 2 and 4, large at least 4 and 8. The control plane picks the ' +
             'cheapest machine the chosen cloud sells that meets it, and refuses — naming the ' +
-            'shortfall — rather than quietly handing back a smaller one. Defaults to small when ' +
-            'offering_id is also omitted; omit this and name offering_id instead to ask for a ' +
-            'specific machine type rather than a floor.',
+            'shortfall — rather than quietly handing back a smaller one. If the human has saved ' +
+            'a favourite type for this size on this cloud, that one is used instead, and the ' +
+            'result carries a sizeNote when a saved type could not be used. Defaults to small ' +
+            'when offering_id is also omitted; omit this and name offering_id instead to ask ' +
+            'for a specific machine type rather than a floor.',
         ),
       /**
        * ARCH, WHICH AN AGENT COULD NOT ASK FOR AT ALL UNTIL NOW (rockysurf-0t2h).
