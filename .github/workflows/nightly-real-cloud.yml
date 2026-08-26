@@ -20,6 +20,28 @@ name: Nightly real-cloud lifecycle
 #                                    PUBLISHES to self-hosters. See "the published policy" below.
 #   vars.AWS_PROVIDER_ROLE_NAME      optional; defaults to the template's `rocky-surf-provider`.
 #
+#   vars.GCP_CI_PROJECT              (gh issue #132) a Google Cloud project that exists ONLY for
+#                                    this workflow. NEVER the project from docs/providers/gcp.md,
+#                                    and never one anybody runs their own Rocky Surf against —
+#                                    the sweep below is narrow, but a CI project is also the only
+#                                    thing that makes an over-broad sweep survivable.
+#   vars.GCP_WORKLOAD_IDENTITY_PROVIDER
+#                                    the full resource name of the Workload Identity Federation
+#                                    provider that trusts GitHub's OIDC issuer, e.g.
+#                                    projects/123456789/locations/global/workloadIdentityPools/github/providers/rockysurf-nightly
+#   vars.GCP_PROVIDER_SERVICE_ACCOUNT
+#                                    the service account carrying the PUBLISHED least-privilege
+#                                    role (deploy/gcp/rockysurf-role.yaml) — the identity under
+#                                    test, exactly as a self-hoster's.
+#   vars.GCP_NIGHTLY_SERVICE_ACCOUNT the CI-only service account the orphan sweep reads and
+#                                    cleans with. Deliberately a DIFFERENT identity; see below.
+#   vars.GCP_CI_ZONE                 optional; defaults to us-central1-a, one of the eight zones
+#                                    with T2A (arm64) stock.
+#
+#   There is no GCP SECRET, and that is the point: `deploy/gcp/nightly-ci.sh` creates a workload
+#   identity pool that trusts this repository's own OIDC token, so nothing long-lived exists to
+#   leak or rotate. Four repository VARIABLES, and none of them is a credential.
+#
 # Until they exist, each job skips with a notice instead of failing red every morning: a
 # perpetually red scheduled workflow trains everyone to ignore it, and the one morning it is red
 # for a real reason nobody looks.
@@ -59,6 +81,31 @@ name: Nightly real-cloud lifecycle
 # vars.AWS_PROVIDER_ROLE_ARN as optional, an entry role deployed from nightly-ci.yaml makes it
 # mandatory in practice: without the second hop the lifecycle has no permission to launch
 # anything. Set both, or neither.
+#
+# ─── THE SAME IDEA ON GCP, WITH ONE HOP INSTEAD OF TWO (gh issue #132) ───────────────────────
+#
+# GCP reaches the same destination by a shorter road. There is no role chaining to arrange: the
+# workload identity pool lets this repository's OIDC token impersonate a NAMED service account
+# directly, so the run is simply granted the identity that carries deploy/gcp/rockysurf-role.yaml
+# — the role docs/providers/gcp.md publishes, deployed by the SHIPPED deploy/gcp/setup.sh with no
+# CI-flavoured edits. Every Compute call the lifecycle makes therefore runs under exactly the
+# permissions a self-hoster gets, and a provider call the published role does not cover fails
+# here the first morning after it lands.
+#
+# The audit/sweep identity is still SEPARATE, for the reason the AWS leg learned the hard way:
+# `compute.disks.list` and `compute.instances.list` outside the run's own labels are reads the
+# provider never makes and the published role therefore does not grant. An orphan the credentials
+# under test cannot SEE is an orphan the audit calls clean, and a sweep that only works through
+# the identity under test goes blind at exactly the moment the identity is what broke. So the
+# workflow authenticates TWICE: once as the CI-only sweep account (captured, not exported), then
+# as the published one (exported, and what Application Default Credentials resolves to).
+#
+# To wire it in the CI project — one script, and it is idempotent:
+#
+#   ./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id>
+#
+# It prints the four `gh variable set` commands at the end. It creates NOTHING with a long-lived
+# key: no service-account key file is generated anywhere in this path.
 
 on:
   schedule:
@@ -87,12 +134,20 @@ jobs:
     outputs:
       hetzner: ${{ steps.probe.outputs.hetzner }}
       aws: ${{ steps.probe.outputs.aws }}
+      gcp: ${{ steps.probe.outputs.gcp }}
     steps:
       - id: probe
         env:
           HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
           AWS_NIGHTLY_ROLE_ARN: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
           AWS_PROVIDER_ROLE_ARN: ${{ vars.AWS_PROVIDER_ROLE_ARN }}
+          # GCP's wiring is four VARIABLES and no secret — there is nothing long-lived to hold.
+          # They are probed here anyway rather than in a job-level `if:`, so that the skip is
+          # reported the same way the other two are and names what is missing.
+          GCP_CI_PROJECT: ${{ vars.GCP_CI_PROJECT }}
+          GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_PROVIDER_SERVICE_ACCOUNT: ${{ vars.GCP_PROVIDER_SERVICE_ACCOUNT }}
+          GCP_NIGHTLY_SERVICE_ACCOUNT: ${{ vars.GCP_NIGHTLY_SERVICE_ACCOUNT }}
         run: |
           set -euo pipefail
           note() { echo "$1" >> "$GITHUB_STEP_SUMMARY"; echo "::notice::$1"; }
@@ -109,6 +164,20 @@ jobs:
           else
             echo 'aws=no' >> "$GITHUB_OUTPUT"
             note 'SKIPPED AWS: repository secret AWS_NIGHTLY_ROLE_ARN is not set. Create a role trusting the GitHub OIDC provider for this repository.'
+          fi
+
+          # ALL FOUR OR NONE. A half-wired GCP leg is worse than none: authenticating as the
+          # sweep account alone would run the lifecycle under an identity that is not the
+          # published role, and the leg would pass while proving nothing about what is published.
+          missing=''
+          for name in GCP_CI_PROJECT GCP_WORKLOAD_IDENTITY_PROVIDER GCP_PROVIDER_SERVICE_ACCOUNT GCP_NIGHTLY_SERVICE_ACCOUNT; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            echo 'gcp=yes' >> "$GITHUB_OUTPUT"
+          else
+            echo 'gcp=no' >> "$GITHUB_OUTPUT"
+            note "SKIPPED GCP: repository variable(s) not set:$missing. Run deploy/gcp/nightly-ci.sh against a CI-ONLY project — it prints the exact gh commands. See this workflow header."
           fi
 
           # Not a skip condition — the AWS run is still worth having without it. But it is worth
@@ -441,3 +510,205 @@ jobs:
         with:
           name: aws-lifecycle-log-${{ matrix.arch }}
           path: aws-${{ matrix.arch }}.log
+
+  gcp:
+    name: GCP (${{ matrix.offering }}, ${{ matrix.arch }})
+    needs: preflight
+    # Four repository variables and no secret, so this gate could have been a job-level `if:` on
+    # `vars.*` directly. It goes through the preflight anyway: a leg that skips silently is a leg
+    # nobody notices is not running, and the preflight is where every skip in this file explains
+    # itself in the run summary.
+    if: needs.preflight.outputs.gcp == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The run-ids file is declared per-step here too — see the Hetzner job's comment for why
+    # job-level `env` cannot do it (rockysurf-8mu5). One file per matrix leg, since each is its
+    # own runner.
+    strategy:
+      # Sequential, like AWS and for the same two reasons: both legs share ONE firewall rule in
+      # the project, and the arm64 result is the more interesting of the two — running them in
+      # order means a T2A failure is not buried under the amd64 job's noise.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          # BOTH architectures, because arch-correct image-family selection (`ubuntu-2404-lts`
+          # plus `-arm64`/`-amd64`) is only proven by running both. `t2a-standard-1` rather than a
+          # `c4a-standard-*`: C4A can only boot from Hyperdisk, and `bootDiskType` is one
+          # provider-wide setting, so choosing it would break the amd64 leg to fix the arm64 one.
+          # us-central1-a is one of the eight zones with T2A stock. See scripts/e2e/lifecycle.mjs.
+          - offering: t2a-standard-1
+            arch: arm64
+          - offering: e2-small
+            arch: amd64
+    permissions:
+      # OIDC: GitHub mints a short-lived token and Google's STS exchanges it. There is no GCP
+      # secret in this repository and no service-account key anywhere on this path, which is the
+      # point.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The script drives the built binary, not the sources: it is the shipped article under
+      # test, so it has to be built first.
+      - run: pnpm -r build
+
+      # gcloud is used by the sweep, and only as the OPERATOR identity. Installed explicitly
+      # rather than relied on from the runner image, so a base-image change cannot quietly turn
+      # the sweep into a step that errors at exactly the moment it matters.
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # THE ORPHAN SWEEP CANNOT RUN UNDER THE ROLE BEING TESTED — the same finding as the AWS leg
+      # (rockysurf-gyp1.5), reached from the same direction. Listing every managed instance in the
+      # project, and listing disks at all, are calls the provider never makes, so the published
+      # role deliberately does not grant them; and a sweep wired through the identity under test
+      # goes blind precisely when that identity is what failed. So the CI-only sweep account is
+      # authenticated FIRST and its credentials file is CAPTURED rather than exported —
+      # `export_environment_variables: false` leaves GOOGLE_APPLICATION_CREDENTIALS alone, so the
+      # next step's export is what Application Default Credentials resolves to.
+      #
+      # STEP ORDER IS THE WHOLE MECHANISM, exactly as on the AWS leg. Swap these two and the
+      # lifecycle runs as the sweep account: every check would still pass, and the run would prove
+      # nothing whatsoever about the role this project publishes.
+      - name: Authenticate the CI-only sweep identity
+        id: sweep-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_CI_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_NIGHTLY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: false
+
+      # From here on the run holds EXACTLY the permissions deploy/gcp/rockysurf-role.yaml grants —
+      # the ones docs/providers/gcp.md tells self-hosters are enough. This step exports
+      # GOOGLE_APPLICATION_CREDENTIALS, and `google-auth-library` inside @rockysurf/provider-gcp
+      # picks it up through the ordinary ADC chain: the provider has no CI-specific code path, and
+      # the federated credential file it reads holds no key material — only the URL of GitHub's
+      # own token endpoint and the account to impersonate.
+      - name: Authenticate as the published least-privilege service account
+        id: provider-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_CI_PROJECT }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PROVIDER_SERVICE_ACCOUNT }}
+
+      # The GCP counterpart of the AWS leg's `sts get-caller-identity` assertion, making the same
+      # claim with the same strength: the identity in force is the account the published role was
+      # bound to, so an owner-level or wide predefined principal cannot be quietly substituted and
+      # leave the nightly passing while proving nothing about what is published.
+      #
+      # It reads the credentials FILE rather than calling Google, because there is no free,
+      # permissionless "who am I" call here — `GetCallerIdentity` has no GCP equivalent, and the
+      # published role grants nothing on IAM, so the account cannot read its own bindings back.
+      # What the file settles is which account ADC will impersonate, which is the substitution
+      # being guarded against. The file holds no secret: an external-account credential is a
+      # pointer to GitHub's token endpoint. A file with no impersonation URL at all — direct
+      # federation, no service account named — reads as the empty string and fails the same way,
+      # which is why the default is `""` rather than something that could accidentally match.
+      - name: Confirm the identity under test is the published service account
+        env:
+          EXPECTED: ${{ vars.GCP_PROVIDER_SERVICE_ACCOUNT }}
+          CREDENTIALS: ${{ steps.provider-auth.outputs.credentials_file_path }}
+        run: |
+          set -euo pipefail
+          url=$(jq -re '.service_account_impersonation_url // ""' "$CREDENTIALS")
+          echo "running as: $EXPECTED"
+          case "$url" in
+            *"/serviceAccounts/${EXPECTED}:generateAccessToken") echo 'identity is the published service account' ;;
+            *)
+              echo "::error::the nightly's Google credential does not impersonate ${EXPECTED}."
+              echo "::error::Point vars.GCP_PROVIDER_SERVICE_ACCOUNT at the account deploy/gcp/setup.sh created — the one bound to deploy/gcp/rockysurf-role.yaml — and not at any other principal."
+              exit 1
+              ;;
+          esac
+
+      # `set -o pipefail` IS THE STEP, NOT DECORATION (rockysurf-rkh3) — see the Hetzner leg.
+      # Without it `tee` decides the exit status and a `RESULT: FAIL` is a green step.
+      - name: Lifecycle
+        env:
+          ROCKYSURF_E2E_GCP_PROJECT: ${{ vars.GCP_CI_PROJECT }}
+          ROCKYSURF_E2E_GCP_ZONE: ${{ vars.GCP_CI_ZONE || 'us-central1-a' }}
+          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
+        run: |
+          set -o pipefail
+          node scripts/e2e/lifecycle.mjs gcp ${{ matrix.offering }} | tee gcp-${{ matrix.arch }}.log
+
+      # MANDATORY SWEEP, and the SAME SCOPING RULE as the other two legs — read the long comment
+      # on the Hetzner sweep before touching this. `managed-by=rockysurf` is an ownership claim
+      # shared by every Rocky Surf pointed at this project, not a marker for this run; selecting
+      # on it alone would delete an operator's own instance exactly as the Hetzner leg once
+      # destroyed the owner's live server. DELETE only what $ROCKYSURF_E2E_RUN_IDS_FILE names.
+      # REPORT everything else and touch none of it.
+      #
+      # DISKS ARE SWEPT TOO, under the same scoping. The provider creates its boot disk with
+      # `autoDelete: true`, so a disk outliving its instance means a delete that half-happened —
+      # invisible to `listManaged()`, which does not walk disks, and to the published role, which
+      # cannot list them. This step reads as the CI-only sweep account, which can.
+      #
+      # THE FILTER IS APPLIED IN jq, NOT IN `gcloud --filter`. A label key containing a hyphen
+      # (`managed-by`) is exactly where gcloud's own filter and format key syntax gets ambiguous,
+      # and a sweep whose selector silently matches nothing is a sweep that reports every run as
+      # clean. JSON out, jq in — the same tool the Hetzner sweep already relies on.
+      - name: Terminate sweep
+        if: always()
+        env:
+          # The captured sweep identity, named explicitly rather than inherited: this is the one
+          # step that has to keep working when the identity under test is what broke.
+          CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: ${{ steps.sweep-auth.outputs.credentials_file_path }}
+          PROJECT: ${{ vars.GCP_CI_PROJECT }}
+          ZONE: ${{ vars.GCP_CI_ZONE || 'us-central1-a' }}
+          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
+        run: |
+          set -euo pipefail
+
+          # Written by the lifecycle script at create time. Absent or empty means it never got far
+          # enough to make anything — in which case this step deletes nothing at all, and that
+          # case is spelled out rather than left to a shell quoting accident.
+          mine=''
+          if [ -s "${ROCKYSURF_E2E_RUN_IDS_FILE:-/nonexistent}" ]; then
+            mine=$(tr '\n' ',' < "$ROCKYSURF_E2E_RUN_IDS_FILE" | sed 's/,$//')
+          fi
+          echo "servers this run created: ${mine:-none}"
+
+          leaked=''
+          # Instances before disks: the disk is `autoDelete`, so deleting the instance is what
+          # reaps it, and the instance is the half that costs real money either way.
+          for kind in instances disks; do
+            # Read-only, and zone-wide on purpose: what else is running under this label is worth
+            # saying out loud, and is never this step's to delete.
+            rows=$(gcloud compute "$kind" list --project="$PROJECT" --zones="$ZONE" --format=json |
+              jq -r '.[] | select(.labels["managed-by"] == "rockysurf") | "\(.name),\(.labels["server-id"] // "")"')
+
+            while IFS=, read -r name owner; do
+              [ -n "$name" ] || continue
+              # `true` only when the resource carries a server-id THIS run recorded. Unattributed
+              # is not ours: a resource we cannot prove we created is not a resource we may
+              # destroy — the cost of leaving one is a line in a log, the cost of the other is
+              # somebody's work.
+              if [ -n "$owner" ] && [ -n "$mine" ] && printf '%s' ",$mine," | grep -qF ",$owner,"; then
+                echo "::warning::sweeping $kind/$name — this run created it and did not clean it up"
+                gcloud compute "$kind" delete "$name" --project="$PROJECT" --zone="$ZONE" --quiet
+                leaked="$leaked $kind/$name"
+              else
+                echo "::notice::$kind/$name (server-id=${owner:-unattributed}) was not created by this run; left alone"
+              fi
+            done <<< "$rows"
+          done
+
+          # STILL RED AFTER CLEANING UP. The sweep existing is not permission for the run to leak:
+          # it cleans so the next run starts from zero, and fails so somebody finds out.
+          [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gcp-lifecycle-log-${{ matrix.arch }}
+          path: gcp-${{ matrix.arch }}.log

@@ -1,0 +1,65 @@
+# Rocky Surf — the CI-only role the nightly's orphan sweep runs under.
+#
+# ---------------------------------------------------------------------------------------------
+# THIS FILE IS NOT SHIPPED, AND THAT IS THE WHOLE DISTINCTION FROM rockysurf-role.yaml.
+#
+# `deploy/gcp/rockysurf-role.yaml` is a SHIPPED artifact: what a self-hoster deploys, carrying
+# exactly the permission list `docs/providers/gcp.md` publishes. This file is the CI-side half of
+# `.github/workflows/nightly-real-cloud.yml`, and it exists so a fork can reproduce this
+# project's nightly verification in its own project without reverse-engineering it from a
+# workflow comment. Nobody running Rocky Surf needs it.
+#
+# THE TWO ROLES ARE SEPARATE ON PURPOSE (gh issue #132, and rockysurf-gyp1.5 before it). The
+# nightly runs the lifecycle under the SHIPPED role, so a provider call the published list does
+# not cover fails the first morning after it lands. But the sweep that runs afterwards cannot use
+# that identity for two independent reasons:
+#
+#   1. It reads calls the provider never makes. `compute.disks.list` in particular is deliberately
+#      absent from the published role — an orphan the credentials under test cannot SEE would be
+#      an orphan the audit reports as clean.
+#   2. It has to keep working when the identity under test is exactly what broke. A sweep wired
+#      through the credentials being tested goes blind at the one moment it matters, which is what
+#      the first real AWS run discovered.
+#
+# Grant these permissions to the SHIPPED role instead and the nightly proves nothing about what is
+# published, which is the failure mode this split exists to close.
+#
+# WHY IT IS STILL NARROW. It can see and delete instances and disks in one project, and nothing
+# else: no firewall permission (the shared SSH rule must survive — deleting it closes port 22 on
+# every running box at once), no `create` of any kind, no image or network access, no `iam.*`.
+# Narrow does not make the sweep safe by itself — the workflow's scoping rule does that, deleting
+# only the `server-id` labels the run recorded and merely REPORTING everything else — but a role
+# that cannot create is a role that cannot bill, and one confined to a CI-only project is one that
+# cannot reach anybody's real machines.
+# ---------------------------------------------------------------------------------------------
+
+title: Rocky Surf Nightly Sweep
+description: >-
+  CI-only: read and delete Compute Engine instances and disks in the nightly's own project, so
+  the real-cloud workflow can clean up after a run it could not finish. Creates nothing, and
+  cannot touch the shared SSH firewall rule.
+stage: GA
+
+includedPermissions:
+  # The credential/project/zone check, the same cheapest-authenticated-call trick the provider
+  # itself uses.
+  - compute.zones.get
+
+  # The sweep proper: list what carries the `managed-by=rockysurf` label, and delete the ones
+  # whose `server-id` the run recorded. `get` is what `delete` polls through.
+  - compute.instances.list
+  - compute.instances.get
+  - compute.instances.delete
+
+  # Disks are swept under the same scoping. The provider creates its boot disk with
+  # `autoDelete: true`, so a disk outliving its instance means a delete that half-happened —
+  # invisible to `listManaged()`, which does not walk disks, and to the published role, which
+  # cannot list them.
+  - compute.disks.list
+  - compute.disks.get
+  - compute.disks.delete
+
+  # Instance and disk deletes are ZONAL operations, and `gcloud ... delete` waits on them. Without
+  # this the sweep deletes correctly and then fails at the poll, which is a confusing way to learn
+  # about it. There is no `globalOperations.get` here because this role touches nothing global.
+  - compute.zoneOperations.get
