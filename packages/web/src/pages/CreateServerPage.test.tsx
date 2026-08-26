@@ -1455,6 +1455,12 @@ describe('the machine type picker', () => {
 
     expect(screen.getByText(/more — refine your search/i)).toBeTruthy()
   })
+
+  it('placeholder describes what the search actually matches — type and region (issue #151)', async () => {
+    await openPicker()
+
+    expect(screen.getByPlaceholderText(/search by type or region/i)).toBeTruthy()
+  })
 })
 
 /* ------------------------------------------------------- saved machine types (issue #124) */

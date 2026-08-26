@@ -383,7 +383,9 @@ function MachineTypePicker({
             type="search"
             className="machine-picker-search"
             aria-label="Search machine types"
-            placeholder="Search by id or region…"
+            // The table lists machine TYPES (the `Type` column, an id like `Standard_B12ms`) and
+            // their region — not the server's own id, which this box never matched (issue #151).
+            placeholder="Search by type or region…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
