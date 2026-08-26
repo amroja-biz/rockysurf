@@ -17,8 +17,8 @@ and the two real-cloud capstone transcripts beside it.
 | capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
 |---|---|---|---|---|---|
 | `stop` | `true` | `true` | `true` † | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` † | **`false`** † | `true` † | `true` |
-| `canInjectHostKeys` | `true` | `true` † | `true` | `true` | **`false`** |
+| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` |
+| `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
@@ -37,13 +37,23 @@ documentation rather than an observation. Daggers are per value rather than per 
 run can settle some values in a column while never exercising the others, and that is exactly
 what happened to `gcp`.
 
-**`azure`.** Built without an Azure subscription. Every value is derived from Microsoft's own
-documentation and from what the provider's code does, and the whole column is enforced by that
-package's tests against an in-memory ARM — but nobody has pointed it at Azure. The two daggered
-values are the ones to be careful with: `canInjectHostKeys` is a security posture rather than a
-feature flag, and `userDataMaxBytes` is deliberately the conservative reading of an ambiguous
-document. The owner-gated run that settles both is **`rockysurf-ihtq.8`**, and this table is one
-of the things it updates.
+**`azure`.** Built without an Azure subscription, then **run against real Azure on 2026-08-26**
+(`rockysurf-ihtq.8`). That run took the full lifecycle — create, bootstrap, SSH, stop, start,
+terminate — on both architectures (`Standard_B2ls_v2` amd64, `Standard_B2ps_v2` arm64), under a
+principal holding only the two published roles. It settled three of this column's values and
+deliberately never exercised the fourth, so like `gcp` the daggers moved rather than disappeared.
+
+`canInjectHostKeys` and `ipStableAcrossStop` are now observations, and `stop` was confirmed to be
+a real `deallocate` rather than a `powerOff`. **`userDataMaxBytes` keeps its dagger**: the run
+never came close to the ceiling — the pack's rendered document is ~2KB — so which reading of
+Microsoft's ambiguous 64 KB is correct remains exactly as unsettled as before. Calling the column
+measured because most of it is would be the drift the daggers exist to prevent.
+
+Two other things the run did not settle, neither of them a table value: ARM's post-create
+consistency window was never observed (nothing was absent after a create, so the `describe()`
+grace went unexercised), and the size catalogue's `available` flag turns out to read only one of
+Azure's two gates — see `rockysurf-xmk0` and
+[`azure.md`](azure.md#core-quota-is-a-separate-gate-from-sku-availability).
 
 **`gcp`.** Built without credentials, then **run against real Compute Engine on 2026-08-14**
 (`rockysurf-ev41.8`). That run measured the create/terminate lifecycle on both architectures
@@ -169,16 +179,15 @@ Renamed from `canPinHostKey` (ADR-0003, E4) because the old name hid what it dec
   the one carrying the secrets file. **Verified on real infrastructure for both clouds**: the
   capstone run confirmed the box presented exactly the minted fingerprint on first contact, and
   that a deliberately wrong fingerprint was rejected in under a second rather than retried.
-- **`true` (Azure) — REASONED, NOT MEASURED, and this is the single most important unverified
-  claim in this table.** Azure's Ubuntu images are cloud-init provisioned, `osProfile.customData`
-  is what cloud-init consumes, and upstream `cc_ssh` injects host keys from an `ssh_keys:` block
-  exactly as it does on the other two clouds; Microsoft documents no override. That is a good
-  reason to expect it to work and it is not evidence. Because this flag is a **security posture**
-  rather than a feature toggle — `true` promises core rejects an unknown host key on the
-  connection carrying the secrets file — the honest thing is to name it as unproven here rather
-  than let the column read like the other two. If `rockysurf-ihtq.8` disproves it, the flag
-  becomes `false`, this row changes, and Azure joins BYO in needing the provider-side
-  trust-on-first-use path.
+- **`true` (Azure) — MEASURED.** This was the single most important unverified claim in this
+  table, because the flag is a **security posture** rather than a feature toggle: `true` promises
+  core rejects an unknown host key on the connection carrying the secrets file. `rockysurf-ihtq.8`
+  settled it on both architectures. Each box accepted its first connection under
+  `StrictHostKeyChecking=yes` with `BatchMode=yes` — so no trust-on-first-use prompt was even
+  possible — presenting exactly the key core minted, and a deliberately wrong key was refused with
+  `Host key verification failed`. Azure's Ubuntu 24.04 image honours cloud-init `cc_ssh`'s
+  `ssh_keys:` block from `osProfile.customData`, as the reasoning predicted. Azure has no
+  trust-on-first-use window.
 - **`true` (GCP) — MEASURED.** Declared on the same mechanism — cloud-init's GCE datasource
   documents that it reads the `user-data` metadata key, so `ssh_keys:` places the key before
   first boot — and `rockysurf-ev41.8` watched real Google boxes do exactly that, on both
@@ -215,8 +224,9 @@ The docs say `customData` "can't exceed 64 KB" and do not say whether that is me
 after the mandatory base64 encoding — and base64 inflates by a third, so the two readings differ
 by 16 KB. 48 KiB is the largest value correct under either. Guessing high to reclaim headroom
 nobody uses would buy a provider-side rejection at provision time, and in push mode the rendered
-document is ~2.1KB regardless, so the ceiling is nowhere near binding. Which reading is right is
-one of the things `rockysurf-ihtq.8` can settle.
+document is ~2.1KB regardless, so the ceiling is nowhere near binding. Which reading is right is **still unsettled**:
+`rockysurf-ihtq.8` ran against real Azure without going anywhere near the ceiling, so it
+produced no evidence either way and this value keeps its dagger.
 
 The ceiling is real, not theoretical. Embedding the agent in-band for callback mode produced
 **19,130 bytes** — fine on Hetzner, a provider-side 400 at provision time on AWS, and invisible

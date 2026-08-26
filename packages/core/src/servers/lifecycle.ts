@@ -585,6 +585,30 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
     const data = getProviderData(row)
     if (!data || row.status === 'terminated' || row.status === 'requested') return { row }
 
+    /*
+     * A row whose provider is not in this registry degrades to its stored state instead of
+     * failing (rockysurf-1nfc).
+     *
+     * `registry.get` throws for an id the current config does not enable. `rockysurf-gg9x`
+     * already stopped that from taking the whole listing down, by catching per row and
+     * reporting the message as `syncError` — which is the right answer for a cloud having a bad
+     * day, and the wrong one here. A provider the operator switched off has not failed at
+     * anything, so surfacing "unknown provider: gcp. Configured: azure" against every one of its
+     * rows presents a deliberate configuration choice as a fault, and the remedy it implies is
+     * to undo that choice.
+     *
+     * Turning a provider off is ordinary: trying a cloud and dropping it, or narrowing a config
+     * for one run, both leave rows behind. Those rows are history, and history renders from
+     * what is stored. This is the same rule the `not_found` branch below already follows — a
+     * read we cannot make must not corrupt or hide the row — applied one step earlier, to the
+     * read we cannot even attempt.
+     *
+     * Only the OBSERVATION is skipped. Every operation that genuinely needs a live provider —
+     * start, stop, terminate, ssh — still calls `registry.get` and still refuses loudly, which
+     * is correct: those cannot be served from a stored row.
+     */
+    if (!registry.has(row.provider)) return { row }
+
     const provider = registry.get(row.provider)
     let view: InstanceView
     try {

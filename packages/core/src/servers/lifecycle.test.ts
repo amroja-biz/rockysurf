@@ -138,6 +138,48 @@ describe('inverted create ordering (ADR-0001)', () => {
   })
 })
 
+describe('a provider the config no longer enables (rockysurf-1nfc)', () => {
+  it('lists its servers with no syncError, because being switched off is not a failure', async () => {
+    const row = await create()
+    expect(row.status).not.toBe('terminated')
+
+    // The operator tries a cloud and then turns it off — or narrows the config for one run.
+    // The rows it left behind are still in the database, and their provider is not in the
+    // registry any more.
+    const withoutIt = createLifecycleService({ db, registry: new ProviderRegistry([]), events })
+    const listed = await withoutIt.list(userId)
+
+    expect(listed).toHaveLength(1)
+    expect(listed[0]!.row.id).toBe(row.id)
+    expect(listed[0]!.row.status).toBe(row.status)
+
+    // `rockysurf-gg9x` already stopped one unhappy provider from taking the whole listing down,
+    // by catching per row and reporting `syncError`. That is right for a cloud having a bad day
+    // and wrong for this case: a provider the operator deliberately switched off has not failed
+    // at anything. Without the registry check in syncObserved(), every one of its rows would
+    // carry "unknown provider: fake. Configured: (none)" — an intentional configuration choice
+    // rendered to the user as a fault, and one whose suggested remedy is to undo the choice.
+    expect(listed[0]!.syncError).toBeUndefined()
+  })
+
+  it('still refuses the operations that genuinely need a live provider', async () => {
+    const row = await create()
+    const withoutIt = createLifecycleService({ db, registry: new ProviderRegistry([]), events })
+
+    // Degrading the LISTING is right; degrading these would not be. There is nothing stored
+    // that can stop, start or destroy a machine, so each must still fail loudly.
+    for (const call of [
+      () => withoutIt.start(userId, row.id),
+      () => withoutIt.stop(userId, row.id),
+      () => withoutIt.terminate(userId, row.id),
+    ]) {
+      const err = await call().catch((e) => e)
+      expect(isProviderError(err)).toBe(true)
+      expect(err.message).toContain('unknown provider')
+    }
+  })
+})
+
 describe('idempotency', () => {
   it('does not provision twice for a replayed key', async () => {
     const first = await create({ idempotencyKey: 'attempt-1' })

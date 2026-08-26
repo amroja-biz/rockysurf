@@ -332,6 +332,46 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
   }
 
   /**
+   * Refuse a shared resource that exists in a DIFFERENT region than the one we are provisioning
+   * into (rockysurf-3l4g).
+   *
+   * Azure requires a network interface and the subnet and NSG it references to be in the same
+   * region. The shared vnet and NSG are looked up BY NAME within the resource group, and a name
+   * says nothing about region — so after an operator changes `location`, the lookup happily
+   * finds the old region's resources and hands their ids to the NIC PUT, which fails with:
+   *
+   *   InvalidResourceReference: Resource .../networkSecurityGroups/rockysurf-ssh referenced by
+   *   resource .../networkInterfaces/srv-XXXX-nic was not found.
+   *
+   * "was not found" is the wrong sentence: it exists. An operator reading that looks for a
+   * deleted resource or a permissions problem, and the one thing it does not suggest is the
+   * real cause. Azure does append a region hint, but only as the second clause of a sentence
+   * whose first clause is false.
+   *
+   * Changing region is ordinary, and on Azure it is MORE likely than elsewhere: per-subscription
+   * SKU restrictions and per-family core quotas mean an operator may be forced to move regions
+   * to find capacity at all. So this fails early, at the resource that is actually wrong, and
+   * says what to do about it.
+   *
+   * Refusing rather than auto-creating a second region's pair is the conservative half of the
+   * fix: sharing one resource group across regions would change how these resources are named,
+   * which is a decision with a migration attached rather than a bug fix.
+   */
+  function assertSameRegion(resource: ArmResource, name: string, kind: string): void {
+    const found = resource.location?.toLowerCase()
+    if (!found || found === location.toLowerCase()) return
+    throw new ProviderError(
+      'invalid_spec',
+      `the shared ${kind} ${name} already exists in ${resource.location}, but this provider is ` +
+        `configured for ${location}. Azure requires a network interface and the subnet and NSG ` +
+        `it uses to be in one region, so no server can be created here while they disagree. ` +
+        `Either set providers.azure.location back to ${resource.location}, or delete ${name} ` +
+        `from the ${resourceGroup} resource group and let it be recreated in ${location} — ` +
+        `deleting is safe once no servers remain in ${resource.location}.`,
+    )
+  }
+
+  /**
    * The shared network, created on first provision and adopted forever after.
    *
    * BOTH THE SUBNET AND THE SSH RULE ARE WRITTEN AS CHILD RESOURCES, not by PUTting the whole
@@ -345,8 +385,25 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
    * under every running instance (ADR-0003, D1).
    */
   async function ensureNetwork(): Promise<{ subnetId: string; nsgId: string }> {
-    if (subnetId && nsgId) return { subnetId, nsgId }
-
+    /*
+     * DELIBERATELY NOT MEMOIZED (rockysurf-3l4g).
+     *
+     * This used to open with `if (subnetId && nsgId) return { subnetId, nsgId }`, caching the
+     * result for the lifetime of the process. That cached three bugs at once:
+     *
+     *  1. It never re-checked that the shared resources still EXIST. Delete them out from under
+     *     a running control plane — an operator tidying up, a mis-scoped script, a half-finished
+     *     create — and every subsequent create went straight to the NIC PUT referencing an NSG
+     *     that was gone, failing with `InvalidResourceReference` until someone restarted. The
+     *     documented recovery ("delete them and let them be recreated") silently did not work.
+     *  2. It short-circuited the securityRules PUT below, whose own comment promises the rule is
+     *     "written every time so a changed sshAllowedCidr takes effect on the next provision".
+     *     It did not: only the first provision of each process wrote it.
+     *  3. It hid a changed `location` for as long as the process lived.
+     *
+     * The cost of dropping it is two GETs per create, against an operation that then spends
+     * minutes building a virtual machine. The reads are what make this function honest.
+     */
     const vnetPath = resourcePath(
       subscriptionId,
       resourceGroup,
@@ -361,6 +418,8 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     } catch (err) {
       if (!isNotFound(err)) throw err
     }
+
+    if (vnet) assertSameRegion(vnet, config.vnetName, 'virtual network')
 
     if (!vnet) {
       vnet = await api.call<ArmVirtualNetwork>('PUT', vnetPath, API_VERSIONS.network, {
@@ -397,6 +456,8 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     } catch (err) {
       if (!isNotFound(err)) throw err
     }
+    if (nsg) assertSameRegion(nsg, config.nsgName, 'network security group')
+
     if (!nsg) {
       nsg = await api.call<ArmNetworkSecurityGroup>('PUT', nsgPath, API_VERSIONS.network, {
         location,

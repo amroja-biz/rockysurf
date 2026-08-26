@@ -163,8 +163,53 @@ describe('provision', () => {
 
     expect(fake.ofType('Microsoft.Network/virtualNetworks')).toHaveLength(1)
     expect(fake.ofType('Microsoft.Network/networkSecurityGroups')).toHaveLength(1)
-    // Cached for the life of the process: the second server does not re-read or rewrite it.
+    // ADOPTED, not cached (rockysurf-3l4g). ensureNetwork() deliberately re-reads on every
+    // provision — memoizing it meant a shared resource deleted out from under a running control
+    // plane was never noticed, and the ssh rule below stopped being rewritten after the first
+    // provision of each process. The guarantee that matters is unchanged and is what this
+    // asserts: a second server finds the existing network and writes NOTHING to it.
     expect(fake.calls.filter((c) => c.method === 'PUT' && c.path.includes('/virtualNetworks/')).length).toBe(afterFirst)
+  })
+
+  it('re-creates the shared network when it was deleted out from under a running provider', async () => {
+    const fake = new FakeArm()
+    const provider = providerFor(fake)
+
+    await provider.provision(specFor())
+    // Someone tidies up the resource group while the control plane keeps running — an operator,
+    // a mis-scoped script, the documented recovery for a region change.
+    fake.vanish('Microsoft.Network/virtualNetworks', 'rockysurf-vnet')
+    fake.vanish('Microsoft.Network/networkSecurityGroups', 'rockysurf-ssh')
+
+    // ensureNetwork() used to memoize its result for the life of the process, so the next
+    // provision skipped creation entirely and drove straight into a NIC referencing an NSG that
+    // no longer existed — InvalidResourceReference, until someone restarted (rockysurf-3l4g).
+    await provider.provision(specFor({ serverId: 'dev-box-2', idempotencyKey: 'gen-1-def' }))
+
+    expect(fake.has('Microsoft.Network/virtualNetworks', 'rockysurf-vnet')).toBe(true)
+    expect(fake.has('Microsoft.Network/networkSecurityGroups', 'rockysurf-ssh')).toBe(true)
+    expect(fake.has(VM, 'dev-box-2')).toBe(true)
+  })
+
+  it('refuses when the shared network already exists in a DIFFERENT region', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake).provision(specFor())
+
+    // The operator changes providers.azure.location. The shared vnet and NSG are found by NAME,
+    // and a name says nothing about region — but Azure requires a NIC and the subnet and NSG it
+    // references to be in one region, so this cannot work and must not be attempted.
+    const moved = providerFor(fake, { location: 'westus2' })
+    const err = await moved.provision(specFor({ serverId: 'dev-box-2', idempotencyKey: 'gen-1-def' })).catch((e) => e)
+
+    expect(isProviderError(err)).toBe(true)
+    expect(err.code).toBe('invalid_spec')
+    // The message has to name BOTH regions and the way out. Azure's own answer to the attempt
+    // says the NSG "was not found" — which is false, and sends the reader hunting the wrong bug.
+    expect(err.message).toContain(fake.location)
+    expect(err.message).toContain('westus2')
+    expect(err.message).toContain('rockysurf-vnet')
+    // Nothing was built in the new region on the way to failing.
+    expect(fake.has(VM, 'dev-box-2')).toBe(false)
   })
 
   it('writes the ssh rule as a CHILD of the security group, so other rules survive', async () => {

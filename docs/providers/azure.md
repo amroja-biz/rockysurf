@@ -4,6 +4,7 @@ What you need to give Rocky Surf so it can create, stop, start and destroy Azure
 your own subscription — and nothing beyond that.
 
 - [Getting started](#getting-started)
+- [Two things Azure gates that are not permissions](#two-things-azure-gates-that-are-not-permissions)
 - [Credentials](#credentials)
 - [The role](#the-role)
 - [Why there are two roles](#why-there-are-two-roles)
@@ -18,9 +19,14 @@ your own subscription — and nothing beyond that.
 
 ## Getting started
 
-Three commands and four config lines.
+Four commands and four config lines.
 
 ```bash
+# 0. Register the two resource provider namespaces, if this subscription has never used them.
+#    A fresh subscription has not. Each takes a minute or two; they run in parallel.
+az provider register --namespace Microsoft.Compute
+az provider register --namespace Microsoft.Network
+
 # 1. The one resource group Rocky Surf owns. You create it; Rocky Surf does not — see below.
 az group create --name rocky-surf-rg --location eastus
 
@@ -64,6 +70,65 @@ resource group in your account. One `az group create` buys a role that cannot re
 group.
 
 ---
+
+## Two things Azure gates that are not permissions
+
+Both of these were found the first time Rocky Surf was pointed at a real Azure subscription, and
+neither is something the role can grant. They are listed together because they produce confident,
+misleading errors that look like the provider is broken.
+
+### Resource provider registration
+
+An Azure subscription must **register** a resource provider namespace before it can create
+anything in it, and a fresh subscription has registered nothing. Without it the very first create
+fails at the virtual network:
+
+```
+MissingSubscriptionRegistration: The subscription is not registered to use namespace
+'Microsoft.Network'.
+```
+
+Step 0 above is the fix. Rocky Surf cannot do this for you and deliberately does not ask to:
+registration is a subscription-level write, and `Microsoft.Network/register/action` is exactly the
+kind of permission that would make the published role reach outside its resource group.
+
+An unregistered `Microsoft.Compute` also makes `Microsoft.Compute/skus` under-report — sizes come
+back marked unavailable to your subscription that become available once registration completes. If
+the size list looks implausibly empty, check registration before believing it.
+
+### Core quota is a separate gate from SKU availability
+
+**A size Rocky Surf offers you can still be refused by Azure**, and the two gates are not the same:
+
+| gate | what it answers | where Rocky Surf reads it |
+|---|---|---|
+| SKU restrictions | "do we sell this size in this region, to this subscription?" | `Microsoft.Compute/skus`, on the call that builds the size list |
+| core quota | "how many vCPUs of this FAMILY may this subscription run here?" | nowhere — see below |
+
+The size list reflects only the first. A size can be perfectly unrestricted and still fail at
+create because the approved core quota for its VM family in that region is zero:
+
+```
+OperationNotAllowed: Operation could not be completed as it results in exceeding approved
+standardBpsv2Family Cores quota. Location: eastus, Current Limit: 0, Additional Required: 2
+```
+
+That message is passed through verbatim, and it carries the portal link that raises the limit.
+Raising quota is a human action with an approval behind it — sometimes instant, sometimes hours.
+
+**Rocky Surf does not read your quota, and that is a deliberate trade.** Quota lives in
+`Microsoft.Compute/locations/{location}/usages`, a different endpoint from the size catalogue, and
+granting it would widen the published `Rocky Surf Catalogue Reader` role. A narrower role that
+occasionally offers a size you cannot order was judged the better trade for v0.1; the alternative
+is tracked on `rockysurf-xmk0`.
+
+Two practical consequences:
+
+- **Upgrading a free account does not grant quota.** It lifts the spending limit. Per-family core
+  quota is still zero until separately approved.
+- **Availability varies by region in ways that look arbitrary**, because it is per-subscription.
+  If one region refuses, another commonly works — and the arm64 (Ampere, `p`-suffixed) families
+  are frequently available where the x64 ones are not. They are also the cheaper, faster default.
 
 ## Credentials
 
@@ -158,25 +223,29 @@ unavoidable rather than a convenience.
 }
 ```
 
-> **Status: reasoned from the API calls the provider makes, and NOT yet proven under a restricted
-> principal.**
+> **Status: EXERCISED END TO END under a principal holding exactly this role, on 2026-08-26
+> (`rockysurf-ihtq.8`).**
 >
-> This is a weaker claim than the one [`aws.md`](aws.md) makes, and the difference is worth
-> stating plainly rather than leaving a reader to assume parity. The Azure provider was built
-> without an Azure subscription: every action above corresponds to a call the provider actually
-> issues, and the list was derived by walking that code — but nobody has yet assumed a principal
-> holding exactly this role and run a server end to end under it.
+> The full lifecycle — create, bootstrap, SSH, stop, start, terminate — ran on both architectures
+> under a service principal holding these two roles and nothing else, with `allowAzureCli: false`
+> set so no wider credential could be silently substituted. No `AuthorizationFailed` occurred at
+> any point, and the teardown left no VM, disk, network interface or public address behind.
 >
-> **That matters because the AWS equivalent found a real bug the first time it was run.** A
-> resource sat in a statement whose condition could never match, and every first launch under the
-> published policy failed. There is no reason to think Azure is less likely to have one. The
-> `join/action` entries below are the most likely candidates: Azure authorizes an attachment
-> against the resource being attached *to*, and it is easy to miss one.
+> So this list is now known to be **sufficient**, and known not to be wider than the lifecycle
+> needs. Two honest limits on that claim: the run exercised the lifecycle, not every branch that
+> can call Azure, and it made no attempt to prove each action is individually necessary — an
+> entry could still be redundant without any run noticing.
 >
-> The run that settles it is tracked as **`rockysurf-ihtq.8`** and is owner-gated — it needs a
-> subscription and it spends money. Until it has passed, treat this as a good-faith minimum
-> rather than a verified one, and if you hit an `AuthorizationFailed`, the error names the action
-> it wanted and we would like to hear about it.
+> **The AWS equivalent found a real bug the first time it was run**, which is why this block used
+> to warn that Azure was likely to have one too. Azure did — but not in the action list. The
+> template itself had never compiled: `deploy/azure/role.bicep` declared the resource-group-scoped
+> assignment inside a subscription-scoped file, which Bicep refuses (BCP139), so `az deployment
+> sub create` failed at parse. The permissions were right; the file that granted them could not be
+> deployed by anyone. It is fixed, and the `join/action` entries this block predicted would be the
+> problem all turned out to be correct.
+>
+> If you do hit an `AuthorizationFailed`, the error names the action it wanted and we would like
+> to hear about it.
 >
 > **The two copies cannot drift apart.** `node scripts/check-azure-role.mjs` runs in
 > `pnpm run lint` and compares the JSON above to
