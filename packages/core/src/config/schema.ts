@@ -362,6 +362,19 @@ const azureProviderSchema = section(
      */
     allowAllCidr: z.boolean().optional(),
 
+    /**
+     * Whether the credential chain may fall back to `az account get-access-token`.
+     *
+     * Declared here for the SAME reason as `allowAllCidr` directly above, and it is worth noting
+     * that the lesson had to be learned twice: docs/providers/azure.md tells an operator to
+     * harden a server with `allowAzureCli: false`, and until rockysurf-ihtq.8 ran for real this
+     * strict object rejected the key, so the documented hardening was unusable. A field missing
+     * here is not undocumented, it is unusable — and this one is a trust boundary, so the
+     * failure mode was a control plane silently keeping a wider credential source than the
+     * operator believed they had turned off.
+     */
+    allowAzureCli: z.boolean().optional(),
+
     /** Optional allowlist of VM sizes offered to users. Omit to offer everything. */
     sizes: z.array(z.string().trim().min(1)).nonempty().optional(),
   }),
