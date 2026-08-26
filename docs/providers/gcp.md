@@ -13,7 +13,7 @@ boxes in your own project — and nothing beyond that.
 - [Testing it](#testing-it)
 - [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [What is deliberately absent](#what-is-deliberately-absent)
-- [Status: proven on real Google Cloud, except stop/start](#status-proven-on-real-google-cloud-except-stopstart)
+- [Status: proven on real Google Cloud, nightly](#status-proven-on-real-google-cloud-nightly)
 
 ---
 
@@ -630,7 +630,7 @@ undercuts the point of a persistent dev box, and idle auto-stop is the cost leve
 
 ---
 
-## Status: proven on real Google Cloud, except stop/start
+## Status: proven on real Google Cloud, nightly
 
 **This page has been proven by a launch — on 2026-08-14, against real Compute Engine**
 (`rockysurf-ev41.8`). It was written before that run, from Google's REST reference, and the run

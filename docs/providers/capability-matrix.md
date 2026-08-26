@@ -81,7 +81,7 @@ it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `aws
 `gcp` are re-run nightly.
 The GCP run was driven by hand and through the MCP server, and no transcript of it was recorded
 into the repository — what backs the column is a report of a run rather than an artefact of one.
-[The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-except-stopstart) has it
+[The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-nightly) has it
 in full.
 
 `byo` is now **implemented** (`@rockysurf/provider-byo`, `rockysurf-ftl9.3`) and its column is
