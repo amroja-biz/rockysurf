@@ -22,6 +22,9 @@
 - [pnpm-sdk-build-race](2026-08-21-pnpm-sdk-build-race.md): how a shared-worktree build race used
   to produce failures that looked like real bugs, and the atomic-rename build fix that closed most
   of it.
+- [verify-the-checkout-before-you-work](2026-08-26-verify-the-checkout-before-you-work.md): this
+  machine has eleven worktrees and an archived remote that is easy to mistake for the live one — a
+  stale checkout builds, tests green, and cannot be pushed. Check before editing, not at push time.
 
 ## Writing and documentation
 
