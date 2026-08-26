@@ -187,7 +187,22 @@ report_progress() {
 # converge, and `apt-get install` against a different mirror of the same archive converges on
 # the same packages. A pack that hard-codes a regional mirror hostname in its own script is
 # already broken on every other cloud (docs/writing-a-pack.md).
+#
+# THE SECOND FAILURE CLASS HAS NOTHING TO SWAP. A box already on the global mirror (the stock
+# `ubuntu:24.04` image the pack smoke runs in, or a box after this fallback has already
+# rewritten it) fails a fetch for a different reason: Canonical publishes an archive's index
+# ahead of its pool, so for some minutes a specific `.deb` the index names answers 404
+# (`libheif 1.17.6-1ubuntu4.8` on arm64, 2026-08-26, issue #129 — three packs red, the same
+# packs green fifteen minutes later with no change). A retry within seconds of that fails the
+# same way; the remedy is the one an operator applies — wait, refresh, try again. So when the
+# sources name no regional mirror the fallback WAITS before refreshing, for a bounded period
+# an operator would consider reasonable. A sick global mirror gets the same wait, which is
+# the most anyone can do for it.
 APT_FALLBACK_USED=0
+
+# How long to wait before the retry when there is no regional mirror to swap. Overridable so a
+# test does not sit through it; a box never sets it.
+APT_RETRY_WAIT_S="${ROCKYSURF_APT_RETRY_WAIT_S:-120}"
 
 # Anything with a subdomain in front of archive/ports — the regional and per-cloud mirrors —
 # collapses to the bare global host. `archive.ubuntu.com`, `ports.ubuntu.com` and
@@ -221,7 +236,10 @@ apt_mirror_fallback() {
       log "!!! $f: could not rewrite (not root?)"
     fi
   done
-  [ "$rewritten" = 1 ] || log "!!! no regional Ubuntu mirror in the apt sources — refreshing lists and retrying as-is"
+  if [ "$rewritten" = 0 ]; then
+    log "!!! already on the global Ubuntu mirror — nothing to swap; waiting ${APT_RETRY_WAIT_S}s for the archive to settle (an index published ahead of its pool answers 404 until it catches up), then refreshing lists and retrying as-is"
+    sleep "$APT_RETRY_WAIT_S"
+  fi
 
   # The step's own `apt-updated` stamp is stale by definition now, but the lists it guards are
   # refreshed here, so the stamp idiom keeps working without every pack knowing about this.

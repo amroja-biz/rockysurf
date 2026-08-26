@@ -10,7 +10,10 @@
 #   2. killing the agent mid-plan and re-running RESUMES — steps marked `done` are skipped and
 #      a step left `running` re-runs from the top;
 #   3. a sick regional Ubuntu mirror engages the apt mirror fallback (#117) — once, only for an
-#      apt fetch failure — and the plan completes on the global mirror.
+#      apt fetch failure — and the plan completes on the global mirror;
+#   4. a box already ON the global mirror gets the same single retry, but waits first (#129):
+#      an apt fetch failure there is the archive's index ahead of its pool, and a retry within
+#      seconds is the failure again.
 #
 # The counters are the actual evidence: a skipped step's counter does not grow, a re-run
 # step's does. Asserting on log lines alone would pass even if the work happened twice.
@@ -245,6 +248,48 @@ check "agent exited 1 (the sick step is a real failure)" "$RUN6_RC" 1
 check "failing step named" "$(state '.failedStep')" tool:sick
 check "fallback engaged exactly once per bootstrap" "$(grep -c 'engaging the mirror fallback' "$WORK/run6.log")" 1
 check "spent fallback — sick step ran once, no retry" "$(count sick)" 1
+
+# --------------------------------------------------------- global mirror: wait, then retry (#129)
+# The sources already name the global mirror (the stock image's own, exactly what the pack smoke
+# runs in) and that host is dead. There is nothing to swap, so the fallback must wait before
+# its one retry rather than fail again within the second. The wait is shortened to 1s by the
+# override the agent exposes for this purpose; the assertion is that it happened and was
+# announced, and that the step still ran exactly twice. jq is installed while the mirror is
+# still alive, so the fallback is exercised by the plan step and not by the agent's own jq
+# bootstrap (which would exit 2 before any step ran); the mirror is then killed from inside
+# the container via /etc/hosts, since --add-host would kill it before jq could be fetched.
+echo "==> run 7: on the global mirror the fallback waits, refreshes, retries once, and fails honestly"
+# The apt-updated stamp survives from run 5 in the shared state volume; left in place, the step
+# would skip `apt-get update`, fail on "Unable to locate package" with no fetch signature, and
+# the fallback would (correctly) never engage.
+rm -f "$WORK/state/state.json" "$WORK/state/global.count" "$WORK/state/sources.after" "$WORK/state/apt-updated"
+KILL_GLOBAL_MIRROR='printf "127.0.0.1 archive.ubuntu.com ports.ubuntu.com security.ubuntu.com\n" >> /etc/hosts && rm -rf /var/lib/apt/lists/*'
+cat >"$WORK/state/plan.json" <<'EOF'
+{
+  "version": 1, "serverId": "srv-smoke01", "mode": "push", "runId": "run-global",
+  "steps": [
+    { "id": "tool:tree", "reports": "installing_tools", "runAs": "root",
+      "run": "set -euo pipefail\nprintf 'x\\n' >> /var/lib/rockysurf/global.count\n[ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && touch /var/lib/rockysurf/apt-updated; }\napt-get install -y -qq tree >/dev/null",
+      "check": "command -v tree" },
+    { "id": "branding", "reports": "ready", "runAs": "root", "run": "echo unreachable" }
+  ]
+}
+EOF
+set +e
+docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} \
+  -e ROCKYSURF_APT_RETRY_WAIT_S=1 \
+  -v "$WORK/state:/var/lib/rockysurf" -v "$WORK/agent.sh:/agent.sh:ro" \
+  "$IMAGE" bash -c "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq jq >/dev/null 2>&1 && $KILL_GLOBAL_MIRROR && bash /agent.sh" >"$WORK/run7.log" 2>&1
+RUN7_RC=$?
+set -e
+check "agent exited 1 (the mirror never came back)" "$RUN7_RC" 1
+check "failing step named" "$(state '.failedStep')" tool:tree
+check "fallback engaged exactly once" "$(grep -c 'engaging the mirror fallback' "$WORK/run7.log")" 1
+check "nothing rewritten — the wait was announced" "$(grep -c 'already on the global Ubuntu mirror' "$WORK/run7.log")" 1
+check "the wait honoured the override" "$(grep -c 'waiting 1s' "$WORK/run7.log")" 1
+check "retry announced" "$(grep -c 'retrying once on the fallback mirror' "$WORK/run7.log")" 1
+check "apt step ran exactly twice" "$(count global)" 2
+check "no regional mirror was invented" "$(grep -c 'rewritten to the global one' "$WORK/run7.log")" 0
 
 echo
 if [ "$FAILURES" -eq 0 ]; then
