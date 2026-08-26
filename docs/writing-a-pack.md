@@ -792,7 +792,10 @@ For each pack file, for each of **`amd64` and `arm64`**, CI:
 1. starts one **stock `ubuntu:24.04` container** for that architecture — no preinstalled
    convenience packages, empty apt lists, and no `sudo`;
 2. creates the unprivileged `rocky` user, and nothing else. The harness drops privilege with
-   `runuser`, not `sudo`, so `sudo` really is absent from your script's world;
+   `runuser`, not `sudo`, so `sudo` really is absent from your script's world. It then starts
+   the agent the way the real box's systemd unit does — with no `HOME`, `USER` or `LOGNAME`
+   handed in — so the `$HOME` your script sees is the one the agent establishes, not one the
+   container happened to carry;
 3. resolves the pack into a plan and runs every `installScript`, then every `setupScript`, in
    `installOrder`;
 4. **discards the resume journal** and runs the whole thing a **second time in the same
