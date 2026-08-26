@@ -610,7 +610,9 @@ jobs:
       # published role grants nothing on IAM, so the account cannot read its own bindings back.
       # What the file settles is which account ADC will impersonate, which is the substitution
       # being guarded against. The file holds no secret: an external-account credential is a
-      # pointer to GitHub's token endpoint. `jq -e` fails the step if the field is absent.
+      # pointer to GitHub's token endpoint. A file with no impersonation URL at all — direct
+      # federation, no service account named — reads as the empty string and fails the same way,
+      # which is why the default is `""` rather than something that could accidentally match.
       - name: Confirm the identity under test is the published service account
         env:
           EXPECTED: ${{ vars.GCP_PROVIDER_SERVICE_ACCOUNT }}
