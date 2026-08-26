@@ -1648,6 +1648,23 @@ p.hint {
   opacity: 0.8;
 }
 
+/*
+ * "This box is gone; what follows is the record" (issue #125). Neither yellow nor red on
+ * purpose: a terminated server is not a problem to fix, it is history being read back, and
+ * dressing the record in a warning colour would tell every user who clicks their own history
+ * that something went wrong. Muted, bordered, and above the facts it qualifies.
+ */
+.historical-notice {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  color: var(--rs-muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
 /* ── The bootstrap report ─────────────────────────────────────────────────────────────
    The complete account of a bootstrap that went wrong (ADR-0010). A failure is red and has
    the machine's fate on it; a warning — a repository that did not clone on a box that came

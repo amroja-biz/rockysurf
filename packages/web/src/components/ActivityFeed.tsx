@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import type { ServerSummary } from '../lib/api'
 
 /**
@@ -5,10 +6,16 @@ import type { ServerSummary } from '../lib/api'
  *
  * Ported unchanged in substance. Worth keeping the derivation as-is: there is no events
  * endpoint for the SPA, and inventing one for a ten-line list would be the wrong trade.
+ *
+ * Every entry carries the SERVER ID as well as the name (issue #125), and the derivation is
+ * what makes that link possible: these entries are rows, not log lines, so the row behind a
+ * "Terminated dev-box" from three weeks ago is still there to open. Nothing prunes a terminated
+ * server — `db/repositories/servers.ts` has no delete at all — so the link is never dead.
  */
 
 interface ActivityEvent {
   type: 'created' | 'started' | 'stopped' | 'terminated'
+  serverId: string
   serverName: string
   timestamp: string
 }
@@ -35,12 +42,16 @@ function relativeTime(isoString: string): string {
 function deriveEvents(servers: ServerSummary[]): ActivityEvent[] {
   const events: ActivityEvent[] = []
   for (const server of servers) {
-    events.push({ type: 'created', serverName: server.name, timestamp: server.createdAt })
-    if (server.startedAt) events.push({ type: 'started', serverName: server.name, timestamp: server.startedAt })
-    if (server.stoppedAt) events.push({ type: 'stopped', serverName: server.name, timestamp: server.stoppedAt })
-    if (server.terminatedAt) {
-      events.push({ type: 'terminated', serverName: server.name, timestamp: server.terminatedAt })
-    }
+    const at = (type: ActivityEvent['type'], timestamp: string): ActivityEvent => ({
+      type,
+      serverId: server.serverId,
+      serverName: server.name,
+      timestamp,
+    })
+    events.push(at('created', server.createdAt))
+    if (server.startedAt) events.push(at('started', server.startedAt))
+    if (server.stoppedAt) events.push(at('stopped', server.stoppedAt))
+    if (server.terminatedAt) events.push(at('terminated', server.terminatedAt))
   }
   return events
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -56,12 +67,14 @@ export function ActivityFeed({ servers }: { servers: ServerSummary[] }) {
       <h2>Recent activity</h2>
       <ul>
         {events.map((event, index) => (
-          <li key={`${event.serverName}-${event.type}-${index}`}>
+          <li key={`${event.serverId}-${event.type}-${index}`}>
             <span className="activity-icon" aria-hidden="true">
               {EVENT_LABELS[event.type].icon}
             </span>
             <span className="activity-label">{EVENT_LABELS[event.type].label}</span>
-            <span className="activity-server">{event.serverName}</span>
+            <span className="activity-server">
+              <Link to={`/servers/${event.serverId}`}>{event.serverName}</Link>
+            </span>
             <time dateTime={event.timestamp}>{relativeTime(event.timestamp)}</time>
           </li>
         ))}

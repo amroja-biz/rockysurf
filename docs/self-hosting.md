@@ -204,6 +204,37 @@ Two of the things in it deserve separate thought:
 - **`rockysurf.db`** is SQLite in WAL mode, so recent writes live in `rockysurf.db-wal` until a
   checkpoint folds them in. This matters for backups — see below.
 
+### Terminating a server does not delete its row
+
+**Nothing in Rocky Surf ever deletes a server row.** Terminating a box — or dismissing a failed
+one — destroys the machine and its disk at the cloud, and moves the row to `terminated`. The row
+itself stays in `rockysurf.db` for good, and it is the only place the configuration of a box that
+no longer exists survives.
+
+The Servers page turns that into something you can read. Its **Recent activity** list is derived
+from the rows' own timestamps — created, started, stopped, terminated — and **every entry is a
+link to that server's page**. Open one for a box that is gone and the page reports instead of
+controlling: which cloud and region it was placed in, its size, machine type and architecture,
+the Surge Pack and tools it was built with, the repositories it was created for, when it was
+created and when it was terminated, its total uptime and final estimated cost, and the bootstrap
+report if its install had anything to say. Stop, Start, Terminate, the SSH command, the key
+download, the provider-console link and the rename are all absent — every one of them needs a
+machine that is not there.
+
+Two limits worth knowing, because the page cannot invent what the row never held:
+
+- **A row records what Rocky Surf knew.** A server created by a version older than the one that
+  introduced a column has nothing in it — placement, for one, was only stamped onto new rows from
+  the release that added this page — and a fact that was never captured is shown as absent rather
+  than guessed.
+- **Secrets are not part of the record.** A terminated server's SSH private key and any
+  remote-desktop password are of no further use, and the record does not offer them.
+
+There is no pruning job and no retention setting. Rows are small — a few hundred bytes plus the
+bootstrap report on the ones that have one — so a long-lived installation accumulates history
+rather than weight. If you want a box's record gone, delete the row from `rockysurf.db` by hand
+with the process stopped.
+
 ## Backup and restore
 
 **What to back up: the whole data directory.** `secret.key` and `rockysurf.db` are useless

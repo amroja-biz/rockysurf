@@ -30,6 +30,7 @@ import {
 } from '../lib/api'
 import {
   formatCostCell,
+  formatDateTime,
   formatTimestamp,
   formatUptime,
   isProvisioningStep,
@@ -151,6 +152,21 @@ export function ServerDetailPage() {
     )
   }
 
+  /**
+   * A row whose machine is gone (issue #125).
+   *
+   * `terminated` is the only status this covers, and deliberately not `failed`: a failed box may
+   * still be running and billing (ADR-0010), which is why it keeps its Dismiss/Terminate button
+   * and its place on the dashboard. `terminated` is absorbing — nothing can start, stop, connect
+   * to or rename what no longer exists — so from here the page stops being a control panel and
+   * becomes the RECORD of how the box was configured: placement, size, pack, tools,
+   * repositories, what its bootstrap did, and what it ended up costing.
+   *
+   * This is a rendering mode, not a second page. Splitting it out would mean two components
+   * drifting over the same row, and the facts a user wants about a dead box are the same facts
+   * the live page already shows — minus the ones that need a machine to be true.
+   */
+  const historical = server.status === 'terminated'
   const providerCanStop = canStop(capabilities, server.provider)
   const busy = pending !== null || transition.pending !== null
   const cost = formatCostCell(server)
@@ -213,7 +229,10 @@ export function ServerDetailPage() {
 
   return (
     <AppShell title={server.name}>
-      {server.previousIp && server.publicIp && server.ipChangedAt && (
+      {/* Not on a terminated row: "your server's address has changed" is a call to reconnect,
+          and there is nothing to reconnect to. The move itself is still history, and the
+          Address line below carries it. */}
+      {!historical && server.previousIp && server.publicIp && server.ipChangedAt && (
         <IpChangeAlert
           serverId={server.serverId}
           previousIp={server.previousIp}
@@ -241,12 +260,29 @@ export function ServerDetailPage() {
           </p>
         )}
         {/*
+          Said once, at the top, before any of the numbers below it (issue #125): every fact on
+          this page is what the row recorded, and none of it is being refreshed from a cloud
+          that has nothing left to report. Same placement rule as the stale-view notice above —
+          a caveat rendered after the facts it qualifies has already been believed.
+        */}
+        {historical && (
+          <p className="historical-notice" role="status" data-testid="historical-notice">
+            This server was terminated{server.terminatedAt ? ` on ${formatDateTime(server.terminatedAt)}` : ''}. Its
+            machine and disk are gone; what follows is Rocky Surf's record of how it was configured.
+          </p>
+        )}
+        {/*
           The display fields, editable in place (issue #46). The auto-minted name
           (`server-mt0nilwv`) was the whole report: a fleet of those is a fleet of boxes
           nobody can tell apart. Rename and description are core-side display facts only —
           the provider identity is the server id, so nothing on the cloud moves.
+
+          Read-only once the box is gone: a rename is for telling live boxes apart, and editing
+          the record of one that no longer exists rewrites history for no one's benefit. Core
+          would still accept the PATCH — ownership is its only gate — so this is the UI declining
+          to offer it, not a new rule.
         */}
-        {editing ? (
+        {editing && !historical ? (
           <EditDetailsForm
             server={server}
             onCancel={() => setEditing(false)}
@@ -258,17 +294,21 @@ export function ServerDetailPage() {
         ) : (
           <p className="server-description" data-testid="server-description">
             {server.description ?? <span className="hint">No description.</span>}{' '}
-            <button type="button" className="link" onClick={() => setEditing(true)}>
-              Edit
-            </button>
+            {!historical && (
+              <button type="button" className="link" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            )}
           </p>
         )}
         <dl>
           <div>
-            <dt>Address</dt>
+            <dt>{historical ? 'Last address' : 'Address'}</dt>
             <dd>
               {server.publicIp ?? '—'}
-              {server.consoleUrl && (
+              {/* No console link on a terminated row: the instance is not there, so the link
+                  leads to a provider page about nothing. */}
+              {!historical && server.consoleUrl && (
                 <>
                   {' · '}
                   <a href={server.consoleUrl} target="_blank" rel="noopener noreferrer">
@@ -276,6 +316,18 @@ export function ServerDetailPage() {
                   </a>
                 </>
               )}
+            </dd>
+          </div>
+          {/* Which cloud, and where on it (issue #125). Obvious on a live box from its address
+              and console link, and unanswerable on a dead one from anything but the row —
+              which is the whole reason it is now rendered. The provider's own displayName, so
+              an installation carrying rows from a provider this build does not enable still
+              names it rather than showing a bare id. */}
+          <div>
+            <dt>Provider</dt>
+            <dd data-testid="server-placement">
+              {providerName ?? server.provider}
+              {server.region && <> · {server.region}</>}
             </dd>
           </div>
           <div>
@@ -300,12 +352,14 @@ export function ServerDetailPage() {
               </dd>
             </div>
           )}
+          {/* The meter stopped when the machine did, so these two read as totals rather than as
+              a live count (issue #125). Same numbers, same accrual — only the tense changes. */}
           <div>
-            <dt>Uptime</dt>
+            <dt>{historical ? 'Total uptime' : 'Uptime'}</dt>
             <dd>{formatUptime(server.totalUptimeSeconds)}</dd>
           </div>
           <div>
-            <dt>Estimated cost</dt>
+            <dt>{historical ? 'Estimated cost, final' : 'Estimated cost'}</dt>
             <dd title={cost.title}>{cost.text}</dd>
           </div>
           <div>
@@ -314,6 +368,16 @@ export function ServerDetailPage() {
                 date is written is the drift `lib/format` exists to prevent. */}
             <dd>{formatTimestamp(server.createdAt)}</dd>
           </div>
+          {historical && server.terminatedAt && (
+            <div>
+              <dt>Terminated</dt>
+              {/* `formatTimestamp`, like Created directly above it (issue #121): these two
+                  bracket the box's life and are read against each other, so a column stamp
+                  beside a prose date would make the pair harder to compare than either alone.
+                  The prose form belongs in the notice at the top, which is a sentence. */}
+              <dd data-testid="server-terminated-at">{formatTimestamp(server.terminatedAt)}</dd>
+            </div>
+          )}
         </dl>
         {/* The whole account when there is one (ADR-0010); the one-line reason when there is
             not — a failure below the plan, or a row from before reports existed. */}
@@ -331,26 +395,31 @@ export function ServerDetailPage() {
           box that is coming up cannot be stopped, and core would refuse with a 409 anyway
           (rockysurf-55fx.15). Offering a button that can only fail is what the 409 message was
           apologising for. */}
-      <section className="server-actions">
-        {providerCanStop && server.status === 'running' && (
-          <button disabled={busy} onClick={() => setConfirming('stop')}>
-            {transition.pending === 'stop' || pending === 'stop' ? 'Stopping…' : 'Stop'}
-          </button>
-        )}
-        {providerCanStop && server.status === 'stopped' && (
-          <button disabled={busy} onClick={() => void run('start', () => startServer(server.serverId), 'Starting')}>
-            {transition.pending === 'start' || pending === 'start' ? 'Starting…' : 'Start'}
-          </button>
-        )}
-        {server.status !== 'terminated' && (
+      {/* Nothing to act on once the box is gone, so the section itself does not render — an
+          empty bordered strip where the buttons used to be reads as a control panel whose
+          controls failed to load (issue #125). */}
+      {!historical && (
+        <section className="server-actions">
+          {providerCanStop && server.status === 'running' && (
+            <button disabled={busy} onClick={() => setConfirming('stop')}>
+              {transition.pending === 'stop' || pending === 'stop' ? 'Stopping…' : 'Stop'}
+            </button>
+          )}
+          {providerCanStop && server.status === 'stopped' && (
+            <button disabled={busy} onClick={() => void run('start', () => startServer(server.serverId), 'Starting')}>
+              {transition.pending === 'start' || pending === 'start' ? 'Starting…' : 'Start'}
+            </button>
+          )}
+          {/* No `status !== 'terminated'` guard of its own any more: `historical` above IS that
+              condition, and the section it gates does not render at all for a box that is gone.
+              A failed row whose machine core already released has nothing left to terminate
+              either — the button clears the row, and says so (ADR-0010). Same call underneath,
+              because core's terminate is idempotent. */}
           <button className="destructive" disabled={busy} onClick={() => setConfirming('terminate')}>
-            {/* A failed row whose machine is already gone has nothing left to terminate; the
-                button clears the row, and says so (ADR-0010). Same call underneath — core's
-                terminate is idempotent. */}
             {server.status === 'failed' && !server.billing ? 'Dismiss' : 'Terminate'}
           </button>
-        )}
-      </section>
+        </section>
+      )}
 
       {server.status === 'provisioning' && (
         <ProvisioningTimeline current={server.provisioningStep} logLines={logLines} />
@@ -496,7 +565,8 @@ export function ServerDetailPage() {
       <section className="repositories">
         <h2>Repositories</h2>
         {server.repositories.length === 0 ? (
-          <p>None yet.</p>
+          // "Yet" is a promise, and there is no later for a box that is gone.
+          <p>{historical ? 'None.' : 'None yet.'}</p>
         ) : (
           <ul>
             {server.repositories.map((repo) => (

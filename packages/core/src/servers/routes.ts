@@ -206,6 +206,15 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
     syncError: staleReason,
     description: row.description ?? undefined,
     provider: row.provider,
+    /**
+     * Where this box was placed, as the user chose it at create (issue #125).
+     *
+     * The column has existed since the first migration and was the one placement fact this
+     * function dropped — which nobody missed on a running box, whose address and console link
+     * say where it is, and which is unanswerable on a terminated one, where the row is all that
+     * is left. Absent when the provider takes no region (a BYO host, a single-region cloud).
+     */
+    region: row.region ?? undefined,
     size: row.size,
     offeringId: row.offeringId,
     arch: row.arch,
