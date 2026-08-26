@@ -132,6 +132,9 @@ check "done step SKIPPED — its counter did not grow" "$(count first)" 1
 check "running step RE-RAN — its counter grew" "$(count slow)" 2
 check "remaining step executed" "$(count branding)" 1
 check "optional failure did not stop the plan" "$(state '.steps[] | select(.id=="tool:optional-broken") | .status')" failed
+# Per-step evidence (ADR-0010): an optional step's reason would otherwise be gone the moment the
+# next step started, and callback mode has no other way to learn why a repository did not clone.
+check "optional failure carries its own log tail in the journal" "$(state '.steps[] | select(.id=="tool:optional-broken") | .logTail')" "this step fails on purpose"
 check "new run id adopted" "$(state '.runId')" run-0
 if grep -q 'already done, skipping (resume)' "$WORK/run2.log"; then
   pass "resume announced in the log"

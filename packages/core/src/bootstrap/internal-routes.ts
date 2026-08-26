@@ -7,11 +7,15 @@ import type { ProvisioningStep, ServerRow } from '../db/schema.js'
 import { InvalidProvisioningStepError } from '../db/transitions.js'
 import { badRequest, failure, notFound, success, unauthorized } from '../http/responses.js'
 import { validate } from '../http/validate.js'
+import type { BootstrapOnFailure } from '../config/schema.js'
+import type { ProviderRegistry } from '../providers/registry.js'
 import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
 import { retireManagedUserKey } from '../ssh/server-keys.js'
 import { parseInstallPlan } from './plan.js'
 import { bootstrapProgressEvent, serverStatusEvent } from './progress-event.js'
+import { failBootstrap, labelSourcesFor, recordWarnings } from './failure.js'
+import { explainStep } from './failure-report.js'
 
 /**
  * The box-facing routes. Callback mode only.
@@ -51,6 +55,13 @@ export interface InternalRoutesDeps {
    * place.
    */
   secrets?: SecretsStore
+  /**
+   * What a failed tool install does to the machine (ADR-0010). The registry is what lets this
+   * route release an instance the same way the ticker does for push mode; without it — a
+   * deployment with no providers wired — a failure is recorded and the machine is left alone.
+   */
+  registry?: Pick<ProviderRegistry, 'get' | 'has'>
+  onFailure?: BootstrapOnFailure
 }
 
 const statusBody = z.strictObject({
@@ -61,7 +72,12 @@ const statusBody = z.strictObject({
   stepId: z.string().min(1).optional(),
   /** Which bootstrap attempt this belongs to. A mismatch is recorded, not applied. */
   runId: z.string().min(1).optional(),
+  /** The PLAN's status. Stays `running` past an optional step's failure. */
   status: z.enum(['running', 'done', 'failed']).optional(),
+  /** The reported STEP's own outcome (ADR-0010) — how a failed optional step is noticed. */
+  stepStatus: z.enum(['pending', 'running', 'done', 'failed']).optional(),
+  /** The failed step's log tail, from the agent's journal. Bounded by the agent at 60 lines. */
+  logTail: z.string().max(64 * 1024).optional(),
   publicIp: z.string().min(1).optional(),
 })
 
@@ -110,6 +126,49 @@ export function createInternalRoutes(deps: InternalRoutesDeps): Hono {
     }
     // `undefined` is the ported "not in provisioning state" refusal, not a missing row.
     if (!updated) return badRequest(c, 'Server is not in provisioning state')
+
+    /*
+     * THE PLAN FAILED (ADR-0010). Until this, a callback-mode failure was not recorded at all:
+     * the row sat in `provisioning` until the 30-minute timeout failed it as "did not complete"
+     * — the wrong reason, minutes late, with the machine kept. Now it takes the same path push
+     * mode does, from the evidence the agent could send: the step's log tail. Push mode reads
+     * the whole file over SSH; callback mode has no channel for that, and `logComplete: false`
+     * on the report says so.
+     */
+    if (body.status === 'failed' && body.stepId) {
+      const failed = await failBootstrap(
+        {
+          db,
+          events,
+          registry: deps.registry ?? { get: () => { throw new Error('no provider registry') }, has: () => false },
+          ...(deps.onFailure ? { onFailure: deps.onFailure } : {}),
+        },
+        updated,
+        {
+          failure: explainStep({
+            stepId: body.stepId,
+            captured: { log: body.logTail ?? '', complete: false },
+            labels: labelSourcesFor(db, updated),
+          }),
+        },
+      )
+      return success(c, { accepted: true, step: body.step, status: failed.status })
+    }
+
+    // An OPTIONAL step failed and the plan went on — a repository that did not clone. Noted on
+    // the row as it happens, merged by step id, so the box that comes up says what is not on it.
+    if (body.stepStatus === 'failed' && body.stepId) {
+      recordWarnings({ db }, updated, {
+        warnings: [
+          explainStep({
+            stepId: body.stepId,
+            captured: { log: body.logTail ?? '', complete: false },
+            labels: labelSourcesFor(db, updated),
+          }),
+        ],
+        mode: 'merge',
+      })
+    }
 
     // Bootstrap is over, so the powerful credential goes away. This is what makes "the
     // secrets endpoint stops serving after provisioning completes" a property of the system

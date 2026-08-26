@@ -1521,6 +1521,90 @@ p.hint {
   opacity: 0.8;
 }
 
+/* ── The bootstrap report ─────────────────────────────────────────────────────────────
+   The complete account of a bootstrap that went wrong (ADR-0010). A failure is red and has
+   the machine's fate on it; a warning — a repository that did not clone on a box that came
+   up — is yellow, "not yet a failure". Both carry the step's log underneath, collapsed. */
+
+.bootstrap-report {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.bootstrap-failure,
+.bootstrap-warning {
+  border-radius: var(--rs-radius);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.bootstrap-failure {
+  background: #f8514918;
+  border: 1px solid var(--rs-red);
+}
+
+.bootstrap-warning {
+  background: #d2992218;
+  border: 1px solid var(--rs-yellow);
+}
+
+.bootstrap-report h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.bootstrap-report dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.bootstrap-report dt {
+  color: var(--rs-muted);
+  white-space: nowrap;
+}
+
+.bootstrap-report dd,
+.bootstrap-report .summary {
+  margin: 0;
+}
+
+.bootstrap-report .instance-note {
+  font-weight: 600;
+}
+
+.bootstrap-report .key-lines {
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bootstrap-report .hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
+.bootstrap-report .log {
+  margin-top: 0.6rem;
+}
+
+.bootstrap-warnings-note {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--rs-yellow);
+}
+
 .ip-change-content {
   display: flex;
   align-items: center;

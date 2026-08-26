@@ -90,6 +90,8 @@ export {
   listServersNeedingRecovery,
   recordProgress,
   recordProviderState,
+  getBootstrapReport,
+  setBootstrapReport,
   setInstallPlan,
   setKeyMaterial,
   setProviderData,

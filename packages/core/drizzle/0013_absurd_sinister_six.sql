@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `bootstrap_report` text;

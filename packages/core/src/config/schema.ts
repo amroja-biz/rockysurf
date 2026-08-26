@@ -646,6 +646,26 @@ const pricingSchema = section(
   }),
 )
 
+export const BOOTSTRAP_ON_FAILURE = ['terminate', 'keep'] as const
+
+/**
+ * What core does with the instance when a TOOL install fails during bootstrap (ADR-0010,
+ * issue #119).
+ *
+ * `terminate` (the default, owner ruling 2026-08-26): nothing the user made exists on a box
+ * before `ready`, and a half-installed toolchain is a machine nobody can use and everybody is
+ * paying for. The complete install log is captured over SSH before the instance is released,
+ * so the explanation survives the machine. `keep` is the escape hatch for a pack author who
+ * needs to SSH into the failed box; the row then carries the still-billing notice until they
+ * terminate it themselves. Failures in any other phase — a repository clone, branding, the
+ * remote-desktop password — never terminate, whatever this says.
+ */
+const bootstrapSchema = section(
+  z.strictObject({
+    onFailure: z.enum(BOOTSTRAP_ON_FAILURE).default('terminate'),
+  }),
+)
+
 export const configSchema = section(
   z.strictObject({
     server: serverSchema,
@@ -656,10 +676,13 @@ export const configSchema = section(
     mcp: mcpSchema,
     registry: registrySchema,
     pricing: pricingSchema,
+    bootstrap: bootstrapSchema,
   }),
 )
 
 export type Config = z.output<typeof configSchema>
+export type BootstrapConfig = Config['bootstrap']
+export type BootstrapOnFailure = BootstrapConfig['onFailure']
 export type ServerConfig = Config['server']
 export type GithubTokenEntry = Config['github']['tokens'][number]
 export type ProvidersConfig = Config['providers']

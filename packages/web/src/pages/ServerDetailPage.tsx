@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import toast from 'react-hot-toast'
 import { AppShell } from '../components/AppShell'
+import { BootstrapReport } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { StatusBadge } from '../components/StatusBadge'
@@ -297,7 +298,13 @@ export function ServerDetailPage() {
             <dd>{formatDate(server.createdAt)}</dd>
           </div>
         </dl>
-        {server.errorMessage && <p role="alert">{server.errorMessage}</p>}
+        {/* The whole account when there is one (ADR-0010); the one-line reason when there is
+            not — a failure below the plan, or a row from before reports existed. */}
+        {server.bootstrapReport && (server.bootstrapReport.failure || server.bootstrapReport.warnings.length > 0) ? (
+          <BootstrapReport report={server.bootstrapReport} />
+        ) : (
+          server.errorMessage && <p role="alert">{server.errorMessage}</p>
+        )}
         {/* After the reason, because "diagnose" only means something once you can read what
             broke — and before the action buttons, which is where "terminate" lives. */}
         <StillBillingNotice server={server} detailed />
@@ -320,7 +327,10 @@ export function ServerDetailPage() {
         )}
         {server.status !== 'terminated' && (
           <button className="destructive" disabled={busy} onClick={() => setConfirming('terminate')}>
-            Terminate
+            {/* A failed row whose machine is already gone has nothing left to terminate; the
+                button clears the row, and says so (ADR-0010). Same call underneath — core's
+                terminate is idempotent. */}
+            {server.status === 'failed' && !server.billing ? 'Dismiss' : 'Terminate'}
           </button>
         )}
       </section>
@@ -560,16 +570,26 @@ export function ServerDetailPage() {
           onConfirm={() => void run('stop', () => stopServer(server.serverId), 'Stopping')}
         />
       )}
-      {confirming === 'terminate' && (
-        <ConfirmModal
-          title={`Terminate ${server.name}?`}
-          message="This destroys the server and its disk. It cannot be undone."
-          confirmLabel="Terminate"
-          isDestructive
-          onCancel={() => setConfirming(null)}
-          onConfirm={() => void run('terminate', () => terminateServer(server.serverId), 'Terminating')}
-        />
-      )}
+      {confirming === 'terminate' &&
+        (server.status === 'failed' && !server.billing ? (
+          <ConfirmModal
+            title={`Dismiss ${server.name}?`}
+            message="The machine is already gone. This clears the failed server and its report from your list."
+            confirmLabel="Dismiss"
+            isDestructive
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => void run('terminate', () => terminateServer(server.serverId), 'Dismissed')}
+          />
+        ) : (
+          <ConfirmModal
+            title={`Terminate ${server.name}?`}
+            message="This destroys the server and its disk. It cannot be undone."
+            confirmLabel="Terminate"
+            isDestructive
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => void run('terminate', () => terminateServer(server.serverId), 'Terminating')}
+          />
+        ))}
     </AppShell>
   )
 }

@@ -10,6 +10,8 @@ import { retireManagedUserKey } from '../ssh/server-keys.js'
 import { HostKeyMismatchError } from './push.js'
 import { MissingKeyMaterialError, runPushBootstrap } from './push-runner.js'
 import { bootstrapProgressEvent, serverStatusEvent } from './progress-event.js'
+import { labelSourcesFor, recordWarnings, type BootstrapFailureInput } from './failure.js'
+import { buildStepReports } from './failure-report.js'
 
 /**
  * The adapter between the provision ticker and the push runner (rockysurf-55fx.13).
@@ -94,6 +96,8 @@ interface Outcome {
   step?: string
   failed?: boolean
   error?: string
+  /** The complete account of a step failure, for the ticker to act on (ADR-0010). */
+  report?: BootstrapFailureInput
 }
 
 /**
@@ -142,26 +146,6 @@ export async function markBootstrapReady(db: Db, events: EventsService, row: Ser
   )
   await events.broadcastToUser(updated.userId, serverStatusEvent(updated))
   return updated
-}
-
-/**
- * The last thing the failing step said, trimmed to fit a status field.
- *
- * Installers put their verdict on the final line and their colour codes everywhere, so the
- * escape sequences come out — a status field is read as text, and `[0;31mError:` helps
- * nobody.
- */
-function lastLineOf(logTail: string | undefined, limit = 200): string {
-  if (!logTail) return ''
-  const cleaned = logTail
-    // eslint-disable-next-line no-control-regex -- ANSI SGR sequences, which is the point
-    .replace(/\u001b\[[0-9;]*m/g, '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  const last = cleaned.at(-1)
-  if (!last) return ''
-  return `: ${last.length > limit ? `${last.slice(0, limit)}…` : last}`
 }
 
 /** Errors that will never succeed on a retry, so retrying only delays the truth. */
@@ -214,16 +198,42 @@ export function createPushBootstrapSupervisor(deps: PushSupervisorDeps): Bootstr
       Object.keys(secrets).length > 0 ? { secrets } : {},
     )
 
-    if (result.state.status === 'failed') {
-      const failedStep = result.state.failedStep ?? result.state.step
-      // Carry the reason, not just the location. This error becomes the row's `errorMessage`,
-      // which is the only thing the user is shown — and "bootstrap failed at step 'tool:beads'"
-      // sends them digging through the events table for the one line that actually explains it
-      // (that is exactly what the 55fx.9 exit run made me do). The journal's log tail is that
-      // line; it is trimmed because a whole install log does not belong in a status field.
-      finish(row.id, { failed: true, error: `bootstrap failed at step '${failedStep}'${lastLineOf(result.state.logTail)}` })
+    // The whole account of what went wrong, built here because this is the last place that has
+    // everything at once: the journal, the logs the drive read off the box, and the row to name
+    // tools and repositories with (ADR-0010). Before this the outcome carried one line — the
+    // step id and the last thing the log said — which was exactly enough to send the user
+    // digging through the events table (the 55fx.9 exit run) and, once the machine is gone, not
+    // enough to reconstruct anything from.
+    const reports = buildStepReports({
+      journal: result.state,
+      ...(result.stepLogs ? { stepLogs: result.stepLogs } : {}),
+      ...(result.agentLogTail ? { agentLog: result.agentLogTail } : {}),
+      labels: labelSourcesFor(deps.db, row),
+    })
+
+    if (result.state.status === 'failed' && reports.failure) {
+      const report: BootstrapFailureInput = {
+        failure: reports.failure,
+        warnings: reports.warnings,
+        ...(result.agentLogTail ? { agentLogTail: result.agentLogTail } : {}),
+      }
+      // The row is NOT failed here — the ticker owns that, together with what happens to the
+      // machine. `error` is the summary so a reader of the outcome alone still gets a sentence.
+      finish(row.id, { failed: true, error: reports.failure.summary, report })
       return
     }
+    if (result.state.status === 'failed') {
+      finish(row.id, { failed: true, error: `bootstrap failed at step '${result.state.failedStep ?? result.state.step}'` })
+      return
+    }
+
+    // Optional steps that failed on a box that came up — a repository that did not clone. The
+    // box is about to be promoted; the row says what is not on it, with the clone's own log.
+    recordWarnings(
+      { db: deps.db },
+      row,
+      { warnings: reports.warnings, ...(result.agentLogTail ? { agentLogTail: result.agentLogTail } : {}), mode: 'replace' },
+    )
 
     /*
      * Stamp `ready` here rather than trusting the plan's last step to report it.

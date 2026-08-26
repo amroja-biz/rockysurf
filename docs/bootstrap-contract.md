@@ -158,10 +158,22 @@ if they are all lost, the box still finishes and the journal still describes wha
       "status": "done",            // "pending" | "running" | "done" | "failed"
       "startedAt": "2026-08-12T02:48:31Z",
       "finishedAt": "2026-08-12T02:48:47Z"
+    },
+    {
+      "id": "repo:my-app",
+      "reports": "cloning_repos",
+      "status": "failed",          // an optional step that failed; the plan went on
+      "startedAt": "2026-08-12T02:48:48Z",
+      "finishedAt": "2026-08-12T02:48:50Z",
+      "logTail": "fatal: repository 'https://…/my-app/' not found"  // last 60 lines of THIS step (ADR-0010)
     }
   ]
 }
 ```
+
+The per-step `logTail` is what lets an optional step's failure be explained after the plan has
+moved on, and what callback mode — which has no channel for core to read the log file itself —
+sends in its report. Push mode reads the whole step log over SSH and treats this as a fallback.
 
 Requirements:
 
@@ -440,6 +452,10 @@ Normative points specific to callback:
   seven reports (an initial one, then `running` and `done` per step). Consumers MUST treat the
   stream as append-only and idempotent rather than counting on one report per step.
 - Reports MUST carry `stepId` as well as the display label, and MUST carry `runId`.
+- Reports SHOULD carry `stepStatus` (the reported step's own outcome, distinct from the plan's
+  `status`) and, when that step failed, its `logTail` (ADR-0010). Core builds the failure report
+  from these; without them a callback-mode failure has no evidence and a failed optional step is
+  invisible.
 - A failed report MUST NOT stop the install. Progress is telemetry; the journal is the record.
 - **Timing that makes this work:** sshd comes up in cloud-init's *init* stage while `runcmd` runs
   in the *final* stage. On the verified AWS run core had its ingress path open at 23.9s and the
@@ -539,8 +555,8 @@ These are requirements, not recommendations. Each was learned from something tha
 
 | Situation | Agent | Core |
 |---|---|---|
-| Required step fails | records `failed`, attaches `logTail`, stops the plan, exits 1 | marks the server failed, naming the **step id** — not the shared label |
-| Optional step fails | records `failed`, continues | records it; the server is not failed |
+| Required step fails | records `failed`, attaches `logTail` (plan-level and on the step), stops the plan, exits 1 | reads the step's whole log off the box (push) or takes the agent's tail (callback), builds the `BootstrapReport`, fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
+| Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
 | Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **once per bootstrap**: rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one, refreshes the lists, re-runs the step and its check; a second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower; `agent.log` says the fallback engaged and which files it rewrote |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
@@ -578,6 +594,12 @@ An implementation conforms when all of the following hold.
 - [ ] The agent bootstraps its own JSON parser and assumes nothing else about the image.
 - [ ] The apt mirror fallback engages at most once per bootstrap, only for a step whose own
       output carries an apt fetch-failure signature, and is announced in the agent log.
+- [ ] A failed step's own log tail is journalled on the step entry, and a callback report carries
+      `stepStatus` and that tail; core builds one `BootstrapReport` from either topology.
+- [ ] A failed `tool:*` step releases the instance before the row is failed, unless
+      `bootstrap.onFailure` is `keep`; no other step's failure ever releases it (ADR-0010).
+- [ ] A `failed` row is never promoted to `terminated` by a provider reading; only the user's
+      terminate moves it.
 - [ ] The agent runs under a transient unit with `Restart=on-failure`,
       `After=network-online.target`, and `--collect`, decoupled from the SSH session.
 - [ ] Launcher liveness is checked with privilege, and two consecutive negatives are required

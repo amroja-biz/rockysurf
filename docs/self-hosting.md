@@ -653,6 +653,30 @@ themselves — `amp-agents`, `codex-cli`, `open-claw` and `open-code` each pull 
 name all six files rather than the one you edited. **Read the log from the top: the first file
 listed is usually the one to fix.**
 
+### When a server's setup fails
+
+A server is only `running` once every required step of its install plan has finished. When a
+**tool install** fails — a package mirror down, a script that exits non-zero — Rocky Surf
+**terminates the machine** and fails the server with a complete report: which tool, why (in words,
+with the decisive lines from the log), the whole log of that step, and what happened to the
+machine. Nothing the user made exists on a box before it is ready, so there is nothing to keep, and
+a half-installed box would only bill. The failed server stays on the dashboard with its report
+until you dismiss it, and is not billing.
+
+When a **repository fails to clone**, the box is delivered anyway — that is a warning on the
+running server, naming the repository and the reason, not a failure. Other finishing steps that
+fail (the login banner, the remote-desktop password) keep the machine up with the still-billing
+notice, as before.
+
+To keep a failed box up for hands-on debugging — a pack author's need, not a user's — set:
+
+```yaml
+bootstrap:
+  onFailure: keep   # default: terminate
+```
+
+See ADR-0010 for the reasoning, and `docs/writing-a-pack.md` for the debugging workflow.
+
 ### Where the pack files come from
 
 First match wins, and the boot notice names which one it used:

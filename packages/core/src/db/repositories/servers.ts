@@ -390,6 +390,34 @@ export function setManagedSshKeyRetired(db: Db, id: string): ServerRow {
   return updated
 }
 
+/**
+ * Store the account of a bootstrap that went wrong (ADR-0010, issue #119).
+ *
+ * Whole-document replace, never a merge: the report is built in one place from one journal,
+ * and the row carries the latest bootstrap's verdict. A re-push that succeeds clears it by
+ * writing `null`, so a box that recovered does not keep advertising its earlier failure.
+ */
+export function setBootstrapReport(db: Db, id: string, report: object | null): ServerRow {
+  const [updated] = db
+    .update(servers)
+    .set({ bootstrapReport: report === null ? null : JSON.stringify(report), updatedAt: nowIso() })
+    .where(eq(servers.id, id))
+    .returning()
+    .all()
+  if (!updated) throw new Error(`setBootstrapReport wrote no row for ${id}`)
+  return updated
+}
+
+/** The parsed report, or undefined when the row carries none or the JSON is unreadable. */
+export function getBootstrapReport<T = unknown>(row: ServerRow): T | undefined {
+  if (!row.bootstrapReport) return undefined
+  try {
+    return JSON.parse(row.bootstrapReport) as T
+  } catch {
+    return undefined
+  }
+}
+
 export interface NetworkAddressPatch {
   publicIp?: string
   publicDns?: string
