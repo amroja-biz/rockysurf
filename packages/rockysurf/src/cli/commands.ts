@@ -132,7 +132,7 @@ export async function offeringsCommand(deps: CliDeps, args: { provider?: string 
       const cost = offering.hourly ? `${offering.hourly.amount} ${offering.hourly.currency}` : '—'
       // Said in the row rather than by omitting it: a sold-out type and a type this cloud does
       // not have need different answers, which is why the SDK carries `available` at all.
-      const soldOut = offering.available ? '' : '   (sold out right now)'
+      const soldOut = offering.available ? '' : `   (${offering.unavailableReason ?? 'sold out right now'})`
       deps.out(
         `  ${offering.id.padEnd(width)}  ${offering.arch.padEnd(5)}  ${String(offering.cpu).padStart(3)}  ` +
           `${`${offering.memoryGb} GB`.padStart(6)}  ${cost}${soldOut}`,

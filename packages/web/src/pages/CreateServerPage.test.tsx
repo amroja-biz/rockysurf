@@ -1230,6 +1230,16 @@ describe('the machine type picker', () => {
       { id: 'small-x86', cpu: 2, memoryGb: 2, diskGb: 40, arch: 'amd64', hourly: price(0.0208), available: true, region: 'fake-1' },
       { id: 'big-arm', cpu: 4, memoryGb: 8, diskGb: 80, arch: 'arm64', hourly: price(0.0672), available: true, region: 'fake-1' },
       { id: 'sold-out-type', cpu: 8, memoryGb: 16, arch: 'amd64', hourly: price(0.15), available: false, region: 'fake-1' },
+      {
+        id: 'no-quota-type',
+        cpu: 8,
+        memoryGb: 32,
+        arch: 'amd64',
+        hourly: price(0.3),
+        available: false,
+        unavailableReason: 'no core quota for standardBpsv2Family in eastus (approved limit is 0)',
+        region: 'fake-1',
+      },
       { id: 'unpriced-type', cpu: 16, memoryGb: 32, arch: 'arm64', hourly: null, available: true, region: 'fake-2' },
     ],
   }
@@ -1272,6 +1282,15 @@ describe('the machine type picker', () => {
 
     const row = screen.getByRole('cell', { name: 'sold-out-type' }).closest('tr')!
     expect(within(row).getByText(/sold out right now/i)).toBeTruthy()
+    expect(within(row).queryByRole('button', { name: /^select$/i })).toBeNull()
+  })
+
+  it("shows the provider's own reason instead of \"sold out\" when it gives one (issue #116)", async () => {
+    await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'no-quota-type' }).closest('tr')!
+    expect(within(row).getByText(/no core quota for standardBpsv2Family in eastus/i)).toBeTruthy()
+    expect(within(row).queryByText(/sold out right now/i)).toBeNull()
     expect(within(row).queryByRole('button', { name: /^select$/i })).toBeNull()
   })
 

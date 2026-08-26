@@ -114,6 +114,15 @@ export function assertOfferingsShape(offerings: readonly Offering[]): void {
     check(Number.isFinite(offering.memoryGb) && offering.memoryGb > 0, `${where}: memoryGb must be positive`)
     check((ARCHITECTURES as readonly string[]).includes(offering.arch), `${where}: arch '${offering.arch}' invalid`)
     check(typeof offering.available === 'boolean', `${where}: available must be a boolean`)
+    // A reason is an explanation of `available: false`; one on an available offering is a
+    // contradiction a selector cannot render.
+    if (offering.unavailableReason !== undefined) {
+      check(
+        typeof offering.unavailableReason === 'string' && offering.unavailableReason.length > 0,
+        `${where}: unavailableReason must be a non-empty string when present`,
+      )
+      check(!offering.available, `${where}: unavailableReason is set on an available offering`)
+    }
     check(typeof offering.region === 'string' && offering.region.length > 0, `${where}: region required`)
 
     // A duplicate id is two offerings a caller cannot tell apart — `validateSpec()` resolves a

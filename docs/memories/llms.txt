@@ -43,3 +43,10 @@
 - [vendor-sdk-vs-rest-provider-ruling](2026-08-13-vendor-sdk-vs-rest-provider-ruling.md): the test
   a new compute provider applies before taking a vendor SDK dependency — REST by hand by default,
   buy only the auth part when it's genuinely not fetch-shaped.
+
+## Cloud providers
+
+- [azure-core-quota-is-a-second-gate](2026-08-26-azure-core-quota-is-a-second-gate.md): Azure refuses
+  a create twice — SKU restrictions, then per-family core quota — and a fresh subscription has most
+  families at zero; read `locations/usages` (case-insensitive family join), show the reason, and
+  never treat an unreadable quota as no quota.

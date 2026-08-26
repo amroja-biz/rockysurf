@@ -45,6 +45,8 @@ export interface ProviderCatalogue {
     arch: string
     /** `false` means the cloud is out of this type right now — a price is not an offer. */
     available: boolean
+  /** The provider's own reason `available` is false, when it has one (Azure: core quota). */
+  unavailableReason?: string
     /** `null` means the provider quotes no price. Never render it as free. */
     hourly: { amount: number; currency: string } | null
     region: string

@@ -93,10 +93,17 @@ export function resolveOffering(offerings: Offering[], requirements: Requirement
   const available = matching.filter((o) => o.available).sort(byPrice)
   if (available.length === 0) {
     const archNote = requirements.arch ? ` ${archLabel(requirements.arch)}` : ''
+    // Lead with the provider's own reason when every candidate has one and they agree on
+    // the gist — on Azure that is "no core quota", whose remedy is a portal request, not
+    // waiting. Mixed or absent reasons fall back to the generic sentence.
+    const why = matching[0]?.unavailableReason
+    const unanimous = why !== undefined && matching.every((o) => o.unavailableReason === why)
     return {
       ok: false,
       soldOut: true,
-      reason: `Every matching${archNote} machine type is sold out right now. Try another size or architecture.`,
+      reason: unanimous
+        ? `Every matching${archNote} machine type is unavailable: ${why}. Try another size or architecture.`
+        : `Every matching${archNote} machine type is sold out right now. Try another size or architecture.`,
     }
   }
 

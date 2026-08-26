@@ -596,7 +596,11 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         )
       }
       if (!offering.available) {
-        return c.json({ error: `offering "${offering.id}" is sold out right now`, code: 'capacity' }, 503)
+        // The provider's own reason where it gives one (Azure: which quota gate refused, issue
+        // #116) — a caller told "sold out" for a size their subscription has no quota for
+        // would wait for stock that never comes.
+        const why = offering.unavailableReason ? `is unavailable: ${offering.unavailableReason}` : 'is sold out right now'
+        return c.json({ error: `offering "${offering.id}" ${why}`, code: 'capacity' }, 503)
       }
       offeringId = offering.id
       // From the OFFERING, never from the cheapest row in the catalogue: this is what the box

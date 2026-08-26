@@ -1,7 +1,7 @@
 import type { Architecture, Offering, Price } from '@rockysurf/provider-sdk'
 import type { PriceFeedDoc } from './feed.js'
 import { AZURE_SIZES } from './prices.generated.js'
-import type { ArmResourceSku } from './types.js'
+import type { ArmResourceSku, ArmUsage } from './types.js'
 
 /**
  * Turning `Microsoft.Compute/skus` plus the hosted price feed into `Offering[]`.
@@ -25,7 +25,8 @@ import type { ArmResourceSku } from './types.js'
  * not there.
  *
  * TWO MORE GATES SIT ON TOP OF THAT, both against the same live capabilities, both omitted- not
- * fabricated (rockysurf-o05s / issue #24 PR2b):
+ * fabricated (rockysurf-o05s / issue #24 PR2b) — and a fourth, core quota, which does not omit
+ * but marks the size unavailable with the reason (issue #116; see `quotaRefusal`):
  *
  *  - `HyperVGenerations` must include `V2`. This provider's default image SKU is Canonical's
  *    Gen2 build, and a Gen1-only size cannot boot it — it would fail at ARM create with a
@@ -101,35 +102,83 @@ export function architectureFromName(name: string | undefined): Architecture | u
  * zones are out but the region is orderable, and this provider does not pin a zone, so it is not
  * a refusal.
  *
- * WHAT THIS DOES NOT READ, and why a `true` here is not a promise (rockysurf-xmk0).
- *
- * Azure gates a create TWICE. This function reads the first gate — the SKU's own restrictions.
- * The second is approved CORE QUOTA per VM family per region, which does not appear in
- * `Microsoft.Compute/skus` at all. A size can be entirely unrestricted here and still fail at
- * the virtual machine PUT with:
- *
- *   OperationNotAllowed: exceeding approved standardBpsv2Family Cores quota.
- *   Location: eastus, Current Limit: 0, Additional Required: 2
- *
- * This was observed on a real subscription: six of the twelve catalogue sizes reported no
- * restriction in a region where the approved quota for every one of them was zero.
- *
- * Reading quota would mean calling `Microsoft.Compute/locations/{location}/usages`, which the
- * published `Rocky Surf Catalogue Reader` role does not grant — it grants `skus/read` and
- * `subscriptions/locations/read` and nothing else. Widening a published security boundary to
- * improve a catalogue hint is a decision with an argument attached, not a drive-by fix, so v0.1
- * keeps the narrow role and lets the create fail with Azure's own words: `OperationNotAllowed`
- * maps to the `quota` code and the verbatim message carries Microsoft's portal link to raise it.
- * See docs/providers/azure.md, "Core quota is a separate gate from SKU availability".
+ * THIS IS THE FIRST OF TWO GATES. The second — approved core quota per VM family and per
+ * region, which `Microsoft.Compute/skus` knows nothing about — is `quotaRefusal()` below
+ * (issue #116). `buildOfferings()` applies both; a `true` here alone is not a promise that the
+ * VM PUT will succeed. See docs/providers/azure.md, "Core quota is a separate gate from SKU
+ * availability".
  */
 export function isAvailable(sku: ArmResourceSku, location: string): boolean {
+  return restrictionRefusal(sku, location) === undefined
+}
+
+/** The SKU-restriction gate as a reason, or undefined when this subscription may order the size. */
+export function restrictionRefusal(sku: ArmResourceSku, location: string): string | undefined {
+  return isRestricted(sku, location) ? `not available to this subscription in ${location}` : undefined
+}
+
+function isRestricted(sku: ArmResourceSku, location: string): boolean {
   const wanted = location.toLowerCase()
-  return !(sku.restrictions ?? []).some((restriction) => {
+  return (sku.restrictions ?? []).some((restriction) => {
     if (restriction.type !== 'Location') return false
     const locations = restriction.restrictionInfo?.locations ?? []
     // A location restriction with no stated locations is a blanket one.
     return locations.length === 0 || locations.some((l) => l.toLowerCase() === wanted)
   })
+}
+
+/**
+ * The SECOND gate: approved core quota, per VM family and for the region as a whole
+ * (issue #116, closing the hole the comment above describes).
+ *
+ * Returns why quota would refuse this size — in words a size selector can show — or undefined
+ * when it would not, or when quota could not be read at all (`usages` null: the Catalogue
+ * Reader role predates `locations/usages/read`, or the read failed). Unreadable quota degrades
+ * to the first gate alone, which is exactly the v0.1 behaviour: an occasional offered-but-
+ * unorderable size, refused at create with Azure's own message. It never fabricates a refusal.
+ *
+ * Two rows are consulted, both from `Microsoft.Compute/locations/{location}/usages`:
+ *
+ *  - the size's own family (`sku.family`, joined to `usages[].name.value` case-insensitively,
+ *    because Azure capitalises `StandardDalsv7Family` on one endpoint and
+ *    `standardBpsv2Family` on the other);
+ *  - the regional total, `cores`.
+ *
+ * A create must fit under BOTH: `limit - currentValue >= vCPUs`. On a fresh subscription the
+ * common case is a family at `limit: 0` — 104 of 232 rows on the owner's subscription on
+ * 2026-08-26 — for which the only remedy is a quota request in the portal, and the wording
+ * says so. That observation is also the evidence this endpoint is trustworthy: the two
+ * families at 0 were exactly the two that failed at create, and every family that succeeded
+ * reported 10.
+ *
+ * A size with no `family` cannot be checked against a family row and is gated by the regional
+ * total alone; a family with no row in `usages` is likewise not refused. Absence of evidence
+ * is not a refusal.
+ */
+export function quotaRefusal(
+  sku: ArmResourceSku,
+  cpu: number,
+  location: string,
+  usages: readonly ArmUsage[] | null,
+): string | undefined {
+  if (!usages) return undefined
+  const byName = new Map<string, ArmUsage>()
+  for (const usage of usages) {
+    const key = usage.name?.value?.toLowerCase()
+    if (key) byName.set(key, usage)
+  }
+
+  const refusal = (key: string, label: string): string | undefined => {
+    const row = byName.get(key.toLowerCase())
+    if (!row) return undefined
+    const limit = row.limit ?? 0
+    const used = row.currentValue ?? 0
+    if (limit - used >= cpu) return undefined
+    if (limit === 0) return `no core quota for ${label} in ${location} (approved limit is 0 — request an increase in the Azure portal)`
+    return `core quota for ${label} in ${location} is exhausted (limit ${limit}, ${used} in use, this size needs ${cpu})`
+  }
+
+  return (sku.family ? refusal(sku.family, sku.family) : undefined) ?? refusal('cores', 'the region')
 }
 
 /**
@@ -139,12 +188,15 @@ export function isAvailable(sku: ArmResourceSku, location: string): boolean {
  * @param location the ARM region id, which is also `Offering.region`
  * @param diskGb the OS disk size this provider is configured to attach, so the offering
  *   describes the machine core will actually create rather than the image's default
+ * @param usages the region's quota rows, or null when they could not be read — in which case
+ *   availability reflects the SKU gate alone (issue #116)
  */
 export function buildOfferings(
   skus: readonly ArmResourceSku[],
   location: string,
   diskGb: number,
   feed: PriceFeedDoc | null,
+  usages: readonly ArmUsage[] | null = null,
 ): Offering[] {
   const prices = feed?.regions[location]
   const price = (amount: number): Price => ({
@@ -176,6 +228,8 @@ export function buildOfferings(
     if (cpu > SIZE_CEILING.maxCpu || memoryGb > SIZE_CEILING.maxMemoryGb) continue
 
     const amount = prices?.[id]
+    // Both gates, in the order Azure applies them; the first refusal is the reason shown.
+    const unavailableReason = restrictionRefusal(sku, location) ?? quotaRefusal(sku, cpu, location, usages)
     offerings.push({
       id,
       cpu,
@@ -186,7 +240,8 @@ export function buildOfferings(
       // could not be fetched at all — gets no number rather than a us-east number that would
       // be wrong.
       hourly: amount === undefined ? null : price(amount),
-      available: isAvailable(sku, location),
+      available: unavailableReason === undefined,
+      ...(unavailableReason !== undefined ? { unavailableReason } : {}),
       region: location,
     })
   }
