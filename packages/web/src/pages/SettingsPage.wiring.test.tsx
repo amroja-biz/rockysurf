@@ -251,9 +251,13 @@ afterEach(async () => {
   await stub.close()
 })
 
-function renderPage() {
+/**
+ * `at` is the URL the page opens on, which is how a deep link into one section is tested:
+ * `?section=` is the whole of the page's navigation state (issue #122).
+ */
+function renderPage(at = '/settings') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[at]}>
       <AuthProvider>
         <EventsProvider>
           <SettingsPage />
@@ -276,9 +280,36 @@ const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save to t
 /** One card of the unified token list: `'fallback'`, an index, or `'new'` for the draft. */
 const tokenCard = (id: string) => document.querySelector(`[data-token="${id}"]`) as HTMLElement
 
-/** Click a button inside one token card, where several cards offer the same label. */
-const clickIn = (id: string, name: string) =>
+/**
+ * Open a section's tab (issue #122).
+ *
+ * The page draws one section at a time, so a test that drives a control on another one says
+ * which — and a control on a hidden panel is out of the accessibility tree, so `getByRole` will
+ * not find it either. The title is matched from the START because a tab holding unsaved work or
+ * a rejected field grows a sentence after it, for the benefit of a screen reader.
+ */
+const open = (title: string) => fireEvent.click(screen.getByRole('tab', { name: new RegExp(`^${title}`) }))
+
+/** The section the whole token list lives on. */
+const GITHUB = 'GitHub access tokens'
+
+/** Open the token list and start a new entry, which is where six of these tests begin. */
+const addToken = () => {
+  open(GITHUB)
+  fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+}
+
+/**
+ * Click a button inside one token card, where several cards offer the same label.
+ *
+ * It opens the GitHub tab first because that is where every token card is: reaching one is part
+ * of clicking it, and a test about what a Save button sends should not read as a test about
+ * navigation.
+ */
+const clickIn = (id: string, name: string) => {
+  open(GITHUB)
   fireEvent.click(within(tokenCard(id)).getByRole('button', { name }))
+}
 
 /** The one save this page made, once it has made it. */
 async function onlySave(): Promise<(typeof saves)[number]> {
@@ -465,7 +496,7 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     // Nothing is written by pressing Add: the entry is drafted first.
     expect(saves).toHaveLength(0)
 
@@ -484,7 +515,7 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'ghp_fallbackToken' } })
     clickIn('new', 'Add this token')
 
@@ -495,7 +526,7 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'SECOND_PAT' } })
     clickIn('new', 'Add this token')
 
@@ -510,7 +541,7 @@ describe('the unified token list', () => {
     renderPage()
     await loaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'acme/other' } })
     clickIn('new', 'Add this token')
 
@@ -548,6 +579,7 @@ describe('the unified token list', () => {
     // index would land on whichever entry moved into it. Narrowed to the list it is about
     // instead of the whole page — an unsaved port cannot renumber anything.
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
+    open(GITHUB)
     expect(screen.getByRole('button', { name: 'Add a token' }).hasAttribute('disabled')).toBe(false)
     expect(within(tokenCard('0')).getByRole('button', { name: 'Remove this entry' }).hasAttribute('disabled')).toBe(
       false,
@@ -710,7 +742,7 @@ describe('a token box takes the name of an environment variable — where it sti
     renderPage()
     await loaded()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'acme/other' } })
     fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'github_pat_otherEntry' } })
     clickIn('new', 'Add this token')
@@ -897,6 +929,7 @@ describe('the Connect GitHub card', () => {
     renderPage()
     await loaded()
 
+    open(GITHUB)
     fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }))
 
     const dialog = await screen.findByRole('dialog')
@@ -1013,6 +1046,7 @@ describe('what the page sends', () => {
     renderPage()
     await loaded()
 
+    open('Hetzner')
     const field = document.querySelector('[data-field="providers.hetzner.token"]')!
     fireEvent.click(field.querySelector('button')!)
     fireEvent.click(screen.getByRole('button', { name: 'Keep it after all' }))
@@ -1076,6 +1110,7 @@ describe('what the page sends', () => {
     renderPage()
     await loaded()
 
+    open('Your own machines')
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(screen.getByRole('dialog').textContent).toContain('workshop')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
@@ -1090,6 +1125,7 @@ describe('what the page sends', () => {
     // An edit somewhere else cannot renumber this list, so it does not block it — m29b blocked
     // on any pending edit at all, which made adding a host mean saving the port first.
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
+    open('Your own machines')
     expect(screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled')).toBe(false)
 
     // An edit to an entry IS the hazard: a removal renumbers its successors.
@@ -1151,7 +1187,7 @@ describe('when the save is refused', () => {
 
     renderPage()
     await loaded()
-    fireEvent.click(screen.getByRole('button', { name: 'Add a token' }))
+    addToken()
     fireEvent.change(control('github.tokens.new.repo'), { target: { value: 'not an owner/widgets' } })
     fireEvent.change(control('github.tokens.new.pat'), { target: { value: 'PRIVATE_THING_PAT' } })
     clickIn('new', 'Add this token')
@@ -1317,5 +1353,251 @@ describe('when the file cannot be read', () => {
     // Still inside the shell: a page must not shed its navigation exactly when something failed.
     expect(screen.getByRole('navigation')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Save to the file' })).toBeNull()
+  })
+})
+
+/* ------------------------------------------------- issue #122: navigating the sections */
+
+/**
+ * ONE SECTION AT A TIME, AND THE INVENTORY DECIDES WHAT THE SECTIONS ARE.
+ *
+ * The claims here are the ones a reader of `SettingsPage.tsx` is asked to believe, and each is
+ * checked as a property of the SERVED INVENTORY rather than of a list in the page: that the tabs
+ * are the sections core sent, that a section core adds appears with its fields in it and nothing
+ * in the page edited, that switching cannot lose something typed, and that a link and a rejected
+ * save both put the operator on the right tab.
+ *
+ * The last of those is why the stub's inventory is not trimmed for these tests: the fixture is
+ * the real shape, ten sections deep, one of them nested.
+ */
+describe('finding your way around the page', () => {
+  /** The tab labels, in the order they are drawn. */
+  const tabNames = () =>
+    screen.getAllByRole('tab').map((tab) => tab.textContent?.replace(/●.*/, '').trim())
+
+  const selected = () => screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true')
+
+  const panelOf = (id: string) => document.getElementById(`settings-panel-${id}`)!
+
+  it('draws a tab per section the server sent, in the server\'s order', async () => {
+    renderPage()
+    await loaded()
+
+    // Nine tabs for ten sections: `providers.byo.hosts` is inside `providers.byo`, so Hosts is a
+    // card on Your own machines rather than a tab beside it.
+    expect(tabNames()).toEqual([
+      'Server',
+      'GitHub access tokens',
+      'Hetzner',
+      'AWS',
+      'Azure',
+      'Google Cloud',
+      'Your own machines',
+      'Limits',
+      'MCP',
+    ])
+    expect(selected()!.textContent).toContain('Server')
+  })
+
+  it('shows the section you chose and hides the one you left', async () => {
+    renderPage()
+    await loaded()
+
+    expect(panelOf('server').hasAttribute('hidden')).toBe(false)
+    expect(panelOf('limits').hasAttribute('hidden')).toBe(true)
+
+    open('Limits')
+
+    expect(panelOf('server').hasAttribute('hidden')).toBe(true)
+    expect(panelOf('limits').hasAttribute('hidden')).toBe(false)
+    expect(selected()!.textContent).toContain('Limits')
+    // The nested section rides along with its parent rather than being lost between tabs.
+    open('Your own machines')
+    expect(panelOf('providers.byo').textContent).toContain('The machines Rocky Surf may claim')
+  })
+
+  it('opens the section a link names, so a reload comes back to where it was', async () => {
+    renderPage('/settings?section=providers.aws')
+    await loaded()
+
+    expect(selected()!.textContent).toContain('AWS')
+    expect(panelOf('providers.aws').hasAttribute('hidden')).toBe(false)
+  })
+
+  it('opens the tab that HOLDS a nested section a link names', async () => {
+    renderPage('/settings?section=providers.byo.hosts')
+    await loaded()
+
+    expect(selected()!.textContent).toContain('Your own machines')
+  })
+
+  it('falls back to the first tab rather than a blank page when the link names nothing', async () => {
+    renderPage('/settings?section=providers.nowhere')
+    await loaded()
+
+    expect(selected()!.textContent).toContain('Server')
+  })
+
+  it('moves between tabs with the arrow keys, and takes the selection with it', async () => {
+    renderPage()
+    await loaded()
+
+    fireEvent.keyDown(selected()!, { key: 'ArrowDown' })
+    expect(selected()!.textContent).toContain('GitHub access tokens')
+
+    // Wrapping, both ways: a keyboard user arrowing off the top lands on the last tab.
+    fireEvent.keyDown(selected()!, { key: 'ArrowUp' })
+    fireEvent.keyDown(selected()!, { key: 'ArrowUp' })
+    expect(selected()!.textContent).toContain('MCP')
+  })
+
+  /**
+   * THE ONE THAT WOULD HURT. Ten sections behind one Save button means switching sections cannot
+   * be allowed to drop what was typed on the one being left — and the operator has to be able to
+   * tell that it did not, from the tab, without going back to look.
+   */
+  it('keeps what was typed on another section, and saves it from wherever you are', async () => {
+    renderPage()
+    await loaded()
+
+    fireEvent.change(control('server.port'), { target: { value: '8080' } })
+    open('Limits')
+    fireEvent.change(control('limits.maxServers'), { target: { value: '9' } })
+
+    // The tab left behind says it is holding something, in a sentence and not only in a dot.
+    const serverTab = screen.getByRole('tab', { name: /^Server/ })
+    expect(serverTab.textContent).toContain('has unsaved changes')
+    expect(serverTab.querySelector('.tab-marker')).toBeTruthy()
+
+    open('Server')
+    expect(control('server.port').value).toBe('8080')
+
+    save()
+    expect((await onlySave()).changes).toEqual([
+      { path: ['server', 'port'], value: 8080 },
+      { path: ['limits', 'maxServers'], value: 9 },
+    ])
+  })
+
+  it('goes to the tab holding a field the server refused, so the rejection is not off screen', async () => {
+    nextSaveFailure = {
+      status: 400,
+      body: {
+        error: 'limits.maxServers: must be at least 1',
+        code: 'bad_request',
+        issues: [{ path: 'limits.maxServers', message: 'must be at least 1' }],
+      },
+    }
+
+    renderPage()
+    await loaded()
+
+    open('Limits')
+    fireEvent.change(control('limits.maxServers'), { target: { value: '0' } })
+    open('Server')
+    save()
+
+    await waitFor(() => expect(selected()!.textContent).toContain('Limits'))
+    expect(panelOf('limits').textContent).toContain('must be at least 1')
+  })
+
+  /* ------------------------------------------------- the part issue #124 depends on */
+
+  /**
+   * A SECTION THIS PAGE HAS NEVER HEARD OF, from the inventory alone.
+   *
+   * This is the test of the whole design and the reason it is written this way: box-type
+   * preferences (issue #124) are fields and a section in `settings/fields.ts`, and adding them
+   * must not need an edit to `SettingsPage.tsx` to be reachable, editable and saveable. Nothing
+   * below names a section this repository has today.
+   */
+  it('gives a section core added a tab of its own, with its fields in it', async () => {
+    served.sections.push({
+      id: 'boxes',
+      title: 'Box types',
+      help: 'What Small, Medium and Large mean at each provider.',
+    })
+    served.fields.push({
+      path: 'boxes.small',
+      kind: 'string',
+      writable: true,
+      help: 'The offering Small resolves to.',
+    })
+    served.fields.push({
+      path: 'boxes.dedicated',
+      kind: 'boolean',
+      writable: true,
+      help: 'Whether Small means a dedicated core.',
+    })
+
+    renderPage()
+    await loaded()
+
+    expect(tabNames()).toContain('Box types')
+    open('Box types')
+    expect(panelOf('boxes').textContent).toContain('What Small, Medium and Large mean')
+    // Not merely listed: the boxes are the ordinary controls, chosen by `kind`, and they save.
+    expect(control('boxes.dedicated').type).toBe('checkbox')
+    fireEvent.change(control('boxes.small'), { target: { value: 'cx22' } })
+    save()
+
+    expect((await onlySave()).changes).toEqual([{ path: ['boxes', 'small'], value: 'cx22' }])
+  })
+
+  it('draws a field core added to a section it already knows, inside that section', async () => {
+    served.fields.push({
+      path: 'limits.maxRunningHours',
+      kind: 'number',
+      writable: true,
+      help: 'How long a box may run before it is stopped.',
+    })
+
+    renderPage()
+    await loaded()
+    open('Limits')
+
+    const box = control('limits.maxRunningHours')
+    expect(box).toBeTruthy()
+    expect(panelOf('limits').contains(box)).toBe(true)
+    // The label it is given is its own path segment, which is what a spec carries — and the help
+    // core wrote is on it like every other control's.
+    expect(box.closest('.form-group')!.textContent).toContain('Max Running Hours')
+    expect(box.closest('.form-group')!.textContent).toContain('How long a box may run')
+  })
+
+  it('finds a home for a field whose path no section claims, rather than dropping it', async () => {
+    served.fields.push({
+      path: 'telemetry.enabled',
+      kind: 'boolean',
+      writable: true,
+      help: 'Whether anything is reported anywhere.',
+    })
+
+    renderPage()
+    await loaded()
+
+    // A section invented from the path's first segment: worse than a real `SectionSpec`, and far
+    // better than a writable setting nobody can see.
+    expect(tabNames()).toContain('Telemetry')
+    open('Telemetry')
+    expect(control('telemetry.enabled')).toBeTruthy()
+  })
+
+  it('says where to change a setting it has no control for, instead of offering a broken one', async () => {
+    served.fields.push({
+      path: 'limits.blockedRegions',
+      kind: 'stringList',
+      writable: true,
+      help: 'Regions no server may be created in.',
+    })
+    ;(served.values['limits'] as Record<string, unknown>)['blockedRegions'] = ['eu-west-1']
+
+    renderPage()
+    await loaded()
+    open('Limits')
+
+    expect(panelOf('limits').textContent).toContain('eu-west-1')
+    expect(panelOf('limits').textContent).toContain('no editor for a setting of this shape yet')
+    expect(control('limits.blockedRegions')).toBeNull()
   })
 })

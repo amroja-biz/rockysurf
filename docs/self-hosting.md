@@ -163,6 +163,25 @@ process holds your cloud credentials and the SSH key for every server it manages
 `scripts/check-npx-closure.mjs`, which fails if anything drags it into `@rockysurf/core` or
 into the CLI by any other route.
 
+## The Settings page
+
+Whichever way you started it, the web UI edits that same config file — the one an editor would
+open, comments and all — one section at a time: a column of tabs beside the form where the
+window is wide enough for one, the same tabs as a strip above it where it is not. The tabs are
+the file's own blocks — Server, GitHub access tokens, one per cloud provider, Your own machines,
+Limits, MCP — and the open one is in the URL, so `/settings?section=providers.aws` is a link
+straight to the AWS settings and a reload comes back to the section you were on.
+
+What you type is held until you press **Save to the file**, wherever on the page you typed it.
+Moving between tabs never discards an edit, and a tab holding unsaved work — or a field the last
+save was refused over — carries a dot, so nothing is left waiting on a section you have stopped
+looking at. The GitHub tokens are the one exception, and each card says so: they save one entry
+at a time, because removing an entry renumbers the ones after it.
+
+Nothing saved here reaches the running process until Rocky Surf is restarted. The page says so
+beside the button, and keeps saying so — read back from the file rather than shown as a message
+a reload could lose — until the restart has happened.
+
 ## The data directory
 
 Whichever path you used, one directory holds everything: `/data` in the container, `~/.rockysurf`
@@ -342,10 +361,10 @@ records why each one lives where it does.
 
 ### The ordinary path: Connect GitHub
 
-On the Settings page, under *GitHub access tokens*, the first card is **Connect GitHub**. Press
-it, and Rocky Surf shows a short code and a link to github.com; type the code there, approve, and
-the token comes back to Rocky Surf. That is the whole of it — nothing to export, no restart, and
-the next box you create carries the token.
+On the Settings page, on the *GitHub access tokens* tab, the first card is **Connect GitHub**.
+Press it, and Rocky Surf shows a short code and a link to github.com; type the code there,
+approve, and the token comes back to Rocky Surf. That is the whole of it — nothing to export,
+no restart, and the next box you create carries the token.
 
 Two things to know before you press it:
 
@@ -382,10 +401,10 @@ relationship with. So you register one, and it takes about a minute:
    makes once.
 3. Leave **Expire user access tokens** unticked. An expiring token would need something phoning
    home to refresh it, which is not what this product is.
-4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page, or write it
-   into the config file yourself, and restart — this one is an ordinary setting, read at startup
-   like everything else in the file. (The token the button later obtains is not, and needs no
-   restart.)
+4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page's *GitHub
+   access tokens* tab, or write it into the config file yourself, and restart — this one is an
+   ordinary setting, read at startup like everything else in the file. (The token the button
+   later obtains is not, and needs no restart.)
 
 ```yaml
 github:
@@ -561,7 +580,7 @@ host you have written into `github.tokens`: naming it there is how you tell this
 address behind it is yours. A redirect away from such a host is screened again like anything
 else, and the token is never sent across an origin change.
 
-**The Settings page shows all of this as one list**, under *GitHub access tokens*, because two
+**The Settings page shows all of this as one list**, on its *GitHub access tokens* tab, because two
 sections for one subject is not how anyone holding four PATs thinks about them. Each entry there
 is one token and the repositories it opens; the entry with no scope is `pat`, labelled *All
 repositories (fallback)*. Entries are added, changed and removed one at a time, each save going
