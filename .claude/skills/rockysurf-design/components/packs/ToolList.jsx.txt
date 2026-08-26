@@ -1,0 +1,32 @@
+/**
+ * What a pack (or a running box) installed: each tool by name, linked when it declares a url,
+ * with its description after an em dash. Renders nothing when the list is empty — the caller
+ * decides what "nothing" should say.
+ */
+export function ToolList({ tools }) {
+  if (!tools || tools.length === 0) return null
+  return (
+    <ul>
+      {tools.map((tool) => (
+        <li key={tool.toolId}>
+          {tool.url ? <a href={tool.url} target="_blank" rel="noopener noreferrer">{tool.name}</a> : tool.name}
+          {tool.description ? <span className="hint"> — {tool.description}</span> : null}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** A pack's own post-boot instructions, as text. No markdown parser: packs are pull requests. */
+export function PackGuide({ packName, guide }) {
+  return (
+    <section className="pack-guide">
+      <h2>Getting started with {packName}</h2>
+      <p className="hint">
+        Written by the pack. Most steps run on the box once you are connected; where one runs on
+        your own machine instead, the guide says which.
+      </p>
+      <pre className="pack-guide-text">{guide}</pre>
+    </section>
+  )
+}

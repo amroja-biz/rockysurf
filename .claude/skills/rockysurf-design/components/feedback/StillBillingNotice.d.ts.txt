@@ -1,0 +1,3 @@
+/** Red, and deliberately undismissable: a machine is spending money until somebody acts. */
+export interface StillBillingNoticeProps { children?: React.ReactNode; hint?: string }
+export function StillBillingNotice(props: StillBillingNoticeProps): JSX.Element

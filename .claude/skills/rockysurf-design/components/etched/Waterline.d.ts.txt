@@ -1,0 +1,7 @@
+/** A level against a stated ceiling: ticked staff, hatched water, one wave stroke at the surface. */
+export interface WaterlineProps {
+  /** 0–1. Clamped. */
+  fraction: number
+  width?: number
+}
+export function Waterline(props: WaterlineProps): JSX.Element

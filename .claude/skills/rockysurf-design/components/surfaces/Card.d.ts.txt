@@ -1,0 +1,12 @@
+/**
+ * The bordered surface every block on a page sits in.
+ */
+export interface CardProps {
+  title?: string
+  actions?: React.ReactNode
+  className?: string
+  children?: React.ReactNode
+}
+export function Card(props: CardProps): JSX.Element
+export interface InsetProps { className?: string; children?: React.ReactNode }
+export function Inset(props: InsetProps): JSX.Element

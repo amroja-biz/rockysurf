@@ -1,0 +1,12 @@
+/* Borders and radii. There are no shadows in this system — a surface is told apart from
+   the page by a 1px hairline and one step of lightness, never by a drop shadow. */
+:root {
+  --rs-radius: 6px;      /* cards, buttons, inputs, notices */
+  --radius-sm: 3px;      /* inline code */
+  --radius-inset: 4px;   /* a box inside a card: log, key lines, provisioning step */
+  --radius-tile-lg: 10px;/* the large pack tile */
+  --radius-pill: 9999px; /* status pills, chips, badges */
+  --border-width: 1px;
+  --border-accent-width: 2px; /* the active tab underline, the callout rule */
+  --focus-ring: 2px solid var(--rs-link);
+}

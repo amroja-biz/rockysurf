@@ -1,0 +1,21 @@
+import { PackIcon } from './PackIcon.jsx'
+import { Badge } from '../core/Badge.jsx'
+
+/** One pack in the shop grid: mark, name, provenance, what it installs, and the action. */
+export function PackCard({ pack, trust, action, children }) {
+  return (
+    <li className="pack-card">
+      <div className="pack-card-head">
+        <h3>
+          <PackIcon pack={pack} />
+          {pack.name}
+        </h3>
+        {trust ? <Badge variant={trust === 'official' ? 'trust-official' : 'trust-other'}>{trust}</Badge> : null}
+      </div>
+      {pack.description ? <p className="hint">{pack.description}</p> : null}
+      {pack.toolCount !== undefined ? <p className="hint">{pack.toolCount} tools</p> : null}
+      {children}
+      {action}
+    </li>
+  )
+}

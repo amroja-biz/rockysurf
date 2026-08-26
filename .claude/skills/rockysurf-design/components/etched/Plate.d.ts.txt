@@ -1,0 +1,7 @@
+/** The card as an engraved plate: a rule, an inset margin, and registration ticks at the corners. */
+export interface PlateProps {
+  /** Warms the rule and the ticks to the beam colour — used for the one running box. */
+  lit?: boolean
+  children?: React.ReactNode
+}
+export function Plate(props: PlateProps): JSX.Element

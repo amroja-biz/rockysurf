@@ -1,0 +1,8 @@
+/** Small labels: provenance, run-as, tie notes. */
+export interface BadgeProps {
+  variant?: 'tie' | 'trust-official' | 'trust-other' | 'run-as-root' | 'run-as-rocky'
+  children?: React.ReactNode
+}
+export function Badge(props: BadgeProps): JSX.Element
+export interface ArchBadgeProps { arch: 'x86_64' | 'arm64' | string }
+export function ArchBadge(props: ArchBadgeProps): JSX.Element

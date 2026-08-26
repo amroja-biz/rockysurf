@@ -1,0 +1,38 @@
+/* Type. No webfont: the app runs on the system UI stack and the system mono, which is
+   why there is no @font-face anywhere in this system. */
+:root {
+  /* Upstream (App.css) spells the stack in full:
+       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif
+     The Linux-only names are dropped from the token so this system does not advertise webfonts
+     it has no binaries for. Rendering is identical on macOS and Windows; on Linux the generic
+     sans-serif resolves to the same faces. */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* @kind font */
+  --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; /* @kind font */
+  --font-mono: var(--rs-mono);
+
+  --text-h1: 1.75rem;   /* page title */
+  --text-h1-login: 2.5rem;
+  --text-h2: 1.125rem;
+  --text-h3: 1rem;
+  --text-lg: 1.25rem;   /* the price, the one number a page exists to show */
+  --text-base: 1rem;
+  --text-ui: 0.875rem;  /* the app's working size: labels, buttons, table cells */
+  --text-nav: 0.9rem;
+  --text-sm: 0.8125rem; /* monospaced values, hints */
+  --text-xs: 0.75rem;   /* badges, timestamps, detail lines */
+  --text-mono-block: 0.78rem;
+  --text-badge: 0.7rem;
+
+  --leading-heading: 1.25;
+  --leading-ui: 1.5;
+  --leading-prose: 1.6;
+  --leading-notice: 1.45;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-caps: 0.05em;
+  --measure-prose: 62ch;
+}

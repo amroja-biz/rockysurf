@@ -1,0 +1,45 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * PLATE — the frame. A double rule with corner ticks, the way an engraved plate is bounded,
+ * replacing the 6px-radius card. Nothing inside changes.
+ */
+export function Plate({ children, lit }) {
+  const ink = lit ? 'rgba(232,195,122,.85)' : 'rgba(252,245,232,.42)'
+  /* Corner ticks as four two-stop gradients: the registration marks an engraved plate carries
+     at its bounds. Cheaper and sharper than a border on a second element. */
+  const tick = `linear-gradient(${ink},${ink}) 0 0/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 0 0/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 0/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 0/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 0 100%/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 0 100%/1px 11px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 100%/11px 1px no-repeat,
+    linear-gradient(${ink},${ink}) 100% 100%/1px 11px no-repeat`
+  return (
+    <div style={{
+      position: 'relative',
+      /* Lit from the same corner as the page: a plate that ignores the room's light reads as a
+         sticker on top of it. `lit` adds a touch of the beam's own warmth. */
+      background: lit
+        ? 'linear-gradient(148deg, rgba(232,195,122,.085) 0%, rgba(252,245,232,.012) 48%, rgba(0,0,0,.14) 100%), #171420'
+        : 'linear-gradient(148deg, rgba(252,245,232,.045) 0%, rgba(252,245,232,.008) 46%, rgba(0,0,0,.12) 100%), #171420',
+      border: '1px solid ' + (lit ? 'rgba(232,195,122,.5)' : 'rgba(252,245,232,.18)'),
+      padding: '1.1rem',
+    }}>
+      <div aria-hidden="true" style={{ position: 'absolute', inset: '4px', background: tick, pointerEvents: 'none' }} />
+      {children}
+    </div>
+  )
+}
+

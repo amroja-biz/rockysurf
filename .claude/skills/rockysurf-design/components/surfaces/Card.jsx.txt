@@ -1,0 +1,22 @@
+/**
+ * The one surface treatment: surface colour, a 1px hairline, a 6px radius. No shadow — this
+ * system tells a card from the page with a border and one step of lightness.
+ */
+export function Card({ title, actions, children, className = '' }) {
+  return (
+    <section className={['card', className].filter(Boolean).join(' ')}>
+      {(title || actions) && (
+        <div className="shop-section-head">
+          {title ? <h2>{title}</h2> : null}
+          {actions}
+        </div>
+      )}
+      {children}
+    </section>
+  )
+}
+
+/** A box inside a card: back to the page colour, with the quieter border. */
+export function Inset({ children, className = '' }) {
+  return <div className={['inset', className].filter(Boolean).join(' ')}>{children}</div>
+}

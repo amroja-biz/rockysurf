@@ -1,0 +1,11 @@
+/**
+ * A banner in one of the three meanings this product's colours carry: green is "this is
+ * fine", red is a refusal, yellow is a warning that is not yet a failure.
+ */
+export function Notice({ tone = 'warning', role, children }) {
+  return (
+    <p className={tone} role={role ?? (tone === 'error' ? 'alert' : 'status')}>
+      {children}
+    </p>
+  )
+}

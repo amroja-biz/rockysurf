@@ -1,0 +1,10 @@
+/** The provisioning timeline as the beam itself: the tower at left, the light widening down the list as far as the work has got. */
+export interface BeaconProps {
+  /** In the order core reports them — STEP_ORDER. */
+  steps: string[]
+  /** The step core last reported. */
+  current: string
+  /** step id → label. STEP_LABELS. */
+  labels: Record<string, string>
+}
+export function Beacon(props: BeaconProps): JSX.Element

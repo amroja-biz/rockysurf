@@ -1,0 +1,17 @@
+/**
+ * Yellow is a warning that is not yet a failure; red is money leaving an account until
+ * somebody acts. That is the whole rule these three notices follow.
+ */
+export function IpChangeAlert({ previousIp, currentIp, changedAt, onDismiss }) {
+  return (
+    <div className="ip-change-alert">
+      <div className="ip-change-content">
+        <span className="ip-change-icon" aria-hidden="true">⚠</span>
+        <span>
+          Address changed {changedAt}: <code className="ip-old">{previousIp}</code> → <code className="ip-new">{currentIp}</code>. Your saved SSH command is out of date.
+        </span>
+      </div>
+      {onDismiss ? <button className="dismiss-button" aria-label="Dismiss" onClick={onDismiss}>×</button> : null}
+    </div>
+  )
+}

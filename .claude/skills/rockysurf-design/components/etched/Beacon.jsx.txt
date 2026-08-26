@@ -1,0 +1,58 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * BEACON — the provisioning timeline as the beam itself. The cone widens as the work
+ * progresses; each step is a stroke crossing it, inked once reached. Replaces the dot-and-rail
+ * list, which said the same thing in a vocabulary borrowed from nowhere.
+ */
+export function Beacon({ steps, current, labels }) {
+  const reached = steps.indexOf(current)
+  const rowH = 30
+  const height = steps.length * rowH + 10
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg width="120" height={height} viewBox={`0 0 120 ${height}`} aria-hidden="true"
+        style={{ position: 'absolute', left: 0, top: 0, color: '#e8c37a' }}>
+        {/* the tower: two converging rules and a lantern, in the plate's lightest pass */}
+        {/* the rock the tower stands on: angular, hatched, the plate's darkest mass */}
+        <path d={`M 2 ${height} L 8 ${height - 26} L 18 ${height - 34} L 30 ${height - 22} L 40 ${height - 30} L 44 ${height} Z`}
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        {/* the tower, tapering the way a lighthouse does */}
+        <path d={`M 17 17 L 13 ${height - 30} L 33 ${height - 30} L 29 17 Z`} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        <path d="M 14 17 L 32 17" stroke="currentColor" strokeWidth="0.9" opacity="0.5" fill="none" />
+        <rect x="17" y="5" width="12" height="12" fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.85" />
+        <path d="M 15 5 L 31 5 M 23 5 L 23 1" stroke="currentColor" strokeWidth="0.9" opacity="0.6" fill="none" />
+        {/* the beam, widening downward, only as far as the work has got */}
+        <path d={`M 31 10 L 118 ${(reached + 1) * rowH + 8} L 118 2 Z`} fill="url(#rs-hatch)" opacity="0.3" />
+        {steps.map((step, i) => (
+          <line key={step} x1="40" y1={i * rowH + 20} x2="112" y2={i * rowH + 20}
+            stroke="currentColor" strokeWidth={i === reached ? 1.4 : 0.9}
+            strokeDasharray={i > reached ? '2 4' : undefined}
+            opacity={i < reached ? 0.7 : i === reached ? 1 : 0.2}
+            style={i === reached ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined} />
+        ))}
+      </svg>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, marginLeft: '132px' }}>
+        {steps.map((step, i) => (
+          <li key={step} style={{
+            height: rowH + 'px', display: 'flex', alignItems: 'center',
+            fontSize: '0.7rem', letterSpacing: '0.11em', textTransform: 'uppercase',
+            fontWeight: i === reached ? 700 : 500,
+            color: i < reached ? '#7ee08f' : i === reached ? '#e8c37a' : '#6c6678',
+          }}>{labels[step] ?? step}</li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+

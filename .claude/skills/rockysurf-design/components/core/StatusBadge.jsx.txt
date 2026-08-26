@@ -1,0 +1,14 @@
+import { STATUS_LABELS, TRANSITION_LABELS } from './statusLabels.js'
+
+/**
+ * The status pill. `data-status` is ALWAYS the row's own status; a transition this browser
+ * asked for and the provider has not confirmed hangs off `data-transition` instead, so the
+ * two attributes disagreeing is exactly the state "stopped, and on its way up".
+ */
+export function StatusBadge({ status, transition }) {
+  return (
+    <span className="status-badge" data-status={status} {...(transition ? { 'data-transition': transition } : {})}>
+      {transition ? TRANSITION_LABELS[transition] : (STATUS_LABELS[status] ?? status)}
+    </span>
+  )
+}

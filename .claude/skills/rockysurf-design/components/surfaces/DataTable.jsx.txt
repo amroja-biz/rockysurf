@@ -1,0 +1,20 @@
+/** The admin table: hairline header rule, quieter row rules, whole row lifts on hover. */
+export function DataTable({ caption, columns, rows }) {
+  return (
+    <table>
+      {caption ? <caption>{caption}</caption> : null}
+      <thead>
+        <tr>{columns.map((c) => <th key={c.key} style={c.align ? { textAlign: c.align } : undefined}>{c.label}</th>)}</tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={row.id ?? i} className={row.selected ? 'selected' : undefined}>
+            {columns.map((c) => (
+              <td key={c.key} style={c.align ? { textAlign: c.align } : undefined}>{c.render ? c.render(row) : row[c.key]}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}

@@ -1,0 +1,46 @@
+/* Surge Packs: the mark, the card, the shop. */
+.pack-icon, .pack-monogram {
+  width: 2.5rem; height: 2.5rem; border-radius: 6px; flex-shrink: 0;
+  vertical-align: middle; margin-right: 0.5rem;
+}
+.pack-icon { object-fit: cover; }
+.pack-monogram {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: var(--weight-bold); font-size: 0.9rem; color: #fff; letter-spacing: 0.02em;
+}
+.pack-icon--large, .pack-monogram--large { width: 4.5rem; height: 4.5rem; font-size: 1.5rem; border-radius: var(--radius-tile-lg); }
+.theme-orange { background: var(--rs-theme-orange); }
+.theme-blue { background: var(--rs-theme-blue); }
+.theme-green { background: var(--rs-theme-green); }
+.theme-purple { background: var(--rs-theme-purple); }
+.theme-red { background: var(--rs-theme-red); }
+.theme-slate { background: var(--rs-theme-slate); }
+
+.shop-section { margin-bottom: 2rem; }
+.shop-section-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem;
+}
+.shop-section-head h2 { margin: 0; }
+.pack-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--grid-pack-min), 1fr)); gap: 0.75rem;
+}
+.pack-card { padding: 0.85rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.pack-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.pack-card-head h3 { margin: 0; font-size: 0.95rem; }
+.pack-detail-header { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+.pack-admin-actions {
+  margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--rs-border-subtle);
+  display: flex; align-items: center; gap: 0.75rem;
+}
+.pack-import { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.disclosure { max-height: 85vh; overflow-y: auto; }
+.disclosure h3 { margin: 1.25rem 0 0.4rem; font-size: 0.95rem; }
+.disclosure-tool { border-top: 1px solid var(--rs-border); padding-top: 0.75rem; margin-top: 0.75rem; }
+.disclosure-tool h4 { margin: 0 0 0.2rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+.disclosure-script {
+  background: var(--rs-bg); border: 1px solid var(--rs-border); border-radius: var(--rs-radius);
+  padding: 0.6rem 0.75rem; margin: 0.35rem 0 0; font-size: 0.8rem; line-height: var(--leading-notice);
+  white-space: pre-wrap; word-break: break-word; max-height: 22rem; overflow-y: auto;
+}

@@ -1,0 +1,15 @@
+/** A checkbox with a full sentence beside it. */
+export interface CheckboxRowProps {
+  checked?: boolean
+  onChange?: (checked: boolean) => void
+  children?: React.ReactNode
+}
+export function CheckboxRow(props: CheckboxRowProps): JSX.Element
+export interface ChipProps {
+  onClick?: () => void
+  disabled?: boolean
+  /** `added` goes flat; `pending` goes yellow. */
+  state?: 'added' | 'pending'
+  children?: React.ReactNode
+}
+export function Chip(props: ChipProps): JSX.Element

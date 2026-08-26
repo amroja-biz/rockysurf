@@ -1,0 +1,3 @@
+/** The centred empty-list card. */
+export interface EmptyStateProps { children?: React.ReactNode }
+export function EmptyState(props: EmptyStateProps): JSX.Element

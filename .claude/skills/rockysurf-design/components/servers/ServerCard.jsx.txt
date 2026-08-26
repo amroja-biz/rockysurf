@@ -1,0 +1,28 @@
+import { StatusBadge } from '../core/StatusBadge.jsx'
+import { MetaList } from './MetaList.jsx'
+
+/**
+ * One box on the dashboard. Order is load-bearing: the reason a row failed comes before the
+ * notices that tell you what to do about it, and both come before the numbers they explain.
+ */
+export function ServerCard({ server, transition, notices, error, provisioningStep, actions, href = '#' }) {
+  return (
+    <article className="server-card" data-status={server.status}>
+      <header>
+        <h3><a href={href}>{server.name}</a></h3>
+        <StatusBadge status={server.status} transition={transition} />
+      </header>
+      {error ? <p role="alert" className="bootstrap-warnings-note">{error}</p> : null}
+      {notices}
+      {provisioningStep ? <p className="provisioning-step">{provisioningStep}</p> : null}
+      <MetaList
+        items={[
+          ['Address', server.publicIp ?? '—'],
+          ['Uptime', server.uptime ?? '—'],
+          ['Cost', server.cost ?? '—'],
+        ]}
+      />
+      {actions ? <footer className="server-card-actions">{actions}</footer> : null}
+    </article>
+  )
+}

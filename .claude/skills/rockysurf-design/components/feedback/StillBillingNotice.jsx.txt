@@ -1,0 +1,15 @@
+/**
+ * Yellow is a warning that is not yet a failure; red is money leaving an account until
+ * somebody acts. That is the whole rule these three notices follow.
+ */
+export function StillBillingNotice({ children, hint }) {
+  return (
+    <div className="still-billing-notice">
+      <span className="still-billing-icon" aria-hidden="true">●</span>
+      <div>
+        <div>{children}</div>
+        {hint ? <p className="hint">{hint}</p> : null}
+      </div>
+    </div>
+  )
+}

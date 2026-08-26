@@ -1,0 +1,31 @@
+/**
+ * A pack's mark: its image when it has one, otherwise a deterministic monogram tile — the
+ * first letters of the first two words of the name, coloured by a stable hash of the packId.
+ * Never Math.random, never the list index: a pack looks the same on every reload.
+ */
+const THEMES = ['theme-orange', 'theme-blue', 'theme-green', 'theme-purple', 'theme-red', 'theme-slate']
+
+function hashAccent(packId) {
+  let hash = 0
+  for (let i = 0; i < packId.length; i++) hash = (hash * 31 + packId.charCodeAt(i)) | 0
+  return THEMES[Math.abs(hash) % THEMES.length]
+}
+
+function monogramOf(name) {
+  const words = String(name).trim().split(/\s+/).filter(Boolean)
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase()
+  return (words[0] ?? '').slice(0, 2).toUpperCase()
+}
+
+export function PackIcon({ pack, size }) {
+  const large = size === 'large'
+  if (pack.imageUrl) {
+    return <img className={['pack-icon', large ? 'pack-icon--large' : ''].filter(Boolean).join(' ')} src={pack.imageUrl} alt="" loading="lazy" />
+  }
+  const theme = THEMES.includes(pack.theme) ? pack.theme : hashAccent(pack.packId)
+  return (
+    <span className={['pack-monogram', theme, large ? 'pack-monogram--large' : ''].filter(Boolean).join(' ')}>
+      {monogramOf(pack.name)}
+    </span>
+  )
+}

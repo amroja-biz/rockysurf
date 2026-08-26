@@ -1,6 +1,10 @@
 import { Toaster } from 'react-hot-toast'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import './App.css'
+// The etched skin (#174). Additive: every rule is scoped under [data-rs-skin='etched'], set on
+// <html> in index.html. Must come after App.css so its token re-declarations win. Remove the
+// attribute and the app renders exactly as it did; remove this import and the skin is gone.
+import './etched.css'
 import { AdminRoute, ProtectedRoute } from './components/ProtectedRoute'
 import { AuthProvider } from './contexts/AuthContext'
 import { EventsProvider } from './contexts/EventsContext'

@@ -1,0 +1,30 @@
+export const STATUS_LABELS = {
+  requested: 'Requested',
+  provisioning: 'Provisioning',
+  running: 'Running',
+  stopped: 'Stopped',
+  terminated: 'Terminated',
+  failed: 'Failed',
+}
+
+export const TRANSITION_LABELS = { start: 'Starting…', stop: 'Stopping…' }
+
+export const STEP_LABELS = {
+  requested: 'Requested',
+  instance_launching: 'Launching server',
+  instance_running: 'Server launched',
+  installing_tools: 'Installing tools',
+  tools_installed: 'Tools installed',
+  cloning_repos: 'Cloning repositories',
+  ready: 'Ready',
+}
+
+export const STEP_ORDER = [
+  'requested',
+  'instance_launching',
+  'instance_running',
+  'installing_tools',
+  'tools_installed',
+  'cloning_repos',
+  'ready',
+]

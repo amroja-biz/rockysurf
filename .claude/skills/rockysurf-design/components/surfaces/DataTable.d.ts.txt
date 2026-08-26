@@ -1,0 +1,13 @@
+/** A plain table for catalogues: machine types, tools, costs. */
+export interface DataTableColumn {
+  key: string
+  label: string
+  align?: 'left' | 'right'
+  render?: (row: Record<string, any>) => React.ReactNode
+}
+export interface DataTableProps {
+  caption?: string
+  columns: DataTableColumn[]
+  rows: Record<string, any>[]
+}
+export function DataTable(props: DataTableProps): JSX.Element

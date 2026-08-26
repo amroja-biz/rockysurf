@@ -1,0 +1,34 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * WATERLINE — a level against a ceiling, which is the only water reading in the product that
+ * has one: spend against the cap. Ticked staff below, hatched water to the level, one wave
+ * stroke at the surface. It cannot be mistaken for a series: it has a start, an end, and marks.
+ */
+export function Waterline({ fraction, width = 92 }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const w = width * f
+  const surface = `M ${w} 3 q -2 2.4 -4 0 q -2 -2.4 -4 0`
+  return (
+    <svg width={width} height="18" viewBox={`0 0 ${width} 18`} aria-hidden="true">
+      <rect x="0" y="3" width={width} height="9" fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.32" />
+      {w > 1 ? <rect x="0.5" y="3.5" width={Math.max(0, w - 1)} height="8" fill="url(#rs-hatch)" opacity="0.85" /> : null}
+      {w > 6 ? <path d={surface} fill="none" stroke="currentColor" strokeWidth="1.1" /> : null}
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        <line key={t} x1={t * width} y1="13" x2={t * width} y2={t === 0 || t === 1 ? 18 : 16}
+          stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      ))}
+    </svg>
+  )
+}
+

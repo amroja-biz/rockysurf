@@ -1,0 +1,6 @@
+/** The installed-tools list, and a pack's verbatim guide block. */
+export interface ToolListItem { toolId: string; name: string; url?: string; description?: string }
+export interface ToolListProps { tools: ToolListItem[] }
+export function ToolList(props: ToolListProps): JSX.Element | null
+export interface PackGuideProps { packName: string; guide: string }
+export function PackGuide(props: PackGuideProps): JSX.Element

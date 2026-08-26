@@ -1,0 +1,3 @@
+/** The section divider as a swell: a hairline said in the illustration's hand. */
+export interface SwellProps { opacity?: number }
+export function Swell(props: SwellProps): JSX.Element

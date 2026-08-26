@@ -1,0 +1,7 @@
+/** A fraction as a lunar phase — the bitten part is what is spent. */
+export interface MoonProps {
+  /** 0–1. The terminator is an ellipse of width |1 − 2f|, so it never reads as a pie slice. */
+  fraction: number
+  size?: number
+}
+export function Moon(props: MoonProps): JSX.Element

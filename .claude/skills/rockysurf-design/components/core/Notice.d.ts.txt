@@ -1,0 +1,7 @@
+/** An inline banner: success, warning, or error. */
+export interface NoticeProps {
+  tone?: 'success' | 'warning' | 'error'
+  role?: string
+  children?: React.ReactNode
+}
+export function Notice(props: NoticeProps): JSX.Element

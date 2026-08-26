@@ -1,0 +1,29 @@
+/** The dialog: an overlay at 70% black, one card, actions right-aligned. */
+export function Modal({ title, wide, onCancel, actions, children }) {
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={['modal', wide ? 'modal-wide' : ''].filter(Boolean).join(' ')}>
+        <h3>{title}</h3>
+        {children}
+        <div className="modal-actions">{actions}</div>
+      </div>
+    </div>
+  )
+}
+
+/** Stop, terminate, dismiss: a question, the consequence, and the two answers. */
+export function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel, isDestructive }) {
+  return (
+    <Modal
+      title={title}
+      actions={
+        <>
+          <button className="button secondary" onClick={onCancel}>Cancel</button>
+          <button className={`button ${isDestructive ? 'destructive' : 'primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+        </>
+      }
+    >
+      <p>{message}</p>
+    </Modal>
+  )
+}

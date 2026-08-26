@@ -1,0 +1,129 @@
+/*
+ * The etched skin's own rules. Scoped under [data-rs-skin='etched'] so the default product
+ * look is untouched — a consumer opts in by putting the attribute on <html>.
+ *
+ * Two moves, and no others: labels are cut in letterspaced caps, and nothing is filled except
+ * the one thing that is currently true.
+ */
+/*
+ * ILLUMINATION. The painting has one light in it, off to the left, and everything in the frame
+ * is described by how far it sits from that light. The skin does the same thing with four
+ * layers, in order: the near glow at the source, the beam's throw across the upper left, a
+ * long diagonal falloff, and the unlit ground underneath.
+ *
+ * Fixed to the viewport rather than the document, so scrolling moves the page THROUGH the light
+ * instead of dragging the light along with it — the difference between a lit room and a sticker.
+ */
+[data-rs-skin='etched'] body,
+body[data-rs-skin='etched'] {
+  background:
+    radial-gradient(620px 420px at 2% -6%, rgba(252, 245, 232, 0.16) 0%, rgba(252, 245, 232, 0) 72%),
+    radial-gradient(1400px 900px at 12% -18%, rgba(232, 195, 122, 0.075) 0%, rgba(232, 195, 122, 0) 62%),
+    linear-gradient(146deg, rgba(252, 245, 232, 0.055) 0%, rgba(252, 245, 232, 0.012) 34%, rgba(0, 0, 0, 0.28) 82%),
+    var(--rs-bg);
+  background-attachment: fixed;
+}
+
+/*
+ * Every plate is lit from the same corner as the page. A surface that ignores the room's light
+ * reads as a sticker on top of it; a 4% wash from its own top-left corner is enough to sit it
+ * in the scene, and is the value an engraver would leave unbitten on a lit face.
+ */
+[data-rs-skin='etched'] .card,
+[data-rs-skin='etched'] .server-card,
+[data-rs-skin='etched'] .pack-card,
+[data-rs-skin='etched'] .activity-feed,
+[data-rs-skin='etched'] .modal {
+  background-image: linear-gradient(148deg, rgba(252, 245, 232, 0.045) 0%, rgba(252, 245, 232, 0.008) 46%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+/* The header sits nearest the source, so it catches the most of it. */
+[data-rs-skin='etched'] .app-header {
+  background-image: linear-gradient(100deg, rgba(252, 245, 232, 0.09) 0%, rgba(252, 245, 232, 0.02) 34%, rgba(252, 245, 232, 0) 62%);
+}
+
+[data-rs-skin='etched'] .app-header { background: var(--rs-surface); border-bottom: 1px solid var(--rs-beam-soft); }
+[data-rs-skin='etched'] .app-brand span { color: var(--rs-heading); }
+[data-rs-skin='etched'] h1 { font-size: 1.9rem; letter-spacing: 0.01em; }
+
+/* Section headings are cut labels, not sentences. */
+[data-rs-skin='etched'] h2,
+[data-rs-skin='etched'] .shop-section-head h2 {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--rs-beam); font-weight: var(--weight-bold);
+}
+[data-rs-skin='etched'] .server-meta dt,
+[data-rs-skin='etched'] .connection dt,
+[data-rs-skin='etched'] .activity-label,
+[data-rs-skin='etched'] th,
+[data-rs-skin='etched'] legend,
+[data-rs-skin='etched'] .form-label {
+  text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.68rem;
+}
+
+/* Buttons are cut outlines. The primary action is the only hatched fill on a page. */
+[data-rs-skin='etched'] button,
+[data-rs-skin='etched'] .button {
+  background: transparent; border-color: rgba(252, 245, 232, 0.3); color: var(--rs-heading);
+  text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; font-weight: var(--weight-bold);
+}
+[data-rs-skin='etched'] button:hover:not(:disabled),
+[data-rs-skin='etched'] .button:hover:not(:disabled) {
+  background: rgba(252, 245, 232, 0.07); border-color: var(--rs-heading); color: var(--rs-heading);
+}
+[data-rs-skin='etched'] button.primary,
+[data-rs-skin='etched'] .button.primary,
+[data-rs-skin='etched'] .btn-primary,
+[data-rs-skin='etched'] button[type='submit'] {
+  background-color: transparent; border-color: var(--rs-green-bright); color: #7ee08f;
+  background-image: repeating-linear-gradient(45deg, rgba(63, 185, 80, 0.28) 0 1px, transparent 1px 5px);
+}
+[data-rs-skin='etched'] button.primary:hover:not(:disabled),
+[data-rs-skin='etched'] .button.primary:hover:not(:disabled),
+[data-rs-skin='etched'] button[type='submit']:hover:not(:disabled) {
+  background-color: rgba(63, 185, 80, 0.12); color: #7ee08f;
+}
+[data-rs-skin='etched'] button.destructive,
+[data-rs-skin='etched'] .button.destructive {
+  background-color: transparent; border-color: var(--rs-red); color: #f8837d;
+}
+[data-rs-skin='etched'] button.destructive:hover:not(:disabled),
+[data-rs-skin='etched'] .button.destructive:hover:not(:disabled) {
+  background-color: rgba(248, 81, 73, 0.12); color: #f8837d;
+}
+
+/* A chip names a repository, and a URL in caps is unreadable — chips keep their own case. */
+[data-rs-skin='etched'] .repo-chip {
+  text-transform: none; letter-spacing: 0; font-size: 0.8125rem; font-weight: var(--weight-regular);
+  font-family: var(--rs-mono);
+}
+
+/* A pack mark keeps its image but loses its radius, and gains the plate's inner rule. */
+[data-rs-skin='etched'] .pack-icon,
+[data-rs-skin='etched'] .pack-monogram { box-shadow: inset 0 0 0 1px var(--rs-ink-hair); }
+
+/* Where the skin still falls back to a pill, it is cut rather than filled. */
+[data-rs-skin='etched'] .status-badge {
+  background: transparent; border: 1px solid currentColor; color: var(--rs-muted);
+  text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.62rem; font-weight: var(--weight-semibold);
+}
+[data-rs-skin='etched'] .status-badge[data-status='running'] { color: var(--rs-green-bright); }
+[data-rs-skin='etched'] .status-badge[data-status='provisioning'],
+[data-rs-skin='etched'] .status-badge[data-status='requested'] { color: var(--rs-yellow); }
+[data-rs-skin='etched'] .status-badge[data-status='failed'],
+[data-rs-skin='etched'] .status-badge[data-status='terminated'] { color: var(--rs-red); }
+[data-rs-skin='etched'] .badge {
+  background: transparent; border: 1px solid var(--rs-ink-hair); color: var(--rs-muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+[data-rs-skin='etched'] .badge.trust-official { border-color: var(--rs-green-bright); color: var(--rs-green-bright); }
+
+/* Notices keep their meaning and lose their fill, becoming hatched bands. */
+[data-rs-skin='etched'] .backup-reminder,
+[data-rs-skin='etched'] .ip-change-alert,
+[data-rs-skin='etched'] .provisioning-step {
+  background: repeating-linear-gradient(45deg, rgba(210, 153, 34, 0.14) 0 1px, transparent 1px 5px);
+}
+[data-rs-skin='etched'] .still-billing-notice {
+  background: repeating-linear-gradient(45deg, rgba(248, 81, 73, 0.14) 0 1px, transparent 1px 5px);
+}
