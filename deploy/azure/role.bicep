@@ -179,10 +179,14 @@ resource catalogueRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
   }
 }
 
-resource operationalAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: targetResourceGroup
-  name: guid(targetResourceGroup.id, principalId, operationalRole.id)
-  properties: {
+// The operational assignment is granted at the RESOURCE GROUP, which is not this file's scope
+// (see the header: role DEFINITIONS are subscription-level, which is why targetScope is what it
+// is). Bicep will not deploy a resource across a scope boundary, so the assignment is a module.
+// See deploy/azure/role-assignment.bicep.
+module operationalAssignment 'role-assignment.bicep' = {
+  name: 'rockysurf-operational-assignment'
+  scope: resourceGroup(resourceGroupName)
+  params: {
     roleDefinitionId: operationalRole.id
     principalId: principalId
     principalType: principalType
