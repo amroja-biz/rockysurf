@@ -1301,7 +1301,9 @@ describe('the machine type picker', () => {
     ],
   }
 
-  async function openPicker(provider: api.ProviderInfo = MANY_PROVIDER) {
+  // "Available only" defaults to checked (issue #153), so a case that wants to see an
+  // unavailable row on screen has to say so explicitly rather than getting one by accident.
+  async function openPicker(provider: api.ProviderInfo = MANY_PROVIDER, { showUnavailable = false } = {}) {
     const user = userEvent.setup()
     vi.mocked(api.listProviders).mockResolvedValue([provider])
     renderPage()
@@ -1309,11 +1311,12 @@ describe('the machine type picker', () => {
     // waiting for a specific offering's heading, which the render-cap fixture below has none of.
     await screen.findByRole('button', { name: /create server/i })
     await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
+    if (showUnavailable) await user.click(screen.getByRole('checkbox', { name: /available only/i }))
     return user
   }
 
   it('lists every offering from the resolved provider, capped and searchable', async () => {
-    await openPicker()
+    await openPicker(MANY_PROVIDER, { showUnavailable: true })
 
     expect(screen.getByRole('cell', { name: 'small-arm' })).toBeTruthy()
     expect(screen.getByRole('cell', { name: 'big-arm' })).toBeTruthy()
@@ -1335,7 +1338,7 @@ describe('the machine type picker', () => {
   })
 
   it('disables a sold-out row rather than letting it be picked', async () => {
-    await openPicker()
+    await openPicker(MANY_PROVIDER, { showUnavailable: true })
 
     const row = screen.getByRole('cell', { name: 'sold-out-type' }).closest('tr')!
     expect(within(row).getByText(/sold out right now/i)).toBeTruthy()
@@ -1343,7 +1346,7 @@ describe('the machine type picker', () => {
   })
 
   it('states the reason as text, not as a page-level warning banner (issue #113)', async () => {
-    await openPicker()
+    await openPicker(MANY_PROVIDER, { showUnavailable: true })
 
     // `.warning` is a block notice — border, background, a rem of horizontal padding — and an
     // inline span inside a table cell wearing it painted that box outside the table, over the
@@ -1356,7 +1359,7 @@ describe('the machine type picker', () => {
   })
 
   it("shows the provider's own reason instead of \"sold out\" when it gives one (issue #116)", async () => {
-    await openPicker()
+    await openPicker(MANY_PROVIDER, { showUnavailable: true })
 
     const row = screen.getByRole('cell', { name: 'no-quota-type' }).closest('tr')!
     expect(within(row).getByText(/no core quota for standardBpsv2Family in eastus/i)).toBeTruthy()
@@ -1454,6 +1457,64 @@ describe('the machine type picker', () => {
     await openPicker(many)
 
     expect(screen.getByText(/more — refine your search/i)).toBeTruthy()
+  })
+
+  it('placeholder describes what the search actually matches — type and region (issue #151)', async () => {
+    await openPicker()
+
+    expect(screen.getByPlaceholderText(/search by type or region/i)).toBeTruthy()
+  })
+
+  describe('the "Available only" checkbox (issue #153)', () => {
+    it('is checked by default and hides rows with available:false', async () => {
+      await openPicker()
+
+      const checkbox = screen.getByRole('checkbox', { name: /available only/i }) as HTMLInputElement
+      expect(checkbox.checked).toBe(true)
+      expect(screen.getByRole('cell', { name: 'small-arm' })).toBeTruthy()
+      expect(screen.queryByRole('cell', { name: 'sold-out-type' })).toBeNull()
+      expect(screen.queryByRole('cell', { name: 'no-quota-type' })).toBeNull()
+    })
+
+    it('shows a count of unavailable rows the checkbox is hiding', async () => {
+      await openPicker()
+
+      // MANY_PROVIDER has two unavailable offerings: sold-out-type and no-quota-type.
+      expect(screen.getByTestId('machine-picker-hidden-count').textContent).toBe('2 unavailable hidden')
+    })
+
+    it('unchecking reveals the hidden rows and drops the count; re-checking hides them again', async () => {
+      const user = await openPicker(MANY_PROVIDER, { showUnavailable: true })
+
+      expect(screen.getByRole('cell', { name: 'sold-out-type' })).toBeTruthy()
+      expect(screen.queryByTestId('machine-picker-hidden-count')).toBeNull()
+
+      await user.click(screen.getByRole('checkbox', { name: /available only/i }))
+
+      expect(screen.queryByRole('cell', { name: 'sold-out-type' })).toBeNull()
+      expect(screen.getByTestId('machine-picker-hidden-count').textContent).toBe('2 unavailable hidden')
+    })
+
+    it('shows no count when nothing is hidden', async () => {
+      await openPicker(FAKE_PROVIDER)
+
+      expect(screen.queryByTestId('machine-picker-hidden-count')).toBeNull()
+    })
+
+    it('never hides the saved/preferred type, even though it is unavailable (#152 tier preference)', async () => {
+      const withUnavailablePreference: api.ProviderInfo = {
+        ...MANY_PROVIDER,
+        tierPreferences: { small: 'no-quota-type' },
+      }
+      await openPicker(withUnavailablePreference)
+
+      // The row stays, with the same reason the Size fieldset's note above already gives —
+      // hiding it here would make that note point at nothing visible in this table.
+      const row = screen.getByRole('cell', { name: 'no-quota-type' }).closest('tr')!
+      expect(within(row).getByText(/no core quota for standardBpsv2Family in eastus/i)).toBeTruthy()
+      // An unavailable row with no preference tied to it is still hidden as normal.
+      expect(screen.queryByRole('cell', { name: 'sold-out-type' })).toBeNull()
+    })
   })
 })
 
