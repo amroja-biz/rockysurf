@@ -1,0 +1,16 @@
+/**
+ * The label/value grid. Labels are muted and left; values are monospaced — a value should read
+ * as a value, not as prose — and right-aligned on a card, left-aligned on a detail page.
+ */
+export function MetaList({ items, align = 'right' }) {
+  return (
+    <dl className="server-meta" style={align === 'left' ? { gridTemplateColumns: 'auto 1fr' } : undefined}>
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd style={align === 'left' ? { textAlign: 'left' } : undefined}>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}

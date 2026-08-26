@@ -1,0 +1,234 @@
+/*
+ * Rocky Surf — the etched skin.
+ *
+ * DROP-IN, ADDITIVE, REVERSIBLE. This file adds one attribute scope and edits nothing. Every
+ * rule is under [data-rs-skin='etched'], so with the attribute absent the app renders exactly
+ * as it does today, byte for byte. Remove the import and the skin is gone.
+ *
+ * It re-declares the SAME token names App.css already owns (--rs-bg, --rs-surface, …), so any
+ * component that reads a token follows the skin for free. A component that hardcodes a hex
+ * does not — see "KNOWN GAPS" at the bottom.
+ *
+ * Install:
+ *   1. put this file at packages/web/src/etched.css
+ *   2. in App.tsx, AFTER './App.css':   import './etched.css'
+ *   3. turn it on with data-rs-skin="etched" on <html> in index.html
+ *
+ * Ported from the Rocky Surf design system. Values are literal here rather than tokenised,
+ * because App.css does not carry the type and weight scales the design system does.
+ */
+
+/* ── Palette ───────────────────────────────────────────────────────────────────────────
+   The logo's night for the ground, its cream for the ink, its beam for the one accent.
+   The five status colours are DELIBERATELY UNCHANGED: green still acts, red still refuses,
+   yellow is still a warning that is not yet a failure. */
+
+[data-rs-skin='etched'] {
+  --rs-bg: #0a0910;
+  --rs-surface: #171420;
+  --rs-raised: #221d2c;
+  --rs-border: #3c3448;
+  --rs-border-subtle: #241f2e;
+
+  --rs-text: #cbc5cf;
+  --rs-heading: #fcf5e8;
+  --rs-muted: #8a8494;
+  --rs-dim: #555065;
+  --rs-placeholder: #6c6678;
+
+  --rs-link: #e8c37a;
+
+  /* New names, additive — nothing in App.css reads these. */
+  --rs-beam: #e8c37a;
+  --rs-beam-soft: rgba(232, 195, 122, 0.3);
+  --rs-ink-hair: rgba(252, 245, 232, 0.2);
+  --rs-ink-tick: rgba(252, 245, 232, 0.42);
+
+  --rs-radius: 0px;
+}
+
+/* ── Illumination ──────────────────────────────────────────────────────────────────────
+   The painting has one light in it, off to the left, and everything in the frame is
+   described by how far it sits from that light. Four layers: the near glow at the source,
+   the beam's throw, a long diagonal falloff, then the unlit ground.
+
+   Fixed to the viewport, so scrolling moves the page THROUGH the light rather than dragging
+   the light along with it. */
+
+[data-rs-skin='etched'] body,
+body[data-rs-skin='etched'] {
+  background:
+    radial-gradient(620px 420px at 2% -6%, rgba(252, 245, 232, 0.16) 0%, rgba(252, 245, 232, 0) 72%),
+    radial-gradient(1400px 900px at 12% -18%, rgba(232, 195, 122, 0.075) 0%, rgba(232, 195, 122, 0) 62%),
+    linear-gradient(146deg, rgba(252, 245, 232, 0.055) 0%, rgba(252, 245, 232, 0.012) 34%, rgba(0, 0, 0, 0.28) 82%),
+    var(--rs-bg);
+  background-attachment: fixed;
+}
+
+/* Every surface is lit from the same corner as the page. A card that ignores the room's light
+   reads as a sticker on top of it. */
+[data-rs-skin='etched'] .server-card,
+[data-rs-skin='etched'] .pack-card,
+[data-rs-skin='etched'] .activity-feed,
+[data-rs-skin='etched'] .modal,
+[data-rs-skin='etched'] .server-summary,
+[data-rs-skin='etched'] .connection,
+[data-rs-skin='etched'] .repositories,
+[data-rs-skin='etched'] .tools,
+[data-rs-skin='etched'] .install-preview,
+[data-rs-skin='etched'] .provisioning-feed,
+[data-rs-skin='etched'] .provisioning-timeline,
+[data-rs-skin='etched'] .pack-guide,
+[data-rs-skin='etched'] .settings-panel,
+[data-rs-skin='etched'] .wizard section {
+  background-image: linear-gradient(148deg, rgba(252, 245, 232, 0.045) 0%, rgba(252, 245, 232, 0.008) 46%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+[data-rs-skin='etched'] .app-header {
+  border-bottom: 1px solid var(--rs-beam-soft);
+  background-image: linear-gradient(100deg, rgba(252, 245, 232, 0.09) 0%, rgba(252, 245, 232, 0.02) 34%, rgba(252, 245, 232, 0) 62%);
+}
+[data-rs-skin='etched'] .app-brand span { color: var(--rs-heading); }
+
+/* ── Squared ───────────────────────────────────────────────────────────────────────────
+   An engraved plate has corners. --rs-radius covers most of it; these are the places
+   App.css hardcodes a radius instead. */
+
+[data-rs-skin='etched'] .status-badge,
+[data-rs-skin='etched'] .badge,
+[data-rs-skin='etched'] .repo-chip,
+[data-rs-skin='etched'] .behaviour-chips li,
+[data-rs-skin='etched'] .wizard > header li,
+[data-rs-skin='etched'] .pack-icon,
+[data-rs-skin='etched'] .pack-monogram,
+[data-rs-skin='etched'] .pack-icon--large,
+[data-rs-skin='etched'] .pack-monogram--large,
+[data-rs-skin='etched'] .arch-badge,
+[data-rs-skin='etched'] .provisioning-step,
+[data-rs-skin='etched'] .install-log,
+[data-rs-skin='etched'] .log pre,
+[data-rs-skin='etched'] .pack-guide-text,
+[data-rs-skin='etched'] .disclosure-script,
+[data-rs-skin='etched'] code,
+[data-rs-skin='etched'] kbd,
+[data-rs-skin='etched'] samp { border-radius: 0; }
+
+[data-rs-skin='etched'] .pack-icon,
+[data-rs-skin='etched'] .pack-monogram { box-shadow: inset 0 0 0 1px var(--rs-ink-hair); }
+
+/* ── Cut labels ────────────────────────────────────────────────────────────────────────
+   Caps label a field. They NEVER carry a sentence: a paragraph in letterspaced caps is
+   unreadable, and it turns sshAllowedCidr into SSHALLOWEDCIDR. */
+
+[data-rs-skin='etched'] h1 { font-size: 1.9rem; letter-spacing: 0.01em; }
+[data-rs-skin='etched'] h2,
+[data-rs-skin='etched'] .shop-section-head h2,
+[data-rs-skin='etched'] .provider-group-heading {
+  font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--rs-beam); font-weight: 700;
+}
+[data-rs-skin='etched'] .server-meta dt,
+[data-rs-skin='etched'] .connection dt,
+[data-rs-skin='etched'] .bootstrap-report dt,
+[data-rs-skin='etched'] .activity-label,
+[data-rs-skin='etched'] .preview-section h4,
+[data-rs-skin='etched'] th,
+[data-rs-skin='etched'] legend,
+[data-rs-skin='etched'] .form-label {
+  text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.68rem;
+}
+/* Prose stays prose. */
+[data-rs-skin='etched'] .field-help,
+[data-rs-skin='etched'] .size-detail,
+[data-rs-skin='etched'] .hint,
+[data-rs-skin='etched'] .muted,
+[data-rs-skin='etched'] .price-note,
+[data-rs-skin='etched'] .provider-error-detail {
+  text-transform: none; letter-spacing: normal;
+}
+
+/* ── Nothing is filled ─────────────────────────────────────────────────────────────────
+   Except the one thing currently true. Buttons are cut outlines; the primary action is the
+   only hatched fill on a page. */
+
+[data-rs-skin='etched'] button,
+[data-rs-skin='etched'] .button {
+  background: transparent; border-color: rgba(252, 245, 232, 0.3); color: var(--rs-heading);
+  text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; font-weight: 700;
+}
+[data-rs-skin='etched'] button:hover:not(:disabled),
+[data-rs-skin='etched'] .button:hover:not(:disabled) {
+  background: rgba(252, 245, 232, 0.07); border-color: var(--rs-heading); color: var(--rs-heading);
+}
+[data-rs-skin='etched'] button.primary,
+[data-rs-skin='etched'] .button.primary,
+[data-rs-skin='etched'] .btn-primary,
+[data-rs-skin='etched'] button[type='submit'] {
+  background-color: transparent; border-color: var(--rs-green-bright, #3fb950); color: #7ee08f;
+  background-image: repeating-linear-gradient(45deg, rgba(63, 185, 80, 0.28) 0 1px, transparent 1px 5px);
+}
+[data-rs-skin='etched'] button.primary:hover:not(:disabled),
+[data-rs-skin='etched'] .button.primary:hover:not(:disabled),
+[data-rs-skin='etched'] .btn-primary:hover:not(:disabled),
+[data-rs-skin='etched'] button[type='submit']:hover:not(:disabled) {
+  background-color: rgba(63, 185, 80, 0.12); color: #7ee08f;
+}
+[data-rs-skin='etched'] button.destructive,
+[data-rs-skin='etched'] .button.destructive {
+  background-color: transparent; border-color: #f85149; color: #f8837d;
+}
+[data-rs-skin='etched'] button.destructive:hover:not(:disabled),
+[data-rs-skin='etched'] .button.destructive:hover:not(:disabled) {
+  background-color: rgba(248, 81, 73, 0.12); color: #f8837d;
+}
+/* A chip names a repository, and a URL in caps is unreadable. */
+[data-rs-skin='etched'] .repo-chip {
+  text-transform: none; letter-spacing: 0; font-weight: 400;
+  font-size: 0.8125rem; font-family: var(--rs-mono);
+}
+[data-rs-skin='etched'] .dismiss-button { text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
+
+/* Where the skin still falls back to a pill, it is cut rather than filled. Swap in <Lamp>
+   for the real thing — this is what StatusBadge looks like until you do. */
+[data-rs-skin='etched'] .status-badge {
+  background: transparent; border: 1px solid currentColor; color: var(--rs-muted);
+  text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.62rem; font-weight: 600;
+}
+[data-rs-skin='etched'] .status-badge[data-status='running'] { color: #3fb950; }
+[data-rs-skin='etched'] .status-badge[data-status='provisioning'],
+[data-rs-skin='etched'] .status-badge[data-status='requested'] { color: #d29922; }
+[data-rs-skin='etched'] .status-badge[data-status='failed'],
+[data-rs-skin='etched'] .status-badge[data-status='terminated'] { color: #f85149; }
+[data-rs-skin='etched'] .status-badge[data-transition] { background: transparent; color: #d29922; }
+[data-rs-skin='etched'] .badge {
+  background: transparent; border: 1px solid var(--rs-ink-hair); color: var(--rs-muted);
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+[data-rs-skin='etched'] .badge.trust-official { border-color: #3fb950; color: #3fb950; }
+
+/* Notices keep their meaning and lose their fill, becoming hatched bands. */
+[data-rs-skin='etched'] .backup-reminder,
+[data-rs-skin='etched'] .ip-change-alert,
+[data-rs-skin='etched'] .provisioning-step,
+[data-rs-skin='etched'] .warning,
+[data-rs-skin='etched'] .stale-servers-notice,
+[data-rs-skin='etched'] .historical-notice {
+  background: repeating-linear-gradient(45deg, rgba(210, 153, 34, 0.14) 0 1px, transparent 1px 5px);
+}
+[data-rs-skin='etched'] .still-billing-notice,
+[data-rs-skin='etched'] .error,
+[data-rs-skin='etched'] .bootstrap-failure,
+[data-rs-skin='etched'] .server-card-error {
+  background: repeating-linear-gradient(45deg, rgba(248, 81, 73, 0.14) 0 1px, transparent 1px 5px);
+}
+[data-rs-skin='etched'] .success {
+  background: repeating-linear-gradient(45deg, rgba(63, 185, 80, 0.14) 0 1px, transparent 1px 5px);
+}
+
+/* ── KNOWN GAPS ────────────────────────────────────────────────────────────────────────
+ * Components that hardcode a hex instead of reading a token do not follow the skin. As of
+ * the port these were CostsPage and SpendCapBanner (#f85149 / #d29922 / #3fb950 inline).
+ * They will stay GitHub-dark green/red on a night ground. Either move them onto tokens or
+ * add a rule here; do not "fix" them by editing App.css, which is the one file this skin
+ * promises not to touch.
+ */

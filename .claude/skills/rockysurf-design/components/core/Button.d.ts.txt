@@ -1,0 +1,15 @@
+/**
+ * The primary/secondary/destructive button.
+ */
+export interface ButtonProps {
+  /** primary = the green action, destructive = the red one, link = text that acts. */
+  variant?: 'primary' | 'secondary' | 'destructive' | 'link'
+  /** Renders an anchor instead of a button. */
+  href?: string
+  type?: 'button' | 'submit'
+  disabled?: boolean
+  onClick?: () => void
+  className?: string
+  children?: React.ReactNode
+}
+export function Button(props: ButtonProps): JSX.Element

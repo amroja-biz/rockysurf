@@ -1,0 +1,9 @@
+/** A server whose public address moved while it was stopped. */
+export interface IpChangeAlertProps {
+  previousIp: string
+  currentIp: string
+  /** Already formatted date and time. */
+  changedAt?: string
+  onDismiss?: () => void
+}
+export function IpChangeAlert(props: IpChangeAlertProps): JSX.Element

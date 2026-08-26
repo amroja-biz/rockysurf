@@ -1,0 +1,15 @@
+/**
+ * The radio card: a choice with a name, a detail line, and a border that carries selection.
+ * Used for t-shirt sizes and for Surge Packs on the create form.
+ */
+export function RadioOption({ name, value, selected, onSelect, title, detail, media, children }) {
+  return (
+    <label className={['radio-option', selected ? 'selected' : ''].filter(Boolean).join(' ')}>
+      <input type="radio" name={name} value={value} checked={!!selected} onChange={() => onSelect?.(value)} />
+      {media}
+      <span className="size-name">{title}</span>
+      {detail ? <span className="size-detail">{detail}</span> : null}
+      {children}
+    </label>
+  )
+}

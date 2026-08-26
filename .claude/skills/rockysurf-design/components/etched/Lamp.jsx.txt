@@ -1,0 +1,49 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+const LAMP_STATE = {
+  running:      { arcs: 3, tone: '#7ee08f', dash: null, label: 'running' },
+  provisioning: { arcs: 2, tone: '#e8c37a', dash: '3 3', label: 'provisioning', pulse: true },
+  requested:    { arcs: 1, tone: '#e8c37a', dash: '2 4', label: 'requested', pulse: true },
+  stopped:      { arcs: 0, tone: '#8a8494', dash: null, label: 'stopped' },
+  failed:       { arcs: 0, tone: '#f8837d', dash: null, label: 'failed', cut: true },
+  terminated:   { arcs: 0, tone: '#8a8494', dash: null, label: 'terminated', cut: true },
+}
+
+export function Lamp({ status, children }) {
+  const s = LAMP_STATE[status] ?? LAMP_STATE.stopped
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: s.tone }}>
+      <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" style={{ overflow: 'visible' }}>
+        {/* the lens: a hatched disc, because a lit lens in the plate is tone, not white */}
+        <circle cx="5" cy="9" r="3.4" fill={s.arcs > 0 ? 'url(#rs-hatch)' : 'none'} stroke="currentColor" strokeWidth="0.9" />
+        {[0, 1, 2].map((i) => (
+          <path
+            key={i}
+            d={`M ${10 + i * 6} ${9 - (4 + i * 2.6)} A ${4 + i * 2.6} ${4 + i * 2.6} 0 0 1 ${10 + i * 6} ${9 + (4 + i * 2.6)}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.9"
+            strokeDasharray={s.dash ?? undefined}
+            opacity={i < s.arcs ? 1 - i * 0.22 : 0.13}
+            style={s.pulse && i === s.arcs - 1 ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined}
+          />
+        ))}
+        {s.cut ? <line x1="1" y1="15" x2="13" y2="3" stroke="currentColor" strokeWidth="1.1" /> : null}
+      </svg>
+      <span style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase' }}>
+        {children ?? s.label}
+      </span>
+    </span>
+  )
+}
+

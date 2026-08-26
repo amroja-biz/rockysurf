@@ -1,0 +1,3 @@
+/** The once-per-app-load advisory about backing up the data directory. */
+export interface BackupReminderProps { onDismiss?: () => void; children?: React.ReactNode }
+export function BackupReminder(props: BackupReminderProps): JSX.Element

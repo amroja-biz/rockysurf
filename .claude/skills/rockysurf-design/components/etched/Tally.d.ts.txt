@@ -1,0 +1,8 @@
+/** A duration as tally strokes: one per hour, crossed at each fifth, part-hour as a short stroke. */
+export interface TallyProps {
+  /** Hours accrued. 2.23 renders two strokes and a part-stroke. */
+  hours: number
+  /** Strokes stop here so a long-lived box cannot widen the column. Default 18. */
+  max?: number
+}
+export function Tally(props: TallyProps): JSX.Element

@@ -1,0 +1,25 @@
+/**
+ * A server row on the dashboard grid.
+ */
+export interface ServerCardProps {
+  server: {
+    serverId?: string
+    name: string
+    status: 'requested' | 'provisioning' | 'running' | 'stopped' | 'terminated' | 'failed'
+    publicIp?: string | null
+    /** Already formatted: "2h 14m". */
+    uptime?: string
+    /** Already formatted: "$0.42", or "—" when the row was never priced. */
+    cost?: string
+  }
+  transition?: 'start' | 'stop' | null
+  /** Alert banners — IpChangeAlert, StillBillingNotice. */
+  notices?: React.ReactNode
+  /** Core's own error message, verbatim. */
+  error?: string
+  /** The current step label, while provisioning. */
+  provisioningStep?: string
+  actions?: React.ReactNode
+  href?: string
+}
+export function ServerCard(props: ServerCardProps): JSX.Element

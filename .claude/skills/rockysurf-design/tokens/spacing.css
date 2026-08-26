@@ -1,0 +1,30 @@
+/* Spacing. The app's steps are rem quarters with two thirds-steps (0.375, 0.625, 0.875)
+   that appear often enough to be tokens rather than accidents. */
+:root {
+  --space-0-5: 0.125rem;
+  --space-1: 0.25rem;
+  --space-1-5: 0.375rem;
+  --space-2: 0.5rem;
+  --space-2-5: 0.625rem;
+  --space-3: 0.75rem;
+  --space-3-5: 0.875rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+
+  /* Measures. Each one is a page's column width in the app. */
+  --measure-app: 1200px;
+  --measure-form: 760px;
+  --measure-help: 760px;
+  --measure-wizard: 680px;
+  --measure-home: 680px;
+  --measure-login: 400px;
+  --measure-modal: 440px;
+  --measure-modal-wide: 700px;
+
+  --grid-server-min: 320px;
+  --grid-pack-min: 260px;
+}

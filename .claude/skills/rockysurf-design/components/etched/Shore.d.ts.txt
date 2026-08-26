@@ -1,0 +1,3 @@
+/** The empty state as what the plate is a picture of: a hatched rock mass under a horizon. */
+export interface ShoreProps { children?: React.ReactNode }
+export function Shore(props: ShoreProps): JSX.Element

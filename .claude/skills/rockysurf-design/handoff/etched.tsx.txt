@@ -1,0 +1,278 @@
+/*
+ * Rocky Surf — the etched parts.
+ *
+ * NINE NEW COMPONENTS, ZERO EDITS. Nothing here replaces a file; each part is a drop-in
+ * alternative to an existing one, adopted a call site at a time. Put this at
+ * packages/web/src/components/etched.tsx.
+ *
+ * Each takes its FORM from the logo, which is an engraving: the beam as swept arcs, water as
+ * repeated strokes, rock as angular hatched mass, the moon as a hatched disc. All line work is
+ * 0.9px in currentColor, and density — never fill — carries value, which is how the source
+ * illustration carries tone.
+ *
+ * <EtchedDefs /> MUST BE MOUNTED ONCE per page (put it in AppShell). Without it the strokes
+ * still draw and only the hatch fills are missing.
+ */
+import { useMemo } from 'react'
+import type { ReactNode } from 'react'
+import type { Server } from '../lib/api'
+import { STEP_ORDER, STEP_LABELS } from '../lib/format'
+
+/** The page's one hatch pattern pair. Mount once, near the top of the tree. */
+export function EtchedDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <defs>
+        <pattern id="rs-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+        </pattern>
+        <pattern id="rs-hatch-cross" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+          <line x1="0" y1="0" x2="5" y2="0" stroke="currentColor" strokeWidth="0.6" />
+        </pattern>
+      </defs>
+    </svg>
+  )
+}
+
+/*
+ * LAMP — status as the lighthouse's own light. Replaces StatusBadge.
+ *
+ * A lit lamp throws swept arcs; a stopped one throws none; a failed one is a lens with the beam
+ * cut. `data-status` is still the row's own status and `data-transition` still carries an
+ * unconfirmed stop/start, so nothing reading the DOM has to change.
+ */
+const LAMP_STATE: Record<string, { arcs: number; tone: string; dash?: string; label: string; pulse?: boolean; cut?: boolean }> = {
+  running:      { arcs: 3, tone: '#7ee08f', label: 'Running' },
+  provisioning: { arcs: 2, tone: '#e8c37a', dash: '3 3', label: 'Provisioning', pulse: true },
+  requested:    { arcs: 1, tone: '#e8c37a', dash: '2 4', label: 'Requested', pulse: true },
+  stopped:      { arcs: 0, tone: '#8a8494', label: 'Stopped' },
+  failed:       { arcs: 0, tone: '#f8837d', label: 'Failed', cut: true },
+  terminated:   { arcs: 0, tone: '#8a8494', label: 'Terminated', cut: true },
+}
+
+export function Lamp({ status, transition, children }: {
+  status: Server['status']
+  transition?: 'start' | 'stop' | null
+  children?: ReactNode
+}) {
+  const s = LAMP_STATE[status] ?? LAMP_STATE.stopped!
+  const label = transition ? (transition === 'stop' ? 'Stopping…' : 'Starting…') : s.label
+  return (
+    <span
+      className="lamp"
+      data-status={status}
+      {...(transition ? { 'data-transition': transition } : {})}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: transition ? '#e8c37a' : s.tone }}
+    >
+      <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" style={{ overflow: 'visible' }}>
+        <circle cx="5" cy="9" r="3.4" fill={s.arcs > 0 ? 'url(#rs-hatch)' : 'none'} stroke="currentColor" strokeWidth="0.9" />
+        {[0, 1, 2].map((i) => (
+          <path
+            key={i}
+            d={`M ${10 + i * 6} ${9 - (4 + i * 2.6)} A ${4 + i * 2.6} ${4 + i * 2.6} 0 0 1 ${10 + i * 6} ${9 + (4 + i * 2.6)}`}
+            fill="none" stroke="currentColor" strokeWidth="0.9" strokeDasharray={s.dash}
+            opacity={i < s.arcs ? 1 - i * 0.22 : 0.13}
+            style={s.pulse && i === s.arcs - 1 ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined}
+          />
+        ))}
+        {s.cut ? <line x1="1" y1="15" x2="13" y2="3" stroke="currentColor" strokeWidth="1.1" /> : null}
+      </svg>
+      <span style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.13em', textTransform: 'uppercase' }}>
+        {children ?? label}
+      </span>
+    </span>
+  )
+}
+
+/*
+ * TALLY — duration as tally strokes, one per hour, crossed at each fifth.
+ *
+ * Uptime has NO CEILING, so it cannot be a gauge: a bar or a curve implies an axis that does not
+ * exist. A tally counts, which is what "2h 14m" does. Sits BESIDE the value, never instead of it.
+ */
+export function Tally({ hours, max = 18 }: { hours: number; max?: number }) {
+  const whole = Math.min(Math.floor(hours), max)
+  const part = hours - Math.floor(hours)
+  const groups: number[] = []
+  for (let i = 0; i < whole; i += 5) groups.push(Math.min(5, whole - i))
+  const groupW = (n: number) => n * 4 + 6
+  const width = Math.max(groups.reduce((a, n) => a + groupW(n), 0) + (part > 0.08 ? 7 : 0) + 2, 12)
+  let x = 1
+  return (
+    <svg width={width} height="16" viewBox={`0 0 ${width} 16`} aria-hidden="true">
+      {groups.map((n, gi) => {
+        const start = x
+        x += groupW(n)
+        return (
+          <g key={gi}>
+            {Array.from({ length: n }, (_, i) => (
+              <line key={i} x1={start + i * 4} y1="2" x2={start + i * 4} y2="13" stroke="currentColor" strokeWidth="1.1" />
+            ))}
+            {n === 5 ? <line x1={start - 1.5} y1="12.5" x2={start + 17.5} y2="2.5" stroke="currentColor" strokeWidth="1.1" /> : null}
+          </g>
+        )
+      })}
+      {part > 0.08 ? <line x1={x} y1="6" x2={x} y2="13" stroke="currentColor" strokeWidth="1.1" opacity="0.55" /> : null}
+      {whole === 0 && part <= 0.08 ? <line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1.1" opacity="0.3" /> : null}
+    </svg>
+  )
+}
+
+/*
+ * WATERLINE — a level against a ceiling. ONLY for a quantity whose ceiling is named beside it,
+ * which in this product is spend against the cap. On a server card there is no room to state
+ * the cap, so the cost stays a plain number there; a level without its ceiling is decoration.
+ */
+export function Waterline({ fraction, width = 92 }: { fraction: number; width?: number }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const w = width * f
+  return (
+    <svg width={width} height="18" viewBox={`0 0 ${width} 18`} aria-hidden="true">
+      <rect x="0" y="3" width={width} height="9" fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.32" />
+      {w > 1 ? <rect x="0.5" y="3.5" width={Math.max(0, w - 1)} height="8" fill="url(#rs-hatch)" opacity="0.85" /> : null}
+      {w > 6 ? <path d={`M ${w} 3 q -2 2.4 -4 0 q -2 -2.4 -4 0`} fill="none" stroke="currentColor" strokeWidth="1.1" /> : null}
+      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        <line key={t} x1={t * width} y1="13" x2={t * width} y2={t === 0 || t === 1 ? 18 : 16}
+          stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      ))}
+    </svg>
+  )
+}
+
+/*
+ * MOON — a fraction as a lunar phase. Built as a mask rather than one clever path: the right
+ * limb is always lit, and the terminator ellipse either eats into it (crescent, below half) or
+ * reaches across it (gibbous, above), so the disc never reads as a pie slice.
+ */
+export function Moon({ fraction, size = 46 }: { fraction: number; size?: number }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const r = size / 2 - 2
+  const c = size / 2
+  const rx = Math.abs(1 - 2 * f) * r
+  const id = useMemo(() => `rs-moon-${Math.random().toString(36).slice(2, 8)}`, [])
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width={size} height={size}>
+        <circle cx={c} cy={c} r={r} fill="#fff" />
+        <rect x="0" y="0" width={c} height={size} fill="#000" />
+        <ellipse cx={c} cy={c} rx={rx} ry={r} fill={f <= 0.5 ? '#000' : '#fff'} />
+      </mask>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      <g mask={`url(#${id})`}>
+        <circle cx={c} cy={c} r={r} fill="url(#rs-hatch-cross)" />
+        <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" />
+      </g>
+    </svg>
+  )
+}
+
+/*
+ * BEACON — the provisioning timeline as the beam itself. Replaces the .step-list rail.
+ *
+ * Steps and labels come from lib/format, not from a third copy of the list. An unrecognised
+ * `current` leaves the beam unlit rather than resetting it, same rule the rail follows.
+ */
+export function Beacon({ current, steps = STEP_ORDER, labels = STEP_LABELS }: {
+  current?: string
+  steps?: readonly string[]
+  labels?: Record<string, string>
+}) {
+  const reached = current ? steps.indexOf(current) : -1
+  const rowH = 30
+  const height = steps.length * rowH + 10
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg width="120" height={height} viewBox={`0 0 120 ${height}`} aria-hidden="true"
+        style={{ position: 'absolute', left: 0, top: 0, color: '#e8c37a' }}>
+        <path d={`M 2 ${height} L 8 ${height - 26} L 18 ${height - 34} L 30 ${height - 22} L 40 ${height - 30} L 44 ${height} Z`}
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        <path d={`M 17 17 L 13 ${height - 30} L 33 ${height - 30} L 29 17 Z`} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.4" />
+        <path d="M 14 17 L 32 17" stroke="currentColor" strokeWidth="0.9" opacity="0.5" fill="none" />
+        <rect x="17" y="5" width="12" height="12" fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.85" />
+        <path d="M 15 5 L 31 5 M 23 5 L 23 1" stroke="currentColor" strokeWidth="0.9" opacity="0.6" fill="none" />
+        <path d={`M 31 10 L 118 ${(reached + 1) * rowH + 8} L 118 2 Z`} fill="url(#rs-hatch)" opacity="0.3" />
+        {steps.map((step, i) => (
+          <line key={step} x1="40" y1={i * rowH + 20} x2="112" y2={i * rowH + 20}
+            stroke="currentColor" strokeWidth={i === reached ? 1.4 : 0.9}
+            strokeDasharray={i > reached ? '2 4' : undefined}
+            opacity={i < reached ? 0.7 : i === reached ? 1 : 0.2}
+            style={i === reached ? { animation: 'rs-pulse 1.5s ease-in-out infinite' } : undefined} />
+        ))}
+      </svg>
+      <ol className="step-list" style={{ listStyle: 'none', margin: 0, padding: 0, marginLeft: '132px' }}>
+        {steps.map((step, i) => {
+          const state = i < reached ? 'done' : i === reached ? 'active' : 'pending'
+          return (
+            <li key={step} className={`step step-${state}`} data-state={state}
+              aria-current={state === 'active' ? 'step' : undefined}
+              style={{
+                height: rowH + 'px', display: 'flex', alignItems: 'center', padding: 0,
+                fontSize: '0.7rem', letterSpacing: '0.11em', textTransform: 'uppercase',
+                fontWeight: state === 'active' ? 700 : 500,
+              }}>
+              {labels[step] ?? step}
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+/** SWELL — the section divider, said in the illustration's hand. */
+export function Swell({ opacity = 0.4 }: { opacity?: number }) {
+  return (
+    <svg width="100%" height="9" viewBox="0 0 400 9" preserveAspectRatio="none" aria-hidden="true"
+      style={{ display: 'block', color: '#e8c37a', opacity }}>
+      <path d="M0 5 q 12.5 -4 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0 t 25 0"
+        fill="none" stroke="currentColor" strokeWidth="0.9" />
+    </svg>
+  )
+}
+
+/** SHORE — the empty state as the rock mass under a horizon. Replaces .empty. */
+export function Shore({ children }: { children?: ReactNode }) {
+  return (
+    <div className="empty" style={{ padding: '2.5rem 2rem 0', overflow: 'hidden' }}>
+      <p style={{ marginBottom: '1.5rem', fontSize: '0.875rem' }}>{children}</p>
+      <svg width="100%" height="74" viewBox="0 0 400 74" preserveAspectRatio="none" aria-hidden="true"
+        style={{ display: 'block', color: '#e8c37a', margin: '0 -2rem', width: 'calc(100% + 4rem)' }}>
+        <path d="M0 46 L 62 30 L 104 41 L 158 18 L 214 38 L 268 26 L 322 44 L 400 32 L 400 74 L 0 74 Z"
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.5" />
+      </svg>
+    </div>
+  )
+}
+
+/*
+ * PLATE — the card as an engraved plate: a rule, an inset margin, and registration ticks at the
+ * corners. Reserve `lit` for state that is genuinely live — a running box, the current step.
+ * Every plate lit is no plate lit.
+ */
+export function Plate({ children, lit, className }: { children?: ReactNode; lit?: boolean; className?: string }) {
+  const ink = lit ? 'rgba(232,195,122,.85)' : 'rgba(252,245,232,.42)'
+  const tick = [
+    `linear-gradient(${ink},${ink}) 0 0/11px 1px no-repeat`,
+    `linear-gradient(${ink},${ink}) 0 0/1px 11px no-repeat`,
+    `linear-gradient(${ink},${ink}) 100% 0/11px 1px no-repeat`,
+    `linear-gradient(${ink},${ink}) 100% 0/1px 11px no-repeat`,
+    `linear-gradient(${ink},${ink}) 0 100%/11px 1px no-repeat`,
+    `linear-gradient(${ink},${ink}) 0 100%/1px 11px no-repeat`,
+    `linear-gradient(${ink},${ink}) 100% 100%/11px 1px no-repeat`,
+    `linear-gradient(${ink},${ink}) 100% 100%/1px 11px no-repeat`,
+  ].join(',')
+  return (
+    <div className={className} style={{
+      position: 'relative',
+      background: lit
+        ? 'linear-gradient(148deg, rgba(232,195,122,.085) 0%, rgba(252,245,232,.012) 48%, rgba(0,0,0,.14) 100%), var(--rs-surface)'
+        : 'linear-gradient(148deg, rgba(252,245,232,.045) 0%, rgba(252,245,232,.008) 46%, rgba(0,0,0,.12) 100%), var(--rs-surface)',
+      border: '1px solid ' + (lit ? 'rgba(232,195,122,.5)' : 'rgba(252,245,232,.18)'),
+      padding: '1.1rem',
+    }}>
+      <div aria-hidden="true" style={{ position: 'absolute', inset: '4px', background: tick, pointerEvents: 'none' }} />
+      {children}
+    </div>
+  )
+}

@@ -1,0 +1,73 @@
+/* Product palette — lifted verbatim from packages/web/src/App.css (the GitHub-dark
+   palette the app ships with). Brand palette below is sampled from assets/logo.png. */
+:root {
+  /* Surfaces, dark to light. */
+  --rs-bg: #0d1117;
+  --rs-surface: #161b22;
+  --rs-raised: #21262d;
+  --rs-border: #30363d;
+  --rs-border-subtle: #21262d;
+
+  /* Text. */
+  --rs-text: #c9d1d9;
+  --rs-heading: #f0f6fc;
+  --rs-muted: #8b949e;
+  --rs-dim: #484f58;
+  --rs-placeholder: #6e7681;
+
+  /* Accents. */
+  --rs-link: #58a6ff;
+  --rs-green: #238636;
+  --rs-green-hover: #2ea043;
+  --rs-green-bright: #3fb950;
+  --rs-green-brighter: #56d364;
+  --rs-yellow: #d29922;
+  --rs-red: #f85149;
+  --rs-red-strong: #da3633;
+  --rs-purple: #a371f7;
+
+  /* Wash fills: an accent at 20% (33) or 9% (18) over the page, used for notice bodies. */
+  --rs-wash-red: #f8514933;
+  --rs-wash-yellow: #d2992233;
+  --rs-wash-green: #23863633;
+  --rs-wash-blue: #1f6feb33;
+  --rs-wash-purple: #a371f733;
+  --rs-wash-red-faint: #f8514918;
+  --rs-wash-yellow-faint: #d2992218;
+
+  /* Pack accent tiles — the six-value allowlist PackIcon hashes into. */
+  --rs-theme-orange: #c9702a;
+  --rs-theme-blue: #316dca;
+  --rs-theme-green: #238636;
+  --rs-theme-purple: #8256d0;
+  --rs-theme-red: #cf3232;
+  --rs-theme-slate: #545d68;
+
+  /* Brand palette — sampled from the logo painting. Editorial use only (hero art,
+     covers, slides). The product UI above never reaches for these. */
+  --rs-brand-deep: #0a090f;   /* the darkest sky */
+  --rs-brand-night: #151828;  /* night water */
+  --rs-brand-tide: #33364b;   /* moonlit cloud */
+  --rs-brand-stone: #2b2731;  /* wet rock */
+  --rs-brand-rock: #4e4651;   /* rock in moonlight */
+  --rs-brand-driftwood: #6d5652;
+  --rs-brand-ember: #493734;  /* the shore, warm side */
+  --rs-brand-beam: #fcf5e8;   /* the lighthouse beam and the moon */
+
+  /* Semantic aliases. */
+  --text-body: var(--rs-text);
+  --text-heading: var(--rs-heading);
+  --text-quiet: var(--rs-muted);
+  --text-faint: var(--rs-dim);
+  --text-link: var(--rs-link);
+  --surface-page: var(--rs-bg);
+  --surface-card: var(--rs-surface);
+  --surface-inset: var(--rs-bg);
+  --surface-control: var(--rs-raised);
+  --border-default: var(--rs-border);
+  --border-inside-card: var(--rs-border-subtle);
+  --accent-action: var(--rs-green);
+  --accent-danger: var(--rs-red-strong);
+  --accent-warn: var(--rs-yellow);
+  --accent-ok: var(--rs-green-bright);
+}

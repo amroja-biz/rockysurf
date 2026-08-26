@@ -12,6 +12,7 @@ add, and a skill is how their own agent learns to do it properly.
 |---|---|
 | [`creating-surge-packs`](creating-surge-packs/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
 | [`adding-providers`](adding-providers/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet |
+| [`rockysurf-design`](rockysurf-design/) | You are changing the web UI, or making a mock, slide, or asset that should look like Rocky Surf — the tokens, the voice rules, every component's props contract, and the etched skin's rollout order (`handoff/README.md`) |
 
 ## Using them
 

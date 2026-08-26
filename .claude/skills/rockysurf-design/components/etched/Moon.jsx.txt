@@ -1,0 +1,43 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * MOON — a fraction as a lunar phase. What is spent is bitten; what is left is bare plate.
+ *
+ * Built as a mask rather than one clever path: the right limb is always lit, and the terminator
+ * ellipse either eats into it (waxing crescent, below half) or adds to it (gibbous, above), so
+ * the disc reads as a phase and never as a pie slice. A single-path version got the areas right
+ * and the sweep flags wrong at a glance, which is worse than verbose.
+ */
+export function Moon({ fraction, size = 46 }) {
+  const f = Math.max(0, Math.min(1, fraction))
+  const r = size / 2 - 2
+  const c = size / 2
+  const rx = Math.abs(1 - 2 * f) * r
+  const id = `rs-moon-${size}-${Math.round(f * 1000)}`
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <mask id={id} maskUnits="userSpaceOnUse" x="0" y="0" width={size} height={size}>
+        <circle cx={c} cy={c} r={r} fill="#fff" />
+        {/* the left half is never lit */}
+        <rect x="0" y="0" width={c} height={size} fill="#000" />
+        {/* below half the terminator eats the limb; above half it reaches across it */}
+        <ellipse cx={c} cy={c} rx={rx} ry={r} fill={f <= 0.5 ? '#000' : '#fff'} />
+      </mask>
+      <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" opacity="0.45" />
+      <g mask={`url(#${id})`}>
+        <circle cx={c} cy={c} r={r} fill="url(#rs-hatch-cross)" />
+        <circle cx={c} cy={c} r={r} fill="none" stroke="currentColor" strokeWidth="0.9" />
+      </g>
+    </svg>
+  )
+}

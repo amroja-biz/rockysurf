@@ -1,0 +1,19 @@
+/**
+ * The app's one button, in its three looks. Renders an <a> when `href` is given so a
+ * navigation that looks like a button still is a link.
+ */
+export function Button({ variant = 'secondary', href, type, disabled, children, onClick, className = '', ...rest }) {
+  const cls = ['button', variant === 'secondary' ? '' : variant, className].filter(Boolean).join(' ')
+  if (href) {
+    return (
+      <a className={cls} href={href} aria-disabled={disabled ? 'true' : undefined} {...rest}>
+        {children}
+      </a>
+    )
+  }
+  return (
+    <button className={cls} type={type ?? 'button'} disabled={disabled} onClick={onClick} {...rest}>
+      {children}
+    </button>
+  )
+}

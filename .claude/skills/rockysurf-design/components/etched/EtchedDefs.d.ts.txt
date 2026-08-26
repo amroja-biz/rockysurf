@@ -1,0 +1,3 @@
+/** The shared hatch patterns every etched part fills with. Mount exactly once per page. */
+export interface EtchedDefsProps {}
+export function EtchedDefs(props?: EtchedDefsProps): JSX.Element

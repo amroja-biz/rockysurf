@@ -1,0 +1,8 @@
+/** An underlined, arrow-key-driven tab list. */
+export interface TabsProps {
+  tabs: { id: string; label: string }[]
+  value: string
+  onChange?: (id: string) => void
+  label?: string
+}
+export function Tabs(props: TabsProps): JSX.Element

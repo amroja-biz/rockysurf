@@ -1,0 +1,28 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * SHORE — the empty state as the thing the plate is actually of: a rock mass under a horizon.
+ * Angular, hatched, and drawn once at the bottom of an empty list.
+ */
+export function Shore({ children }) {
+  return (
+    <div style={{ border: '1px solid rgba(252,245,232,.2)', padding: '2.5rem 2rem 0', textAlign: 'center', color: '#8a8494', overflow: 'hidden' }}>
+      <p style={{ marginBottom: '1.5rem', fontSize: '0.875rem' }}>{children}</p>
+      <svg width="100%" height="74" viewBox="0 0 400 74" preserveAspectRatio="none" aria-hidden="true" style={{ display: 'block', color: '#e8c37a', margin: '0 -2rem', width: 'calc(100% + 4rem)' }}>
+        <path d="M0 46 L 62 30 L 104 41 L 158 18 L 214 38 L 268 26 L 322 44 L 400 32 L 400 74 L 0 74 Z"
+          fill="url(#rs-hatch)" stroke="currentColor" strokeWidth="0.9" opacity="0.5" />
+      </svg>
+    </div>
+  )
+}
+

@@ -1,0 +1,9 @@
+/** A pack in the /packs grid. Renders as an <li>; put it inside <ul className="pack-grid">. */
+export interface PackCardProps {
+  pack: { packId: string; name: string; description?: string; imageUrl?: string; theme?: string; toolCount?: number }
+  /** The registry the pack came from. `official` is the only one that reads differently. */
+  trust?: 'official' | 'internal' | 'community'
+  action?: React.ReactNode
+  children?: React.ReactNode
+}
+export function PackCard(props: PackCardProps): JSX.Element

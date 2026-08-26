@@ -1,0 +1,19 @@
+/** The underlined tab list. The underline carries the state; nothing is boxed. */
+export function Tabs({ tabs, value, onChange, label = 'Sections' }) {
+  return (
+    <div className="tablist" role="tablist" aria-label={label}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          role="tab"
+          type="button"
+          aria-selected={tab.id === value}
+          className={['tab', tab.id === value ? 'selected' : ''].filter(Boolean).join(' ')}
+          onClick={() => onChange?.(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+}

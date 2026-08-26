@@ -1,0 +1,12 @@
+/**
+ * The small label: a pack's provenance, a tool's run-as, a tie-break note. `official` is
+ * the only variant that reads differently — it is the only one meaning "this came from us".
+ */
+export function Badge({ variant, children }) {
+  return <span className={['badge', variant].filter(Boolean).join(' ')}>{children}</span>
+}
+
+/** The architecture chip beside a resolved offering. */
+export function ArchBadge({ arch }) {
+  return <span className="arch-badge">{arch}</span>
+}

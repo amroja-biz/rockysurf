@@ -1,0 +1,18 @@
+/** A checkbox and its sentence. Deliberately plain: it is a decision, not a call to action. */
+export function CheckboxRow({ checked, onChange, children }) {
+  return (
+    <label className="checkbox-row">
+      <input type="checkbox" checked={!!checked} onChange={(e) => onChange?.(e.target.checked)} />
+      <span>{children}</span>
+    </label>
+  )
+}
+
+/** A chip that both names a thing and is the click that adds it. */
+export function Chip({ onClick, disabled, state, children }) {
+  return (
+    <button type="button" className={['repo-chip', state ? `repo-chip-${state}` : ''].filter(Boolean).join(' ')} disabled={disabled} onClick={onClick}>
+      {children}
+    </button>
+  )
+}

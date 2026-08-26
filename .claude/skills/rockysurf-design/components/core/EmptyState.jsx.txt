@@ -1,0 +1,4 @@
+/** What a list says when it has nothing in it: the fact, then the one thing to do next. */
+export function EmptyState({ children }) {
+  return <p className="empty">{children}</p>
+}

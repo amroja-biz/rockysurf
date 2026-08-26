@@ -1,0 +1,20 @@
+/** The overlay dialog. */
+export interface ModalProps {
+  title: string
+  /** 700px instead of 440px — for an install preview or a pack disclosure. */
+  wide?: boolean
+  onCancel?: () => void
+  actions?: React.ReactNode
+  children?: React.ReactNode
+}
+export function Modal(props: ModalProps): JSX.Element
+export interface ConfirmModalProps {
+  title: string
+  message: string
+  confirmLabel: string
+  onConfirm: () => void
+  onCancel: () => void
+  /** Red confirm button. Anything that destroys a machine or a disk. */
+  isDestructive?: boolean
+}
+export function ConfirmModal(props: ConfirmModalProps): JSX.Element

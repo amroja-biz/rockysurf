@@ -1,0 +1,7 @@
+/** A two-column definition grid of facts about one thing. */
+export interface MetaListProps {
+  /** [label, value] pairs, in the order they should be read. */
+  items: [string, React.ReactNode][]
+  align?: 'left' | 'right'
+}
+export function MetaList(props: MetaListProps): JSX.Element

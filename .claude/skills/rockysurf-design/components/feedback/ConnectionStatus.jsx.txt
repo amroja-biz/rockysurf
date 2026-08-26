@@ -1,0 +1,11 @@
+/**
+ * Whether the live stream is up. Visible on purpose: when updates stop arriving, the first
+ * question is whether the stream is still there, and the answer should not need the console.
+ */
+export function ConnectionStatus({ status }) {
+  return (
+    <span className="connection-status" data-status={status}>
+      events: {status}
+    </span>
+  )
+}

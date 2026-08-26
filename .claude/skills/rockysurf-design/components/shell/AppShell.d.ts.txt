@@ -1,0 +1,19 @@
+/**
+ * The signed-in page chrome: header, nav, stream indicator, and the page's measure.
+ */
+export interface AppShellProps {
+  /** The page h1. Pass "" to suppress it (the home page opens with its own hero). */
+  title?: string
+  /** The page measure: "page" (760px), "wizard" (680px), "home" (680px), "help" (760px). */
+  className?: string
+  /** The nav path to mark as current. */
+  current?: string
+  user?: string | null
+  connectionStatus?: 'connected' | 'connecting' | 'disconnected'
+  onNavigate?: (path: string) => void
+  /** The 20px brand mark — assets/mark-48.png. */
+  markSrc?: string
+  githubUrl?: string
+  children?: React.ReactNode
+}
+export function AppShell(props: AppShellProps): JSX.Element

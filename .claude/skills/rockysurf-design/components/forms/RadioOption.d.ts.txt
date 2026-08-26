@@ -1,0 +1,14 @@
+/** A bordered radio card. Selection is carried by the border colour, not a fill. */
+export interface RadioOptionProps {
+  name: string
+  value: string
+  selected?: boolean
+  onSelect?: (value: string) => void
+  title: string
+  /** The quiet second line: vCPU/RAM, or what a pack installs. */
+  detail?: string
+  /** A PackIcon or other mark, rendered before the title. */
+  media?: React.ReactNode
+  children?: React.ReactNode
+}
+export function RadioOption(props: RadioOptionProps): JSX.Element

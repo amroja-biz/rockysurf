@@ -1,0 +1,12 @@
+/**
+ * The provisioning timeline: a vertical rail with done / active / failed / pending dots.
+ */
+export interface StepListProps {
+  /** The step core last reported. */
+  current: string
+  /** Marks the current step red instead of yellow. */
+  failed?: boolean
+  steps?: string[]
+  labels?: Record<string, string>
+}
+export function StepList(props: StepListProps): JSX.Element

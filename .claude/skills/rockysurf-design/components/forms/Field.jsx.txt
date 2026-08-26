@@ -1,0 +1,13 @@
+/**
+ * One labelled control, with the sentence that says what the setting is FOR under the label
+ * and above the input — always visible, never a tooltip.
+ */
+export function Field({ label, help, htmlFor, children }) {
+  return (
+    <div className="form-group">
+      <label className="form-label" htmlFor={htmlFor}>{label}</label>
+      {help ? <p className="field-help">{help}</p> : null}
+      {children}
+    </div>
+  )
+}

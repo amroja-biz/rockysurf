@@ -1,0 +1,46 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+/*
+ * TALLY — duration as tally strokes, one per hour, crossed at each fifth. Uptime has no
+ * ceiling, so it cannot be a gauge: the earlier wave stack read as a trend line because a
+ * stacked curve implies an axis, and there is no axis here. A tally counts, which is what
+ * "2h 14m" does. The part-hour is the short stroke at the end.
+ */
+export function Tally({ hours, max = 18 }) {
+  const whole = Math.min(Math.floor(hours), max)
+  const part = hours - Math.floor(hours)
+  const groups = []
+  for (let i = 0; i < whole; i += 5) groups.push(Math.min(5, whole - i))
+  const groupW = (n) => n * 4 + 6
+  const width = groups.reduce((a, n) => a + groupW(n), 0) + (part > 0.08 ? 7 : 0) + 2
+  let x = 1
+  return (
+    <svg width={Math.max(width, 12)} height="16" viewBox={`0 0 ${Math.max(width, 12)} 16`} aria-hidden="true">
+      {groups.map((n, gi) => {
+        const start = x
+        x += groupW(n)
+        return (
+          <g key={gi}>
+            {Array.from({ length: n }, (_, i) => (
+              <line key={i} x1={start + i * 4} y1="2" x2={start + i * 4} y2="13" stroke="currentColor" strokeWidth="1.1" />
+            ))}
+            {n === 5 ? <line x1={start - 1.5} y1="12.5" x2={start + 17.5} y2="2.5" stroke="currentColor" strokeWidth="1.1" /> : null}
+          </g>
+        )
+      })}
+      {part > 0.08 ? <line x1={x} y1="6" x2={x} y2="13" stroke="currentColor" strokeWidth="1.1" opacity="0.55" /> : null}
+      {whole === 0 && part <= 0.08 ? <line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1.1" opacity="0.3" /> : null}
+    </svg>
+  )
+}
+

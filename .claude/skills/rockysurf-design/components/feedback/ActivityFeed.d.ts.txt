@@ -1,0 +1,10 @@
+/** The dashboard's ten most recent lifecycle events. */
+export interface ActivityEvent {
+  type: 'created' | 'started' | 'stopped' | 'terminated'
+  serverName: string
+  timestamp: string
+  /** Already formatted: "just now", "12m ago", "3d ago". */
+  relative: string
+}
+export interface ActivityFeedProps { events: ActivityEvent[]; title?: string }
+export function ActivityFeed(props: ActivityFeedProps): JSX.Element | null

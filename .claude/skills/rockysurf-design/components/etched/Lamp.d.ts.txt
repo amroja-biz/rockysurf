@@ -1,0 +1,7 @@
+/** Status as the lighthouse's own light: swept arcs when lit, a cut lens when it failed. */
+export interface LampProps {
+  status: 'requested' | 'provisioning' | 'running' | 'stopped' | 'terminated' | 'failed'
+  /** Overrides the label; the state's own word is used by default. */
+  children?: React.ReactNode
+}
+export function Lamp(props: LampProps): JSX.Element

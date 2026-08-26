@@ -1,0 +1,3 @@
+/** The SSE stream indicator in the header's right-hand group. */
+export interface ConnectionStatusProps { status: 'connected' | 'connecting' | 'disconnected' }
+export function ConnectionStatus(props: ConnectionStatusProps): JSX.Element

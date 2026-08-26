@@ -1,0 +1,29 @@
+/*
+ * Etched parts — components whose FORM comes from the Rocky Surf painting, not just its
+ * colours. The logo is an engraving: the beam drawn as swept arcs, water as repeated strokes,
+ * rock as angular hatched mass, the moon as a hatched disc. Each part here takes one of those
+ * marks and gives it a job.
+ *
+ * All line work is 0.9px in currentColor; density, never fill, carries value — which is how
+ * the source illustration carries tone.
+ *
+ * EVERY PART BELOW NEEDS <EtchedDefs /> MOUNTED ONCE ON THE PAGE for its hatch pattern.
+ * Without it the strokes still draw and only the fills are missing.
+ */
+
+/** The page's one hatch pattern pair. Mount once, near the top of the tree. */
+export function EtchedDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+      <defs>
+        <pattern id="rs-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+        </pattern>
+        <pattern id="rs-hatch-cross" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth="0.9" />
+          <line x1="0" y1="0" x2="5" y2="0" stroke="currentColor" strokeWidth="0.6" />
+        </pattern>
+      </defs>
+    </svg>
+  )
+}

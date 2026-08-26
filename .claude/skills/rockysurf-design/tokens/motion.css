@@ -1,0 +1,20 @@
+/* Motion. Two durations and two keyframes, and that is the whole vocabulary: colour and
+   border transitions at 0.15s, a pulse for "this is happening now", a spinner for a wait.
+   Nothing slides, bounces, or scales. */
+:root {
+  --dur-fast: 0.15s; /* @kind other */
+  --ease-default: ease; /* @kind other */
+  --transition-interactive: background-color 0.15s ease, border-color 0.15s ease; /* @kind other */
+  --transition-nav: color 0.15s ease, background 0.15s ease; /* @kind other */
+  --dur-pulse: 1.5s; /* @kind other */
+  --dur-spin: 1s; /* @kind other */
+}
+
+@keyframes rs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes rs-spin {
+  to { transform: rotate(360deg); }
+}

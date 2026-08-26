@@ -1,0 +1,29 @@
+/**
+ * Recent activity, derived from timestamps already on the server rows rather than fetched.
+ * Four event types, four single-character marks, the time on the right in the faintest grey.
+ */
+const EVENT_LABELS = {
+  created: { label: 'Created', icon: '+' },
+  started: { label: 'Started', icon: '▶' },
+  stopped: { label: 'Stopped', icon: '■' },
+  terminated: { label: 'Terminated', icon: '×' },
+}
+
+export function ActivityFeed({ events, title = 'Recent activity' }) {
+  if (!events || events.length === 0) return null
+  return (
+    <section className="activity-feed">
+      <h2>{title}</h2>
+      <ul>
+        {events.map((event, index) => (
+          <li key={`${event.serverName}-${event.type}-${index}`}>
+            <span className="activity-icon" aria-hidden="true">{EVENT_LABELS[event.type]?.icon}</span>
+            <span className="activity-label">{EVENT_LABELS[event.type]?.label}</span>
+            <span className="activity-server">{event.serverName}</span>
+            <time dateTime={event.timestamp}>{event.relative}</time>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

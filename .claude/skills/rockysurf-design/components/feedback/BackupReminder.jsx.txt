@@ -1,0 +1,15 @@
+/**
+ * Yellow is a warning that is not yet a failure; red is money leaving an account until
+ * somebody acts. That is the whole rule these three notices follow.
+ */
+export function BackupReminder({ onDismiss, children }) {
+  return (
+    <div className="backup-reminder">
+      <div className="backup-reminder-content">
+        <span className="backup-reminder-icon" aria-hidden="true">⚠</span>
+        <span>{children}</span>
+      </div>
+      {onDismiss ? <button className="dismiss-button" aria-label="Dismiss" onClick={onDismiss}>×</button> : null}
+    </div>
+  )
+}

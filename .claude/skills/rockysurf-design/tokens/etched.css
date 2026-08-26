@@ -1,0 +1,33 @@
+/*
+ * The etched skin — the logo's palette, opted into with data-rs-skin="etched" on <html> or on
+ * any subtree. The product's five status meanings are untouched: green still acts, red still
+ * refuses, yellow still warns. What changes is the ground (the painting's night), the ink (its
+ * cream), and the one accent (its beam).
+ */
+[data-rs-skin='etched'] {
+  --rs-bg: #0a0910;
+  --rs-surface: #171420;
+  --rs-raised: #221d2c;
+  --rs-border: #3c3448;
+  --rs-border-subtle: #241f2e;
+
+  --rs-text: #cbc5cf;
+  --rs-heading: #fcf5e8;   /* the beam, and the only near-white in the skin */
+  --rs-muted: #8a8494;
+  --rs-dim: #555065;
+  --rs-placeholder: #6c6678;
+
+  --rs-link: #e8c37a;      /* the beam, warmed — replaces blue for links and focus */
+  --rs-beam: #e8c37a;
+  --rs-beam-soft: rgba(232, 195, 122, 0.3);
+  --rs-ink-hair: rgba(252, 245, 232, 0.2);   /* a plate's boundary rule */
+  --rs-ink-tick: rgba(252, 245, 232, 0.42);  /* its registration ticks */
+
+  /* Squared: an engraved plate has corners. */
+  --rs-radius: 0px;
+  --radius-inset: 0px;
+  --radius-pill: 0px;
+  --radius-tile-lg: 0px;
+
+  --tracking-caps: 0.11em;
+}

@@ -1,0 +1,7 @@
+/** A server's lifecycle state as a coloured pill. */
+export interface StatusBadgeProps {
+  status: 'requested' | 'provisioning' | 'running' | 'stopped' | 'terminated' | 'failed'
+  /** An accepted-but-unconfirmed stop/start. Pulses yellow and reads "Stopping…". */
+  transition?: 'start' | 'stop' | null
+}
+export function StatusBadge(props: StatusBadgeProps): JSX.Element

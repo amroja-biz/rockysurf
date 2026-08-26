@@ -1,0 +1,22 @@
+import { STEP_LABELS, STEP_ORDER } from '../core/statusLabels.js'
+
+/**
+ * The bootstrap timeline. The whole list is shown from the start, not revealed step by step:
+ * someone waiting on a machine wants to know how much is left, not only what is happening.
+ * An unrecognised step leaves the list where it is rather than resetting it.
+ */
+export function StepList({ current, failed, steps = STEP_ORDER, labels = STEP_LABELS }) {
+  const reached = steps.indexOf(current)
+  return (
+    <ol className="step-list">
+      {steps.map((step, index) => {
+        const state = failed && index === reached ? 'failed' : index < reached ? 'done' : index === reached ? 'active' : 'pending'
+        return (
+          <li key={step} className={`step step-${state}`} data-state={state} aria-current={state === 'active' ? 'step' : undefined}>
+            {labels[step] ?? step}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}

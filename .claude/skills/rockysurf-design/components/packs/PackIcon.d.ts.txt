@@ -1,0 +1,13 @@
+/**
+ * A Surge Pack's square mark — its PNG, or a hashed monogram tile.
+ */
+export interface PackIconPack {
+  packId: string
+  name: string
+  /** A 2.5rem (or 4.5rem) square image. Pack PNGs live in assets/surge-packs/. */
+  imageUrl?: string
+  /** One of the six allowlisted accents; anything else falls back to the hash. */
+  theme?: 'theme-orange' | 'theme-blue' | 'theme-green' | 'theme-purple' | 'theme-red' | 'theme-slate'
+}
+export interface PackIconProps { pack: PackIconPack; size?: 'large' }
+export function PackIcon(props: PackIconProps): JSX.Element
