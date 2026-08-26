@@ -294,6 +294,8 @@ describe('every setting on the page explains itself', () => {
       'preferences.tiers.azure',
       'preferences.tiers.gcp',
       'preferences.tiers.byo',
+      'registry',
+      'registry.sources',
       'mcp',
     ])
   })

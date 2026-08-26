@@ -1456,6 +1456,37 @@ export function SettingsPage() {
       </>
     ),
 
+    /**
+     * WHERE PACKS MAY COME FROM (issue #88).
+     *
+     * The list was config-file-only until now, and a person who wanted their own pack on their
+     * own instance had to ssh in and edit YAML to get it. This is the same act done in the same
+     * place — an admin-only page that writes that file — and it writes nothing else: saving a
+     * source records a URL. Nothing is fetched here, nothing is installed here, and the scripts
+     * behind that URL are still only ever run after somebody has read them in Surge Packs.
+     */
+    registry: (
+      <>
+        {boolField(['registry', 'enabled'], 'Browse pack sources')}
+        {textField(['registry', 'cacheTtlSeconds'], 'Reuse a listing for (seconds)', 'number')}
+      </>
+    ),
+
+    /* A card on the Pack sources tab rather than a tab of its own: switching the shop on and
+       saying what it points at are one errand, exactly as with the BYO hosts above. */
+    'registry.sources': listSection(
+      ['registry', 'sources'],
+      [
+        { name: 'name', label: 'Name' },
+        { name: 'url', label: 'URL' },
+        { name: 'trust', label: 'Your label for it' },
+      ],
+      (entry, i) => String(entry['name'] ?? `source ${i + 1}`),
+      { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      "None yet. Add one to browse somebody else's packs — or your own, published as a single " +
+        'YAML file at an https URL.',
+    ),
+
     mcp: (
       <div className="form-group" data-field="mcp.scopes">
         <fieldset aria-describedby={helpId('mcp.scopes', 'mcp.scopes')}>

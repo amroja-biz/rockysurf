@@ -854,12 +854,57 @@ registry:
     - name: Rocky Surf Pack Shop
       url: https://raw.githubusercontent.com/amroja-biz/rockysurf-shop/main
       trust: community
+    - name: My packs
+      url: https://raw.githubusercontent.com/me/my-packs/main/my-pack.yaml
+      trust: community
   cacheTtlSeconds: 300
 ```
 
 `sources` is a list, so an organisation can serve packs internally without giving up the public
-shop. Adding one is a config change on purpose: a registry is a thing an operator should have to
-write down.
+shop — and so can one person, with packs of their own.
+
+### Three ways to get your own pack onto your instance
+
+All three end in the same place: a database row the boot reconcile never overwrites and never
+deletes. What differs is who else can get the pack, and whether Rocky Surf remembers where it
+came from.
+
+1. **Upload or paste it.** Surge Packs (`/packs`) → Manage packs → Import. One file, one time,
+   nothing recorded about its origin because there is nothing true to record — the bytes came
+   from your own machine.
+2. **Import from a URL.** The same Import box takes an `https` URL. Rocky Surf fetches it through
+   the SSRF guard, validates it against the frozen format, and **records the URL**, so the pack
+   reads as `imported from https://…` rather than as something typed here. Still one time: it is
+   not refetched, and editing the file at that URL changes nothing here until you import again.
+3. **Add it as a source.** A line in `registry.sources` — or the **Pack sources** tab of the
+   admin Settings page, which writes the same file. The pack then appears in the shop beside the
+   community ones, refreshes when you press Refresh, and can be reinstalled after you have edited
+   it. This is the option for a pack you are still working on, and the only one somebody else can
+   subscribe to.
+
+A source's URL says what shape it is. **Ending in `.yaml` or `.yml`, the URL is the pack** — one
+file, the way you publish one of your own. **Anything else is a directory** serving `index.json`
+beside its pack files, exactly as the shop does; that is the format to use when you have several,
+and `rockysurf pack index` generates it.
+
+**A source URL must be `https`.** A pack is install scripts that run as **root** on every box you
+create with it, and over plain http anything on the path can rewrite them in transit — including
+the digest that is meant to catch that, since it arrives over the same connection. A source is
+also **admin-only** to add, in the config file and on the Settings page alike, and the page saves
+the same way every other setting does: **it takes effect at the next restart**.
+
+**Adding a source fetches nothing and runs nothing.** It records a URL. The pack behind it is
+fetched when an admin opens the shop, and it is installed only after they have read every script
+it would run — and installing is still only writing rows. Nothing from a source executes until
+you create a box with that pack. Refreshing the shop refetches the listing; it never runs
+anything, and it never installs anything on its own.
+
+One thing a one-file source does not get: an index somebody else generated. For a directory, the
+digest pins each pack file to a listing that was made separately, so a file swapped without
+regenerating the listing is refused. For a single file, both halves come from the same fetch, so
+what the digest still buys you is narrower and worth stating exactly — the file is refetched at
+install and refused if it no longer matches what you were shown, so the scripts you read are the
+scripts you get.
 
 **Nothing here is read at boot.** A registry is fetched when you open the shop, never during
 startup, so a control plane behind a proxy or off the internet entirely starts exactly as it does
@@ -869,7 +914,8 @@ being down never blanks out the others**; each shelf reports its own packs or it
 having none.
 
 Fetches are plain file GETs against a source's `url`: `<url>/index.json` for the listing, then
-the paths that listing names. **Not the GitHub API**, whose unauthenticated quota is 60 requests
+the paths that listing names — or, for a source that is itself a `.yaml` file, that one URL and
+nothing else. **Not the GitHub API**, whose unauthenticated quota is 60 requests
 per hour shared across everything on one source IP — a control plane behind a corporate NAT would
 spend that before it had listed the shop once. Every URL goes through the same SSRF guard as pack
 import (see [`SECURITY.md`](../SECURITY.md) § Server-side fetch policy), so one resolving to a
@@ -908,8 +954,9 @@ control. Read it.
 
 It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
-for anything installed from a registry, and `local` for packs you created yourself. There is no
-install button anywhere except below those scripts.
+for anything that arrived from off this machine, and `local` for packs you created yourself.
+Under the badge, an admin also sees the source **and its URL** — or, for a one-off import, the
+URL it was fetched from. There is no install button anywhere except below those scripts.
 
 One thing the summary on that page says about itself, worth repeating here: the list of URLs is
 derived by reading the scripts, so a script that builds a URL out of a variable will not appear

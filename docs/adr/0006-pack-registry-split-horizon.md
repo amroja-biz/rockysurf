@@ -103,6 +103,31 @@ Each entry pins its pack by SHA-256, verified after fetch, and a mismatch is ref
 
 Boot never fetches. `registry.enabled: false` switches the shop off entirely.
 
+**Amended 2026-08-26 (issue #88): a source may be one file, it must be https, and the list is
+editable in the admin UI.** Personal packs were the case this decision did not cover — someone
+with one pack and no CI cannot generate an `index.json`, and hand-writing one with a digest in it
+guarantees the two documents drift apart. So a source URL ending in `.yaml`/`.yml` **is** the
+pack: fetched directly, parsed by the same loader, and described in memory as a one-entry index,
+so browse, disclosure, install and provenance are unchanged code. The URL decides, and there is
+no `kind` field that could disagree with it. For such a source the digest cannot pin a file to a
+listing generated elsewhere — both halves come from one fetch — so what it is claimed to do
+narrows honestly to *the bytes installed are the bytes that were shown*: the file is refetched at
+install and refused if it changed in between.
+
+Two constraints came with it. `registry.sources[].url` is now **https-only** (it accepted http
+before): a pack is root shell, and over http both the file and the digest that is supposed to
+catch a change to it are rewritable in transit. And the list is now editable on the admin
+Settings page — which does not reverse "an operator should have to write it down", because that
+page writes exactly that file, is admin-only, and takes effect at the next restart like every
+other setting in it. Saving a source still fetches nothing and runs nothing; the disclosure
+before install is untouched.
+
+Provenance gained the missing case at the same time: an import from a URL now records that URL in
+the registry columns (`source: "a URL import"`, `trust: "unverified"` — never a label from
+`REGISTRY_TRUST`, which means "what the operator wrote next to a source they configured"). A
+pasted or uploaded file still records nothing, because this installation knows nothing true about
+where those bytes had been.
+
 ## Considered options
 
 **Move all packs to the shop, as issue #9 literally asks.** Rejected by the owner in favour of the
