@@ -73,7 +73,11 @@ and `provider.terminate()` on a BYO host is bookkeeping, so the rule is safe on 
    recorded (so billing stops and the still-billing notice clears), but the status holds until the
    user's click — labelled **Dismiss** when there is nothing left to terminate. This applies to a
    machine core released and to one the user killed in the provider console alike: the explanation
-   outlives the machine either way.
+   outlives the machine either way. Once the release is on the row (`provider_state =
+   terminated`), `sync` does not ask the provider about it again (#163): nothing a later
+   `describe()` says can change a row that only `terminate` can move, and a describe of an absent
+   instance is the slowest read a provider has — the A4 propagation grace, paid per row on every
+   dashboard load. A listing of released failures costs zero provider calls.
 
 6. **`bootstrap.onFailure`** is a top-level config section with one key, default `terminate`. It
    applies to tool failures only; no setting makes a repository failure terminate a box.
