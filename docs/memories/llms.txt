@@ -25,6 +25,9 @@
 - [verify-the-checkout-before-you-work](2026-08-26-verify-the-checkout-before-you-work.md): this
   machine has eleven worktrees and an archived remote that is easy to mistake for the live one — a
   stale checkout builds, tests green, and cannot be pushed. Check before editing, not at push time.
+- [regional-ubuntu-mirrors-fail-as-a-unit](2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md):
+  a cloud image's per-region Ubuntu mirror takes every box in the region down with it, and apt
+  never retries a 503 — the bootstrap agent's one-shot mirror fallback is the remedy, not retries.
 
 ## Writing and documentation
 
