@@ -84,7 +84,7 @@ export function StaleServersNotice() {
     <div className="stale-servers-notice" role="status">
       <div className="stale-servers-notice-content">
         <span className="stale-servers-notice-icon" aria-hidden="true">
-          🔍
+          ⚠︎
         </span>
         <span>
           Rocky Surf can&rsquo;t guarantee this list matches your cloud account. Check your cloud

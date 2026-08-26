@@ -259,7 +259,7 @@ function renderDetail(serverId: string) {
   )
 }
 
-const pill = (container: HTMLElement) => container.querySelector('.status-badge')!
+const pill = (container: HTMLElement) => container.querySelector('.lamp')!
 
 /** The card for a named server, and one labelled value out of its `dl`. */
 function cardFor(container: HTMLElement, name: string): HTMLElement {

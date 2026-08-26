@@ -8,7 +8,7 @@ import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { AppShell } from '../components/AppShell'
 import { StaleServersNotice } from '../components/StaleServersNotice'
-import { StatusBadge } from '../components/StatusBadge'
+import { Lamp, Plate, Shore, Swell, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
 import {
@@ -187,9 +187,9 @@ export function DashboardPage() {
         </p>
       ))}
       {!loading && !error && live.length === 0 && (
-        <p className="empty">
+        <Shore>
           No servers yet. <Link to="/servers/new">Create one</Link> to get started.
-        </p>
+        </Shore>
       )}
 
       {groupByProvider(live, providers).map((group) => (
@@ -200,6 +200,7 @@ export function DashboardPage() {
               {group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}
             </span>
           </h2>
+          <Swell opacity={0.3} />
           <div className="server-grid">
             {group.servers.map((server) => (
               <ServerCard
@@ -336,7 +337,9 @@ function ServerCard({
   }
 
   return (
-    <article className="server-card" data-status={server.status}>
+    // The card is a Plate (#174): same element, same class, same `data-status` the stylesheet
+    // and the tests read. Lit only while the box is genuinely live — every plate lit is none.
+    <Plate as="article" className="server-card" data-status={server.status} lit={server.status === 'running'}>
       {server.previousIp && server.publicIp && server.ipChangedAt && (
         <IpChangeAlert
           serverId={server.serverId}
@@ -350,7 +353,7 @@ function ServerCard({
         <h3>
           <Link to={`/servers/${server.serverId}`}>{server.name}</Link>
         </h3>
-        <StatusBadge status={server.status} transition={transition.pending} />
+        <Lamp status={server.status} transition={transition.pending} />
       </header>
 
       {transition.stalled && (
@@ -415,7 +418,14 @@ function ServerCard({
         )}
         <div>
           <dt>Uptime</dt>
-          <dd>{formatUptime(server.totalUptimeSeconds)}</dd>
+          {/* The tally sits BESIDE the number, never instead of it: uptime has no ceiling, so
+              it is counted, not gauged. Only when core sent a number — a dash gets no strokes. */}
+          <dd className="uptime">
+            {Number.isFinite(server.totalUptimeSeconds) && (
+              <Tally hours={(server.totalUptimeSeconds as number) / 3600} />
+            )}
+            {formatUptime(server.totalUptimeSeconds)}
+          </dd>
         </div>
         <div>
           <dt>Cost</dt>
@@ -481,6 +491,6 @@ function ServerCard({
           }
         />
       )}
-    </article>
+    </Plate>
   )
 }

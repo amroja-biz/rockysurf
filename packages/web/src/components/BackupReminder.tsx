@@ -33,7 +33,7 @@ export function BackupReminder() {
     <div className="backup-reminder" role="status">
       <div className="backup-reminder-content">
         <span className="backup-reminder-icon" aria-hidden="true">
-          🗄️
+          ⚠︎
         </span>
         <span>
           <strong>Rocky Surf keeps everything on this machine.</strong> Servers, provider

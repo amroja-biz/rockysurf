@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useAuth } from '../contexts/AuthContext'
 import { useEvents } from '../contexts/EventsContext'
 import { GITHUB_URL } from '../lib/links'
+import { EtchedDefs } from './etched'
 
 /**
  * The chrome every signed-in page sits inside: navigation, who you are, and whether the live
@@ -88,6 +89,9 @@ export function AppShell({
           )}
         </div>
       </header>
+      {/* The hatch patterns every etched part fills with (#174) — once per page, here,
+          because every authenticated page goes through this shell. */}
+      <EtchedDefs />
       <main {...(className ? { className } : {})}>
         {title !== '' && <h1>{title}</h1>}
         {children}

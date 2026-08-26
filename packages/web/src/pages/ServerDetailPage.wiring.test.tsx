@@ -211,7 +211,7 @@ async function broadcastUntil(payload: object, assertion: () => void): Promise<v
 const stateOf = (label: string) => screen.getByText(label).getAttribute('data-state')
 
 /** The status pill, which is the thing the owner was staring at when they filed this. */
-const pill = (container: HTMLElement) => container.querySelector('.status-badge')!
+const pill = (container: HTMLElement) => container.querySelector('.lamp')!
 
 describe('the step timeline, fed by the live stream', () => {
   it('advances when core reports a step, with no refetch and no reload', async () => {

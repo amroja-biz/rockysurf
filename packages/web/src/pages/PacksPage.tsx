@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import toast from 'react-hot-toast'
 import { AppShell } from '../components/AppShell'
+import { Shore } from '../components/etched'
 import { PackDisclosurePanel } from '../components/PackDisclosure'
 import { PackIcon } from '../components/PackIcon'
 import { ToolList } from '../components/ToolList'
@@ -401,7 +402,7 @@ function ShelfSection({
           {shelf.failure.reason}
         </p>
       ) : shelf.packs.length === 0 ? (
-        <p className="empty">This registry has no packs yet.</p>
+        <Shore>This registry has no packs yet.</Shore>
       ) : (
         <ul className="pack-grid">
           {shelf.packs.map((pack) => {
@@ -730,7 +731,7 @@ export function PacksPage(): React.JSX.Element {
       <section className="shop-section">
         <h2>Official</h2>
         {official.length === 0 ? (
-          <p className="empty">No packs from this Rocky Surf release are enabled.</p>
+          <Shore>No packs from this Rocky Surf release are enabled.</Shore>
         ) : (
           <ul className="pack-grid">
             {official.map((view) => (
@@ -743,7 +744,7 @@ export function PacksPage(): React.JSX.Element {
       <section className="shop-section">
         <h2>Community</h2>
         {community.length === 0 ? (
-          <p className="empty">No community packs are installed.</p>
+          <Shore>No community packs are installed.</Shore>
         ) : (
           <ul className="pack-grid">
             {community.map((view) => (

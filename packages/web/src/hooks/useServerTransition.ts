@@ -14,7 +14,8 @@ import type { Server } from '../lib/api'
  * known to core, and a persisted marker for it was costed and dropped in rockysurf-55fx.15.
  *
  * So the affordance lives exactly where the fact does. Nothing here writes a status, and the
- * pill keeps rendering the row's true status in `data-status` throughout — see `StatusBadge`.
+ * lamp keeps rendering the row's true status in `data-status` throughout — see `Lamp` in
+ * `components/etched.tsx`.
  *
  * Three rules, in the order they fire:
  *
