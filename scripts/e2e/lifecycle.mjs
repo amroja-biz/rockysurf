@@ -4,6 +4,7 @@
  *
  *   node scripts/e2e/lifecycle.mjs hetzner
  *   node scripts/e2e/lifecycle.mjs aws
+ *   node scripts/e2e/lifecycle.mjs gcp        (needs ROCKYSURF_E2E_GCP_PROJECT)
  *
  * THIS SPENDS MONEY. It creates one real server per run and destroys it again, and the
  * teardown is in a `finally` so a failure anywhere still cleans up. Exits non-zero if anything
@@ -38,20 +39,28 @@ import {
  *
  * Written down here rather than read back from `/api/v1/providers`, because the run has to be
  * able to catch a provider that reports the wrong architecture for a machine type — and a
- * check that takes its expectation from the thing it is checking cannot fail. AWS carries two
- * because arch-correct AMI selection is only proven by running both: a Graviton box and an
- * x86_64 one, from the same code path with nothing but the offering id different.
+ * check that takes its expectation from the thing it is checking cannot fail. AWS and GCP carry
+ * two each because arch-correct image selection is only proven by running both: an Arm box and
+ * an x86_64 one, from the same code path with nothing but the offering id different.
+ *
+ * GCP's arm64 entry is `t2a-standard-1` rather than a `c4a-standard-*`, and that is a zone fact
+ * rather than a preference: T2A exists in eight zones and `us-central1-a` — this leg's default,
+ * and the provider's — is one of them, while C4A additionally needs `bootDiskType:
+ * hyperdisk-balanced`, which is one provider-wide setting for both legs of the matrix and would
+ * therefore break the amd64 leg to fix the arm64 one. `t2a-standard-1` is also the type the
+ * 2026-08-14 hand run used, so a failure here is a regression rather than an unknown.
  *
  * Cheapest type per cloud that runs the pack. Budget discipline is not optional here.
  */
 const RUNS = {
   hetzner: { cpx12: 'amd64' },
   aws: { 't4g.small': 'arm64', 't3.small': 'amd64' },
+  gcp: { 't2a-standard-1': 'arm64', 'e2-small': 'amd64' },
 }
 
 const CLOUD = process.argv[2]
-if (CLOUD !== 'hetzner' && CLOUD !== 'aws') {
-  console.error('usage: node scripts/e2e/lifecycle.mjs <hetzner|aws> [offeringId]')
+if (!Object.hasOwn(RUNS, CLOUD ?? '')) {
+  console.error(`usage: node scripts/e2e/lifecycle.mjs <${Object.keys(RUNS).join('|')}> [offeringId]`)
   process.exit(2)
 }
 
@@ -66,6 +75,20 @@ const REPO = fileURLToPath(new URL('../..', import.meta.url))
 const BIN = join(REPO, 'packages/rockysurf/dist/bin.js')
 /** One region for the config, the direct provider build and the raw volume audit alike. */
 const AWS_REGION = process.env.AWS_REGION ?? 'us-east-1'
+
+/**
+ * The GCP project and zone, for the config and the direct provider build alike.
+ *
+ * NO DEFAULT PROJECT, and no fallback to `gcloud config get-value project` — the same rule the
+ * provider itself enforces, for the same reason: a credential can be valid for many projects and
+ * names none of them, so a guess here creates billable machines somewhere nobody chose. In CI it
+ * is a repository variable pointing at a project that exists only for this workflow.
+ *
+ * The zone default matches the provider's own (`us-central1-a`), which is one of the eight zones
+ * with T2A stock — the reason it is the provider's default too.
+ */
+const GCP_PROJECT = process.env.ROCKYSURF_E2E_GCP_PROJECT ?? ''
+const GCP_ZONE = process.env.ROCKYSURF_E2E_GCP_ZONE || 'us-central1-a'
 const PORT = 3200 + Math.floor(Math.random() * 300)
 const ADMIN_PASSWORD = 'e2e-admin-password'
 
@@ -116,6 +139,20 @@ async function writeConfig() {
 
   if (CLOUD === 'hetzner') {
     lines.push(`  hetzner:`, `    enabled: true`, `    token: ${hetznerToken()}`, `    location: fsn1`)
+  } else if (CLOUD === 'gcp') {
+    const cidr = `${await currentPublicIp()}/32`
+    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
+    // NO `keyFile`, ever. The credential comes from the ambient ADC chain, which in CI is the
+    // federated credential file `google-github-actions/auth` wrote from GitHub's own OIDC token
+    // and locally is `gcloud auth application-default login`. There is no long-lived key in
+    // either path, and the config schema has nowhere to put key material anyway.
+    lines.push(
+      `  gcp:`,
+      `    enabled: true`,
+      `    projectId: ${GCP_PROJECT}`,
+      `    zone: ${GCP_ZONE}`,
+      `    sshAllowedCidr: ${cidr}`,
+    )
   } else {
     const cidr = `${await currentPublicIp()}/32`
     log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
@@ -239,6 +276,14 @@ async function main() {
   // FIRST, because it is the one check that can fail for free. Everything below this line either
   // creates a real server or is a step towards creating one.
   if (CLOUD === 'aws') await preflightAuditCredentials()
+  // Same idea, one line: a GCP run with no project would write a config core refuses to parse,
+  // twenty seconds later and with a message about a regex rather than about the missing variable.
+  if (CLOUD === 'gcp' && !GCP_PROJECT) {
+    throw new Error(
+      'ROCKYSURF_E2E_GCP_PROJECT is not set. It names the CI-only Google Cloud project this run ' +
+        'creates machines in; there is deliberately no default and gcloud\'s ambient project is not consulted.',
+    )
+  }
 
   await writeConfig()
   log(`=== ${CLOUD.toUpperCase()} milestone exit run — production stack — ${OFFERING} (${ARCH}) ===`)
@@ -259,6 +304,11 @@ async function main() {
   )
   const offering = provider?.offerings?.find((o) => o.id === OFFERING)
   check(offering?.arch === ARCH, `${OFFERING} is ${ARCH}`, offering?.arch)
+  // `available: false` is a published fact about the location, not a stock reading, and GCP is
+  // the only provider that reports it today: T2A exists in eight zones and c4a in about seventy,
+  // so a leg pointed at a zone without the family is a create that fails twelve minutes from now
+  // for a reason the catalogue already knew. Catch it here, for free.
+  check(offering?.available !== false, `${OFFERING} is available in ${offering?.region ?? '?'}`)
 
   const packs = await (await api('/api/v1/surge-packs')).json()
   const pack = packs.find((p) => p.packId === 'ai-coding-agents') ?? packs[0]
@@ -431,6 +481,18 @@ async function main() {
   if (audit.foreign.length > 0) log(`  not this run's, left alone: ${audit.foreign.join(', ')}`)
   if (CLOUD === 'hetzner') {
     check(audit.mineSshKeys.length === 0, 'this run\'s ssh-key objects were reaped with its server', audit.mineSshKeys.join(', '))
+  } else if (CLOUD === 'gcp') {
+    // The GCE analogue of AWS's shared security group: ONE firewall rule per project, matching
+    // instances by network tag, reported `shared` so a reconciler never reaps it — deleting it
+    // closes port 22 on every running box at once. A first run in a fresh project is the only
+    // one that exercises `firewalls.create`, so this is also the check that says the published
+    // role's `compute.networks.updatePolicy` is really there.
+    check(audit.shared.length >= 1, 'the shared SSH firewall rule survives, as designed', audit.shared.join(', '))
+    // No disk assertion here, and that is deliberate rather than an omission: the boot disk is
+    // created with `autoDelete: true`, so it goes with the instance, and `compute.disks.list` is
+    // absent from the published role on purpose — an orphan the credentials under test cannot SEE
+    // would be an orphan this audit calls clean. The workflow's sweep step reads disks as the
+    // operator identity instead, which is where the AWS leg puts the same reasoning.
   } else {
     check(audit.shared.length >= 1, 'the shared SSH security group survives, as designed', audit.shared.join(', '))
     check(audit.volumes.length === 0, 'no EBS volumes survived termination', audit.volumes.join(', '))
@@ -521,6 +583,19 @@ async function buildProviderDirectly() {
     const { hetznerProviderFactory } = await import(`${REPO}/packages/provider-hetzner/dist/index.js`)
     return hetznerProviderFactory.createProvider(
       hetznerProviderFactory.configSchema.parse({ token: hetznerToken(), location: 'fsn1' }),
+    )
+  }
+  if (CLOUD === 'gcp') {
+    const { gcpProviderFactory } = await import(`${REPO}/packages/provider-gcp/dist/index.js`)
+    return gcpProviderFactory.createProvider(
+      gcpProviderFactory.configSchema.parse({
+        projectId: GCP_PROJECT,
+        zone: GCP_ZONE,
+        // The audit only reads, and the credential is the ambient ADC chain — the same one the
+        // run itself used. A CIDR is required by the schema, deliberately, so nobody creates a
+        // server without deciding who may reach it; this one authorizes nothing.
+        sshAllowedCidr: '127.0.0.1/32',
+      }),
     )
   }
   const { awsProviderFactory } = await import(`${REPO}/packages/provider-aws/dist/index.js`)

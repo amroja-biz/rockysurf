@@ -11,6 +11,7 @@ boxes in your own project — and nothing beyond that.
 - [Which machines you get](#which-machines-you-get)
 - [What it costs](#what-it-costs)
 - [Testing it](#testing-it)
+- [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [What is deliberately absent](#what-is-deliberately-absent)
 - [Status: proven on real Google Cloud, except stop/start](#status-proven-on-real-google-cloud-except-stopstart)
 
@@ -464,6 +465,95 @@ that was refused.
 
 ---
 
+## The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository, not for self-hosters. Nothing here changes
+what you deploy.
+
+[`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml)
+creates and destroys real machines every morning, on both architectures, and the GCP leg runs
+**under the exact role published above** — not a CI-flavoured variant of it. That is the whole
+point of wiring it this way: add an API call to `@rockysurf/provider-gcp` and forget to add its
+permission here, and the nightly fails the next morning instead of every self-hoster's next
+launch failing while CI stays green.
+
+**Use a dedicated, CI-only Google Cloud project. This is the one rule that matters.** Never the
+project in the examples on this page, never a project anybody runs their own Rocky Surf against,
+never a project holding anything else. The sweep that runs after each leg is deliberately narrow —
+it deletes only the `server-id` labels the run itself recorded, and merely *reports* everything
+else it finds — but that narrowness is the second line of defence. The first is that nothing
+anybody cares about is in the project at all. On 2026-08-12 the Hetzner leg destroyed the owner's
+own live server, launched from their laptop against the same project 37 seconds earlier, and
+reported it as a leak it had helpfully cleaned up. A separate project makes that impossible rather
+than merely unlikely.
+
+**No key exists anywhere on this path.** GitHub mints a short-lived OIDC token for the run;
+Google's STS exchanges it for a token that impersonates a named service account. There is no GCP
+secret in the repository and no service-account key to rotate, leak or forget — federation is the
+answer to the question `deploy/gcp/setup.sh`'s `--create-key` flag exists to avoid asking.
+
+### Wiring it, once
+
+```bash
+# read it first — it changes nothing and prints every command
+./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id> --dry-run
+
+./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id>
+```
+
+The script calls the shipped [`deploy/gcp/setup.sh`](../../deploy/gcp/setup.sh) *unmodified* — so
+the role under test is the published one, deployed the published way — and then adds the three CI
+pieces: a workload identity pool and an OIDC provider constrained to this repository and this one
+workflow file, a CI-only sweep service account carrying
+[`deploy/gcp/nightly-sweep-role.yaml`](../../deploy/gcp/nightly-sweep-role.yaml), and
+`roles/iam.workloadIdentityUser` on both accounts. It is idempotent; run it again after editing
+either role file.
+
+It finishes by printing the exact commands for four repository variables — none of which is a
+credential:
+
+| Variable | What it is |
+|---|---|
+| `GCP_CI_PROJECT` | the CI-only project id |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | the pool provider's full resource name, which uses the project **number** |
+| `GCP_PROVIDER_SERVICE_ACCOUNT` | the account carrying the published role — the identity under test |
+| `GCP_NIGHTLY_SERVICE_ACCOUNT` | the CI-only sweep account |
+| `GCP_CI_ZONE` | optional; defaults to `us-central1-a` |
+
+Until all four are set the job **skips with a notice** rather than failing: a perpetually red
+scheduled workflow trains everyone to ignore it, and the one morning it is red for a real reason
+nobody looks. Then trigger it once by hand — `gh workflow run nightly-real-cloud.yml` — rather
+than waiting for 07:00 UTC to find out.
+
+### Why there are two service accounts
+
+The lifecycle runs as the published account; the sweep runs as the CI-only one. They are separate
+for two independent reasons, both learned on the AWS leg:
+
+- **The sweep reads calls the provider never makes.** `compute.disks.list` is absent from the
+  published role deliberately — the provider does not list disks — so a sweep using the identity
+  under test could not see a disk that outlived its instance, and would report the run clean.
+- **The sweep has to work when the identity under test is what broke.** A cleanup wired through
+  the credentials being tested goes blind at exactly the moment it matters.
+
+The sweep account can delete instances and disks in one project and nothing else: no `create` of
+any kind, no firewall permission (the shared SSH rule must survive; deleting it closes port 22 on
+every running box at once), no `iam.*`.
+
+### What the leg covers, and what it does not
+
+Both architectures, sequentially: `t2a-standard-1` (arm64) and `e2-small` (amd64), each through
+the full create → bootstrap → SSH → stop/start → terminate → zero-orphan path. `t2a-standard-1`
+rather than a `c4a-standard-*` because C4A can only boot from Hyperdisk and `bootDiskType` is one
+provider-wide setting — choosing it would break the amd64 leg to fix the arm64 one. So **C4A
+remains unmeasured** by the nightly, exactly as it is today.
+
+`us-central1-a` is the default because it is one of the eight zones with T2A stock. Point
+`GCP_CI_ZONE` somewhere without it and the arm64 leg fails on the catalogue's own `available`
+flag before it creates anything, which is the cheapest possible place to find out.
+
+---
+
 ## What is deliberately absent
 
 **No `iam.*` at all** — no service account creation, no `actAs`, no key management. The boxes
@@ -532,9 +622,17 @@ is the honest word until a real launch says otherwise.
 have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and
 [`spike/recordings/`](../../spike/recordings/) that you can read; this run was driven by hand and
 through the MCP server, and **no transcript of it was recorded into the repository**. What is
-written above is a report of it, not a thing you can check for yourself. Hetzner goes further
-still — it is re-run nightly, so its claim is continuous rather than dated. Wiring a GCP leg into
-that nightly is tracked and not yet done.
+written above is a report of it, not a thing you can check for yourself. Hetzner and AWS go
+further still — they are re-run nightly, so their claim is continuous rather than dated.
+
+**A GCP leg now exists in that nightly, and it has not run yet.** The workflow, the sweep and the
+one-command project setup are in the repository (gh issue #132; see [the nightly section
+above](#the-nightly-real-cloud-run-maintainers)), and the leg runs the full lifecycle on both
+architectures under exactly the role published on this page. It stays skipped until the
+repository owner creates the CI-only project and sets four repository variables, so **nothing on
+this page is yet continuously verified** — the date above is still the evidence. When the leg does
+run, the two gaps named below narrow on their own: stop/start is part of the lifecycle it drives,
+and so is the `ipStableAcrossStop` comparison.
 
 Two smaller things the run did not settle, both harmless:
 
