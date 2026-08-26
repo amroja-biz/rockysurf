@@ -52,7 +52,48 @@ export class ApiError extends Error {
     const body = this.data as { issues?: { path: string; message: string }[] } | undefined
     return Array.isArray(body?.issues) ? body.issues : []
   }
+
+  /**
+   * The nine-code provider taxonomy (ADR-0003), when `code` is one of them (issue #127).
+   *
+   * A cloud failure's `code` on the wire IS one of {@link PROVIDER_ERROR_CODES} — that is the
+   * whole point of the frozen taxonomy — while a validation or lifecycle error uses its own
+   * vocabulary (`bad_request`, `conflict`, `limit_exceeded`, …). Checking membership rather
+   * than trusting the field's mere presence is what lets a caller tell "this is a cloud
+   * provider's own failure, headline it" from "this is core's own refusal, read `detail`
+   * plain" without a second flag on the wire.
+   */
+  get providerErrorCode(): ProviderErrorCode | undefined {
+    const body = this.data as { code?: string } | undefined
+    const code = body?.code
+    return code && (PROVIDER_ERROR_CODES as readonly string[]).includes(code) ? (code as ProviderErrorCode) : undefined
+  }
+
+  /** The cloud's own code, verbatim (e.g. Azure's `OperationNotAllowed`), when core forwarded one. */
+  get providerCode(): string | undefined {
+    const body = this.data as { providerCode?: string } | undefined
+    return body?.providerCode
+  }
 }
+
+/**
+ * Mirrors `@rockysurf/provider-sdk`'s frozen `ProviderErrorCode` (ADR-0003) without taking a
+ * dependency on that package from the browser bundle — `packages/web` redefines every wire
+ * shape it reads rather than importing core's or a provider's own types (see `ProviderInfo`,
+ * `Offering` below).
+ */
+export type ProviderErrorCode = 'auth' | 'quota' | 'capacity' | 'invalid_spec' | 'not_found' | 'rate_limited' | 'conflict' | 'network' | 'unknown'
+const PROVIDER_ERROR_CODES: readonly ProviderErrorCode[] = [
+  'auth',
+  'quota',
+  'capacity',
+  'invalid_spec',
+  'not_found',
+  'rate_limited',
+  'conflict',
+  'network',
+  'unknown',
+]
 
 let authToken: string | null = null
 let onUnauthorized: (() => void) | null = null

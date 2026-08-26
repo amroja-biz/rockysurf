@@ -33,6 +33,7 @@ import {
 } from '../lib/requirements'
 import { AppShell } from '../components/AppShell'
 import { PackIcon } from '../components/PackIcon'
+import { ProviderErrorNotice } from '../components/ProviderErrorNotice'
 import { ProvisioningFeed } from '../components/ProvisioningFeed'
 
 /**
@@ -590,7 +591,14 @@ export function CreateServerPage() {
 
   /* ---------------------------------------------------------------- submission */
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  /**
+   * Either a plain sentence core or this form already wrote for a human, or the `ApiError`
+   * itself when the failure was a classified cloud provider error (issue #127) — kept whole,
+   * rather than collapsed to its `.detail` string here, so `ProviderErrorNotice` below can read
+   * `providerErrorCode` and `providerCode` off it and render a headline plus detail instead of
+   * one raw dump.
+   */
+  const [submitError, setSubmitError] = useState<string | ApiError | null>(null)
   /**
    * Core's per-repository refusals, keyed by their position in `repositories` (rockysurf-k6xp).
    *
@@ -894,7 +902,7 @@ export function CreateServerPage() {
        * limit refused it, which provider is ambiguous, which repository URL does not open.
        */
       if (err instanceof ApiError) {
-        setSubmitError(err.detail)
+        setSubmitError(err)
         // Field-level detail lands on the field. `repositories.N` is the only path this form
         // has somewhere to put; anything else stays in the summary above.
         const byIndex: string[] = []
@@ -1382,7 +1390,8 @@ export function CreateServerPage() {
           <p className="hint">{provider.displayName} servers cannot be stopped and restarted — only terminated.</p>
         )}
 
-        {submitError && <p className="error">{submitError}</p>}
+        {submitError &&
+          (typeof submitError === 'string' ? <p className="error">{submitError}</p> : <ProviderErrorNotice error={submitError} />)}
 
         {/* The way past a preflight refusal, offered only once there IS one — with the reasons
             still on screen above it, so ticking it is a decision about them. The check is a

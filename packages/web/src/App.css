@@ -1293,6 +1293,39 @@ p.hint {
 }
 
 /*
+ * A classified cloud provider failure — headline plus detail, not the raw diagnostic string in
+ * one line (issue #127). `.provider-error` keeps the red `.error` card; the headline reads in
+ * the theme's normal text colour rather than red-on-red, and the detail block borrows the same
+ * treatment `.bootstrap-report .key-lines` already uses for machine output.
+ */
+.provider-error-headline {
+  margin: 0 0 0.5rem;
+  color: var(--rs-text);
+  font-weight: 600;
+}
+
+.provider-error-code {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.provider-error-detail {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: 4px;
+  color: var(--rs-text);
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+/*
  * Per-URL preflight refusals, under the repositories field (rockysurf-k6xp). Attached to the
  * field rather than banner-styled, because the next action is editing one of these lines.
  */

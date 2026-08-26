@@ -458,6 +458,63 @@ describe('pack metadata drives the conditional fields', () => {
 })
 
 /**
+ * A classified cloud provider failure reads as a headline plus detail, not one raw dump
+ * (issue #127). Core's `fail()` (`servers/routes.ts`) forwards a create-time provider refusal
+ * with `code` on the nine-code taxonomy (ADR-0003) and the cloud's own `providerCode` verbatim
+ * — this pins that the page actually reads both, rather than dumping the whole diagnostic
+ * string (method, path, code, and the cloud's own multi-line paragraph) into one `<p>`.
+ */
+describe('when a cloud provider refuses the create', () => {
+  const azureQuotaRefusal = () =>
+    new api.ApiError(403, 'Forbidden', {
+      error:
+        "azure PUT /subscriptions/6845f60d-cdf4/resourceGroups/RockySurfResourceGroup/providers/Microsoft.Compute/virtualMachines/srv-1: OperationNotAllowed: Operation could not be completed as it results in exceeding approved standardBpsv2Family Cores quota.\nAdditional details - Current Limit: 0, Current Usage: 0, Additional Required: 2. Submit a request for Quota increase at https://aka.ms/ProdportalCRP/",
+      code: 'quota',
+      providerCode: 'OperationNotAllowed',
+      retryable: false,
+    })
+
+  async function submitAndFail() {
+    const user = userEvent.setup()
+    vi.mocked(api.createServer).mockRejectedValueOnce(azureQuotaRefusal())
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    return user
+  }
+
+  it('shows a plain-language headline derived from the taxonomy code, and the cloud code beside it', async () => {
+    await submitAndFail()
+    const notice = await screen.findByTestId('provider-error-notice')
+    expect(within(notice).getByText(/cloud quota exceeded/i)).toBeTruthy()
+    expect(within(notice).getAllByText(/OperationNotAllowed/)).not.toHaveLength(0)
+  })
+
+  it('keeps the raw diagnostic as a separate, line-preserving detail block rather than one paragraph', async () => {
+    await submitAndFail()
+    const notice = await screen.findByTestId('provider-error-notice')
+    // Structured, not a single <p> holding everything (the bug this issue fixed): a headline
+    // paragraph plus a <pre> for the machine output, each their own element.
+    const detail = notice.querySelector('pre.provider-error-detail')
+    expect(detail).toBeTruthy()
+    expect(detail!.textContent).toContain('Current Limit: 0, Current Usage: 0')
+    // The multi-line ARM message keeps its own line break rather than being flattened into one
+    // run of text — `textContent` still concatenates it, so this checks the source string
+    // rather than layout.
+    expect(detail!.textContent).toContain('\n')
+  })
+
+  it('does not fall back to the flat, unstyled paragraph the old page rendered', async () => {
+    await submitAndFail()
+    await screen.findByTestId('provider-error-notice')
+    // The old rendering: `<p className="error">{err.detail}</p>` with nothing else on the page
+    // holding the message. Once the structured notice exists, that bare paragraph must not.
+    const flatParagraphs = screen.queryAllByText((_, el) => el?.tagName === 'P' && el.className === 'error')
+    expect(flatParagraphs).toHaveLength(0)
+  })
+})
+
+/**
  * OFFICIAL AND COMMUNITY (rockysurf-jn71).
  *
  * The picker used to be one flat list mixing the packs that shipped in the tarball with the ones
