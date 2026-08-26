@@ -4,11 +4,12 @@ import { formatDateTime } from '../lib/format'
 /**
  * "This machine is still running, and still billing" (rockysurf-4byx).
  *
- * The case it exists for is a bootstrap that failed — a repository-URL typo, an install script
- * that exited non-zero. The row goes to `failed` and the instance is deliberately LEFT UP, so
- * that a person can log in and find out what went wrong; the spend cap never stops a running
- * server either. Both of those are the design. What was missing is that nothing said so, and
- * the card's `Uptime 0s / $0.00` actively implied the opposite.
+ * The case it exists for is a bootstrap that failed and LEFT THE MACHINE UP: a failure outside
+ * a tool install (a finishing step), a tool failure under `bootstrap.onFailure: keep`, or a
+ * tool failure where the provider refused to release the instance (ADR-0010 — a failed tool
+ * install otherwise terminates the box, and this notice then has nothing to say). The spend cap
+ * never stops a running server either. What was missing before this notice is that nothing
+ * said so, and the card's `Uptime 0s / $0.00` actively implied the opposite.
  *
  * NOT DISMISSIBLE, unlike `IpChangeAlert`. A changed IP is news that stops mattering once you
  * have read it; a machine that is charging money goes on charging money, and a dismiss button
@@ -18,7 +19,8 @@ import { formatDateTime } from '../lib/format'
  *
  * The two ways out are given equal weight on purpose. "Terminate" is the cheap one and the one
  * a user reaches for; "diagnose" is why the box is still there at all, and a notice that only
- * said "terminate this" would quietly throw away the evidence the failure left behind.
+ * said "terminate this" would quietly throw away the evidence the failure left behind. The
+ * report above this notice says WHY the machine was kept.
  */
 export function StillBillingNotice({ server, detailed = false }: { server: Server; detailed?: boolean }) {
   if (!server.billing) return null
@@ -34,10 +36,7 @@ export function StillBillingNotice({ server, detailed = false }: { server: Serve
             ? 'Failed — but the machine is still running, and still billing.'
             : 'This machine is still running, and still billing.'}
         </strong>{' '}
-        <span>
-          Terminate it to stop the charge, or leave it up and SSH in to diagnose what went wrong.
-          {server.status === 'failed' && ' The box is kept after a failure precisely so you can.'}
-        </span>
+        <span>Terminate it to stop the charge, or leave it up and SSH in to diagnose what went wrong.</span>
         {detailed && server.billing.since && (
           <p className="hint">
             {/*

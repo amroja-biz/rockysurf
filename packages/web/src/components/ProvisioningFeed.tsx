@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useServerUpdates } from '../hooks/useServerUpdates'
-import type { ProvisioningStep } from '../lib/api'
+import { getServer, type BootstrapReport as Report, type ProvisioningStep } from '../lib/api'
 import { isProvisioningStep, STEP_ORDER } from '../lib/format'
+import { BootstrapReport } from './BootstrapReport'
 
 /**
  * The live feed a user watches while their server comes up.
@@ -46,7 +47,20 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
   const [status, setStatus] = useState<string>('requested')
   const [failure, setFailure] = useState<string | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
+  const [report, setReport] = useState<Report | null>(null)
   const notifiedReady = useRef(false)
+
+  /**
+   * The report is on the ROW, not in the event (ADR-0010): it carries whole logs, which do not
+   * belong on a broadcast every open tab receives. A terminal status is the cue to fetch it —
+   * for a failure, the account of what went wrong; for a box that came up, whatever did not
+   * make it onto it. A fetch that fails leaves the one-line reason from the event in place.
+   */
+  function loadReport() {
+    void getServer(serverId)
+      .then((server) => setReport(server.bootstrapReport ?? null))
+      .catch(() => undefined)
+  }
 
   useServerUpdates((event) => {
     switch (event.type) {
@@ -61,9 +75,13 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
         break
       case 'server-status':
         setStatus(event.status)
-        if (event.status === 'failed') setFailure(event.error ?? 'Provisioning failed')
+        if (event.status === 'failed') {
+          setFailure(event.error ?? 'Provisioning failed')
+          loadReport()
+        }
         if (event.status === 'running' && !notifiedReady.current) {
           notifiedReady.current = true
+          loadReport()
           onReady?.()
         }
         break
@@ -87,9 +105,17 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
         })}
       </ol>
 
-      {failure && <p className="error">{failure}</p>}
+      {/* The one-line reason from the event, until the report — which says the same and much
+          more — has arrived to replace it. */}
+      {failure && !report?.failure && <p className="error">{failure}</p>}
 
-      {status === 'running' && !failure && <p className="success">Your server is ready.</p>}
+      {status === 'running' && !failure && (
+        <p className="success">
+          {report && report.warnings.length > 0 ? 'Your server is ready — with something missing, below.' : 'Your server is ready.'}
+        </p>
+      )}
+
+      {report && <BootstrapReport report={report} />}
 
       {logLines.length > 0 && (
         <details className="log">

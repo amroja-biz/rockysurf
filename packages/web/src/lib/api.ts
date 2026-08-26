@@ -241,6 +241,13 @@ export interface Server {
   provisioningStep?: ProvisioningStep
   errorMessage?: string
   /**
+   * The complete account of a bootstrap that went wrong (ADR-0010): the failed step by name,
+   * why, the decisive lines, the whole captured log, and what core did with the machine — or,
+   * on a box that came up, the repositories that did not clone. `errorMessage` is the
+   * paragraph; this is the evidence. Absent on a clean row.
+   */
+  bootstrapReport?: BootstrapReport
+  /**
    * Why this row may be STALE: the provider could not be asked just now — expired cloud
    * credentials, a cloud having a bad day — and core served what it last knew instead of
    * failing the whole request (rockysurf-gg9x). The message is the provider's own and names
@@ -254,6 +261,49 @@ export interface Server {
   stoppedAt?: string
   terminatedAt?: string
   totalUptimeSeconds: number
+}
+
+/** Mirrors `bootstrap/failure-report.ts` in core (ADR-0010). */
+export type BootstrapFailureCause =
+  | 'apt-mirror'
+  | 'apt'
+  | 'git-auth'
+  | 'git-not-found'
+  | 'github-rate-limit'
+  | 'network'
+  | 'disk-full'
+  | 'timeout'
+  | 'unknown'
+
+export interface StepReport {
+  /** The plan's step id: `tool:build-essential`, `repo:my-app`, `branding`. */
+  stepId: string
+  phase: 'tool' | 'repo' | 'setup' | 'finishing'
+  /** The tool's display name, the repository URL, or the step id when neither is known. */
+  label: string
+  exitCode?: number
+  cause: BootstrapFailureCause
+  /** Two to four plain sentences: what failed, why, what to do about it. */
+  summary: string
+  /** The lines that decide the verdict — never the whole log. */
+  keyLines: string[]
+  /** The step's captured output. Complete in push mode; the agent's tail in callback mode. */
+  log: string
+  logComplete: boolean
+}
+
+export interface BootstrapFailure extends StepReport {
+  instance: 'terminated' | 'kept' | 'terminate-failed'
+  /** One sentence on what core did with the machine and what that means for the bill. */
+  instanceNote: string
+}
+
+export interface BootstrapReport {
+  /** The required step that stopped the plan. Absent when the box came up with warnings only. */
+  failure?: BootstrapFailure
+  /** Optional steps that failed while the plan went on — repository clones. */
+  warnings: StepReport[]
+  agentLogTail?: string
 }
 
 /**

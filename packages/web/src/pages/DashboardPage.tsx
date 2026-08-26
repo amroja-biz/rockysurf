@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import toast from 'react-hot-toast'
 import { ActivityFeed } from '../components/ActivityFeed'
 import { BackupReminder } from '../components/BackupReminder'
+import { warningsSummary } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { AppShell } from '../components/AppShell'
@@ -232,6 +233,17 @@ function ServerCard({
         in the row all along, and only the page the user was not on rendered it.
       */}
       {server.errorMessage && <p role="alert">{server.errorMessage}</p>}
+
+      {/*
+        A box that came up with something missing (ADR-0010) — a repository that did not clone.
+        One line here; the detail page carries the account. Without it a `Running` pill on a
+        box that is missing the repository the user asked for reads as "all good".
+      */}
+      {server.status === 'running' && warningsSummary(server.bootstrapReport) && (
+        <p className="bootstrap-warnings-note" role="status">
+          {warningsSummary(server.bootstrapReport)} — <Link to={`/servers/${server.serverId}`}>see why</Link>
+        </p>
+      )}
 
       {/*
         Above the meta list, deliberately: it is the explanation for the two numbers below it.
