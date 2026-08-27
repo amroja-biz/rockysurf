@@ -387,6 +387,11 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
           repositories: flagValues(argv, '--repo'),
           createAnyway: argv.includes('--create-anyway'),
           rdpPassword: rdpPasswordFlag(argv),
+          // A PATH, deliberately (issue #184): the script itself on a command line would be
+          // readable through `ps` and mangled by whatever shell typed it. `createCommand` reads
+          // and bounds it, so a bad path is refused before anything is provisioned.
+          ...(flagValue(argv, '--user-script') ? { userScriptPath: flagValue(argv, '--user-script')! } : {}),
+          ...(flagValue(argv, '--user-script-as') ? { userScriptRunAs: flagValue(argv, '--user-script-as')! } : {}),
         })
       case 'stop':
         return argv[0] ? await stopCommand(deps, argv[0]) : usage('stop <name>')

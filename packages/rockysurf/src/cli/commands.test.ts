@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -10,6 +10,7 @@ import {
   listCommand,
   offeringsCommand,
   rdpPasswordFlag,
+  readUserScript,
   sshCommand,
   sshConfigCommand,
   stopCommand,
@@ -162,6 +163,67 @@ describe('create', () => {
 
     await createCommand(d, { size: 'small', offeringId: 'not-a-real-type' })
     expect(post).toHaveBeenCalledWith('/api/v1/servers', expect.objectContaining({ offeringId: 'not-a-real-type' }))
+  })
+})
+
+/**
+ * `--user-script <file>` and `--user-script-as` (issue #184, ADR-0011).
+ *
+ * A PATH rather than the script itself, so a whole program never lands in `argv` where every
+ * `ps` on the machine can read it — and so the shell that typed it never gets a go at quoting
+ * it. Every refusal happens before the POST, on `resolveRdpPassword`'s doctrine: a mistyped
+ * flag should cost a sentence, not a machine.
+ */
+describe('--user-script', () => {
+  const scriptFile = (contents: string): string => {
+    const path = join(mkdtempSync(join(tmpdir(), 'rs-user-script-')), 'boot.sh')
+    writeFileSync(path, contents)
+    return path
+  }
+
+  it('sends the file contents and the runner the user named', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    expect(
+      await createCommand(d, { size: 'small', userScriptPath: scriptFile('echo hello\n'), userScriptRunAs: 'root' }),
+    ).toBe(0)
+    expect(post).toHaveBeenCalledWith(
+      '/api/v1/servers',
+      expect.objectContaining({ userScript: 'echo hello\n', userScriptRunAs: 'root' }),
+    )
+  })
+
+  it('defaults the runner to rocky, and sends neither field without a script', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    await createCommand(d, { size: 'small', userScriptPath: scriptFile('echo hi\n') })
+    expect((post.mock.calls[0]?.[1] as Record<string, unknown>)['userScriptRunAs']).toBe('rocky')
+
+    await createCommand(d, { size: 'small' })
+    const plain = post.mock.calls[1]?.[1] as Record<string, unknown>
+    expect(plain).not.toHaveProperty('userScript')
+    expect(plain).not.toHaveProperty('userScriptRunAs')
+  })
+
+  it('refuses a bad path, an empty file, an oversized file and an unknown runner — before the POST', async () => {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const d = deps({ client: { ...deps().client, post: post as unknown as CoreClient['post'] } as CoreClient })
+
+    expect(await createCommand(d, { size: 'small', userScriptPath: '/nope/does-not-exist.sh' })).toBe(1)
+    expect(await createCommand(d, { size: 'small', userScriptPath: scriptFile('   \n') })).toBe(1)
+    expect(await createCommand(d, { size: 'small', userScriptPath: scriptFile('x'.repeat(16385)) })).toBe(1)
+    expect(await createCommand(d, { size: 'small', userScriptPath: scriptFile('ok\n'), userScriptRunAs: 'nobody' })).toBe(1)
+    // Nothing was created by any of the four, which is the whole point of checking here.
+    expect(post).not.toHaveBeenCalled()
+    // The closed choice names its options, the way --arch does.
+    expect(d.stderr.join('\n')).toContain('root, rocky')
+  })
+
+  it('refuses --user-script-as on its own rather than silently creating a box with no script', () => {
+    expect(readUserScript({ userScriptRunAs: 'root' }).refusal).toContain('--user-script')
+    expect(readUserScript({ userScriptRunAs: 'root' }).script).toBeUndefined()
   })
 })
 

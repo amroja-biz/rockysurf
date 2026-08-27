@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CoreApiError, type CoreClient } from '../mcp/client.js'
@@ -162,6 +162,18 @@ export async function offeringsCommand(deps: CliDeps, args: { provider?: string 
 export const ARCHITECTURES = ['amd64', 'arm64'] as const
 export type CliArchitecture = (typeof ARCHITECTURES)[number]
 
+/** Who may run `--user-script`, which is the plan's own `runAs` vocabulary (issue #184). */
+export const USER_SCRIPT_RUN_AS = ['root', 'rocky'] as const
+
+/**
+ * The create route's ceiling on a user script, checked here too (issue #184).
+ *
+ * Not to save core the refusal — core still enforces it, because a limit only one front end
+ * honours is not a limit — but so that a 40 MB file named by mistake is refused by the sentence
+ * that names the file, before it is read into a request body and sent over the network.
+ */
+export const USER_SCRIPT_MAX_BYTES = 16384
+
 export interface CreateArgs {
   name?: string
   size?: string
@@ -198,6 +210,20 @@ export interface CreateArgs {
   /** Create even though a repository URL failed that preflight. The SPA's checkbox, as a flag. */
   createAnyway?: boolean
   /**
+   * `--user-script <path>`: a file whose contents the box runs once at the end of its bootstrap
+   * (issue #184, ADR-0011).
+   *
+   * A PATH, NOT THE SCRIPT. `--user-script 'set -e; ...'` would put a whole program in `argv`,
+   * where every `ps` on the machine can read it and where a shell has already had a go at
+   * quoting it; `aws ec2 run-instances --user-data file://…` takes a file for the same reason.
+   * It is read and bounded HERE rather than in `cli.ts`, so an unreadable path is refused with
+   * a sentence instead of an ENOENT, and refused BEFORE the POST — the doctrine
+   * `resolveRdpPassword` below is built on.
+   */
+  userScriptPath?: string
+  /** `--user-script-as root|rocky`. A closed choice, checked like `--arch`. */
+  userScriptRunAs?: string
+  /**
    * What `--rdp-password` was, NOT what it said.
    *
    * `'literal'` means a value followed it on the command line, and the value is deliberately
@@ -205,6 +231,42 @@ export interface CreateArgs {
    * password around to reject it later only widens the number of places it has been.
    */
   rdpPassword?: 'absent' | 'prompt' | 'literal'
+}
+
+/**
+ * `--user-script <path>` and `--user-script-as`, resolved to the text that goes on the wire.
+ *
+ * Every refusal is a sentence rather than a thrown error, because `cli.ts` prints a thrown
+ * error's `message` alone and these three need to name the flag that is wrong. A path that
+ * reads as an empty file is refused too: it is far more likely to be the wrong path than a
+ * deliberate request to run nothing, and a request to run nothing is spelled by leaving the
+ * flag off.
+ */
+export function readUserScript(args: CreateArgs): { script?: string; refusal?: string } {
+  if (args.userScriptRunAs !== undefined && !(USER_SCRIPT_RUN_AS as readonly string[]).includes(args.userScriptRunAs)) {
+    return { refusal: `--user-script-as must be one of: ${USER_SCRIPT_RUN_AS.join(', ')} — got "${args.userScriptRunAs}"` }
+  }
+  if (!args.userScriptPath) {
+    if (args.userScriptRunAs !== undefined) {
+      return { refusal: '--user-script-as needs a --user-script <file> to run' }
+    }
+    return {}
+  }
+  let text: string
+  try {
+    text = readFileSync(args.userScriptPath, 'utf8')
+  } catch (error) {
+    return { refusal: `--user-script ${args.userScriptPath}: ${error instanceof Error ? error.message : String(error)}` }
+  }
+  if (Buffer.byteLength(text, 'utf8') > USER_SCRIPT_MAX_BYTES) {
+    return {
+      refusal:
+        `--user-script ${args.userScriptPath} is larger than ${USER_SCRIPT_MAX_BYTES} bytes, which is all a ` +
+        'server will take. Put it in a repository the box clones and run that instead.',
+    }
+  }
+  if (!text.trim()) return { refusal: `--user-script ${args.userScriptPath} is empty` }
+  return { script: text }
 }
 
 /**
@@ -243,6 +305,14 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
     return 1
   }
 
+  // Also before the POST, and for the same reason: a mistyped path should cost a sentence, not
+  // a machine (issue #184).
+  const userScript = readUserScript(args)
+  if (userScript.refusal) {
+    deps.err(userScript.refusal)
+    return 1
+  }
+
   let body: unknown
   try {
     body = await deps.client.post('/api/v1/servers', {
@@ -263,6 +333,11 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
       ...(args.repositories?.length ? { repositories: args.repositories } : {}),
       ...(args.createAnyway ? { createAnyway: true } : {}),
       ...(rdp.password ? { rdpPassword: rdp.password } : {}),
+      // Both or neither: core 400s a `userScriptRunAs` with nothing to run, and this surface
+      // must not be the one that produces that request.
+      ...(userScript.script
+        ? { userScript: userScript.script, userScriptRunAs: args.userScriptRunAs ?? 'rocky' }
+        : {}),
     })
   } catch (error) {
     /*
