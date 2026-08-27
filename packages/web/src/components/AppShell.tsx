@@ -43,11 +43,12 @@ export function AppShell({
             table-of-contents nav, and an unnamed landmark is ambiguous the moment there
             are two. */}
         <nav aria-label="Primary">
-          {/* The mark is the shipped favicon rather than the full illustration: the painting
-              is the home page's hero, and 236KB is not a navbar asset. */}
+          {/* The brand lockup — the painting cropped around the wordmark — at 44px, from an
+              88px-tall export so it is crisp on a 2x display. It carries the name as its alt
+              text, so the link's accessible name is still "Rocky Surf". The full painting
+              stays the home page's hero. */}
           <Link to="/home" className="app-brand">
-            <img src="/favicon-48x48.png" alt="" width={20} height={20} />
-            <span>Rocky Surf</span>
+            <img src="/images/brand.png" alt="Rocky Surf" height={44} width={98} />
           </Link>
           <Link to="/">Servers</Link>
           <Link to="/servers/new">New</Link>

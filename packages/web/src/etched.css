@@ -92,7 +92,6 @@ body[data-rs-skin='etched'] {
   border-bottom: 1px solid var(--rs-beam-soft);
   background-image: linear-gradient(100deg, rgba(252, 245, 232, 0.09) 0%, rgba(252, 245, 232, 0.02) 34%, rgba(252, 245, 232, 0) 62%);
 }
-[data-rs-skin='etched'] .app-brand span { color: var(--rs-heading); }
 
 /* ── Squared ───────────────────────────────────────────────────────────────────────────
    An engraved plate has corners. --rs-radius covers most of it; these are the places
