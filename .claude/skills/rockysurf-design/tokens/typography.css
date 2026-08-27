@@ -1,13 +1,13 @@
-/* Type. No webfont: the app runs on the system UI stack and the system mono, which is
-   why there is no @font-face anywhere in this system. */
+/* Type. Rocky Surf webfont adopted across UI and mono — see fonts/RockySurf-Regular.ttf. */
+@font-face {
+  font-family: "Rocky Surf";
+  src: url("../fonts/RockySurf-Regular.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: swap;
+}
 :root {
-  /* Upstream (App.css) spells the stack in full:
-       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif
-     The Linux-only names are dropped from the token so this system does not advertise webfonts
-     it has no binaries for. Rendering is identical on macOS and Windows; on Linux the generic
-     sans-serif resolves to the same faces. */
-  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* @kind font */
-  --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; /* @kind font */
+  --font-ui: "Rocky Surf", -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; /* @kind font */
+  --rs-mono: "Rocky Surf", ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; /* @kind font */
   --font-mono: var(--rs-mono);
 
   --text-h1: 1.75rem;   /* page title */
