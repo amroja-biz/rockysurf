@@ -156,10 +156,13 @@ if they are all lost, the box still finishes and the journal still describes wha
   "failedStep": "tool:node",       // present only when status is "failed"
   "logTail": "curl: (6) Could not resolve host…",  // last ~25 lines of the failing step
   "notice": "Ubuntu's package archive is out of sync — waiting 2 min before retrying. Nothing is stuck.",
-                                   // present only WHILE the current step is deliberately waiting (#129)
-                                   // or has written nothing for a minute or more (#205, re-posted
-                                   // each minute with the elapsed time); the agent deletes it the
-                                   // moment the wait ends or the step speaks. Bumps updatedAt.
+                                   // present only WHILE the current step is on its second attempt
+                                   // after an apt fetch failure (#205: what failed and from where, the
+                                   // wait or mirror swap, the bound in minutes, and the choice — wait,
+                                   // or terminate now and launch on another provider) or has written
+                                   // nothing for a minute or more (#205, re-posted each minute with
+                                   // the elapsed time); the agent deletes it the moment the attempt
+                                   // ends or the step speaks. Bumps updatedAt. Up to 1000 characters.
   "steps": [
     {
       "id": "tool:claude-code",

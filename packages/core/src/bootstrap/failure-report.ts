@@ -280,18 +280,22 @@ export function summarize(input: {
         ? "The mirror's package index is naming files it is no longer serving — this is a fault on the mirror side, not in your pack or your settings, and it usually clears within the hour."
         : 'This is an outage on the mirror side, not a problem with your pack or your settings; it usually clears within a few hours.'
 
+      // The same two options, in the same words, as the retry notice the timeline showed while
+      // the second attempt ran (agent.sh `retry_notice`, #205): wait, or another provider. The
+      // box is already released by now (ADR-0010), so "terminate now" has become "create again".
       if (!first) {
         return (
           `${thing}: ${what} was not serving packages ` +
           `(${evidence.includes('503') ? 'HTTP 503' : 'missing or mismatched files'}). ` +
           'Rocky Surf already retried the step once and got the same answer. ' +
-          `${diagnosis} Create the server again once it is back.`
+          `${diagnosis} You can wait and create the server again once it is back, or launch it on another provider now.`
         )
       }
       return (
         `${thing}: ${what} would not serve a file the install needs — ${first.url}${statusPhrase}${alsoPhrase}. ` +
         `${retried} ${diagnosis} ` +
-        `Check it yourself — \`curl -I ${first.url}\` answering 200 means the mirror has caught up — then create the server again.`
+        `Check it yourself — \`curl -I ${first.url}\` answering 200 means the mirror has caught up. ` +
+        'You can wait and create the server again then, or launch it on another provider now.'
       )
     }
     case 'apt':

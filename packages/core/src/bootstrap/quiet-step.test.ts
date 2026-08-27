@@ -153,3 +153,74 @@ describe.skipIf(!hasJq)('a step that says nothing is announced on the journal wh
     expect(status).toBe(1)
   })
 })
+
+/** apt's own words for the failure mode, verbatim from Pack smoke on #187 (arm64). */
+const FETCH_404_URL = 'http://ports.ubuntu.com/ubuntu-ports/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb'
+const FETCH_404 = `E: Failed to fetch ${FETCH_404_URL}  404  Not Found [IP: 91.189.91.103 80]`
+
+/**
+ * Fails the first time the way a sick mirror makes apt fail, then — on the second attempt —
+ * copies the journal (what the timeline is showing while the retry runs) and converges.
+ */
+const failsOnceThenSnapshots = (signature: string) =>
+  [
+    `if [ -f "$ROCKYSURF_STATE_DIR/seen" ]; then ${snapshot('during-retry.json')}; exit 0; fi`,
+    'touch "$ROCKYSURF_STATE_DIR/seen"',
+    `echo '${signature}' >&2`,
+    'exit 100',
+  ].join('\n')
+
+describe.skipIf(!hasJq)('the retry is announced, with the choice it leaves the user (#205)', () => {
+  it('names the tool, the mirror and the URL, what happens next, the bound, and the two options', () => {
+    const { journal, snapshot: read, agentLog } = runAgent([
+      step('tool:build-essential', failsOnceThenSnapshots(FETCH_404), { timeoutSeconds: 1800 }),
+      step('branding', 'true', { reports: 'ready' }),
+    ])
+
+    const notice = read('during-retry.json')?.notice
+    expect(notice, agentLog).toBeDefined()
+    // What failed, from where, with what answer — the fact the user can check themselves.
+    expect(notice).toMatch(/^build-essential could not be downloaded — ports\.ubuntu\.com answered HTTP 404 for /)
+    expect(notice).toContain(FETCH_404_URL)
+    // What happens next: one more attempt, after the wait (no /etc/apt to swap on a laptop).
+    expect(notice).toContain('then trying this step once more')
+    // The bound, derived: a 1800 s timeout on the second attempt plus a zero wait is 30 min.
+    expect(notice).toContain('it gives up after 30 more minutes at most')
+    // The choice, in the user's terms, pointing at the control that already exists.
+    expect(notice).toContain(
+      'You can wait, or terminate this server now (Terminate, on this page) and launch it on another provider.',
+    )
+
+    // The notice stands for the second attempt only: gone once the step has converged.
+    expect(journal.status, agentLog).toBe('done')
+    expect(journal.notice).toBeUndefined()
+  })
+
+  it('still says what it can when apt phrased the failure without a URL', () => {
+    const { journal, snapshot: read, agentLog } = runAgent([
+      step(
+        'tool:build-essential',
+        failsOnceThenSnapshots('E: Some index files failed to download. They have been ignored, or old ones used instead.'),
+        { timeoutSeconds: 600 },
+      ),
+    ])
+
+    const notice = read('during-retry.json')?.notice
+    expect(notice, agentLog).toContain(
+      "build-essential could not be downloaded — Ubuntu's package mirror was not serving what apt asked for",
+    )
+    expect(notice).not.toContain('http')
+    expect(notice).toContain('it gives up after 10 more minutes at most')
+    expect(notice).toContain('terminate this server now')
+    expect(journal.status).toBe('done')
+  })
+
+  it('is taken back when the second attempt fails too, so it never sits under a failed step', () => {
+    const { journal, agentLog } = runAgent([step('tool:build-essential', `echo '${FETCH_404}' >&2; exit 100`)])
+
+    expect(journal.status, agentLog).toBe('failed')
+    expect(journal.failedStep).toBe('tool:build-essential')
+    expect(journal.notice).toBeUndefined()
+    expect(agentLog).toContain('apt is out of retries for this step')
+  })
+})
