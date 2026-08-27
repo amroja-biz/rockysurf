@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -124,6 +124,17 @@ const localAdmin = (over: Partial<AdminSurgePack> = {}): AdminSurgePack => ({
   ...over,
 })
 
+/** What the export route renders for a file-backed pack (issue #192). */
+const SHIPPED_YAML = `version: 1
+pack:
+  packId: ai-coding-agents
+  name: Claude Code
+tools:
+  - toolId: claude-code
+    installScript: |
+      curl -fsSL https://claude.ai/install.sh | bash
+`
+
 const TOOL: AdminTool = {
   toolId: 'claude-code',
   name: 'Claude Code',
@@ -195,6 +206,7 @@ beforeEach(() => {
   vi.mocked(api.getPackRegistry).mockResolvedValue(emptyRegistry())
   vi.mocked(api.getRegistryPack).mockResolvedValue(DISCLOSURE_DETAIL)
   vi.mocked(api.installRegistryPack).mockResolvedValue(registryAdmin({ packId: 'aider', name: 'Aider' }))
+  vi.mocked(api.exportSurgePackYaml).mockResolvedValue(SHIPPED_YAML)
 })
 
 afterEach(() => {
@@ -224,11 +236,22 @@ function renderDetail(packId: string) {
 }
 
 describe('provenance labelling', () => {
+  /**
+   * THE SENTENCE MOVED TO THE DETAIL PAGE (issue #192); the badge did not move.
+   *
+   * A card is a mark, a name and core's own three words. "Where did this come from, exactly" is
+   * a question an admin asks about ONE pack, on that pack's page — not about twenty at once, in
+   * a grid. So each assertion below reads the sentence where it now lives, and also asserts it
+   * is gone from the card, because that removal is the issue, not a side effect of it.
+   */
   it('reads a file-backed pack official, because that is what shipped with the release', async () => {
     renderList()
     const card = await screen.findByTestId('pack-card-ai-coding-agents')
     expect(card.querySelector('[data-testid="trust-official"]')).toBeTruthy()
-    expect(card.textContent).toContain('shipped with this release')
+    expect(card.textContent).not.toContain('shipped with this release')
+
+    renderDetail('ai-coding-agents')
+    expect(await screen.findByText(/shipped with this release · ai-coding-agents\.yaml/)).toBeTruthy()
   })
 
   it('labels a registry-installed pack "registry", never "official", and names the real source', async () => {
@@ -236,11 +259,14 @@ describe('provenance labelling', () => {
     const card = await screen.findByTestId('pack-card-rust-dev')
     expect(card.querySelector('[data-testid="trust-registry"]')).toBeTruthy()
     expect(card.querySelector('[data-testid="trust-official"]')).toBeNull()
-    expect(card.textContent).toContain('installed from Rocky Surf Pack Shop')
+    expect(card.textContent).not.toContain('installed from')
+
+    renderDetail('rust-dev')
+    const origin = await screen.findByText(/installed from Rocky Surf Pack Shop/)
     // And the URL, since issue #88: which shelf was clicked is not the same question as what
     // this installation actually fetched, and with a personal source it is the second one that
     // an operator is asking. Admin-only, like the rest of this sentence.
-    expect(card.textContent).toContain('https://example.com/shop')
+    expect(origin.textContent).toContain('https://example.com/shop')
   })
 
   it('says an imported pack came from its URL, rather than calling it something made here', async () => {
@@ -263,17 +289,28 @@ describe('provenance labelling', () => {
     ])
     vi.mocked(api.listSurgePacks).mockResolvedValue([officialPublic(), localPublic({ provenance: 'registry' })])
 
-    renderList()
-    const card = await screen.findByTestId('pack-card-mine')
-    expect(card.textContent).toContain('imported from https://packs.example.com/my-pack.yaml')
-    expect(card.textContent).not.toContain('created here')
+    renderDetail('mine')
+    const origin = await screen.findByText(/imported from https:\/\/packs\.example\.com\/my-pack\.yaml/)
+    expect(origin.textContent).not.toContain('created here')
   })
 
   it('reads an admin-created pack "local" rather than guessing at a source', async () => {
     renderList()
     const card = await screen.findByTestId('pack-card-mine')
     expect(card.querySelector('[data-testid="trust-local"]')).toBeTruthy()
-    expect(card.textContent).toContain('created here, in this installation')
+    expect(card.textContent).not.toContain('created here, in this installation')
+
+    renderDetail('mine')
+    expect(await screen.findByText('created here, in this installation')).toBeTruthy()
+  })
+
+  it('spends the card on the mark, the name and the badge — nothing else (#192)', async () => {
+    renderList()
+    const card = await screen.findByTestId('pack-card-rust-dev')
+    expect(card.textContent).toContain('Rust Dev')
+    // The tool count went with the origin sentence: the popup and the detail page both list
+    // the tools themselves, which is the answer the count was standing in for.
+    expect(card.textContent).not.toMatch(/tool\(s\)/)
   })
 })
 
@@ -513,5 +550,139 @@ describe("the issue's own acceptance", () => {
     renderDetail('does-not-exist')
     expect(await screen.findByText(/no such pack/i)).toBeTruthy()
     expect(screen.getByRole('link', { name: /all surge packs/i }).getAttribute('href')).toBe('/packs')
+  })
+})
+
+/**
+ * The hover popup on an official pack's card (issue #192).
+ *
+ * FAKE TIMERS ONLY AROUND THE DELAY: the page loads under real timers so `findBy*` works
+ * normally, and the clock is faked just long enough to walk through the one second the popup
+ * waits. `mouseOver`/`mouseOut` rather than `mouseEnter`/`mouseLeave` because React derives
+ * enter and leave from the delegated over/out pair.
+ */
+describe("an official pack's card popup", () => {
+  const slot = (packId: string) => screen.getByTestId(`pack-card-slot-${packId}`)
+
+  it('opens only after a second of hovering, and lists what the pack installs', async () => {
+    renderList()
+    await screen.findByTestId('pack-card-ai-coding-agents')
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.mouseOver(slot('ai-coding-agents'))
+      // Crossing the grid on the way somewhere else must not open anything.
+      act(() => void vi.advanceTimersByTime(999))
+      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+
+      act(() => void vi.advanceTimersByTime(1))
+      const popup = screen.getByTestId('pack-popup-ai-coding-agents')
+      expect(within(popup).getByTestId('pack-popup-tools-ai-coding-agents').textContent).toContain('Claude Code')
+      expect(within(popup).getByRole('link', { name: /new server/i }).getAttribute('href')).toBe(
+        '/servers/new?pack=ai-coding-agents',
+      )
+      expect(within(popup).getByRole('button', { name: 'Export' })).toBeTruthy()
+
+      fireEvent.mouseOut(slot('ai-coding-agents'))
+      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('opens on keyboard focus too, and Escape dismisses it without trapping focus', async () => {
+    renderList()
+    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+
+    vi.useFakeTimers()
+    try {
+      act(() => (card as HTMLElement).focus())
+      act(() => void vi.advanceTimersByTime(1000))
+      expect(screen.getByTestId('pack-popup-ai-coding-agents')).toBeTruthy()
+
+      fireEvent.keyDown(card, { key: 'Escape' })
+      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+      // Escape hands the card back, rather than dropping the user at the top of the document.
+      expect(document.activeElement).toBe(card)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves a community pack alone — no popup, however long you hover', async () => {
+    renderList()
+    await screen.findByTestId('pack-card-rust-dev')
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.mouseOver(slot('rust-dev'))
+      act(() => void vi.advanceTimersByTime(5000))
+      expect(screen.queryByTestId('pack-popup-rust-dev')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('downloads the pack file from the popup, over the export route the page already used', async () => {
+    const createObjectURL = vi.fn(() => 'blob:pack')
+    const revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+
+    try {
+      renderList()
+      await screen.findByTestId('pack-card-ai-coding-agents')
+
+      vi.useFakeTimers()
+      fireEvent.mouseOver(slot('ai-coding-agents'))
+      act(() => void vi.advanceTimersByTime(1000))
+      vi.useRealTimers()
+
+      fireEvent.click(within(screen.getByTestId('pack-popup-ai-coding-agents')).getByRole('button', { name: 'Export' }))
+
+      await waitFor(() => expect(api.exportSurgePackYaml).toHaveBeenCalledWith('ai-coding-agents'))
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
+      expect(click).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      click.mockRestore()
+    }
+  })
+})
+
+/**
+ * The shipped pack's own file, on the detail page (issue #192) — the thing `download()` used
+ * to refuse to show. It reads over the export route that was already there; the alternative,
+ * a second non-admin read route for shipped files, was ruled out because a Rocky Surf
+ * installation has no non-admin to serve it to.
+ */
+describe("a shipped pack's file on the detail page", () => {
+  it('shows an official pack its own YAML, read over the export route', async () => {
+    renderDetail('ai-coding-agents')
+
+    const file = await screen.findByTestId('pack-file-text')
+    expect(file.textContent).toContain('packId: ai-coding-agents')
+    expect(file.textContent).toContain('curl -fsSL https://claude.ai/install.sh')
+    expect(api.exportSurgePackYaml).toHaveBeenCalledWith('ai-coding-agents')
+  })
+
+  it('shows none for a database-backed pack, and does not ask core for one', async () => {
+    renderDetail('mine')
+    await screen.findByRole('button', { name: 'Edit' })
+
+    expect(screen.queryByTestId('pack-file-text')).toBeNull()
+    // Nothing is fetched for a pack whose text is only useful as a file to commit — Export is
+    // still the way to that one, and nothing was downloaded here.
+    expect(api.exportSurgePackYaml).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Export' })).toBeTruthy()
+  })
+
+  it('keeps the rest of the page when the file cannot be read', async () => {
+    vi.mocked(api.exportSurgePackYaml).mockRejectedValue(new Error('nope'))
+    renderDetail('ai-coding-agents')
+
+    expect(await screen.findByTestId('pack-file-unavailable')).toBeTruthy()
+    expect(screen.getByTestId('pack-tools')).toBeTruthy()
   })
 })
