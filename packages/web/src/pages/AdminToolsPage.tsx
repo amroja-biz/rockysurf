@@ -82,7 +82,7 @@ export function AdminToolsPage() {
   return (
     <AppShell title="Tools">
       <div className="admin-actions">
-        <button className="button primary" onClick={() => setEditing('new')}>
+        <button className="button primary new-action" onClick={() => setEditing('new')}>
           New tool
         </button>
       </div>

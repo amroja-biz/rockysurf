@@ -80,6 +80,11 @@ green acts and confirms, red refuses, yellow warns without failing yet, blue lin
 purple appears exactly once (the agents callout). A notice body is its accent at 20% alpha over
 the page, bordered in the accent at full strength.
 
+A sixth accent, cyan (`--rs-cyan` `#39c5cf`), is reserved for buttons that create a new
+resource — "New server" — distinct from green, which covers acting on an existing one
+("Start"). Buttons carry the etched skin's dimensional treatment (radius, top-highlight,
+drop shadow, press state) rather than the flat cut-outline default; see `css/etched.css`.
+
 **Type.** The system UI stack, no webfont, no fallback download. 28px page titles, 18px section
 headings, and a 14px working size that most of the app lives at, with 13px and 12px for values
 and hints. Line-height 1.5 in the app, 1.6 in prose, 1.25 on headings. Monospace is
@@ -196,6 +201,12 @@ nothing else: the ground becomes the painting's night, the ink its cream, and th
 its beam `#e8c37a` — which also replaces blue for links and focus. **The five status meanings
 are untouched**: green still acts, red still refuses, yellow still warns. Corners square, labels
 are cut in letterspaced caps, and nothing is filled except the one thing currently true.
+
+Buttons within the skin are dimensional (radius, top-highlight, drop shadow, a press state) —
+a deliberate departure from the base system's flat/no-shadow rule, scoped to this skin's
+controls. Two button-level accents beyond the five status meanings: yellow (`.stop-action`) for
+a reversible pause ("Stop"), and cyan (`.new-action`, `--rs-cyan` `#39c5cf`) for creating a new
+resource ("New server"), kept distinct from green's "act on an existing one" ("Start").
 
 | Part | What it replaces | Why that mark |
 |---|---|---|

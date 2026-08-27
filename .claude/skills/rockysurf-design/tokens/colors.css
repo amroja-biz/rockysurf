@@ -25,6 +25,8 @@
   --rs-red: #f85149;
   --rs-red-strong: #da3633;
   --rs-purple: #a371f7;
+  --rs-cyan: #39c5cf;
+  --rs-cyan-bright: #56d6de;
 
   /* Wash fills: an accent at 20% (33) or 9% (18) over the page, used for notice bodies. */
   --rs-wash-red: #f8514933;
