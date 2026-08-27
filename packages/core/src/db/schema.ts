@@ -321,6 +321,25 @@ export const servers = sqliteTable(
      * Null whenever `userScript` is null; `rocky` is the default the route applies.
      */
     userScriptRunAs: text('user_script_run_as').$type<StepRunAs>(),
+    /**
+     * The NON-SECRET values the selected pack asked for at create time, as a JSON object of
+     * `NAME: value` (issue #189, ADR-0013). Parsed by the application, like every other JSON
+     * column here.
+     *
+     * ON THE ROW, NOT IN THE PLAN. These are delivered to the box through `secrets.env`, the
+     * 0600 file every step's environment is built from, and are deliberately absent from
+     * `installPlan` — a plan snapshot is written to `plan.json` at 0644 and is quoted in
+     * failure reports, so a field that may hold a user's endpoint or account id has no business
+     * in it. The row is where the answer lives so that re-rendering a plan months later
+     * produces the same environment and the detail page can show what the box was built with.
+     *
+     * SECRET inputs are NOT here. A pack input declared `secret: true` goes to the encrypted
+     * store under the `pack-inputs` kind, beside the desktop password, and is returned by no
+     * route at all.
+     *
+     * Null means the pack asked for nothing, or the user answered nothing it needed.
+     */
+    packInputs: text('pack_inputs'),
 
     /* --- idempotency --- */
     /**
@@ -441,6 +460,15 @@ export const packs = sqliteTable('packs', {
   desktop: text('desktop'),
   /** Loopback port of the pack's web UI, so Connect can render the tunnel. Null: none. */
   webPort: integer('web_port'),
+  /**
+   * JSON array of the pack's `inputs` declarations, parsed by the application (issue #189).
+   *
+   * The QUESTION the pack asks, not any answer: names, labels, descriptions, `required`,
+   * `secret` and defaults. Null for a pack that asks for nothing, which is every pack shipped
+   * today. `packs/schema.ts` is the validator; this column is the cache of it, on the same
+   * ADR-0004 terms as every other pack field.
+   */
+  inputs: text('inputs'),
   sourceFile: text('source_file'),
   /**
    * Where a pack installed from a registry came from (rockysurf-arym.4).

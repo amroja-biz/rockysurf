@@ -165,3 +165,43 @@ describe('describePack', () => {
     })
   })
 })
+
+/**
+ * WHAT THE PACK WILL ASK YOU FOR, before you consent to installing it (issue #189, ADR-0013).
+ *
+ * The disclosure is the control that carries what scanning cannot, and "this pack wants an API
+ * key on your box" is exactly that kind of fact — it belongs beside "how many steps run as
+ * root", not on the create form the operator only reaches after saying yes.
+ */
+describe('the inputs a pack declares', () => {
+  const withInputs = (inputs: unknown) =>
+    packFileSchema.parse({
+      version: 1,
+      pack: { packId: 'a-pack', name: 'A pack', tools: ['a-tool'], displayOrder: 1, enabled: true, inputs },
+      tools: [tool()],
+    })
+
+  it('names and labels them, and says which are required and which are secret', () => {
+    const file = withInputs([
+      { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, default: '1' },
+      { name: 'HEADLONG_API_KEY', label: 'Headlong API key', secret: true },
+    ])
+    expect(describePack({ file }).inputs).toEqual([
+      { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, secret: false },
+      { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+    ])
+  })
+
+  it('carries no value, not even a declared default', () => {
+    // The question this list answers is "what will I be asked", not "what will be sent". A
+    // default is a value, and a reader who saw one would take it for an answer already given.
+    const file = withInputs([{ name: 'A', label: 'A', default: 'a-default-value' }])
+    expect(JSON.stringify(describePack({ file }).inputs)).not.toContain('a-default-value')
+  })
+
+  it('is an empty list, not undefined, for a pack that asks for nothing', () => {
+    // A field a UI has to render something for, like `summaryIsComplete` — an absent one is a
+    // page that quietly says nothing.
+    expect(describePack({ file: withInputs(undefined) }).inputs).toEqual([])
+  })
+})

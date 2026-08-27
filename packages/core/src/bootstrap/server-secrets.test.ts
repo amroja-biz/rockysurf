@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { boot, type BootedApp } from '../server.js'
 import { spawnSync } from 'node:child_process'
@@ -14,6 +15,7 @@ import { mintCallbackTokens } from '../db/repositories/bootstrap-tokens.js'
 import { upsertPack } from '../db/repositories/packs.js'
 import { getServer } from '../db/repositories/servers.js'
 import { parseInstallPlan } from './plan.js'
+import { renderSecretsEnv } from './push.js'
 import {
   createServerSecretsLoader,
   GITHUB_TOKEN_SET_ENV,
@@ -945,5 +947,106 @@ describe('a desktop password posted to the create route reaches the box', () => 
 
     expect(await fetchSecrets(booted!, first.serverId)).toEqual({ RDP_PASSWORD: RDP })
     expect(await fetchSecrets(booted!, second.serverId)).toEqual({ RDP_PASSWORD: 'a-different-one' })
+  })
+})
+
+/**
+ * PACK INPUTS REACH EVERY STEP THROUGH THIS ONE FILE (issue #189, ADR-0013).
+ *
+ * The delivery claim is the whole feature, and it has three separable halves: the loader puts
+ * both kinds of value in the environment, the writer produces a file a shell can actually
+ * source, and `agent.sh` forwards it to root and unprivileged steps alike. The first two are
+ * asserted here; the third is asserted by exercising the real `agent.sh` in
+ * `agent-environment.test.ts` and by the push smoke.
+ */
+describe('a pack’s own inputs in secrets.env (issue #189)', () => {
+  const store = () => createSecretsStore(opened.db, Buffer.alloc(32, 7))
+
+  function seedWithInputs(values: Record<string, string>): ReturnType<typeof seed> {
+    const seeded = seed()
+    opened.db
+      .update(servers)
+      .set({ packInputs: JSON.stringify(values) })
+      .where(eq(servers.id, seeded.row.id))
+      .run()
+    return { ...seeded, row: getServer(opened.db, seeded.row.id)! }
+  }
+
+  it('delivers the non-secret half from the ROW and the secret half from the STORE', async () => {
+    const secrets = store()
+    const { row } = seedWithInputs({ HEADLONG_HEADLESS: '1' })
+    secrets.putPackInputSecrets(row.id, { HEADLONG_API_KEY: 'sk-live' })
+
+    const env = await createServerSecretsLoader(secrets)(row)
+    expect(env['HEADLONG_HEADLESS']).toBe('1')
+    expect(env['HEADLONG_API_KEY']).toBe('sk-live')
+  })
+
+  it('never lets a pack input displace a name the platform promises', async () => {
+    // `packs/schema.ts` refuses `GITHUB_TOKEN` as an input name, so this cannot happen through
+    // the create route at all. The ordering here is the second lock: a row hand-edited past the
+    // schema still cannot take a name a pack author was promised.
+    const secrets = store()
+    const { row, userId } = seedWithInputs({ GITHUB_TOKEN: 'attacker-token' })
+    secrets.putGithubToken(userId, 'ghp_real')
+
+    expect((await createServerSecretsLoader(secrets)(row))['GITHUB_TOKEN']).toBe('ghp_real')
+  })
+
+  it('writes no secret row at all for a server with no secret inputs', () => {
+    const secrets = store()
+    const { row } = seed()
+    // `{}` would leave a secret-shaped artefact with nothing in it for every listing and audit
+    // to explain.
+    expect(secrets.putPackInputSecrets(row.id, {})).toBeUndefined()
+    expect(secrets.listSecretRefs({ kind: 'pack-inputs' })).toEqual([])
+    expect(secrets.getPackInputSecrets(row.id)).toEqual({})
+  })
+
+  it('gives a box with no inputs exactly the environment it had before', async () => {
+    const { row } = seed()
+    expect(await createServerSecretsLoader(store())(row)).toEqual({})
+  })
+})
+
+/**
+ * `secrets.env` IS SHELL SOURCE, and a pack input is whatever a person typed into a form.
+ *
+ * `agent.sh` loads the file with `set -a; . secrets.env`, so an unquoted value with a space runs
+ * a command, and one containing `$(…)` executes it as root. The values were previously all
+ * shapes core controlled — a PAT, a password, a `host/owner/repo` scope the config schema
+ * restricts — and that stopped being true with issue #189. The test runs the REAL bash rather
+ * than asserting on the text, because the question is what a shell does with it.
+ */
+describe('the secrets.env writer quotes what a shell would otherwise execute', () => {
+  const sourceAndEcho = (pairs: Record<string, string>, name: string): { status: number; value: string } => {
+    const file = join(mkdtempSync(join(tmpdir(), 'rockysurf-secrets-')), 'secrets.env')
+    writeFileSync(file, `${renderSecretsEnv(pairs)}\n`)
+    const result = spawnSync('/bin/bash', ['-c', `set -a; . "$1"; set +a; printf %s "\${${name}}"`, 'sh', file], {
+      env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin' },
+      encoding: 'utf8',
+    })
+    return { status: result.status ?? -1, value: result.stdout }
+  }
+
+  it('carries a value with spaces through intact', () => {
+    // Unquoted this is `FOO=a` followed by an attempt to run `b`.
+    expect(sourceAndEcho({ MODEL: 'claude opus 5' }, 'MODEL')).toEqual({ status: 0, value: 'claude opus 5' })
+  })
+
+  it('does not execute a command substitution or expand a variable', () => {
+    const marker = '$(id -u)`whoami`${HOME}'
+    expect(sourceAndEcho({ HEADLONG_ENDPOINT: marker }, 'HEADLONG_ENDPOINT')).toEqual({ status: 0, value: marker })
+  })
+
+  it('survives a value containing a single quote', () => {
+    expect(sourceAndEcho({ NOTE: "it's fine" }, 'NOTE')).toEqual({ status: 0, value: "it's fine" })
+  })
+
+  it('still lets the agent read the NAME as everything before the first =', () => {
+    // `load_secrets` in `agent.sh` does `while IFS='=' read -r name _`, which is how a value
+    // reaches an unprivileged step at all. Quoting the VALUE must not change that.
+    const rendered = renderSecretsEnv({ A: 'x=y', B: 'z' })
+    expect(rendered.split('\n').map((line) => line.split('=')[0])).toEqual(['A', 'B'])
   })
 })

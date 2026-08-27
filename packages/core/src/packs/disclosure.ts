@@ -1,3 +1,4 @@
+import { summarizePackInputs, type PackInputSummary } from './inputs.js'
 import type { PackFile, ToolDefinition } from './schema.js'
 
 /**
@@ -56,6 +57,18 @@ export interface PackDisclosure {
   requiresRepos: boolean
   requiresRdp: boolean
   desktop?: string
+  /**
+   * What this pack will ask the person creating a server for (issue #189) — names, labels and
+   * whether each is required and secret.
+   *
+   * Part of the disclosure rather than only of the create form because it is a fact about what
+   * installing this pack costs you: a pack that asks for an API key is asking you to put a
+   * credential on a box you are about to consent to, and an operator deciding whether to
+   * install it should see that BEFORE the form does. No values appear here — a `default` is
+   * omitted on purpose, because this list is read as "what will I be asked", not "what will be
+   * sent". Empty for a pack that asks for nothing.
+   */
+  inputs: PackInputSummary[]
   /**
    * ALWAYS FALSE, and it is a field rather than a comment so a UI has to render something.
    *
@@ -134,6 +147,7 @@ export function describePack(input: DisclosureInput): PackDisclosure {
     requiresRepos: file.pack.requiresRepos,
     requiresRdp: file.pack.requiresRdp,
     ...(file.pack.desktop ? { desktop: file.pack.desktop } : {}),
+    inputs: summarizePackInputs(file.pack.inputs),
     summaryIsComplete: false,
   }
 }

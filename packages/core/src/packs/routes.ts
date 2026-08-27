@@ -105,6 +105,16 @@ const packFields = (p: Pack) => ({
   requiresRdp: p.requiresRdp,
   desktop: p.desktop ?? undefined,
   webPort: p.webPort ?? undefined,
+  /**
+   * What this pack will ASK the person creating a server for (issue #189, ADR-0013).
+   *
+   * In the public projection because the create form is built from it, field for field, with
+   * no per-pack code — the same contract `requiresRdp` established. It is the question and
+   * never an answer: `default` is a value the pack author wrote into a file everyone can read,
+   * and a `secret` input may not have one (`packs/schema.ts`). Omitted entirely for a pack that
+   * asks for nothing, so the field's presence means something.
+   */
+  ...(p.inputs?.length ? { inputs: p.inputs } : {}),
 })
 
 /**
@@ -342,6 +352,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           requiresRdp: body.requiresRdp,
           desktop: body.desktop ?? null,
           webPort: body.webPort ?? null,
+          inputs: body.inputs ?? null,
           sourceFile: null,
         }),
       ),
@@ -377,6 +388,11 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           requiresRdp: body.requiresRdp ?? existing.requiresRdp,
           desktop: body.desktop ?? existing.desktop,
           webPort: body.webPort ?? existing.webPort,
+          // OMITTED MEANS "LEAVE THEM", like every other field on this PUT — and it matters
+          // more here than elsewhere, because the admin pack editor has no inputs control and
+          // sends none. Without this fallback, saving a name change through that form would
+          // silently delete a pack's whole declaration and break the create form for it.
+          inputs: body.inputs ?? existing.inputs ?? null,
           sourceFile: existing.sourceFile,
         }),
       ),
@@ -422,6 +438,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         requiresRdp: pack.requiresRdp,
         ...(pack.desktop ? { desktop: pack.desktop as 'xfce' } : {}),
         ...(pack.webPort != null ? { webPort: pack.webPort } : {}),
+        ...(pack.inputs?.length ? { inputs: pack.inputs } : {}),
       },
       pack.tools.map((id) => {
         const t = byId.get(id)!
@@ -501,6 +518,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         requiresRdp: file.pack.requiresRdp,
         desktop: file.pack.desktop ?? null,
         webPort: file.pack.webPort ?? null,
+        inputs: file.pack.inputs ?? null,
         sourceFile: null,
         // `null` rather than `undefined` on the import path, deliberately: importing a YAML file
         // over a pack that came from a registry CLEARS the provenance, because the bytes now in

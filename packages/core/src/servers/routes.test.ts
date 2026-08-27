@@ -5,8 +5,10 @@ import { ensureLocalAdmin } from '../auth/admin.js'
 import { MemorySecretStore } from '../auth/secret-store.js'
 import { configSchema, type Config } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
+import { upsertPack } from '../db/repositories/packs.js'
 import { getServer } from '../db/repositories/servers.js'
-import { parseInstallPlan } from '../bootstrap/plan.js'
+import { parseInstallPlan, PLAN_VERSION } from '../bootstrap/plan.js'
+import type { PackInput } from '../packs/schema.js'
 import { markBootstrapReady } from '../bootstrap/supervisor.js'
 import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
 import { ProviderRegistry } from '../providers/registry.js'
@@ -712,5 +714,122 @@ describe('a user script at create time (issue #184)', () => {
     const body = (await res.json()) as Record<string, unknown>
     expect('userScript' in body).toBe(false)
     expect(JSON.stringify(body)).not.toContain('echo hello')
+  })
+})
+
+/**
+ * WHAT THE PACK ASKS FOR (issue #189, ADR-0013).
+ *
+ * Driven through the real `createApp`, not a hand-wired route, because the check only exists if
+ * composition supplies the `packInputs` lookup — the exact shape of failure
+ * `docs/memories/2026-08-21-whole-boot-wiring-tests.md` describes, and the shape the
+ * `loadServerSecrets` hook already failed in once. A pack row is written straight into the
+ * database, which is where `app.ts` reads the declaration from (ADR-0004: the table is the cache
+ * of `packs/*.yaml`).
+ */
+describe('a pack that declares inputs', () => {
+  const PACK_ID = 'headlong'
+
+  const declare = (inputs: PackInput[]): void => {
+    upsertPack(opened.db, {
+      id: PACK_ID,
+      name: 'Headlong',
+      tools: [],
+      displayOrder: 1,
+      enabled: true,
+      requiresRepos: false,
+      requiresRdp: false,
+      inputs,
+    })
+  }
+
+  const create = (packInputs?: Record<string, string>) =>
+    post('/api/v1/servers', { ...CREATE, packId: PACK_ID, ...(packInputs ? { packInputs } : {}) })
+
+  const planSnapshot = (serverId: string) =>
+    parseInstallPlan(JSON.parse(getServer(opened.db, serverId)!.installPlan!))
+
+  beforeEach(() => {
+    declare([
+      { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, secret: false, default: '1' },
+      { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+      { name: 'HEADLONG_ENDPOINT', label: 'Endpoint', required: false, secret: false },
+    ])
+  })
+
+  it('stores the non-secret values on the row and returns them on the detail route', async () => {
+    const { serverId } = (await (await create({ HEADLONG_ENDPOINT: 'https://example.test' })).json()) as {
+      serverId: string
+    }
+    // The declared default is applied by core, not by the caller.
+    expect(JSON.parse(getServer(opened.db, serverId)!.packInputs!)).toEqual({
+      HEADLONG_HEADLESS: '1',
+      HEADLONG_ENDPOINT: 'https://example.test',
+    })
+
+    const body = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+    expect(body['packInputs']).toEqual({ HEADLONG_HEADLESS: '1', HEADLONG_ENDPOINT: 'https://example.test' })
+  })
+
+  it('keeps a secret input off the row and out of every route', async () => {
+    const res = await create({ HEADLONG_API_KEY: 'sk-live-do-not-leak' })
+    const { serverId } = (await res.json()) as { serverId: string }
+
+    // Not on the detail route...
+    expect(JSON.stringify(await (await get(`/api/v1/servers/${serverId}`)).json())).not.toContain('sk-live-do-not-leak')
+    // ...not in the list...
+    expect(JSON.stringify(await (await get('/api/v1/servers')).json())).not.toContain('sk-live-do-not-leak')
+    // ...and not on the row, whose column holds only the non-secret half.
+    const row = getServer(opened.db, serverId)!
+    expect(row.packInputs).not.toContain('sk-live-do-not-leak')
+    expect(JSON.parse(row.packInputs!)).toEqual({ HEADLONG_HEADLESS: '1' })
+  })
+
+  it('keeps every value out of the plan snapshot, which is pushed at 0644', async () => {
+    const { serverId } = (await (
+      await create({ HEADLONG_API_KEY: 'sk-live-do-not-leak', HEADLONG_ENDPOINT: 'https://example.test' })
+    ).json()) as { serverId: string }
+
+    // Values travel in `secrets.env` (0600), never in `plan.json` — which is written 0644 and is
+    // quoted in failure reports. `PLAN_VERSION` therefore does not move: nothing about the
+    // plan's shape changed, and no agent has to understand anything new.
+    const plan = planSnapshot(serverId)
+    expect(JSON.stringify(plan)).not.toContain('sk-live-do-not-leak')
+    expect(JSON.stringify(plan)).not.toContain('https://example.test')
+    expect(plan.version).toBe(PLAN_VERSION)
+  })
+
+  it('refuses a name the pack does not ask for rather than dropping it', async () => {
+    const res = await create({ HEADLONG_HEADLES: '1' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; issues?: { path: string }[] }
+    expect(body.error).toMatch(/does not ask for "HEADLONG_HEADLES"/)
+    expect(body.issues?.[0]?.path).toBe('packInputs.HEADLONG_HEADLES')
+  })
+
+  it('refuses a required input with no value and no default, before a machine is launched', async () => {
+    declare([{ name: 'HEADLONG_TOKEN', label: 'Headlong token', required: true, secret: false }])
+    const before = fake.provisionCalls
+    const res = await create()
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toMatch(/Headlong token is required/)
+    // Fail before the money: the provider was never asked for a machine.
+    expect(fake.provisionCalls).toBe(before)
+  })
+
+  it('refuses an oversized value', async () => {
+    expect((await create({ HEADLONG_ENDPOINT: 'x'.repeat(4096) })).status).toBe(201)
+    expect((await create({ HEADLONG_ENDPOINT: 'x'.repeat(4097) })).status).toBe(400)
+  })
+
+  it('refuses a multi-line value, which secrets.env could not carry', async () => {
+    expect((await create({ HEADLONG_ENDPOINT: 'one\ntwo' })).status).toBe(400)
+  })
+
+  it('accepts a create for a pack that asks for nothing, and refuses inputs for it', async () => {
+    expect((await post('/api/v1/servers', CREATE)).status).toBe(201)
+    const res = await post('/api/v1/servers', { ...CREATE, packInputs: { ANYTHING: '1' } })
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toMatch(/asks for no inputs/)
   })
 })

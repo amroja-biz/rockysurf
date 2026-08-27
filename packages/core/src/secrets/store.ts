@@ -29,6 +29,19 @@ export const SECRET_KINDS = [
   'github-token',
   /** The remote-desktop password for a pack that asked for one. */
   'rdp-password',
+  /**
+   * The SECRET pack inputs for one server, as a JSON object of `NAME: value` (issue #189).
+   *
+   * ONE ROW FOR ALL OF THEM, because the store keys on `(kind, ownerId)` and a server can have
+   * several — a row per input would need a composite owner id (`<serverId>:<NAME>`), which is
+   * a second, undeclared key format inside a column that already has one. The whole object is
+   * sealed and unsealed together, which is also how it is used: `secrets.env` is written once,
+   * from all of them at once.
+   *
+   * Non-secret inputs are NOT here — they are on the server row, where the detail page can
+   * show them. This kind holds only what a pack declared `secret: true`.
+   */
+  'pack-inputs',
   /** A provider credential pasted into the UI. NEVER one that came from the environment. */
   'provider-token',
   /** Signs session cookies. Instance-level: one row, no owner. */
@@ -120,6 +133,10 @@ export interface SecretsStore {
   getGithubToken(ownerId: string): string | undefined
   putRdpPassword(serverId: string, password: string): SecretMetadata
   getRdpPassword(serverId: string): string | undefined
+  /** The secret half of a server's pack inputs. Writing `{}` deletes the row rather than sealing it. */
+  putPackInputSecrets(serverId: string, values: Record<string, string>): SecretMetadata | undefined
+  /** PLAINTEXT. Never return this from an HTTP handler. `{}` when the server has none. */
+  getPackInputSecrets(serverId: string): Record<string, string>
   putProviderToken(providerId: string, token: string, env?: NodeJS.ProcessEnv): SecretMetadata
   getProviderToken(providerId: string): string | undefined
   /** Returns the existing signing key, minting one on first call. */
@@ -247,6 +264,37 @@ export function createSecretsStore(db: Db, masterKey: Buffer): SecretsStore {
 
     getRdpPassword(serverId) {
       return store.getSecret({ kind: 'rdp-password', ownerId: serverId })
+    },
+
+    putPackInputSecrets(serverId, values) {
+      // An empty object is "this server has no secret inputs", and the way to say that is to
+      // hold no row — sealing `{}` would leave a secret-shaped artefact with nothing in it,
+      // which every listing and audit then has to explain.
+      if (Object.keys(values).length === 0) {
+        store.deleteSecret({ kind: 'pack-inputs', ownerId: serverId })
+        return undefined
+      }
+      return store.putSecret({ kind: 'pack-inputs', ownerId: serverId }, JSON.stringify(values))
+    },
+
+    getPackInputSecrets(serverId) {
+      const raw = store.getSecret({ kind: 'pack-inputs', ownerId: serverId })
+      if (!raw) return {}
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        // Defensive rather than paranoid: this is the only reader, and a value that is not the
+        // object it wrote means the row was tampered with or written by something else. An
+        // empty environment is the safe answer — the pack's step fails on a missing variable
+        // with its own message, which is far better than a crash inside the bootstrap driver.
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+        return Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        )
+      } catch {
+        return {}
+      }
     },
 
     putProviderToken(providerId, token, env = process.env) {

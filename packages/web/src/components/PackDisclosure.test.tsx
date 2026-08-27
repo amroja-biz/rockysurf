@@ -170,3 +170,28 @@ describe('what the operator is told before consenting', () => {
     expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Review Rust Dev')
   })
 })
+
+/**
+ * What a pack will ASK YOU FOR is part of the consent decision (issue #189, ADR-0013): a pack
+ * that wants an API key is asking you to put a credential on a box you have not agreed to yet.
+ */
+describe('the settings a pack will ask for', () => {
+  it('lists each one by variable name and label, and marks the required and secret ones', () => {
+    show({
+      inputs: [
+        { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, secret: false },
+        { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+      ],
+    })
+    const dialog = screen.getByRole('dialog')
+    // The variable name, because that is what the pack's own README and guide talk about.
+    expect(dialog.textContent).toContain('$HEADLONG_HEADLESS')
+    expect(dialog.textContent).toContain('Headless install (required)')
+    expect(dialog.textContent).toContain('stored encrypted and never shown again')
+  })
+
+  it('says nothing at all for a pack that asks for nothing', () => {
+    show({ inputs: [] })
+    expect(screen.getByRole('dialog').textContent).not.toContain('when you create a server')
+  })
+})

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AGENT_SCRIPT_PATH } from './index.js'
 import { serializeInstallPlan, type InstallPlan } from './plan.js'
+import { renderSecretsEnv } from './push.js'
 
 /**
  * The environment a ROOT step inherits from the agent, exercised the way the real box
@@ -96,5 +97,80 @@ describe.skipIf(!hasJq)('agent.sh gives a root step the environment the pack con
 
     const { stepLog } = runAgentLikeSystemd()
     expect(stepLog).toContain(`HOME=${expected}\n`)
+  })
+})
+
+/**
+ * A PACK'S OWN INPUTS REACH A STEP, delivered exactly as the box delivers them (issue #189,
+ * ADR-0013).
+ *
+ * The issue's whole promise is "an install script simply reads `$HEADLONG_HEADLESS`", and the
+ * only way to prove it is to run the real `agent.sh` against a real `secrets.env` written by
+ * the real writer. Asserting on the env object core builds would prove core builds an object.
+ *
+ * ROOT STEPS ARE THE ONE WORTH PINNING HERE. `secrets.env` is documented as reaching "every
+ * unprivileged step" — those get theirs from the explicit `env` list `install_tool` builds out
+ * of `SECRET_NAMES` — while a root step inherits the agent's own environment from `set -a; .
+ * secrets.env`. A tool install runs as root in most packs, so the case that had to be checked
+ * rather than assumed is the inherited one. The name list is asserted alongside it, because it
+ * is what the unprivileged path is built from and it is the thing the writer's quoting could
+ * have broken.
+ */
+describe.skipIf(!hasJq)('agent.sh hands a pack input to a root step (issue #189)', () => {
+  const INPUTS = {
+    HEADLONG_HEADLESS: '1',
+    // A value with spaces and shell metacharacters, because a form field carries whatever was
+    // typed and an unquoted `secrets.env` would execute this rather than deliver it.
+    HEADLONG_NOTE: "run $(id -u) 'now'",
+  }
+
+  function runWithSecrets(): { journal: { status: string }; stepLog: string; output: string } {
+    stateDir = mkdtempSync(join(tmpdir(), 'rockysurf-agent-inputs-'))
+    const withInput: InstallPlan = {
+      ...plan,
+      steps: [
+        {
+          id: 'tool:reads-input',
+          reports: 'installing_tools',
+          runAs: 'root',
+          // `set -u`, so a variable the agent failed to export fails the step loudly.
+          run: 'set -euo pipefail\nprintf "HEADLESS=%s\\nNOTE=%s\\n" "$HEADLONG_HEADLESS" "$HEADLONG_NOTE"',
+        },
+      ],
+    }
+    writeFileSync(join(stateDir, 'plan.json'), serializeInstallPlan(withInput))
+    writeFileSync(join(stateDir, 'secrets.env'), `${renderSecretsEnv(INPUTS)}\n`, { mode: 0o600 })
+    const run = spawnSync('bash', [AGENT_SCRIPT_PATH, join(stateDir, 'plan.json')], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', ROCKYSURF_STATE_DIR: stateDir },
+    })
+    return {
+      journal: JSON.parse(readFileSync(join(stateDir, 'state.json'), 'utf8')) as { status: string },
+      stepLog: readFileSync(join(stateDir, 'steps', 'tool:reads-input.log'), 'utf8'),
+      output: `${run.stdout}${run.stderr}`,
+    }
+  }
+
+  it('exports every declared input into the step, values intact', () => {
+    const { journal, stepLog, output } = runWithSecrets()
+    expect(stepLog).not.toContain('unbound variable')
+    expect(journal.status, output).toBe('done')
+    expect(stepLog).toContain('HEADLESS=1\n')
+    // Delivered, not executed: an unquoted writer would have run `id -u` on the box instead.
+    expect(stepLog).toContain(`NOTE=${INPUTS.HEADLONG_NOTE}\n`)
+  })
+
+  it('learns the NAMES, which is what an unprivileged step is handed', () => {
+    // `load_secrets` reads `KEY=` off each line into `SECRET_NAMES`, and `install_tool` turns
+    // that list into the explicit `env` a `sudo -u rocky` step receives. Quoting the value must
+    // not disturb the name, and the agent logs the names (never the values) as it goes.
+    const { output } = runWithSecrets()
+    const line = output.split('\n').find((l) => l.includes('secret(s):'))
+    expect(line).toContain('loaded 2 secret(s): HEADLONG_HEADLESS HEADLONG_NOTE')
+    // Names alone on that line: the agent never logs a secret's value, which is the whole
+    // reason it keeps a name list rather than dumping the file. (The step's own output below
+    // does print them — that is the step's choice, and this test asked it to.)
+    expect(line).not.toContain(INPUTS.HEADLONG_NOTE)
   })
 })

@@ -1,5 +1,6 @@
 import { eq, isNotNull } from 'drizzle-orm'
 import type { Db } from '../client.js'
+import type { PackInput } from '../../packs/schema.js'
 import { packs, tools, type PackRow, type ToolRow } from '../schema.js'
 
 /**
@@ -10,8 +11,13 @@ import { packs, tools, type PackRow, type ToolRow } from '../schema.js'
  * caller has to remember; `Pack` is the row with that one field widened.
  */
 
-export interface Pack extends Omit<PackRow, 'tools'> {
+export interface Pack extends Omit<PackRow, 'tools' | 'inputs'> {
   tools: string[]
+  /**
+   * The pack's `inputs` declaration, already parsed (issue #189). Undefined for a pack that
+   * asks for nothing, so every reader can write `pack.inputs?.length` and mean it.
+   */
+  inputs?: PackInput[]
 }
 
 export interface UpsertToolInput {
@@ -43,6 +49,13 @@ export interface UpsertPackInput {
   requiresRdp: boolean
   desktop?: string | null
   webPort?: number | null
+  /**
+   * The pack's `inputs` declaration (issue #189), stored as JSON in a text column like
+   * `tools`. Null clears it; undefined is the same as null on every write path here, because
+   * unlike `registry` below there is no case where a caller legitimately does not know the
+   * answer — every writer has the whole pack in hand.
+   */
+  inputs?: PackInput[] | null
   sourceFile?: string | null
   /**
    * Registry provenance (rockysurf-arym.4), and note what it is NOT: `sourceFile`.
@@ -70,7 +83,17 @@ export interface RegistryProvenance {
   installedAt: string
 }
 
-const hydrate = (row: PackRow): Pack => ({ ...row, tools: JSON.parse(row.tools) as string[] })
+const hydrate = (row: PackRow): Pack => {
+  const { inputs, ...rest } = row
+  return {
+    ...rest,
+    tools: JSON.parse(row.tools) as string[],
+    // Parsed, not validated: the row was written from a validated declaration and re-running
+    // zod on every list of every pack would be a cost with no reader. A row corrupted by hand
+    // fails at the form or the create route, both of which do validate.
+    ...(inputs ? { inputs: JSON.parse(inputs) as PackInput[] } : {}),
+  }
+}
 
 /* ------------------------------------------------------------------------------- tools */
 
@@ -154,6 +177,7 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
     guide: input.guide ?? null,
     desktop: input.desktop ?? null,
     webPort: input.webPort ?? null,
+    inputs: input.inputs?.length ? JSON.stringify(input.inputs) : null,
     sourceFile: input.sourceFile ?? null,
     registrySource: input.registry?.source ?? null,
     registryUrl: input.registry?.url ?? null,
@@ -180,6 +204,7 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
         requiresRdp: values.requiresRdp,
         desktop: values.desktop,
         webPort: values.webPort,
+        inputs: values.inputs,
         sourceFile: values.sourceFile,
         // `registry` OMITTED means "leave the provenance alone", which is why these are spread
         // conditionally rather than always set. Every existing write path — the boot reconcile,

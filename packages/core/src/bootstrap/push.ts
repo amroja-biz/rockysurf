@@ -4,6 +4,7 @@ import { Client } from 'ssh2'
 import { fingerprintFromBlob } from '../ssh/keys.js'
 import { AGENT_SCRIPT_PATH, AGENT_STATE_DIR } from './index.js'
 import type { InstallPlan } from './plan.js'
+import { shellQuote } from './shell.js'
 
 /**
  * Push-mode bootstrap: core connects outbound, delivers everything, and watches.
@@ -278,6 +279,35 @@ export interface PushOptions {
   runId?: string
 }
 
+/**
+ * The body of `secrets.env`: one `KEY='value'` line per entry, no trailing newline.
+ *
+ * EVERY VALUE IS SINGLE-QUOTED (issue #189, ADR-0013).
+ *
+ * `agent.sh` loads this file with `set -a; . secrets.env`, so each line is shell SOURCE, not
+ * data. Unquoted, a value with a space (`FOO=a b`) runs `b` as a command with `FOO` set, and a
+ * value containing `$(…)` or a backtick executes on the box as root. That was survivable while
+ * every value was a shape core controlled — a GitHub PAT, a desktop password, a
+ * `host/owner/repo` scope whose character class the config schema restricts precisely so this
+ * file stays sourceable — and it stopped being survivable the moment a pack input started
+ * carrying whatever a person typed into a form field.
+ *
+ * Single quotes are the only bash form with no escape sequences inside them, so this is a total
+ * escape rather than a filter: `shellQuote` closes the quote, emits an escaped `'`, and reopens.
+ * The one thing quoting cannot fix is a NEWLINE — the agent re-reads this file line by line to
+ * learn the variable NAMES it forwards into unprivileged steps, so a second line would read as a
+ * second name — which is why `packInputValueSchema` and the create route refuse one instead.
+ *
+ * Reading is unaffected: the name is still everything before the first `=`.
+ *
+ * Exported so a test can source the real output with a real bash rather than asserting on text.
+ */
+export function renderSecretsEnv(secrets: Record<string, string>): string {
+  return Object.entries(secrets)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`)
+    .join('\n')
+}
+
 export async function pushBootstrap(client: Client, opts: PushOptions): Promise<PushResult> {
   const started = Date.now()
   const dir = opts.stateDir ?? AGENT_STATE_DIR
@@ -294,12 +324,9 @@ export async function pushBootstrap(client: Client, opts: PushOptions): Promise<
   await writeRemote(client, `${dir}/agent.sh`, agentScript, 0o700)
   await writeRemote(client, `${dir}/plan.json`, `${JSON.stringify({ ...opts.plan, runId }, null, 2)}\n`, 0o644)
   if (opts.secrets && Object.keys(opts.secrets).length > 0) {
-    const body = Object.entries(opts.secrets)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n')
     // Mode is set in the call that CREATES the file: a secrets file that is briefly
     // world-readable before a chmod lands has already leaked.
-    await writeRemote(client, `${dir}/secrets.env`, `${body}\n`, 0o600)
+    await writeRemote(client, `${dir}/secrets.env`, `${renderSecretsEnv(opts.secrets)}\n`, 0o600)
   }
 
   const launcher = await launchAgent(client, dir, running, opts.forceLauncher)

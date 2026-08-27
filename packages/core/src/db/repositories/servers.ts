@@ -53,6 +53,14 @@ export interface CreateServerInput {
    * below stores the pair or neither.
    */
   userScript?: { script: string; runAs: StepRunAs }
+  /**
+   * The NON-SECRET values the selected pack asked for (issue #189, ADR-0013).
+   *
+   * Validated against the pack's declaration and split from the secret half by the create
+   * route, so what arrives here is already only what belongs on a row. The secret half never
+   * passes through this function at all.
+   */
+  packInputs?: Record<string, string>
   hourlyCost?: { amount: number; currency: string; fetchedAt: string } | null
   /** Test seam. Production always mints a fresh one. */
   id?: string
@@ -94,6 +102,11 @@ export function insertServer(db: Db, input: CreateServerInput): ServerRow {
     repositories: JSON.stringify(input.repositories ?? []),
     userScript: input.userScript?.script ?? null,
     userScriptRunAs: input.userScript?.runAs ?? null,
+    // Omitted and empty are the same row value. A server whose pack asked for nothing and one
+    // whose user answered nothing optional both carry no environment, and a `{}` in the column
+    // would only mean "somebody thought about it", which nothing reads.
+    packInputs:
+      input.packInputs && Object.keys(input.packInputs).length > 0 ? JSON.stringify(input.packInputs) : null,
     idempotencyKey:
       input.idempotencyKey ??
       buildIdempotencyKey({
@@ -497,6 +510,29 @@ export function getServerTools(row: ServerRow): string[] {
 
 export function getServerRepositories(row: ServerRow): string[] {
   return parseStringArray(row.repositories)
+}
+
+/**
+ * The non-secret pack inputs this box was built with (issue #189), already parsed.
+ *
+ * Reject-nothing on a malformed column, for the same reason `parseStringArray` does: this is
+ * read while a bootstrap is being driven, and a row somebody edited by hand should cost the
+ * pack's own step its "missing variable" message rather than crash the driver. The write path
+ * is the only writer and it writes an object of strings.
+ */
+export function getServerPackInputs(row: ServerRow): Record<string, string> {
+  if (!row.packInputs) return {}
+  try {
+    const parsed: unknown = JSON.parse(row.packInputs)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    )
+  } catch {
+    return {}
+  }
 }
 
 function parseStringArray(value: string | null): string[] {
