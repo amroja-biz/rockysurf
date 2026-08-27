@@ -304,7 +304,7 @@ running as `rocky`. That split is exactly what `setupScript` is for.
 #### Not this
 
 ```yaml
-- toolId: gas-town
+- toolId: some-go-tool
   runAs: rocky
   installScript: |
     sudo apt-get install -y golang-go     # declared rocky, needs root
@@ -511,7 +511,7 @@ before assuming a bare install does what this section says.
 
 ### 2. GitHub release assets only: the pin and the digest stay
 
-`beads`, `agent-deck`, `beads-viewer` and `dolt` are pinned to a tag and verified against a
+`beads`, `agent-deck`, `beads-viewer`, `dolt` and `gt` are pinned to a tag and verified against a
 `sha256`, and **they must stay that way.** This is not an oversight for somebody to tidy up
 later, so read this paragraph before you "fix" one of them.
 
@@ -560,8 +560,16 @@ changing that should say why in the script.
 One case, and it is not a freshness judgement: **upstream's latest is known broken for what
 this pack promises.** `gt` in `packs/gas-town.yaml` is pinned at `v1.1.0` because `v1.2.1`
 cannot initialise the Beads-backed HQ that pack exists to deliver on a fresh box. A pin like
-that needs the reason written into the script, and an issue tracking its removal
-(`rockysurf-4zmx`). "Latest scares me" is not that reason.
+that needs the reason written into the script, and an issue tracking its removal (#133).
+"Latest scares me" is not that reason.
+
+What that kind of pin also needs is **a retest, on the record, before it is renewed.** `gt`'s
+was renewed on 2026-08-27 rather than assumed: upstream's prebuilt v1.2.1 binary on a fresh
+container still dies inside `bd init` with `pending schema migrations alter pre-existing dirty
+tables` (gastownhall/beads#4566, fixed for embedded mode only — `gt` uses server mode), with
+both `bd` v1.2.1 and v1.2.2. Note that the pin survived a change of *mechanism* — that step
+stopped compiling `gt` and now downloads the release asset (#200) — because the two questions
+are independent: how a binary arrives is not why a version was chosen.
 
 ### Idempotency without a version in the stamp
 
