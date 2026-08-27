@@ -1771,3 +1771,106 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     expect(screen.queryByTestId('remember-tier')).toBeNull()
   })
 })
+
+/**
+ * THE FIELDS A PACK ASKS FOR, rendered from the pack's own declaration (issue #189, ADR-0013).
+ *
+ * The same rule `requiresRdp` established and `open-claw` used to break: no `packId` is compared
+ * anywhere in `CreateServerPage`, so a pack that declares an input gets a field the moment it is
+ * installed and nobody edits this page. Every case below therefore changes the PACK, never the
+ * page.
+ */
+describe('a pack that asks for settings (issue #189)', () => {
+  const inputsPack = (inputs: NonNullable<api.SurgePack['inputs']>) =>
+    vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ inputs })])
+
+  const HEADLESS = {
+    name: 'HEADLONG_HEADLESS',
+    label: 'Headless install',
+    description: 'Install without Docker.',
+    required: true,
+    secret: false,
+    default: '1',
+  }
+  const API_KEY = { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true }
+
+  it('renders one field per declared input, with its description as the hint', async () => {
+    inputsPack([HEADLESS, API_KEY])
+    renderPage()
+
+    expect(await screen.findByLabelText(/headless install/i)).toBeTruthy()
+    expect(screen.getByLabelText(/headlong api key/i)).toBeTruthy()
+    expect(screen.getByText('Install without Docker.')).toBeTruthy()
+    // The variable an install script actually reads, so a user can join the field up with the
+    // pack's own README.
+    expect(screen.getByText('$HEADLONG_HEADLESS')).toBeTruthy()
+  })
+
+  it('has no such section at all for a pack that asks for nothing', async () => {
+    // The default pack in this file declares none, which is every shipped pack today.
+    renderPage()
+    await screen.findByLabelText(/startup script/i)
+    expect(screen.queryByLabelText(/headless install/i)).toBeNull()
+  })
+
+  it('prefills a declared default and sends it', async () => {
+    const user = userEvent.setup()
+    inputsPack([HEADLESS])
+    renderPage()
+
+    const field = (await screen.findByLabelText(/headless install/i)) as HTMLInputElement
+    expect(field.value).toBe('1')
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0]?.packInputs).toEqual({ HEADLONG_HEADLESS: '1' })
+  })
+
+  it('renders a secret input as a password field', async () => {
+    inputsPack([API_KEY])
+    renderPage()
+    // Not a `text` input: the value is a credential, it must not be shoulder-read, and core
+    // stores it encrypted and returns it from no route.
+    expect(((await screen.findByLabelText(/headlong api key/i)) as HTMLInputElement).type).toBe('password')
+  })
+
+  it('blocks the submit when a required input is empty, before core is asked', async () => {
+    const user = userEvent.setup()
+    inputsPack([{ ...HEADLESS, default: undefined }])
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: /create server/i }))
+    expect(await screen.findByText(/^Headless install is required by this pack$/)).toBeTruthy()
+    expect(api.createServer).not.toHaveBeenCalled()
+  })
+
+  it('omits an optional input the user left blank rather than sending it empty', async () => {
+    const user = userEvent.setup()
+    inputsPack([{ ...HEADLESS, required: false, default: undefined }, API_KEY])
+    renderPage()
+
+    await screen.findByLabelText(/headless install/i)
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    // An empty value on the box defeats a script's own `${FOO:-}` default, so nothing is sent.
+    expect('packInputs' in (vi.mocked(api.createServer).mock.calls[0]?.[0] ?? {})).toBe(false)
+  })
+
+  it('puts what the user typed on the wire, keyed by the variable name', async () => {
+    const user = userEvent.setup()
+    inputsPack([HEADLESS, API_KEY])
+    renderPage()
+
+    const flag = await screen.findByLabelText(/headless install/i)
+    await user.clear(flag)
+    await user.type(flag, '0')
+    await user.type(screen.getByLabelText(/headlong api key/i), 'sk-live')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0]?.packInputs).toEqual({
+      HEADLONG_HEADLESS: '0',
+      HEADLONG_API_KEY: 'sk-live',
+    })
+  })
+})

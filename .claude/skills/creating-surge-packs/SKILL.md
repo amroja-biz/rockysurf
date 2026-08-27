@@ -99,6 +99,13 @@ else, and infer what you reasonably can from what the user already said.
   instructions rots. See `docs/writing-a-pack.md` § Which version to install.
 - **Headless or a graphical desktop?** A desktop means `desktop: xfce` and almost always
   `requiresRdp: true` (Rocky Surf then asks for a remote-desktop password at create time).
+- **Does an install script need a value only the user has?** A licence key, an API key, an
+  endpoint, a flag that picks between two install modes — declare it in the pack's optional
+  `inputs` list and the create form grows a field for it, delivered to every step as an
+  environment variable (ADR-0013; `references/contract.md` § `inputs`). This is the only
+  sanctioned way to ask a question: Rule 3 forbids prompting, and everything here is collected
+  before the plan runs. Prefix your names, mark a credential `secret: true`, and ask for as little
+  as you can — an input that could have had a `default` is a question that did not need asking.
 - **Where is this pack going?** Three destinations, and they shape the file differently — a pull
   request against `packs/`, a file imported into their own running instance, or a file shared
   with other people. See `references/shipping.md`; the short version is in step 6.
@@ -150,7 +157,7 @@ just a list of ids, and it already resolves across files.
 **The derive workflow:**
 
 1. **Read the base pack file end to end** — `packs/<base>.yaml`. Note its `pack.tools` list, its
-   `requiresRepos` / `requiresRdp` / `desktop` / `webPort`, and its `guide`. If it references an
+   `requiresRepos` / `requiresRdp` / `desktop` / `webPort` / `inputs`, and its `guide`. If it references an
    agent defined elsewhere (`amp`, `codex`, `opencode`, `claude-code`, `gas-town` — see the table
    further down in Step 2 for which file owns which), read that file too.
 2. **Take a new identity.** A free `packId` and `displayOrder` (`grep -h 'toolId:\|packId:\|
@@ -161,9 +168,11 @@ just a list of ids, and it already resolves across files.
    destroys a reviewer's ability to diff it against the base. Trim afterwards only if the user
    asked for a narrower box, and re-read the dependency table above first: dropping `nodejs`
    breaks every npm-installed agent that needs it.
-4. **Carry the base's behaviour flags** (`requiresRepos`, `requiresRdp`, `desktop`, `webPort`)
-   unless something you are adding changes the answer — a loopback web UI needs `webPort`, a GUI
-   app needs `desktop: xfce` and `requiresRdp: true`.
+4. **Carry the base's behaviour flags** (`requiresRepos`, `requiresRdp`, `desktop`, `webPort`,
+   `inputs`) unless something you are adding changes the answer — a loopback web UI needs
+   `webPort`, a GUI app needs `desktop: xfce` and `requiresRdp: true`, and a tool that cannot
+   install without a key of the user's needs an `inputs` entry. Carrying an `inputs` entry whose
+   tool you dropped means asking for a value nothing reads: drop it too.
 5. **Add only new ids to `pack.tools`, and define only those new tools under `tools:`.** Never
    redefine a tool the base owns: the loader rejects a `toolId` defined in two files, `pack lint`
    fires `duplicate-tool`, and on import a redefinition silently overwrites the shipped row for

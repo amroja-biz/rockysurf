@@ -577,6 +577,20 @@ export function CreateServerPage() {
    */
   const [userScript, setUserScript] = useState('')
   const [userScriptRunAs, setUserScriptRunAs] = useState<'root' | 'rocky'>('rocky')
+  /**
+   * What the SELECTED PACK asks for, keyed by the environment variable name (issue #189).
+   *
+   * PACK METADATA DRIVES THE FIELDS, exactly as `requiresRdp` drives the password field: there
+   * is no per-pack code here, and there must never be. A pack that declares an input gets a
+   * field on this form the moment it is installed.
+   *
+   * Kept keyed by name rather than as a parallel array so that switching packs cannot leave a
+   * value sitting under the wrong label — `packInputValues[input.name]` is either this pack's
+   * answer or nothing. The effect below prefills declared defaults and drops answers for names
+   * the newly-chosen pack does not ask for; keeping an answer under a name that is asked for by
+   * BOTH packs is deliberate, because it is the same question.
+   */
+  const [packInputValues, setPackInputValues] = useState<Record<string, string>>({})
 
   /* ---------------------------------------------------------------- submission */
   const [submitting, setSubmitting] = useState(false)
@@ -773,6 +787,37 @@ export function CreateServerPage() {
   // an empty list is confirmed before the create goes out (issue #90).
   const requiresRepos = pack?.requiresRepos ?? false
   const requiresRdp = pack?.requiresRdp ?? false
+  /** The same rule again, for the pack's own questions (issue #189). Empty means no section. */
+  const packInputs = useMemo(() => pack?.inputs ?? [], [pack])
+
+  /*
+   * PREFILL THE DECLARED DEFAULTS, AND FORGET WHAT THIS PACK DOES NOT ASK (issue #189).
+   *
+   * Runs on every change of pack, which is the only thing that can change the questions. Two
+   * jobs in one pass, because they are the same decision:
+   *
+   *  - a declared `default` is written in, so the field shows the pack author's answer and a
+   *    user who agrees with it can leave it alone. It seeds only a name with NO value yet, so
+   *    it never overwrites something the user has typed.
+   *  - a name the new pack does not ask for is dropped, so switching packs cannot smuggle an
+   *    old answer into a create that would be refused for it (core 400s an unknown name). A
+   *    name BOTH packs ask for keeps its answer: it is literally the same question, and making
+   *    someone retype it would be pedantry rather than safety.
+   *
+   * A secret input is never seeded — the pack schema refuses a default on one — so a password
+   * field always starts empty.
+   */
+  useEffect(() => {
+    setPackInputValues((previous) => {
+      const next: Record<string, string> = {}
+      for (const input of packInputs) {
+        const kept = previous[input.name]
+        const value = kept !== undefined && kept !== '' ? kept : (input.default ?? '')
+        if (value !== '') next[input.name] = value
+      }
+      return next
+    })
+  }, [packInputs])
 
   const repositories = useMemo(
     () =>
@@ -913,6 +958,14 @@ export function CreateServerPage() {
       if (rdpPassword.length < 8) return 'Remote desktop password must be at least 8 characters'
       if (rdpPassword !== rdpPasswordConfirm) return 'Remote desktop passwords do not match'
     }
+    /*
+     * A required input with nothing in it blocks the submit HERE rather than at core (#189).
+     * Core refuses it too — a limit only one front end honours is not a limit — but discovering
+     * it in the browser costs a sentence, while discovering it at the API costs a round trip
+     * for a field the user is looking at.
+     */
+    const missing = packInputs.find((input) => input.required && !(packInputValues[input.name] ?? '').trim())
+    if (missing) return `${missing.label} is required by this pack`
     if (sshKeyOption === 'provide' && !sshPublicKey.trim()) return 'Paste your SSH public key, or let Rocky Surf generate one'
     return null
   }
@@ -934,6 +987,12 @@ export function CreateServerPage() {
     setSubmitError(null)
     setRepoErrors([])
     setSubmitting(true)
+
+    const packInputPayload = Object.fromEntries(
+      packInputs
+        .map((input) => [input.name, (packInputValues[input.name] ?? '').trim()] as const)
+        .filter(([, value]) => value !== ''),
+    )
 
     try {
       const request: CreateServerRequest = {
@@ -958,6 +1017,11 @@ export function CreateServerPage() {
         // is not a request to run anything, and a `userScriptRunAs` with no script is a 400
         // (issue #184). The two therefore go on the wire together or not at all.
         ...(userScript.trim() ? { userScript: userScript.trim(), userScriptRunAs } : {}),
+        // ONLY the names this pack declares, and only the ones with something in them: core
+        // refuses an unknown name, and an empty optional value would set a variable to the empty
+        // string on the box, where a pack script's own `${FOO:-}` default can no longer fire
+        // (issue #189).
+        ...(Object.keys(packInputPayload).length > 0 ? { packInputs: packInputPayload } : {}),
       }
 
       const created = await createServer(request)
@@ -1500,6 +1564,53 @@ export function CreateServerPage() {
             </label>
           </fieldset>
         </div>
+
+        {/* WHAT THE PACK ASKS FOR (issue #189, ADR-0013). Rendered from `pack.inputs` and from
+            nothing else — no `packId` is compared anywhere in this file, which is the same rule
+            that let `requiresRdp` replace the old `open-claw` hardcode. The section does not
+            exist for a pack that asks for nothing. */}
+        {packInputs.length > 0 && (
+          <div className="form-group">
+            <label className="form-label">{pack?.name} settings</label>
+            {/* Said once, above the fields, because it is true of all of them and because a
+                person about to type a key needs to know where it goes. The second sentence is
+                the honest limit: these reach the box as environment variables for its setup,
+                not as a secret store the user can read back. */}
+            <p className="hint">
+              This pack asks for these before it installs. They are given to its install scripts as environment
+              variables and are not shown in your shell afterwards.
+            </p>
+            {packInputs.map((input) => (
+              <div key={input.name} className="pack-input">
+                {/* The label is a direct text node so `getByText(label)` finds this element and
+                    not an ancestor, and the required marker is a sibling rather than part of
+                    it — tests query fields by their label. */}
+                <label className="form-label" htmlFor={`packInput-${input.name}`}>
+                  {input.label}
+                  {input.required ? <span className="hint"> required</span> : <span className="hint"> optional</span>}
+                </label>
+                {input.description && <p className="hint">{input.description}</p>}
+                <input
+                  id={`packInput-${input.name}`}
+                  /* A password field for a `secret` input, for the reason the RDP field is one:
+                     the value is a credential, it must not be shoulder-read, and browsers must
+                     not offer to remember it as an ordinary form value. Core stores it
+                     encrypted and returns it from no route. */
+                  type={input.secret ? 'password' : 'text'}
+                  value={packInputValues[input.name] ?? ''}
+                  onChange={(e) => setPackInputValues((v) => ({ ...v, [input.name]: e.target.value }))}
+                  {...(input.secret ? { autoComplete: 'new-password' as const } : {})}
+                />
+                {/* The variable the box will actually see. Shown because a pack's own guide and
+                    README talk about it by name, and a user debugging their box needs to be able
+                    to join the two up. */}
+                <span className="size-detail">
+                  <code>${input.name}</code>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {requiresRdp && (
           <div className="form-group">

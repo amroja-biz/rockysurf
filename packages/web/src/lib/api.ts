@@ -295,6 +295,14 @@ export interface Server {
   packId?: string
   repositories: string[]
   /**
+   * The NON-SECRET pack inputs this box was built with (issue #189, ADR-0013).
+   *
+   * The answers the creator typed, for a pack that asked. Secret inputs are not here and are
+   * not on any other route — core stores them encrypted and returns them nowhere. Absent when
+   * the pack asked for nothing.
+   */
+  packInputs?: Record<string, string>
+  /**
    * The git token scopes this box carries, as `host/owner/repo` identities — never values
    * (rockysurf-18lq).
    *
@@ -425,6 +433,14 @@ export interface CreateServerRequest {
   userScript?: string
   /** Who runs it. Omitted with `userScript`; core defaults it to `rocky`. */
   userScriptRunAs?: 'root' | 'rocky'
+  /**
+   * The values the selected pack declared as `inputs` (issue #189).
+   *
+   * A flat `NAME: value` map, sent only for names the pack actually declared — core 400s an
+   * unknown one rather than ignoring it, so a value that never reaches a box is a refusal
+   * rather than a silence. Omitted entirely when the pack asks for nothing.
+   */
+  packInputs?: Record<string, string>
   /**
    * Create even though a repository URL failed core's preflight (rockysurf-k6xp).
    *
@@ -641,6 +657,27 @@ export interface SurgePackTool {
   url: string
 }
 
+/**
+ * One value a pack asks the person creating a server for (issue #189, ADR-0013).
+ *
+ * The create form renders a field per entry, straight from this declaration and with no
+ * per-pack code — the same contract that gives a `requiresRdp` pack a password field. `name` is
+ * the environment variable the box's install scripts read; everything else is how to ask for it.
+ */
+export interface PackInput {
+  name: string
+  label: string
+  description?: string
+  required: boolean
+  /**
+   * Render a password field, and never expect this value back from any route: core stores a
+   * secret input encrypted, beside the desktop password, and returns it nowhere.
+   */
+  secret: boolean
+  /** Prefilled on the form. Never present on a `secret` input — core refuses that pack. */
+  default?: string
+}
+
 export interface SurgePack {
   packId: string
   name: string
@@ -665,6 +702,13 @@ export interface SurgePack {
    * metadata-not-name-check contract as `requiresRdp` (rockysurf-bbmi).
    */
   webPort?: number
+  /**
+   * What this pack asks the user for at create time (issue #189).
+   *
+   * Absent for a pack that asks for nothing, which is every pack shipped today — so the
+   * create form's inputs section exists only when there is something in it.
+   */
+  inputs?: PackInput[]
   /**
    * Where the pack came from, in core's words (rockysurf-jn71).
    *
@@ -1164,6 +1208,15 @@ export interface PackDisclosure {
   requiresRepos: boolean
   requiresRdp: boolean
   desktop?: string
+  /**
+   * What this pack will ask the user for at create time (issue #189) — names, labels and
+   * whether each is required and secret. Never a value: a `default` is deliberately not part of
+   * this projection, because the question a reader is answering here is "what will I be asked",
+   * not "what will be sent".
+   *
+   * Optional on the wire so a disclosure served by an older core still parses.
+   */
+  inputs?: Array<{ name: string; label: string; required: boolean; secret: boolean }>
   /**
    * ALWAYS FALSE, and the UI must render the caveat rather than the value.
    *
