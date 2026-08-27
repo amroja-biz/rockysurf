@@ -1,0 +1,9 @@
+<!-- @dsCard group="Brand" viewport="700x260" name="The logo" subtitle="The painting is the hero; the favicon crop is the navbar mark" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><div style="display:flex;gap:16px;align-items:center">
+<img src="../assets/logo.png" alt="Rocky Surf" style="width:300px;border:1px solid var(--rs-border);border-radius:6px">
+<div>
+<div class="app-brand" style="margin:0"><img src="../assets/mark-48.png" alt="" width="20" height="20"><span>Rocky Surf</span></div>
+<p class="hint" style="margin-top:10px;max-width:280px">A lighthouse on a moonlit rocky shore, in engraved cross-hatch. Never redrawn, recoloured, or cropped except to the shipped favicon sizes. The name and the logo are outside the MIT licence.</p>
+</div></div></body></html>

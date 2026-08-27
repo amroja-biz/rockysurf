@@ -242,11 +242,19 @@ body[data-rs-skin='etched'] {
   text-transform: none; letter-spacing: normal; font-size: 0.8125rem; margin-top: 0.2rem;
 }
 
-/* Tally: beside the value, in the label's ink, not the value's. */
+/* Tally: beside the value, in the beam — it is a mark, not a number (ui_kits/etched). */
 [data-rs-skin='etched'] .uptime { display: flex; align-items: center; gap: 0.5rem; }
+[data-rs-skin='etched'] .uptime .tally { color: var(--rs-beam); flex-shrink: 0; }
 /* The card's values are right-aligned; the detail page's read left, beside their labels. */
 [data-rs-skin='etched'] .server-meta .uptime { justify-content: flex-end; }
-[data-rs-skin='etched'] .uptime .tally { color: var(--rs-muted); flex-shrink: 0; }
+
+/* Swell inside a plate: a rule between blocks, with room either side. */
+[data-rs-skin='etched'] .server-card .swell { margin-top: 0.9rem; }
+[data-rs-skin='etched'] .server-summary .swell { margin: 0.75rem 0 0.25rem; }
+
+/* The spend cap on its own plate, with the section spacing the page's other blocks have. */
+[data-rs-skin='etched'] .spend-cap { margin-bottom: 1.5rem; }
+[data-rs-skin='etched'] .spend-cap h2 { margin-top: 0; }
 
 /* Shore: the rock bleeds to the frame, so the frame has no inner radius to leak past. */
 [data-rs-skin='etched'] .shore { border-radius: 0; }

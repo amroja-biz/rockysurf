@@ -1,0 +1,84 @@
+/* The server list: one card per live box, then the derived activity feed. */
+const { ServerCard, Button, ActivityFeed, BackupReminder, EmptyState, ConfirmModal, IpChangeAlert, StillBillingNotice } = window.RockySurfDesignSystem_5702b3
+const { STEP_LABELS } = window.RockySurfDesignSystem_5702b3
+
+function DashboardScreen({ servers, onOpen, onNew, onAction }) {
+  const [reminder, setReminder] = React.useState(true)
+  const [confirming, setConfirming] = React.useState(null)
+  const live = servers.filter((s) => s.status !== 'terminated')
+  return (
+    <>
+      {reminder ? (
+        <BackupReminder onDismiss={() => setReminder(false)}>
+          Back up <code>~/.rockysurf</code> — the database and the key are useless without each other, and
+          <a href="#"> stop the process first</a>.
+        </BackupReminder>
+      ) : null}
+
+      <div className="dashboard-actions">
+        <Button variant="primary" onClick={onNew}>New server</Button>
+      </div>
+
+      {live.length === 0 ? <EmptyState>No servers yet. <a href="#" onClick={(e) => { e.preventDefault(); onNew() }}>Create one</a> to get started.</EmptyState> : null}
+
+      <div className="server-grid">
+        {live.map((server) => (
+          <ServerCard
+            key={server.serverId}
+            server={server}
+            href="#"
+            error={server.errorMessage}
+            provisioningStep={server.status === 'provisioning' ? STEP_LABELS[server.step] : undefined}
+            notices={
+              <>
+                {server.previousIp && server.publicIp ? (
+                  <IpChangeAlert previousIp={server.previousIp} currentIp={server.publicIp} changedAt="Aug 25, 6:00 PM" />
+                ) : null}
+                {server.status === 'failed' ? (
+                  <StillBillingNotice hint="Terminate it to clear the row.">
+                    This server failed. Its machine is already gone, so nothing is billing.
+                  </StillBillingNotice>
+                ) : null}
+              </>
+            }
+            actions={
+              <>
+                {server.status === 'running' ? <Button onClick={() => setConfirming({ kind: 'stop', server })}>Stop</Button> : null}
+                {server.status === 'stopped' ? <Button onClick={() => onAction('start', server)}>Start</Button> : null}
+                {server.status !== 'provisioning' ? (
+                  <Button variant="destructive" onClick={() => setConfirming({ kind: 'terminate', server })}>
+                    {server.status === 'failed' ? 'Dismiss' : 'Terminate'}
+                  </Button>
+                ) : null}
+                <Button onClick={() => onOpen(server)}>Open</Button>
+              </>
+            }
+          />
+        ))}
+      </div>
+
+      <ActivityFeed events={window.RS_DATA.activity} />
+
+      {confirming?.kind === 'stop' ? (
+        <ConfirmModal
+          title={`Stop ${confirming.server.name}?`}
+          message="The disk is kept, so you can start it again later. You are not billed for a stopped instance's compute."
+          confirmLabel="Stop"
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => { onAction('stop', confirming.server); setConfirming(null) }}
+        />
+      ) : null}
+      {confirming?.kind === 'terminate' ? (
+        <ConfirmModal
+          title={`Terminate ${confirming.server.name}?`}
+          message="This destroys the server and its disk. It cannot be undone."
+          confirmLabel="Terminate"
+          isDestructive
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => { onAction('terminate', confirming.server); setConfirming(null) }}
+        />
+      ) : null}
+    </>
+  )
+}
+Object.assign(window, { DashboardScreen })

@@ -1,0 +1,41 @@
+/* What Rocky Surf is, for someone who just got here. The README's own words. */
+function HomeScreen({ onNew }) {
+  return (
+    <>
+      <img className="home-hero" src="../../assets/logo.png" alt="Rocky Surf — a lighthouse on a moonlit rocky shore" />
+      <h1>Are your coding agents telling you they need their own space?</h1>
+      <p className="home-lede">
+        Have they been snooping around your laptop, exposing API keys? Or connecting to other apps without
+        being told? And aren't you getting a little tired of killing them when you close your laptop by mistake?
+      </p>
+      <p className="home-lede">
+        Rocky Surf solves this problem by making it easy to run agents where they belong - in cloud accounts
+        that you own, preinstalled with your favorite tools and repos.
+      </p>
+      <p className="home-lede">
+        One process you run yourself (web UI, HTTP API, SQLite file). One admin, no accounts, no telemetry,
+        nothing hosted.
+      </p>
+      <section className="home-section">
+        <h2>Bring your own cloud, keys and repos</h2>
+        <ul className="home-claims">
+          <li><strong>BYOC — bring your own cloud.</strong> Your AWS account, your Hetzner project, Azure, GCP, or a machine you already own. Rocky Surf holds the credential and calls the API. The resources and the bill are yours.</li>
+          <li><strong>BYOK — bring your own keys.</strong> Your Claude Code subscription, your Codex login, your API keys. Rocky Surf installs the agents; you sign them in.</li>
+          <li><strong>BYOR — bring your own repos.</strong> Your GitHub repositories, cloned onto the box during setup using a token you supply.</li>
+        </ul>
+        <p>Rocky Surf resells nothing and sits in the middle of nothing.</p>
+      </section>
+      <section className="home-section">
+        <h2>Install</h2>
+        <pre><code>{'git clone https://github.com/amroja-biz/rockysurf\ncd rockysurf\ndocker compose up --build'}</code></pre>
+        <p>It prints an admin password once - save it.</p>
+      </section>
+      <p className="home-links">
+        <a href="https://github.com/amroja-biz/rockysurf" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="#">Help</a>
+        <a href="#" onClick={(e) => { e.preventDefault(); onNew() }}>Create a server</a>
+      </p>
+    </>
+  )
+}
+Object.assign(window, { HomeScreen })

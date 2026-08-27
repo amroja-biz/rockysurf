@@ -1,0 +1,83 @@
+/* The create form: provider, name, size, pack, repositories, then the resolved offering. */
+const { Field, RadioOption, Tabs, CheckboxRow, Chip, Button, PackIcon, Notice, Card } = window.RockySurfDesignSystem_5702b3
+
+function CreateServerScreen({ onCreated }) {
+  const D = window.RS_DATA
+  const [provider, setProvider] = React.useState('hetzner')
+  const [name, setName] = React.useState('agent-box')
+  const [size, setSize] = React.useState('medium')
+  const [packId, setPackId] = React.useState('ai-coding-agents')
+  const [tab, setTab] = React.useState('official')
+  const [repos, setRepos] = React.useState('https://github.com/you/api')
+  const [force, setForce] = React.useState(false)
+  const chosenSize = D.sizes.find((s) => s.id === size)
+  const packs = D.packs.filter((p) => (tab === 'official' ? p.trust === 'official' : p.trust !== 'official'))
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onCreated({ name, provider, size, packId, repos }) }}>
+      <Field label="Provider" help="Rocky Surf holds the credential and calls the API. The resources and the bill are yours.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {D.providers.map((p) => (
+            <RadioOption key={p.id} name="provider" value={p.id} selected={provider === p.id} onSelect={setProvider} title={p.displayName} detail={p.detail} />
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Name" help="Shown here only — nothing on the cloud is renamed." htmlFor="name">
+        <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={63} />
+      </Field>
+
+      <Field label="Size" help="A t-shirt size resolves to a real machine. Pick an offering directly if you want one.">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {D.sizes.map((s) => (
+            <RadioOption key={s.id} name="size" value={s.id} selected={size === s.id} onSelect={setSize} title={s.name} detail={s.detail} />
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Surge Pack" help="A list of tools and install scripts. You can read the whole file before trusting it.">
+        <Tabs tabs={[{ id: 'official', label: 'Official' }, { id: 'other', label: 'Community & internal' }]} value={tab} onChange={setTab} label="Pack registries" />
+        <p className="pack-selected hint">Chosen: <strong>{D.packs.find((p) => p.packId === packId)?.name}</strong></p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {packs.map((p) => (
+            <RadioOption key={p.packId} name="pack" value={p.packId} selected={packId === p.packId} onSelect={setPackId}
+              title={p.name} detail={`${p.toolCount} tools · ${p.description}`} media={<PackIcon pack={p} />} />
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Repositories" help="One git URL per line, cloned into the box's home directory. Private ones need a token from Settings.">
+        <div className="repo-picker">
+          <p className="hint">Configured tokens cover:</p>
+          <div className="repo-chips">
+            <Chip onClick={() => setRepos((r) => r + '\nhttps://github.com/you/web')}>github.com/you/web</Chip>
+            <Chip state="added" disabled>github.com/you/api</Chip>
+            <Chip state="pending">github.com/you/infra</Chip>
+          </div>
+        </div>
+        <textarea value={repos} onChange={(e) => setRepos(e.target.value)} rows={3} />
+        <ul className="repo-resolutions">
+          <li className="repo-ok">github.com/you/api — covered by the <code>github.com/you</code> token</li>
+          <li className="repo-pending">github.com/you/infra — the config file holds a token this process has not loaded</li>
+        </ul>
+      </Field>
+
+      <CheckboxRow checked={force} onChange={setForce}>Create anyway — I know one of these repositories may not clone.</CheckboxRow>
+
+      <div className="resolved-offering">
+        <p className="hint">Resolved offering</p>
+        <p><strong className="size-name">{chosenSize?.detail.split(' · ')[2]}</strong> <span className="arch-badge">arm64</span></p>
+        <p className="price">{chosenSize?.detail.split(' · ')[3]}</p>
+        <p className="price-note">Estimate from bundled price data, in the currency your provider quotes.</p>
+      </div>
+
+      <Notice tone="warning">No credential of yours reaches the box during bootstrap. The pack's guide is where it tells you how to sign the agents in.</Notice>
+
+      <div className="dashboard-actions">
+        <button type="submit" className="btn-primary">Create server</button>
+        <Button>Preview the install</Button>
+      </div>
+    </form>
+  )
+}
+Object.assign(window, { CreateServerScreen })

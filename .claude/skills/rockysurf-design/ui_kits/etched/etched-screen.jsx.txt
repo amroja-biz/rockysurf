@@ -1,0 +1,119 @@
+/* The dashboard rebuilt out of the etched parts. Layout and copy are unchanged from the real
+   app; every mark that carried state has been redrawn in the illustration's hand. */
+const { AppShell, Button, PackIcon } = window.RockySurfDesignSystem_5702b3
+const A = '../../assets/surge-packs/'
+const STEPS = ['requested','instance_launching','instance_running','installing_tools','tools_installed','cloning_repos','ready']
+const STEP_LABELS = { requested:'Requested', instance_launching:'Launching server', instance_running:'Server launched', installing_tools:'Installing tools', tools_installed:'Tools installed', cloning_repos:'Cloning repositories', ready:'Ready' }
+
+const CAPS = { fontSize:'0.66rem', letterSpacing:'0.11em', textTransform:'uppercase', color:'#8a8494' }
+
+function Meta({ rows }) {
+  return (
+    <dl style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'0.5rem 0.75rem', margin:'0.9rem 0 0', alignItems:'center' }}>
+      {rows.map(([k, v]) => (
+        <React.Fragment key={k}>
+          <dt style={CAPS}>{k}</dt>
+          <dd style={{ margin:0, textAlign:'right', fontFamily:'var(--rs-mono)', fontSize:'0.8125rem', color:'#cbc5cf' }}>{v}</dd>
+        </React.Fragment>
+      ))}
+    </dl>
+  )
+}
+
+function Box({ name, status, ip, uptime, uptimeHours, cost, costFrac, actions, children }) {
+  return (
+    <Plate lit={status === 'running'}>
+      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'0.5rem' }}>
+        <h3 style={{ fontSize:'1rem', fontWeight:600, color:'#fcf5e8' }}><a href="#" style={{ color:'#fcf5e8' }}>{name}</a></h3>
+        <Lamp status={status} />
+      </header>
+      {children}
+      <div style={{ marginTop:'0.9rem' }}><Swell opacity={0.22} /></div>
+      <dl style={{ display:'grid', gridTemplateColumns:'auto 1fr auto', gap:'0.55rem 0.75rem', margin:'0.7rem 0 0', alignItems:'center' }}>
+        <dt style={CAPS}>Address</dt>
+        <dd style={{ margin:0, gridColumn:'2 / span 2', textAlign:'right', fontFamily:'var(--rs-mono)', fontSize:'0.8125rem', color:'#cbc5cf' }}>{ip ?? '—'}</dd>
+        <dt style={CAPS}>Uptime</dt>
+        <dd style={{ margin:0, color:'#e8c37a', lineHeight:0 }}><Tally hours={uptimeHours} /></dd>
+        <dd style={{ margin:0, textAlign:'right', fontFamily:'var(--rs-mono)', fontSize:'0.8125rem', color:'#cbc5cf' }}>{uptime}</dd>
+        <dt style={CAPS}>Cost</dt>
+        <dd style={{ margin:0, gridColumn:'2 / span 2', textAlign:'right', fontFamily:'var(--rs-mono)', fontSize:'0.8125rem', color:'#cbc5cf' }}>{cost}</dd>
+      </dl>
+      {actions ? <footer style={{ display:'flex', gap:'0.5rem', marginTop:'0.9rem', paddingTop:'0.8rem', borderTop:'1px solid rgba(252,245,232,.14)' }}>{actions}</footer> : null}
+    </Plate>
+  )
+}
+
+function Screen() {
+  return (
+    <AppShell title="Servers" current="/" markSrc="../../assets/mark-48.png">
+      <EtchedDefs />
+
+      <div className="dashboard-actions">
+        <Button variant="primary">New server</Button>
+        <Button>Browse Surge Packs</Button>
+      </div>
+
+      <div className="server-grid">
+        <Box name="dev-box" status="running" ip="203.0.113.10" uptime="2h 14m" uptimeHours={2.23} cost="$0.42" costFrac={0.06}
+          actions={<><Button>Stop</Button><Button variant="destructive">Terminate</Button></>} />
+        <Box name="claw-1" status="provisioning" ip={null} uptime="0s" uptimeHours={0} cost="$0.00" costFrac={0}>
+          <p style={{ ...CAPS, color:'#e8c37a', margin:'0.7rem 0 0' }}>Installing tools</p>
+        </Box>
+        <Box name="spike" status="stopped" ip="198.51.100.24" uptime="6h 02m" uptimeHours={6.03} cost="$1.18" costFrac={0.18}
+          actions={<><Button>Start</Button><Button variant="destructive">Terminate</Button></>} />
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1.35fr 1fr', gap:'1rem', marginTop:'1.5rem', alignItems:'start' }}>
+        <Plate>
+          <h2 style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'1rem' }}>claw-1 · setting up</h2>
+          <Beacon steps={STEPS} current="installing_tools" labels={STEP_LABELS} />
+        </Plate>
+        <Plate>
+          <h2 style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.9rem' }}>Spend cap</h2>
+          <div style={{ display:'flex', alignItems:'center', gap:'1rem', color:'#e8c37a' }}>
+            <Moon fraction={0.34} size={62} />
+            <div>
+              <p style={{ fontFamily:'var(--rs-mono)', fontSize:'1.2rem', color:'#fcf5e8', margin:0 }}>$17.04</p>
+              <p style={{ ...CAPS, margin:'0.2rem 0 0' }}>of $50.00 this month</p>
+            </div>
+          </div>
+          <div style={{ color:'#e8c37a', marginTop:'0.9rem' }}><Waterline fraction={0.34} width={260} /></div>
+          <p style={{ fontSize:'0.8125rem', color:'#8a8494', lineHeight:1.5, marginTop:'0.5rem' }}>
+            Estimate from bundled price data. Hitting the cap blocks new servers without stopping
+            running ones — a budget cap, not a sandbox.
+          </p>
+        </Plate>
+      </div>
+
+      <section style={{ marginTop:'1.5rem' }}>
+        <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
+          <h2 style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Surge Packs</h2>
+          <p style={CAPS}>10 official</p>
+        </div>
+        <Swell />
+        <ul style={{ listStyle:'none', margin:'0.8rem 0 0', padding:0, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'0.75rem' }}>
+          {[['ai-coding-agents','AI Coding Agents','claude-code.png','Claude Code, Codex CLI and Amp on one box.'],
+            ['open-claw','Open Claw','open-claw.png','A desktop session with a browser-driving agent.'],
+            ['gas-town','Gas Town','gas-town.png','The Gas Town harness and its dependencies.']].map(([id, name, img, desc]) => (
+            <li key={id}>
+              <Plate>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.6rem' }}>
+                  <PackIcon pack={{ packId:id, name, imageUrl:A + img }} />
+                  <h3 style={{ fontSize:'0.95rem', color:'#fcf5e8' }}>{name}</h3>
+                </div>
+                <p style={{ fontSize:'0.8125rem', color:'#8a8494', margin:'0.5rem 0 0.8rem', lineHeight:1.45 }}>{desc}</p>
+                <Button>Details</Button>
+              </Plate>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section style={{ marginTop:'1.5rem' }}>
+        <h2 style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.6rem' }}>Terminated</h2>
+        <Shore>Nothing here. Terminated boxes are cleared once you dismiss them.</Shore>
+      </section>
+    </AppShell>
+  )
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Screen />)

@@ -1,0 +1,107 @@
+/* One server: what it is, how to connect, and what it is doing right now. */
+const { StatusBadge, MetaList, Button, ToolList, PackGuide, StepList, Notice, ConfirmModal, StillBillingNotice } = window.RockySurfDesignSystem_5702b3
+
+function ServerDetailScreen({ server, onAction, onOpenPack }) {
+  const D = window.RS_DATA
+  const pack = D.packs.find((p) => p.packId === server.packId)
+  const [confirming, setConfirming] = React.useState(null)
+  const sshCommand = `ssh -i ${server.name}.pem ${server.sshUser}@${server.publicIp ?? '<address>'}`
+
+  return (
+    <>
+      <section className="server-summary">
+        <StatusBadge status={server.status} />
+        <p className="hint">{server.description ?? 'No description.'} <button className="link" type="button">Edit</button></p>
+        {server.errorMessage ? <p className="error" role="alert">{server.errorMessage}</p> : null}
+        {server.status === 'failed' ? (
+          <StillBillingNotice hint="Terminate it to clear the row and its report.">The machine is already gone, so nothing is billing.</StillBillingNotice>
+        ) : null}
+        <MetaList align="left" items={[
+          ['Address', server.publicIp ?? '—'],
+          ['Size', `${server.size} · ${server.offeringId} · ${server.arch}`],
+          ['Surge Pack', <a href="#" onClick={(e) => { e.preventDefault(); onOpenPack(pack) }}>{pack?.name ?? server.packId}</a>],
+          ['Uptime', server.uptime],
+          ['Estimated cost', server.cost],
+          ['Created', server.created],
+        ]} />
+      </section>
+
+      <section className="server-actions">
+        {server.status === 'running' ? <Button onClick={() => setConfirming('stop')}>Stop</Button> : null}
+        {server.status === 'stopped' ? <Button onClick={() => onAction('start', server)}>Start</Button> : null}
+        <Button variant="destructive" onClick={() => setConfirming('terminate')}>{server.status === 'failed' ? 'Dismiss' : 'Terminate'}</Button>
+      </section>
+
+      {server.status === 'provisioning' ? (
+        <section className="provisioning-timeline">
+          <h2>Setting up</h2>
+          <StepList current={server.step} />
+          <details open className="log">
+            <summary>Install log</summary>
+            <pre className="install-log">{D.log.join('\n')}</pre>
+          </details>
+        </section>
+      ) : null}
+
+      {server.status === 'running' ? (
+        <section className="connection">
+          <h2>Connect</h2>
+          <pre><code>{sshCommand}</code></pre>
+          <Button>Download {server.name}.pem</Button>
+          <p className="hint">
+            Rocky Surf keeps a copy and every download is recorded; re-downloading later is fine. Store it
+            somewhere safe and <code>chmod 600</code> it before use.
+          </p>
+          {pack?.webPort ? (
+            <div className="web-ui-instructions">
+              <h3>Web UI</h3>
+              <p>{pack.name} serves a web UI on the box's loopback only, so connect with the port forwarded — use this instead of the plain command above:</p>
+              <pre><code>{`ssh -i ${server.name}.pem -L ${pack.webPort}:127.0.0.1:${pack.webPort} ${server.sshUser}@${server.publicIp}`}</code></pre>
+            </div>
+          ) : null}
+          {pack?.requiresRdp ? (
+            <div className="rdp-instructions">
+              <h3>Remote desktop</h3>
+              <p>Tunnel the desktop port over SSH, then point your RDP client at localhost:</p>
+              <pre><code>{`ssh -i ${server.name}.pem -L 3389:localhost:3389 ${server.sshUser}@${server.publicIp}`}</code></pre>
+              <p className="hint">Forgotten the password? Rocky Surf will not show it to you — SSH in with the key above and set a new one: <code>sudo passwd {server.sshUser}</code></p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {server.status === 'running' && pack?.guide ? <PackGuide packName={pack.name} guide={pack.guide} /> : null}
+
+      <section className="repositories">
+        <h2>Repositories</h2>
+        {server.repositories.length === 0 ? <p>None yet.</p> : (
+          <ul>{server.repositories.map((r) => <li key={r}><code>{r}</code></li>)}</ul>
+        )}
+        <div className="server-tokens">
+          {server.tokenScopes.length > 0
+            ? <p>Git tokens on this box: {server.tokenScopes.map((s) => <code key={s}>{s}</code>)}.</p>
+            : <p>This box carries no git tokens.</p>}
+          <p className="hint">
+            Tokens are chosen at create from the repositories above, and there is no way to add one to a
+            running box.
+          </p>
+        </div>
+      </section>
+
+      <section className="tools">
+        <h2>Installed</h2>
+        {pack?.tools?.length ? <ToolList tools={pack.tools} /> : <p className="hint">Nothing recorded for this box.</p>}
+      </section>
+
+      {confirming === 'stop' ? (
+        <ConfirmModal title={`Stop ${server.name}?`} message="The disk is kept, so you can start it again later." confirmLabel="Stop"
+          onCancel={() => setConfirming(null)} onConfirm={() => { onAction('stop', server); setConfirming(null) }} />
+      ) : null}
+      {confirming === 'terminate' ? (
+        <ConfirmModal title={`Terminate ${server.name}?`} message="This destroys the server and its disk. It cannot be undone." confirmLabel="Terminate" isDestructive
+          onCancel={() => setConfirming(null)} onConfirm={() => { onAction('terminate', server); setConfirming(null) }} />
+      ) : null}
+    </>
+  )
+}
+Object.assign(window, { ServerDetailScreen })

@@ -18,6 +18,11 @@ If the user invokes this skill without any other guidance, ask them what they wa
 | `css/` | The product's stylesheet, split by concern |
 | `components/` | Every component: `.prompt.md` usage note, plus `.jsx.txt` source and `.d.ts.txt` props contract |
 | `assets/` | The logo painting, the favicon marks, the ten Surge Pack PNGs |
+| `guidelines/` | 17 specimen cards — colours, type, spacing, radii, motion, iconography, the logo |
+| `ui_kits/rockysurf-app/` | A click-through recreation of the control plane, with each screen mapped to the file it was read from |
+| `ui_kits/etched/` | The two screens the etched skin landed on |
+| `thumbnail.html.txt` | The system's tile |
+| `github.md` | Which repository and commit this was built from, and what was updated |
 | `handoff/` | Dropping the etched skin into `packages/web`: `etched.css`, `etched.tsx.txt`, and the rollout order |
 
 ## If you are implementing the etched skin
@@ -34,9 +39,11 @@ additive attribute scope, and that property is what makes it safe to merge along
 
 ## Note on the component source
 
-Source files carry a `.txt` suffix (`Button.jsx.txt`, `Button.d.ts.txt`) so that dropping this
-skill into a repo cannot make a build try to compile it. Read them as ordinary source; strip the
-suffix if you want to run one.
+Every `.jsx`, `.js`, `.d.ts` and `.html` file carries a `.txt` suffix (`Button.jsx.txt`,
+`H-etched-screens.html.txt`) so that dropping this skill into a repo cannot make a build compile
+it or a tool treat it as a page. Read them as ordinary source; strip the suffix to run or open
+one. Relative paths inside them are unchanged, so a card or screen works as soon as it is
+renamed back.
 
 They are the design system's own build — plain React against CSS custom properties — and are
 reference, not a package to import. For `packages/web`, the ported and typed versions are in

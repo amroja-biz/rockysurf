@@ -1,0 +1,8 @@
+<!-- @dsCard group="Type" viewport="700x170" name="Working sizes" subtitle="14px is the app; 13 and 12 carry values and hints" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>body{padding:18px}.sw{display:flex;flex-wrap:wrap;gap:10px}.s{width:104px}.s .chip{height:44px;border-radius:6px;border:1px solid var(--rs-border)}.s .n{font-size:11px;color:var(--rs-heading);margin-top:6px;font-family:var(--rs-mono)}.s .v{font-size:10px;color:var(--rs-muted);font-family:var(--rs-mono)}</style>
+</head><body><div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:var(--text-ui)">14px · --text-ui — labels, buttons, table cells, body of the app</div>
+<div style="font-size:var(--text-sm);color:var(--rs-muted)">13px · --text-sm — hints, monospaced values, chips</div>
+<div style="font-size:var(--text-xs);color:var(--rs-muted)">12px · --text-xs — badges, timestamps, detail lines</div>
+<div style="font-size:var(--text-badge);color:var(--rs-muted)">11.2px · --text-badge — the pill label</div></div></body></html>
