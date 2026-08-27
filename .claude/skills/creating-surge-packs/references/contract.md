@@ -59,10 +59,46 @@ password.
 | `requiresRdp` | boolean | defaults `false` | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
 | `webPort` | number (1–65535) | no | Loopback port of a web UI the pack serves; Connect renders the `ssh -L` forward from it. Omit if none |
+| `inputs` | PackInput[] (max 16) | no | Values the pack asks the user for at create time, delivered to every step as environment variables. See below |
 
-`requiresRepos`, `requiresRdp`, `desktop` and `webPort` exist so behaviour is described by the pack. If you
+`requiresRepos`, `requiresRdp`, `desktop`, `webPort` and `inputs` exist so behaviour is described by the pack. If you
 find yourself wanting the application to special-case your `packId`, that is a bug in the format
 — open an issue instead of working around it.
+
+
+### `inputs` — the values your pack asks for (ADR-0013)
+
+```yaml
+  inputs:
+    - name: HEADLONG_HEADLESS      # ^[A-Z][A-Z0-9_]*$, ≤64 chars — the env var your script reads
+      label: Headless install      # the form's field label
+      description: Install without Docker.   # the field's hint
+      required: true               # defaults false; refuses the create when empty and no default
+      default: "1"                 # prefilled on the form
+    - name: HEADLONG_API_KEY
+      label: Headlong API key
+      secret: true                 # password field; stored encrypted; returned by no route
+```
+
+- **Prefix your names**, always: one environment is shared by every tool on the box.
+- **Refused at validation**: anything Rocky Surf exports (`ARCH`, `HOME`, `REPOS`, `GITHUB_TOKEN`,
+  `RDP_PASSWORD`, `PATH`, …) and the whole `ROCKYSURF_` and `GIT_` namespaces.
+- **A `secret` input may not have a `default`** — a credential in a file everyone can read is not
+  a secret.
+- **One line, ≤4 KiB per value**; the values reach the box through the line-oriented `secrets.env`.
+
+What the four rules imply for `inputs`:
+
+- **Idempotent** — the values are identical on every re-run (they are stored on the server), so
+  never use one to decide whether work has already been done. Use a stamp.
+- **`$ARCH`-aware** — never ask for the architecture. `$ARCH` knows, and a user can get it wrong.
+- **Non-interactive** — this is the *only* sanctioned way to ask a question, and it happens before
+  the plan runs. If you want a `read`, you want an input.
+- **`runAs`-honest** — inputs are pack-level and reach `root` and `rocky` steps alike; they do not
+  narrow with privilege.
+
+Ask for as little as possible: an input that could have had a `default` is a question that did not
+need asking, and a credential the tool's own `login` command can collect belongs in your `guide`.
 
 ### Tool
 
@@ -198,12 +234,16 @@ Two more:
 | `REPOS` | every step, when the pack sets `requiresRepos` | Comma-separated clone URLs the user chose — `''` when they confirmed a repo-less create |
 | `GITHUB_TOKEN` | every step, **when the operator configured one** | A GitHub token, for private repositories and for `gh` |
 | `RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for `rocky` |
+| your pack's own `inputs` | every step, when the user supplied one | Whatever your pack declared and the user typed — your names, in your namespace |
 
-`GITHUB_TOKEN` and `RDP_PASSWORD` are the only credential names Rocky Surf promises a pack, and
-that list is closed on purpose. **Both may be absent** — a key with no secret behind it is
-omitted entirely rather than set empty, so guard with `${VAR:-}` before use. An empty value would
-be worse than a missing one: `RDP_PASSWORD=` passes a naive check and then sets an empty desktop
-password.
+`GITHUB_TOKEN` and `RDP_PASSWORD` are the only credential names **Rocky Surf** promises a pack,
+and that list is closed on purpose. Your pack's own `inputs` arrive through the same `secrets.env`
+and are read the same way, but they are **your** namespace, promised by **your** pack: the
+platform guarantees the delivery, not the names (ADR-0013). The two cannot collide — an input
+that claims a name Rocky Surf exports is refused at validation. **Any of them may be absent** — a
+key with no value behind it is omitted entirely rather than set empty, so guard with `${VAR:-}`
+before use. An empty value would be worse than a missing one: `RDP_PASSWORD=` passes a naive check
+and then sets an empty desktop password.
 
 You usually do not need `GITHUB_TOKEN` for cloning: repository clones in the resolved plan
 already authenticate with it through a per-invocation credential helper that keeps it out of
