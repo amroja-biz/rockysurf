@@ -742,6 +742,52 @@ find usually means the repository was not declared when the server was created �
 detail page lists what it carries, and the answer is the same either way: recreate with the
 repository declared, or authenticate that clone by hand.
 
+## Your own startup script on a new server
+
+The create form's **Startup script** field takes a shell script that the box runs once, during
+setup, before it is handed to you. It is Rocky Surf's answer to
+[EC2 user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html), with one
+thing EC2 does not offer: you choose whether it runs as `root` or as `rocky`, the unprivileged
+account you SSH in as. `rocky` is the default, because that is the account whose home directory,
+`PATH` and toolchain the pack just finished building.
+
+The field is on the form for every pack. A pack neither grants it nor knows about it — it is your
+instruction to your own box.
+
+**The contract, exactly:**
+
+| | |
+|---|---|
+| **When it runs** | Once, near the end of setup: after every tool in the pack is installed, after your repositories are cloned, and after each tool's setup script. Before the login banner, the desktop password and the SSH-key retirement, which are Rocky Surf's own last steps. |
+| **As whom** | `root` or `rocky`, as you chose. Rocky Surf drops privilege for you; do not write `sudo -u rocky` wrappers of your own. |
+| **What it gets** | The same environment a pack script gets: `$ARCH`, `$HOME` (of whoever is running it), `$REPOS` (comma-separated clone URLs, possibly empty), `DEBIAN_FRONTEND=noninteractive`, `$GITHUB_TOKEN` and `$RDP_PASSWORD` when they are configured, and git's credential environment so a `git clone` of a private repository authenticates the way the plan's own clones did. |
+| **How it is run** | With `bash`. Nothing is added to your script except that environment — in particular **no `set -e`**: the step's exit status is your script's own, exactly as with EC2 user data. Write `set -euo pipefail` at the top yourself if that is what you want. |
+| **If it fails** | The server still comes up. A failed script is recorded as a **warning**, with its whole log, on the server's page — the same treatment a repository that would not clone gets, and for the same reason ([ADR-0010](adr/0010-failed-tool-install-terminates-the-box.md)): everything you actually ordered is on the box, and you need the box in order to fix the script. Only a failed *tool install* releases a machine. |
+| **How long it may take** | 30 minutes, after which the step is killed and recorded as a warning. |
+| **How big it may be** | 16 KiB, the same ceiling EC2 puts on user data. Anything larger belongs in a repository the box clones — have the script run *that*. |
+| **Run once, or every boot?** | Once, during setup, and never again. It is a step in the install plan, not a boot hook. If you want something to run on every boot, have the script install a systemd unit that does. |
+
+**It is not a place for secrets.** The script is stored in Rocky Surf's database and sent to the
+box in plain text, exactly like a pack's install script, and it is visible to anyone who can read
+either. Credentials reach a box through the mechanisms built for them — the GitHub token above,
+and the desktop password — never through this field.
+
+From the CLI, the script is a file rather than an argument, because an argument would be readable
+through `ps` on the machine you typed it on:
+
+```bash
+rockysurf create --pack ai-coding-agents --user-script ./boot.sh
+rockysurf create --pack ai-coding-agents --user-script ./boot.sh --user-script-as root
+```
+
+A bad path, an empty file or one over 16 KiB is refused before anything is provisioned.
+
+While the box comes up, the creation screen shows this step as **Running your script**, so a long
+one reads as progress rather than as a hang.
+
+[ADR-0011](adr/0011-user-script-at-create-time.md) records why the step sits where it does, and
+why a failure is a warning rather than a dead machine.
+
 ## Surge Packs, and what happens when one breaks
 
 Surge Packs are the software bundles a server is created with, loaded from YAML files in `packs/`

@@ -89,7 +89,10 @@ Field rules:
 
 - `id` MUST be unique within the plan and stable across re-renders of the same logical plan.
   It is the key the journal resumes on, so an id that changes between renders silently re-runs
-  work. Use the namespaced forms below.
+  work. Use the namespaced forms below. Adding a **singleton id** — `branding`, `rdp`,
+  `user-script`, `supplied-key-only` — does not bump `version`: what version 1 freezes is the
+  set of FIELDS, and an agent that has never heard of an id still executes the step correctly
+  through `run`/`runAs`/`optional`/`timeoutSeconds`.
 - `reports` is core's vocabulary, not the agent's, and it is **lossy on purpose** — several
   steps legitimately share one label. Core MUST NOT infer which step finished from `reports`
   alone; that is what `id` is for (finding: `step` alone is lossy, ADR-0002 Decision 7's
@@ -112,9 +115,10 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 2 | Pack tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base tools before agents; that is a consequence of the numbers, not a second rule |
 | 3 | Repository clones | `repo:<basename>` | One step per repository the user chose |
 | 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS`. The step body opens with a preamble that exports `$REPOS`, sets `GIT_TERMINAL_PROMPT=0`, and — under the clone step's own guard, when the box carries any token — wires the clone step's credential helper into git's `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` environment, so a git run by the script or by any program it starts authenticates the way the clone did (issue #142: `gt rig add` re-clones the repository itself and had no credentials). The environment dies with the step; nothing is written to any git config |
-| 5 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
-| 6 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
-| 7 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
+| 5 | The user's own script | `user-script` | Only when the row carries one ([ADR-0011](adr/0011-user-script-at-create-time.md), issue #184). AFTER every step the pack contributes, because that is the box the user wrote it against; BEFORE phases 6-8, which are core's own finishing steps and all report `ready` — a report arriving after one of those is dropped in callback mode, where `ready` promotes the row out of `provisioning`. The body opens with the same preamble as phase 4 and is otherwise the user's text verbatim: no `set -euo pipefail` is imposed, so the step's exit status is the script's own. **OPTIONAL**: a failed user script is a warning on a running box, not a failed bootstrap — see [Failure semantics](#failure-semantics) |
+| 6 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
+| 7 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
+| 8 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
 
 **Ties MUST be broken deterministically.** Two tools with equal `installOrder` are ordered by
 `toolId` ascending. A *rendered plan* cannot be non-deterministic: two renders of the same pack
@@ -582,6 +586,13 @@ These are requirements, not recommendations. Each was learned from something tha
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
 | Progress POST fails (callback) | logs and continues installing | learns nothing until the next report; the journal remains complete |
 | Plan fetch gets 401/410 (callback) | stub stops; the box has no plan | sees no reports; the row stays un-advanced |
+
+The **user script** (phase 5) is an optional step by that table, and deliberately: ADR-0010's
+rule releases a machine only for a failed *tool* install, because a half-installed toolchain is
+worthless. A user script that exits non-zero is the opposite case — every tool is installed and
+every repository is cloned, and the only thing that failed is text the user typed. Failing the
+plan would take away the box they need in order to fix it, so the step's whole log becomes a
+warning on a `running` server instead. See [ADR-0011](adr/0011-user-script-at-create-time.md).
 
 A re-push against a partially bootstrapped box is the normal recovery action, not an
 exceptional one: it skips completed steps with their timestamps untouched and resumes the rest.
