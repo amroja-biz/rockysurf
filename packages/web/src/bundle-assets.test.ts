@@ -170,6 +170,24 @@ describe('the home hero (rockysurf-n0zr)', () => {
   })
 })
 
+describe('the Rocky Surf webfont (issue #185)', () => {
+  // App.css points --rs-mono and the body stack at `/fonts/RockySurf-Regular.ttf` the same way
+  // HomePage points its hero at `images/logo.png`: the reference is in a stylesheet, the file is
+  // in `public/`, and nothing else connects them.
+  const FONT = 'fonts/RockySurf-Regular.ttf'
+
+  it('is in the build and in the bundle core serves', () => {
+    for (const [dir, what] of [
+      [distDir, 'the web build'],
+      [publicDir, 'packages/core/public'],
+    ] as const) {
+      const asset = join(dir, FONT)
+      expect(existsSync(asset), `${FONT} is missing from ${what}. ${BUILD_FIRST}`).toBe(true)
+      expect(statSync(asset).size).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe('the bundle core serves', () => {
   it('is the build that was just produced, not an older hand-copy', () => {
     // Byte identity, because the failure being guarded against is a STALE public/: a copy made

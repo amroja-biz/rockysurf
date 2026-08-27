@@ -22,6 +22,17 @@
  * each line names what it was used for there.
  */
 
+/* Rocky Surf webfont, adopted across UI and mono text (rockysurf-issue-185). Served from
+   `public/fonts/`, which `packages/web/public/` copies into the build and into
+   `packages/core/public` — see `bundle-assets.test.ts`. Root-relative because this file is
+   bundled and the font is served as a static asset, not resolved relative to the stylesheet. */
+@font-face {
+  font-family: "Rocky Surf";
+  src: url("/fonts/RockySurf-Regular.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
   /* Surfaces, dark to light. */
   --rs-bg: #0d1117; /* page background, and the inset background of form inputs */
@@ -48,7 +59,7 @@
   --rs-purple: #a371f7;
 
   --rs-radius: 6px;
-  --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --rs-mono: "Rocky Surf", ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 * {
@@ -59,7 +70,8 @@
 
 body {
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    "Rocky Surf", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    sans-serif;
   background-color: var(--rs-bg);
   color: var(--rs-text);
   min-height: 100vh;
