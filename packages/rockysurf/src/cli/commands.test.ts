@@ -737,3 +737,70 @@ describe('create passes a pack the inputs it asked for', () => {
     expect('packInputs' in body).toBe(false)
   })
 })
+
+/**
+ * `rockysurf create --env KEY=VALUE` and `--env-file` (issue #197, ADR-0014).
+ *
+ * The parsing lives in `environment.test.ts`; what is pinned here is the COMMAND — that it puts
+ * the entries on the wire with their markers intact, and that it refuses locally the two things
+ * core would refuse remotely: a name Rocky Surf exports, and a name the selected pack already
+ * asks for.
+ */
+describe('create passes the environment the user supplied', () => {
+  const PACKS = [
+    {
+      packId: 'headlong',
+      name: 'Headlong',
+      inputs: [{ name: 'HEADLONG_HEADLESS', label: 'Headless install', required: false, secret: false }],
+    },
+    { packId: 'plain', name: 'Plain' },
+  ]
+
+  function envDeps(overrides: Partial<CliDeps> = {}) {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const client = {
+      get: (async (path: string) => (path === '/api/v1/surge-packs' ? PACKS : SERVERS)) as CoreClient['get'],
+      post: post as unknown as CoreClient['post'],
+      getText: (async () => PEM) as CoreClient['getText'],
+    } as CoreClient
+    return { ...deps({ client, ...overrides }), post }
+  }
+
+  it('sends each entry keyed by name, with the secret marker core needs for custody', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'rockysurf-cli-env-')), 'env.txt')
+    writeFileSync(path, 'secret:MY_TOKEN=ghp-x\n')
+    const d = envDeps()
+    expect(await createCommand(d, { packId: 'plain', env: ['MY_FLAG=1'], envFile: path })).toBe(0)
+
+    const [, body] = d.post.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    expect(body['environment']).toEqual({ MY_TOKEN: { value: 'ghp-x', secret: true }, MY_FLAG: { value: '1' } })
+  })
+
+  it('refuses a name the pack already asks for, BEFORE the POST', async () => {
+    const d = envDeps()
+    expect(await createCommand(d, { packId: 'headlong', env: ['HEADLONG_HEADLESS=1'] })).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+    expect(d.stderr.join('\n')).toContain('HEADLONG_HEADLESS')
+  })
+
+  it('refuses a name Rocky Surf exports to every step', async () => {
+    const d = envDeps()
+    expect(await createCommand(d, { packId: 'plain', env: ['GITHUB_TOKEN=ghp-x'] })).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+  })
+
+  it('refuses a secret on the command line, and never puts it on the wire', async () => {
+    const d = envDeps()
+    expect(await createCommand(d, { packId: 'plain', env: ['secret:MY_TOKEN=ghp-do-not-leak'] })).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+    expect(d.stderr.join('\n')).toContain('--env-file')
+    expect(d.stderr.join('\n')).not.toContain('ghp-do-not-leak')
+  })
+
+  it('sends no environment at all when neither flag is given', async () => {
+    const d = envDeps()
+    expect(await createCommand(d, { packId: 'plain' })).toBe(0)
+    const [, body] = d.post.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    expect('environment' in body).toBe(false)
+  })
+})

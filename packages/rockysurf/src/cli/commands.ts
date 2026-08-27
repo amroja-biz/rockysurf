@@ -2,9 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resolvePackInputs } from '@rockysurf/core'
+import { resolvePackInputs, resolveServerEnvironment } from '@rockysurf/core'
 import { CoreApiError, type CoreClient } from '../mcp/client.js'
 import type { ProviderCatalogue } from '../mcp/tools.js'
+import { collectEnvironment } from '../environment.js'
 import { collectPackInputs, fetchPackInputs } from '../pack-inputs.js'
 import { packRequiresRdp, RDP_MIN_LENGTH, RDP_PASSWORD_ENV } from '../rdp.js'
 import { SecretPromptCancelled, type SecretPrompt } from './secret-prompt.js'
@@ -238,6 +239,17 @@ export interface CreateArgs {
   /** `--inputs-file <path>`: `NAME=VALUE` lines, `#` comments. Where a secret value belongs. */
   inputsFile?: string
   /**
+   * Repeated `--env [secret:]KEY=VALUE` — the creator's OWN environment for this box, whatever
+   * the pack did or did not declare (issue #197, ADR-0014).
+   *
+   * Raw strings rather than parsed entries, because the parse can FAIL and the sentence that
+   * says so must name the flag as it was typed. A `secret:` value is refused here on the same
+   * reasoning `--rdp-password <value>` is (`environment.ts`).
+   */
+  env?: string[]
+  /** `--env-file <path>`: the same text the create form's Environment box takes. */
+  envFile?: string
+  /**
    * What `--rdp-password` was, NOT what it said.
    *
    * `'literal'` means a value followed it on the command line, and the value is deliberately
@@ -354,6 +366,26 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
     }
   }
 
+  /*
+   * THE USER'S OWN ENVIRONMENT (issue #197, ADR-0014).
+   *
+   * Checked with core's `resolveServerEnvironment` for the reason the inputs above use core's
+   * `resolvePackInputs`: two implementations of "is this request valid" is how the CLI and the
+   * API start disagreeing about a name that is off by one letter. The declaration is passed
+   * along so the collision — a name the pack already asks for — is caught here too, and is
+   * simply `undefined` when the pack list could not be read, in which case core's 400 speaks.
+   */
+  const environment = collectEnvironment(args)
+  if (environment.refusal) {
+    deps.err(environment.refusal)
+    return 1
+  }
+  const resolvedEnvironment = resolveServerEnvironment(environment.entries, declaredInputs)
+  if (resolvedEnvironment.issues.length > 0) {
+    for (const issue of resolvedEnvironment.issues) deps.err(issue.message)
+    return 1
+  }
+
   let body: unknown
   try {
     body = await deps.client.post('/api/v1/servers', {
@@ -382,6 +414,9 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
       // The values as collected, NOT as resolved: core applies the pack's own defaults, and
       // sending them back would make this surface the one that decides what a default is.
       ...(Object.keys(collected.values).length > 0 ? { packInputs: collected.values } : {}),
+      // As collected, with the `secret` markers intact: core decides custody from them, because
+      // nothing else can (issue #197).
+      ...(Object.keys(environment.entries).length > 0 ? { environment: environment.entries } : {}),
     })
   } catch (error) {
     /*
