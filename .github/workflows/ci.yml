@@ -2,17 +2,6 @@ name: CI
 
 on:
   pull_request:
-    # A pull request that changes only the UI, the docs, or the agent notes fires no CI at all
-    # (owner ruling): what it changes is checked by `pnpm run check` before pushing, and by
-    # the unfiltered push run the moment it lands on main. Anything outside these paths —
-    # core, a provider, a pack, a script, this file — still runs the full workflow.
-    paths-ignore:
-      - 'packages/web/**'
-      - 'docs/**'
-      - '**/*.md'
-      - '.claude/**'
-      - '.pass-along/**'
-      - 'LICENSE'
   push:
     # The development trunk. 'main' here still holds the legacy SaaS tree; the default branch
     # was switched to the dev branch on 2026-08-12 so schedules and pushes actually run. At
@@ -34,6 +23,42 @@ env:
   GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
 
 jobs:
+  # WHICH JOBS A PULL REQUEST RUNS (owner ruling). A pull request that changes only the UI, the
+  # docs or the agent notes runs typecheck, the unit tests and the secret scan — and nothing
+  # else. Release tarballs, the BYO lifecycle and the structural lint guard boundaries that
+  # such a change cannot cross, so they wait for the push run on main, which is never
+  # filtered. Anything outside those paths — core, a provider, a pack, a script, this file —
+  # runs everything. Per job rather than a workflow-level `paths-ignore`, because that is
+  # all-or-nothing and the unit tests are exactly what a UI change needs.
+  #
+  # The file list comes from the pull request itself rather than a `git diff` against the
+  # base, so it is right for a merge-commit checkout, a rebased branch and a shallow clone
+  # alike. Everything but a pull request (the push to main) is "beyond UI" by definition.
+  scope:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      beyond-ui: ${{ steps.scope.outputs.beyond-ui }}
+    steps:
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "beyond-ui=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
+          # UI-only: every changed file is under one of these, or is Markdown.
+          if printf '%s\n' "$files" | grep -qvE '^(packages/web/|docs/|\.claude/|\.pass-along/|LICENSE$)|\.md$'; then
+            echo "beyond-ui=true" >> "$GITHUB_OUTPUT"
+            echo "runs everything: the pull request reaches beyond the UI and docs"
+          else
+            echo "beyond-ui=false" >> "$GITHUB_OUTPUT"
+            echo "UI/docs only: typecheck, unit tests and the secret scan run; the rest waits for main"
+          fi
+
   # The three structural checks, in one job because they are three seconds each and a
   # contributor wants one red X, not three. Each guards a boundary that nothing else can see:
   #
@@ -42,6 +67,8 @@ jobs:
   #   check-npx-closure  the AWS SDK has not arrived in core's production dependency closure
   lint:
     name: Lint (structure)
+    needs: scope
+    if: needs.scope.outputs.beyond-ui == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -161,6 +188,8 @@ jobs:
   # exist. Nothing that inspects manifests can see that; only an install can.
   tarballs:
     name: Release tarballs
+    needs: scope
+    if: needs.scope.outputs.beyond-ui == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -189,6 +218,8 @@ jobs:
   # self-hosted runners went with it: not needing 22 makes the job more portable, not less.
   byo-host:
     name: BYO lifecycle (real sshd)
+    needs: scope
+    if: needs.scope.outputs.beyond-ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
