@@ -33,6 +33,7 @@ import {
   type ServerSize,
   type SizeResolution,
 } from '../lib/requirements'
+import { parseEnvironment, SECRET_LINE_PREFIX } from '../lib/environment'
 import { useAuth } from '../contexts/AuthContext'
 import { AppShell } from '../components/AppShell'
 import { PackIcon } from '../components/PackIcon'
@@ -578,6 +579,18 @@ export function CreateServerPage() {
   const [userScript, setUserScript] = useState('')
   const [userScriptRunAs, setUserScriptRunAs] = useState<'root' | 'rocky'>('rocky')
   /**
+   * The user's OWN environment for this box (issue #197, ADR-0014).
+   *
+   * ONE TEXTAREA, kept as text rather than as parsed state, because the text IS the document:
+   * it survives a paste, it is what a `secret:` marker is part of, and it is the same format
+   * `rockysurf create --env-file` reads. Parsing on submit rather than on every keystroke means
+   * a half-typed line is never an error message.
+   *
+   * On the form for every pack, like the startup script above and for the same reason: this is
+   * the user's own configuration of their own box, and no pack grants or withholds it.
+   */
+  const [environmentText, setEnvironmentText] = useState('')
+  /**
    * What the SELECTED PACK asks for, keyed by the environment variable name (issue #189).
    *
    * PACK METADATA DRIVES THE FIELDS, exactly as `requiresRdp` drives the password field: there
@@ -790,6 +803,15 @@ export function CreateServerPage() {
   /** The same rule again, for the pack's own questions (issue #189). Empty means no section. */
   const packInputs = useMemo(() => pack?.inputs ?? [], [pack])
 
+  /**
+   * The Environment textarea, read as `KEY=value` lines (issue #197).
+   *
+   * Parsed on every change so the submit check and the request body come from ONE reading of
+   * the text — but nothing is SHOWN until the user submits, because a message under a field
+   * somebody is still typing into is noise, not help.
+   */
+  const environment = useMemo(() => parseEnvironment(environmentText), [environmentText])
+
   /*
    * PREFILL THE DECLARED DEFAULTS, AND FORGET WHAT THIS PACK DOES NOT ASK (issue #189).
    *
@@ -966,6 +988,13 @@ export function CreateServerPage() {
      */
     const missing = packInputs.find((input) => input.required && !(packInputValues[input.name] ?? '').trim())
     if (missing) return `${missing.label} is required by this pack`
+    /*
+     * A line that is not `KEY=value`, or a name written twice, blocks the submit here (#197).
+     * Core refuses both as well — the name rules and the collision with a pack input are its
+     * call, and it says so with the pack's own label — but a line the browser can already see
+     * is malformed should not cost a round trip.
+     */
+    if (environment.errors.length > 0) return environment.errors[0]!
     if (sshKeyOption === 'provide' && !sshPublicKey.trim()) return 'Paste your SSH public key, or let Rocky Surf generate one'
     return null
   }
@@ -1022,6 +1051,9 @@ export function CreateServerPage() {
         // string on the box, where a pack script's own `${FOO:-}` default can no longer fire
         // (issue #189).
         ...(Object.keys(packInputPayload).length > 0 ? { packInputs: packInputPayload } : {}),
+        // Omitted entirely when the field is empty, so a create with nothing typed goes on the
+        // wire exactly as it did before this field existed (issue #197).
+        ...(Object.keys(environment.entries).length > 0 ? { environment: environment.entries } : {}),
       }
 
       const created = await createServer(request)
@@ -1526,7 +1558,7 @@ export function CreateServerPage() {
             Run once on this box, after the pack&apos;s tools are installed and your repositories are cloned. It gets{' '}
             <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does. If it fails the
             server still comes up and the whole log is kept as a warning. It is stored and sent to the box in plain
-            text, so put no passwords or tokens in it.
+            text, so put passwords and tokens in Environment below and read <code>$KEY</code> here.
           </p>
           <textarea
             id="userScript"
@@ -1563,6 +1595,31 @@ export function CreateServerPage() {
               <span className="size-detail">what EC2 user data does; anything it writes is owned by root</span>
             </label>
           </fieldset>
+        </div>
+
+        {/* THE USER'S OWN ENVIRONMENT (issue #197, ADR-0014). On the form for every pack, like
+            the startup script above: a pack cannot grant or withhold a person's ability to hand
+            their own box a value. Empty means nothing is sent at all. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="environment">
+            Environment <span className="hint">optional</span>
+          </label>
+          {/* Where it goes, who can read it, and how to mark a line secret — the three things a
+              person needs before typing a token into a box on a web page. */}
+          <p className="hint">
+            One <code>KEY=value</code> per line. Every step of this box&apos;s setup, and your startup script above,
+            can read <code>$KEY</code>. Start a line with <code>{SECRET_LINE_PREFIX}</code> to have the value stored
+            encrypted and shown back by nothing — keep your own copy. Lines without it are stored in the clear and
+            shown on the server&apos;s page. Values are single-line and go nowhere near the install plan.
+          </p>
+          <textarea
+            id="environment"
+            rows={4}
+            value={environmentText}
+            onChange={(e) => setEnvironmentText(e.target.value)}
+            placeholder={'MY_ENDPOINT=https://api.example.com\nsecret:MY_API_TOKEN=…\n'}
+            spellCheck={false}
+          />
         </div>
 
         {/* WHAT THE PACK ASKS FOR (issue #189, ADR-0013). Rendered from `pack.inputs` and from

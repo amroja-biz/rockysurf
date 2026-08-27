@@ -303,6 +303,14 @@ export interface Server {
    */
   packInputs?: Record<string, string>
   /**
+   * The NON-SECRET half of the Environment this box's creator typed (issue #197, ADR-0014).
+   *
+   * Beside `packInputs` and separate from it, because the server page says which of the two a
+   * variable came from. Secret lines are in neither and are on no route at all. Absent when the
+   * creator typed nothing.
+   */
+  environment?: Record<string, string>
+  /**
    * The git token scopes this box carries, as `host/owner/repo` identities — never values
    * (rockysurf-18lq).
    *
@@ -442,6 +450,15 @@ export interface CreateServerRequest {
    */
   packInputs?: Record<string, string>
   /**
+   * The creator's OWN environment for this box — what they typed, not what the pack asked for
+   * (issue #197, ADR-0014).
+   *
+   * Keyed by variable name like `packInputs`, with the one fact no pack file can supply:
+   * whether the value is a secret, so core knows to store it encrypted and return it from no
+   * route. Omitted entirely when the field is empty.
+   */
+  environment?: Record<string, ServerEnvironmentEntry>
+  /**
    * Create even though a repository URL failed core's preflight (rockysurf-k6xp).
    *
    * The check refuses by default because the alternative costs a boot, a bootstrap and a failed
@@ -449,6 +466,12 @@ export interface CreateServerRequest {
    * a forge that was briefly down, a credential core cannot predict the box will use.
    */
   createAnyway?: boolean
+}
+
+/** One `KEY=value` the creator supplied, and whether it is stored encrypted (issue #197). */
+export interface ServerEnvironmentEntry {
+  value: string
+  secret?: boolean
 }
 
 export interface CreateServerResponse {

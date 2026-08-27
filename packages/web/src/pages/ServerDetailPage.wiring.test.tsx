@@ -904,3 +904,44 @@ describe('the git tokens a box was built with', () => {
     expect(screen.queryByTestId('github-token-scopes')).toBeNull()
   })
 })
+
+/**
+ * WHAT THIS BOX WAS CONFIGURED WITH (issues #189, #197).
+ *
+ * The create screen is gone by the time anyone asks "what is on this machine", so this page is
+ * the only thing that remembers. The two sources are shown as two lists because they are two
+ * different sentences — the pack asked for one, the creator typed the other — and a secret from
+ * either is in neither, because core returns it from no route at all.
+ */
+describe('the configuration a box was built with', () => {
+  it('shows the pack’s settings and the creator’s environment as two lists', async () => {
+    row = {
+      ...SERVER,
+      packInputs: { HEADLONG_HEADLESS: '1' },
+      environment: { MY_ENDPOINT: 'https://mine.test' },
+    }
+    renderPage()
+
+    await screen.findByText('Configuration')
+    expect(screen.getByTestId('pack-inputs').textContent).toContain('HEADLONG_HEADLESS')
+    expect(screen.getByTestId('server-environment').textContent).toContain('https://mine.test')
+    // The honest half: a secret is not here and cannot be recovered from anywhere.
+    expect(screen.getByText(/stored encrypted and are shown by nothing/i)).toBeTruthy()
+  })
+
+  it('has no section at all for a box built with neither', async () => {
+    // Which is every box that existed before these fields did.
+    renderPage()
+    await screen.findByText('Repositories')
+    expect(screen.queryByText('Configuration')).toBeNull()
+  })
+
+  it('shows only the list core actually sent', async () => {
+    row = { ...SERVER, environment: { MY_ENDPOINT: 'https://mine.test' } }
+    renderPage()
+
+    await screen.findByText('Configuration')
+    expect(screen.queryByTestId('pack-inputs')).toBeNull()
+    expect(screen.getByTestId('server-environment')).toBeTruthy()
+  })
+})
