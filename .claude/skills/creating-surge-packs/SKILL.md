@@ -229,14 +229,16 @@ repository**, not just the base file, and `packId` and `displayOrder` are worth 
 grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u
 ```
 
-That also tells you when something close to your tool already exists — the repository has a Go
-toolchain (`gas-town-toolchain`) that a Go pack might reuse or might deliberately supersede, and
-either way the file should say which.
+That also tells you when something close to your tool already exists, and — just as usefully —
+when it does not. **No shipped pack installs a compiler.** `gas-town` had a `gas-town-toolchain`
+tool (Ubuntu's Go) until it switched to upstream's release binary, and nothing replaced it: a
+pack that genuinely needs a toolchain defines its own, under its own id, and says in the file
+what needs it.
 
 **The base file is not the only place tool ids come from.** The agents themselves are defined
 across `packs/amp-agents.yaml` (`amp`), `packs/codex-cli.yaml` (`codex`), `packs/open-code.yaml`
 (`opencode`), `packs/ai-coding-agents.yaml` (`claude-code`) and `packs/gas-town.yaml` (`gas-town`,
-`dolt`, `gas-town-toolchain`) — every one of them referenceable by id from your pack, and none of
+`dolt`) — every one of them referenceable by id from your pack, and none of
 them safe to redefine. The three npm-installed agents (`amp`, `codex`, `opencode`) need `nodejs`,
 so take it if you take them. If the user asked for a named agent, go and read the file that
 defines it before writing anything.
@@ -250,7 +252,7 @@ these by what you are doing:
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
 | adding an apt repository (keyring + source list) | the `gh` tool in `packs/ai-coding-agents.yaml` |
 | downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads-viewer` for a checksummed one |
-| building from source with a compiler | `gas-town-toolchain` + `gas-town` in `packs/gas-town.yaml` |
+| tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of that swap, and why (its `go install` was the one un-retriable fetch in the whole repository) |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
 | building on a pack that already exists | `packs/gas-town.yaml`, and Step 1E |

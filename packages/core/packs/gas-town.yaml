@@ -24,7 +24,6 @@ pack:
     - beads
     - agent-deck
     - beads-viewer
-    - gas-town-toolchain
     - dolt
     - claude-code
     - amp
@@ -51,8 +50,10 @@ pack:
       Dolt is installed and already has a commit identity (rocky@localhost); change it with
       `dolt config --global` if you want your own name on the HQ's history.
 
-      gt is pinned to v1.1.0. Later releases cannot yet build a Beads-backed HQ on a fresh
-      box, so `go install ...@latest` would give you a workspace that fails to initialise.
+      gt is the upstream v1.1.0 release binary, in ~/.local/bin. Later releases cannot yet
+      build a Beads-backed HQ on a fresh box, so a newer gt would give you a workspace that
+      fails to initialise. Nothing on this box compiles it, and there is no Go toolchain
+      here — if you want one, `sudo apt-get install -y golang-go`.
 
     GitHub
       gh auth login           then: gh auth setup-git
@@ -63,23 +64,15 @@ pack:
       and your own pushes need this login.
 
 tools:
-  # Split out of the legacy `gas-town` tool, which declared runAs: rocky and opened with
-  # `sudo apt-get install golang-go`. Installing a compiler is root's job and now says so.
-  - toolId: gas-town-toolchain
-    name: Go toolchain
-    description: Go compiler, needed to build the Gas Town CLI
-    category: base
-    url: https://go.dev
-    installOrder: 35
-    runAs: root
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-      export DEBIAN_FRONTEND=noninteractive
-      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
-      apt-get install -y golang-go
-      go version >/dev/null
+  # There is no `gas-town-toolchain` here any more. This pack used to install Ubuntu's Go
+  # compiler so it could build `gt` from source; it now downloads upstream's release binary,
+  # and nothing else on the box needs Go — `bd` comes from a beads release asset too (see
+  # `beads` in packs/ai-coding-agents.yaml), and `libicu-dev`, which the source build of gt
+  # v1.2.0 wanted, was never installed here at all. Removing the compiler takes ~500 MB of
+  # apt and every request to the Go module proxy off the critical path of a fresh box: that
+  # proxy was the only thing in any shipped pack that could not be retried, and it failed
+  # three smoke runs in one day (#200). A pack that wants Go again should define its own
+  # toolchain tool rather than reviving this id.
 
   # `gt install` refuses to create an HQ without dolt on PATH, and every `gt rig add` needs the
   # Dolt server that `gt` starts. Nothing else in packs/ installs it, and beads' own CLI does
@@ -119,31 +112,73 @@ tools:
     name: Gas Town
     description: Multi-agent workspace manager
     category: agent
-    url: https://github.com/steveyegge/gastown
+    url: https://github.com/gastownhall/gastown
     installOrder: 40
     runAs: rocky
     bootstrap: false
     enabled: true
     installScript: |
       set -euo pipefail
-      export PATH="$PATH:$HOME/go/bin"
-      # PINNED to the last release whose `gt install` can build a Beads-backed HQ, which is what
-      # this pack exists to hand the user. @latest is v1.2.1 today, and on a fresh box its HQ
-      # initialisation dies inside `bd init`: bd refuses to migrate the schema it has itself
-      # just created in the Dolt server, "pending schema migrations alter pre-existing dirty
-      # tables: config, interactions, routes" (gastownhall/beads#4566 — fixed for embedded mode,
-      # and that fix explicitly leaves server mode, which `gt` uses, untouched). v1.2.0 does not
-      # even compile without ICU headers. Re-point this at @latest once upstream lands the
-      # server-mode fix; the evidence and the rerun recipe are on rockysurf-nekl.
-      # Convergent either way: a second run finds the module cached and rewrites the same binary.
-      go install github.com/steveyegge/gastown/cmd/gt@v1.1.0
-      if ! grep -q 'go/bin' "$HOME/.bashrc"; then
-        echo 'export PATH="$PATH:$HOME/go/bin"' >> "$HOME/.bashrc"
+      export PATH="$HOME/.local/bin:$PATH"
+      # PREBUILT, not compiled. This step used to be `go install …/cmd/gt@v1.1.0` behind an apt
+      # Go toolchain, and it was the only step in any shipped pack that fetched from the Go
+      # module proxy. That proxy is not retriable from here — `go install` resolves dozens of
+      # modules per fresh box and gives up on the first stream reset — and it broke three Pack
+      # smoke runs in one day, always on the same leg, always green on rerun (#200). Upstream
+      # ships goreleaser binaries for exactly the two architectures this project supports, so
+      # the fix is to stop compiling: same idiom as `beads` and `beads-viewer`, a CDN download
+      # with bounded retries and a digest.
+      #
+      # Chosen over `npm i -g @gastown/gt`, which upstream also documents: that package's
+      # newest version is 0.12.0 (published 2026-03-12, checked 2026-08-27) and it is a wrapper
+      # whose postinstall goes and fetches the native binary anyway — a stale indirection over
+      # the download this does directly.
+      #
+      # PINNED, under docs/writing-a-pack.md § Which version to install: case 2 (a GitHub
+      # release asset has no quota-free "latest") AND the narrow agent exception — v1.2.1's
+      # `gt install --git` still cannot build the Beads-backed HQ this pack exists to hand the
+      # user. Retested on a fresh arm64 container on 2026-08-27 with the prebuilt v1.2.1 binary:
+      # HQ creation dies inside `bd init` with "pending schema migrations alter pre-existing
+      # dirty tables: config, interactions, routes" (gastownhall/beads#4566, fixed for embedded
+      # mode only — `gt` uses server mode), with both bd v1.2.1 and bd v1.2.2. So the pin stays
+      # where it was; only the way the binary arrives has changed. Issue #133 tracks lifting it.
+      #
+      # To bump: change the version and both digests, which the release publishes as
+      # gastown_<version>_checksums.txt beside the assets.
+      gt_version=v1.1.0
+      case "$ARCH" in
+        amd64) gt_sha=f3e75d9d4d5f5d93e2cc9a7a7312d5d6ad05e748783c1af7b0474d9a1e86c8fe ;;
+        arm64) gt_sha=8e08c4778da3b0387e82dc6195f10f1034a6eb66b036cfc2853f838a48cc277a ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is a
+      # no-op — which is what the run-twice gate measures.
+      stamp="$HOME/.rockysurf/installed-gas-town-$gt_version"
+      if [ ! -f "$stamp" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # gastownhall is where the repository lives now; steveyegge/gastown redirects to it, and
+        # a redirect is a thing that can be turned off, so the canonical name is what is written.
+        # (The Go module path is still github.com/steveyegge/gastown; nothing here reads it.)
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/gastownhall/gastown/releases/download/$gt_version/gastown_${gt_version#v}_linux_$ARCH.tar.gz" \
+          -o "$tmp/gastown.tar.gz"
+        echo "$gt_sha  $tmp/gastown.tar.gz" | sha256sum -c - >/dev/null
+        tar -xzf "$tmp/gastown.tar.gz" -C "$tmp"
+        install -D -m 0755 "$tmp/gt" "$HOME/.local/bin/gt"
+        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
       fi
-      "$HOME/go/bin/gt" --version >/dev/null 2>&1 || [ -x "$HOME/go/bin/gt" ]
+      # `beads` writes the same guarded line, and this is deliberately the same string so that
+      # whichever of the two runs first, the other finds it and the second run appends nothing.
+      # Self-contained per rule: installOrder is ordering, not a dependency, so this step puts
+      # its own bin directory on PATH rather than assuming `beads` already did.
+      touch "$HOME/.bashrc"
+      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
+      gt --version >/dev/null
     setupScript: |
       set -euo pipefail
-      export PATH="$PATH:$HOME/go/bin:$HOME/.beads/bin:$HOME/.local/bin"
+      # gt and bd both live in ~/.local/bin now; ~/.beads/bin is where an older box's bd is.
+      export PATH="$HOME/.local/bin:$HOME/.beads/bin:$PATH"
 
       # The HQ's task database is Dolt, and Dolt will not open a store for a user with no commit
       # identity — `gt install` stops with "dolt identity not configured and git user.name not
