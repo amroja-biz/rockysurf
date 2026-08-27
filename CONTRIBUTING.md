@@ -262,7 +262,7 @@ So the history is not published, and nothing is lost that mattered: the developm
 preserved as prose in [`docs/history/`](docs/history/), scrubbed, alongside the original phase
 specifications. The ADRs carry the decisions, and `spike/recordings/` carries the evidence.
 
-`gitleaks` runs on every pull request over the full history, which is what keeps the fresh start
+`gitleaks` runs over the full history on every push to `main` and on every pull request that fires CI, which is what keeps the fresh start
 from being a one-time cleanup. If it fires on your branch, do not force-push around it — the
 value is in the scan being unignorable.
 
