@@ -2,6 +2,17 @@ name: CI
 
 on:
   pull_request:
+    # A pull request that changes only the UI, the docs, or the agent notes fires no CI at all
+    # (owner ruling): what it changes is checked by `pnpm run check` before pushing, and by
+    # the unfiltered push run the moment it lands on main. Anything outside these paths —
+    # core, a provider, a pack, a script, this file — still runs the full workflow.
+    paths-ignore:
+      - 'packages/web/**'
+      - 'docs/**'
+      - '**/*.md'
+      - '.claude/**'
+      - '.pass-along/**'
+      - 'LICENSE'
   push:
     # The development trunk. 'main' here still holds the legacy SaaS tree; the default branch
     # was switched to the dev branch on 2026-08-12 so schedules and pushes actually run. At

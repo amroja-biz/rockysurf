@@ -23,6 +23,21 @@ name: Pack smoke
 
 on:
   pull_request:
+    # Only when something that reaches a box could have changed. The matrix is twenty Docker
+    # legs, half under QEMU, at up to an hour each — a web-only or docs-only pull request
+    # proves nothing by running it. `packages/core/**` is listed whole rather than just
+    # `bootstrap/` and `packs/`: the harness imports the whole package, and a narrower list is
+    # the kind that rots silently. Pushes to main stay unfiltered so the trunk is always fully
+    # proven after a merge. If main ever gets branch protection with this workflow required,
+    # remove the filter — a required check that a path filter skips sits at "Expected" forever.
+    paths:
+      - 'packs/**'
+      - 'packages/core/**'
+      - 'packages/rockysurf/**'
+      - 'scripts/pack-smoke.mjs'
+      - 'scripts/docker-smoke.mjs'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/pack-smoke.yml'
   push:
     branches: [main]
 
