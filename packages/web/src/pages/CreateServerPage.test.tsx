@@ -290,18 +290,55 @@ describe('pricing every size option, not only the selected one', () => {
 })
 
 describe('pack metadata drives the conditional fields', () => {
-  it('hides repositories and RDP when the pack asks for neither', async () => {
+  it('hides RDP when the pack does not ask for it', async () => {
     renderPage()
     await screen.findByRole('heading', { name: /small-arm/ })
 
-    expect(screen.queryByLabelText(/repositories/i)).toBeNull()
     expect(screen.queryByLabelText(/remote desktop password/i)).toBeNull()
   })
 
-  it('shows the repository field only when the pack declares requiresRepos', async () => {
+  /**
+   * The repositories field is not conditional at all (issue #178). A pack that does not NEED a
+   * repository is not a pack the user cannot put one on; the flag only changes the hint and
+   * whether an empty list is confirmed at submit.
+   */
+  it('shows the repository field even when the pack does not declare requiresRepos', async () => {
+    renderPage()
+    await screen.findByRole('heading', { name: /small-arm/ })
+
+    expect(screen.getByLabelText(/repositories/i)).toBeTruthy()
+    expect(screen.queryByText(/this pack expects at least one/i)).toBeNull()
+  })
+
+  it('says the pack expects a repository when it declares requiresRepos', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
     renderPage()
     expect(await screen.findByLabelText(/repositories/i)).toBeTruthy()
+    expect(screen.getByText(/this pack expects at least one/i)).toBeTruthy()
+  })
+
+  it('sends repositories typed for a pack that does not require them (issue #178)', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const field = await screen.findByLabelText(/repositories/i)
+    await user.type(field, 'https://github.com/a/b.git')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].repositories).toEqual(['https://github.com/a/b.git'])
+    expect(screen.queryByText(/no repository is listed/i)).toBeNull()
+  })
+
+  it('creates without asking when a pack that does not require repositories gets none', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByLabelText(/repositories/i)
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect('repositories' in (vi.mocked(api.createServer).mock.calls[0]?.[0] ?? {})).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: /without a repository/i })).toBeNull()
   })
 
   it('shows the RDP fields only when the pack declares requiresRdp', async () => {

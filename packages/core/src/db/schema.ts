@@ -391,7 +391,11 @@ export const packs = sqliteTable('packs', {
   theme: text('theme'),
   /** Post-boot instructions shown to the user once the server is running. Prose, never run. */
   guide: text('guide'),
-  /** The form asks for repositories, confirming a create that names none (#90); `$REPOS` is set. */
+  /**
+   * The pack expects a repository: the form confirms a create that names none (#90). The
+   * repositories field itself is on the form for every pack, and `$REPOS` is exported to every
+   * setup script, whatever this says (#178).
+   */
   requiresRepos: integer('requires_repos', { mode: 'boolean' }).notNull().default(false),
   /** The user is asked for a remote-desktop password at create time. */
   requiresRdp: integer('requires_rdp', { mode: 'boolean' }).notNull().default(false),

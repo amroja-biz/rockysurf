@@ -75,7 +75,7 @@ export function PackDisclosurePanel({
               )}
             </li>
             {disclosure.requiresRdp && <li>Asks you for a remote-desktop password when you create a server.</li>}
-            {disclosure.requiresRepos && <li>Requires you to choose at least one repository.</li>}
+            {disclosure.requiresRepos && <li>Expects at least one repository; you are asked to confirm if you name none.</li>}
           </ul>
 
           {/* Rule 2. Rendered from the field rather than hardcoded, so a future API that could
