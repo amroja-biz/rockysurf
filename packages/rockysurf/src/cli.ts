@@ -392,6 +392,11 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
           // and bounds it, so a bad path is refused before anything is provisioned.
           ...(flagValue(argv, '--user-script') ? { userScriptPath: flagValue(argv, '--user-script')! } : {}),
           ...(flagValue(argv, '--user-script-as') ? { userScriptRunAs: flagValue(argv, '--user-script-as')! } : {}),
+          // Repeatable, like `--repo`: one flag per value the pack asked for (issue #189).
+          // `createCommand` checks them against the pack's own declaration before the POST, and
+          // refuses a SECRET one given this way — see `pack-inputs.ts`.
+          inputs: flagValues(argv, '--input'),
+          ...(flagValue(argv, '--inputs-file') ? { inputsFile: flagValue(argv, '--inputs-file')! } : {}),
         })
       case 'stop':
         return argv[0] ? await stopCommand(deps, argv[0]) : usage('stop <name>')
