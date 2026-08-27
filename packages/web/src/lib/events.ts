@@ -21,6 +21,8 @@ export type ProvisioningStep =
   | 'installing_tools'
   | 'tools_installed'
   | 'cloning_repos'
+  /** The script the user supplied at create time, running on the box (issue #184). */
+  | 'running_user_script'
   | 'ready'
 
 /** A server changed state. Emitted by the lifecycle service and the provision ticker. */

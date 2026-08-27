@@ -63,6 +63,10 @@ import { Tabs } from '../components/Tabs'
  * exports `$REPOS` to every setup script. So the flag now has exactly one job, the one issue #90
  * gave it: when the pack expects a repository and the list is empty, ask before creating.
  *
+ * The startup script field (issue #184) is on the form for every pack for the same reason and
+ * is not conditional on anything at all: it is the user's own instructions to their own box,
+ * core renders a plan step for whatever arrives, and an empty field sends nothing.
+ *
  * The same rule applies to providers. Nothing here compares `provider.id` against a literal —
  * provider-specific controls are driven by `capabilities.*`, which is what lets one form serve
  * clouds that work very differently.
@@ -563,6 +567,16 @@ export function CreateServerPage() {
   const [sshPublicKey, setSshPublicKey] = useState('')
   const [rdpPassword, setRdpPassword] = useState('')
   const [rdpPasswordConfirm, setRdpPasswordConfirm] = useState('')
+  /**
+   * The user's own first-boot script and who runs it (issue #184).
+   *
+   * On the form for EVERY pack, on the same doctrine as the repositories field (issue #178):
+   * the field is not something a pack grants: it is the user's own instructions to their own
+   * box, and core renders the step for whatever arrives. `rocky` is the default because the
+   * unprivileged account is the one whose home, PATH and toolchain the pack just built.
+   */
+  const [userScript, setUserScript] = useState('')
+  const [userScriptRunAs, setUserScriptRunAs] = useState<'root' | 'rocky'>('rocky')
 
   /* ---------------------------------------------------------------- submission */
   const [submitting, setSubmitting] = useState(false)
@@ -940,6 +954,10 @@ export function CreateServerPage() {
         ...(createAnyway ? { createAnyway: true } : {}),
         ...(sshKeyOption === 'provide' ? { sshPublicKey: sshPublicKey.trim() } : {}),
         ...(requiresRdp ? { rdpPassword } : {}),
+        // Trimmed, and omitted entirely when there is nothing but whitespace: an empty textarea
+        // is not a request to run anything, and a `userScriptRunAs` with no script is a 400
+        // (issue #184). The two therefore go on the wire together or not at all.
+        ...(userScript.trim() ? { userScript: userScript.trim(), userScriptRunAs } : {}),
       }
 
       const created = await createServer(request)
@@ -1427,6 +1445,60 @@ export function CreateServerPage() {
               )}
             </ul>
           )}
+        </div>
+
+        {/* On the form for EVERY pack, like Repositories above (issue #184). A pack cannot grant
+            or withhold this: it is the user's own instructions to their own box, and core
+            renders the step for whatever arrives. Empty means no step at all. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="userScript">
+            Startup script <span className="hint">optional</span>
+          </label>
+          {/* The contract, where the decision is made — the same reason the private-repo
+              sentence sits under Repositories. Four facts a person needs before they type: when
+              it runs, what it can see, what happens if it fails, and that this is not a secret
+              store. */}
+          <p className="hint">
+            Run once on this box, after the pack&apos;s tools are installed and your repositories are cloned. It gets{' '}
+            <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does. If it fails the
+            server still comes up and the whole log is kept as a warning. It is stored and sent to the box in plain
+            text, so put no passwords or tokens in it.
+          </p>
+          <textarea
+            id="userScript"
+            rows={6}
+            value={userScript}
+            onChange={(e) => setUserScript(e.target.value)}
+            placeholder={'set -euo pipefail\nmkdir -p "$HOME/.config"\n'}
+          />
+          {/* The freedom EC2 does not give: user data there is always root. Nested inside the
+              field rather than beside it, because the choice is meaningless without a script. */}
+          <fieldset>
+            <legend>Run it as</legend>
+            <label className={`radio-option ${userScriptRunAs === 'rocky' ? 'selected' : ''}`}>
+              <input
+                type="radio"
+                name="userScriptRunAs"
+                checked={userScriptRunAs === 'rocky'}
+                onChange={() => setUserScriptRunAs('rocky')}
+              />
+              <span>rocky</span>
+              {/* Deliberately does not contain the word the other option is named for: both
+                  spans are part of each radio's accessible name, so a "…when you need root"
+                  here would make `getByRole('radio', { name: /root/i })` ambiguous. */}
+              <span className="size-detail">the account you SSH in as — call sudo inside the script for anything privileged</span>
+            </label>
+            <label className={`radio-option ${userScriptRunAs === 'root' ? 'selected' : ''}`}>
+              <input
+                type="radio"
+                name="userScriptRunAs"
+                checked={userScriptRunAs === 'root'}
+                onChange={() => setUserScriptRunAs('root')}
+              />
+              <span>root</span>
+              <span className="size-detail">what EC2 user data does; anything it writes is owned by root</span>
+            </label>
+          </fieldset>
         </div>
 
         {requiresRdp && (

@@ -27,6 +27,7 @@ export const STEP_LABELS: Record<ProvisioningStep, string> = {
   installing_tools: 'Installing tools',
   tools_installed: 'Tools installed',
   cloning_repos: 'Cloning repositories',
+  running_user_script: 'Running your script',
   ready: 'Ready',
 }
 
@@ -38,6 +39,9 @@ export const STEP_ORDER: ProvisioningStep[] = [
   'installing_tools',
   'tools_installed',
   'cloning_repos',
+  // Second to last, which is where the step runs: after every tool, clone and setup script,
+  // before core's own finishing touches (issue #184).
+  'running_user_script',
   'ready',
 ]
 
