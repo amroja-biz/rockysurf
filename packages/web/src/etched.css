@@ -43,6 +43,9 @@
   --rs-beam-soft: rgba(232, 195, 122, 0.3);
   --rs-ink-hair: rgba(252, 245, 232, 0.2);
   --rs-ink-tick: rgba(252, 245, 232, 0.42);
+  /* The sixth accent (design system tokens/colors.css): buttons that CREATE a resource. */
+  --rs-cyan: #39c5cf;
+  --rs-cyan-bright: #56d6de;
 
   --rs-radius: 0px;
 }
@@ -150,8 +153,8 @@ body[data-rs-skin='etched'] {
 /* ── Buttons ───────────────────────────────────────────────────────────────────────────
    Dimensional, not flat-cut: a top highlight, a drop shadow, and a press state — a
    deliberate departure from the base system's flat/no-shadow rule for this skin's controls.
-   Colour meanings are unchanged: green acts, yellow pauses (reversible), red is
-   irreversible, no modifier is neutral. */
+   Colour meanings are unchanged: green acts on something that exists, yellow pauses
+   (reversible), red is irreversible, cyan creates something new, no modifier is neutral. */
 
 [data-rs-skin='etched'] button,
 [data-rs-skin='etched'] .button {
@@ -205,6 +208,19 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] button.stop-action:hover:not(:disabled),
 [data-rs-skin='etched'] .button.stop-action:hover:not(:disabled) {
   background-color: rgba(210, 153, 34, 0.12); color: #e3b341;
+}
+/* Creating a new resource — "New server", "New tool" — is cyan, kept distinct from green,
+   which acts on one that already exists ("Start"). Sits after `.primary` on purpose: a button
+   carries both classes so the base skin still sees a primary, and the later rule wins here. */
+[data-rs-skin='etched'] button.new-action,
+[data-rs-skin='etched'] .button.new-action {
+  background-color: rgba(57, 197, 207, 0.16); border-color: var(--rs-cyan); color: var(--rs-cyan-bright);
+  box-shadow: inset 0 1px 0 rgba(86, 214, 222, 0.25), 0 1px 0 rgba(0, 0, 0, 0.5), 0 2px 5px rgba(57, 197, 207, 0.25);
+  background-image: linear-gradient(to bottom, rgba(86, 214, 222, 0.14), transparent 45%);
+}
+[data-rs-skin='etched'] button.new-action:hover:not(:disabled),
+[data-rs-skin='etched'] .button.new-action:hover:not(:disabled) {
+  background-color: rgba(57, 197, 207, 0.12); color: var(--rs-cyan-bright);
 }
 /* A chip names a repository, and a URL in caps is unreadable. */
 [data-rs-skin='etched'] .repo-chip {

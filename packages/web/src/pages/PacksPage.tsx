@@ -656,7 +656,7 @@ export function PacksPage(): React.JSX.Element {
 
         {view.enabled ? (
           <p>
-            <Link className="btn-primary" to={`/servers/new?pack=${view.packId}`}>
+            <Link className="button primary new-action" to={`/servers/new?pack=${view.packId}`}>
               Launch a server with this pack
             </Link>
           </p>

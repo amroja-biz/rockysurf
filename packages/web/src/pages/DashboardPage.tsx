@@ -173,7 +173,7 @@ export function DashboardPage() {
       <StaleServersNotice />
 
       <div className="dashboard-actions">
-        <Link className="button primary" to="/servers/new">
+        <Link className="button primary new-action" to="/servers/new">
           New server
         </Link>
       </div>
