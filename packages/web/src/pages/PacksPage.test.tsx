@@ -515,3 +515,43 @@ describe("the issue's own acceptance", () => {
     expect(screen.getByRole('link', { name: /all surge packs/i }).getAttribute('href')).toBe('/packs')
   })
 })
+
+/**
+ * A pack that asks the user for something says so on its card (issue #189, ADR-0013).
+ *
+ * A COUNT rather than the names, and deliberately: this is a list somebody is browsing, and the
+ * names belong where a decision is being made — the create form's fields and the pre-install
+ * disclosure. What the chip carries is the one bit a browser needs, "this one will ask you
+ * something", which is the same job `remote desktop` and `needs a repository` do.
+ */
+describe('a pack that asks for settings (issue #189)', () => {
+  it('says how many on the pack’s own page', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([
+      localPublic({
+        inputs: [
+          { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, secret: false },
+          { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+        ],
+      }),
+    ])
+    renderDetail('mine')
+    expect(await screen.findByText('asks for 2 settings')).toBeTruthy()
+  })
+
+  it('says it in the singular for one', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([
+      localPublic({ inputs: [{ name: 'A', label: 'A', required: false, secret: false }] }),
+    ])
+    renderDetail('mine')
+    expect(await screen.findByText('asks for 1 setting')).toBeTruthy()
+  })
+
+  it('says nothing at all for a pack that asks for none, which is every shipped pack today', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([localPublic()])
+    renderDetail('mine')
+    // Anchored on a chip that IS there, so the absence below is a real absence rather than a
+    // page that had not finished loading.
+    expect(await screen.findByText('remote desktop')).toBeTruthy()
+    expect(screen.queryByText(/asks for \d+ setting/)).toBeNull()
+  })
+})
