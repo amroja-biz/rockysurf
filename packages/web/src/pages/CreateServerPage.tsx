@@ -56,6 +56,13 @@ import { Tabs } from '../components/Tabs'
  *    now declare `requiresRepos` and `requiresRdp` themselves (ADR-0004), so a new pack gets
  *    the right form without anyone editing this file.
  *
+ * The repositories field is on the form for EVERY pack (issue #178). `requiresRepos` used to
+ * decide whether the field existed, which turned "this pack does not need a repository" into
+ * "you cannot clone one onto this box" — a user who wants their project on an open-claw box had
+ * no way to say so. Core never gated on the flag: it clones whatever `repositories` arrives and
+ * exports `$REPOS` to every setup script. So the flag now has exactly one job, the one issue #90
+ * gave it: when the pack expects a repository and the list is empty, ask before creating.
+ *
  * The same rule applies to providers. Nothing here compares `provider.id` against a literal —
  * provider-specific controls are driven by `capabilities.*`, which is what lets one form serve
  * clouds that work very differently.
@@ -747,7 +754,9 @@ export function CreateServerPage() {
       ? { reason: resolution.reason, soldOut: resolution.soldOut }
       : { reason: 'Choose a provider', soldOut: false }
 
-  // Pack metadata, not pack identity, decides which fields exist.
+  // Pack metadata, not pack identity, decides which fields exist. `requiresRepos` decides no
+  // field at all — the repositories field is always there (issue #178); it decides only whether
+  // an empty list is confirmed before the create goes out (issue #90).
   const requiresRepos = pack?.requiresRepos ?? false
   const requiresRdp = pack?.requiresRdp ?? false
 
@@ -783,7 +792,7 @@ export function CreateServerPage() {
     // Only URLs nothing has answered for yet. A user adding a fourth line does not re-probe the
     // first three, and backspacing over a line and retyping it costs nothing at all.
     const unresolved = repositories.filter((url) => !(url in resolutions)).slice(0, 10)
-    if (!requiresRepos || unresolved.length === 0) return
+    if (unresolved.length === 0) return
 
     let cancelled = false
     const timer = setTimeout(() => {
@@ -805,7 +814,7 @@ export function CreateServerPage() {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [repositories, resolutions, requiresRepos])
+  }, [repositories, resolutions])
 
   // A consent given about an empty list is about THAT list: the moment a repository is added,
   // both the offer and any answer to it are withdrawn, so removing the line later re-asks
@@ -925,8 +934,9 @@ export function CreateServerPage() {
         // The offering the user was shown a price for — not whatever core would pick now.
         ...(resolved ? { offeringId: resolved.id, arch: resolved.arch } : {}),
         // Omitted when empty — a confirmed repo-less create goes on the wire exactly like a
-        // create for a pack that never asked (issue #90).
-        ...(requiresRepos && repositories.length > 0 ? { repositories } : {}),
+        // create with nothing typed (issue #90). Sent whenever something IS typed, whatever the
+        // pack declares: the box clones for any pack (issue #178).
+        ...(repositories.length > 0 ? { repositories } : {}),
         ...(createAnyway ? { createAnyway: true } : {}),
         ...(sshKeyOption === 'provide' ? { sshPublicKey: sshPublicKey.trim() } : {}),
         ...(requiresRdp ? { rdpPassword } : {}),
@@ -1359,65 +1369,65 @@ export function CreateServerPage() {
           )}
         </fieldset>
 
-        {/* Conditional on what the PACK declares, never on which pack it is. */}
-        {requiresRepos && (
-          <div className="form-group">
-            <label className="form-label" htmlFor="repositories">
-              Repositories
-            </label>
-            {/* The private-repo sentence is here because the form is where the mistake is made:
-                a private URL is accepted, provisioning starts, and the clone fails minutes
-                later on the box with nothing on this page having hinted why (rockysurf-f1z1).
-                It names `github.pat` in the config file, which is the one place that populates
-                the token — not an environment variable core reads, because it reads none
-                (rockysurf-yzae wired the config key through; the box end was already done). */}
-            <p className="hint">
-              One git URL per line, or none at all. They are cloned onto the box during setup.
-              Public URLs need no credentials; private repositories need <code>github.pat</code> set
-              in <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
-            </p>
-            {/* Above the field rather than beside it, because the order is the workflow: pick what
-                is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
-            <RepositoryPicker scopes={scopes} present={repositories} onInsert={insertRepository} />
-            <textarea
-              id="repositories"
-              rows={4}
-              value={repoInput}
-              onChange={(e) => setRepoInput(e.target.value)}
-              // HTTPS on both lines. The second used to read `git@github.com:you/other.git`,
-              // which is a form the box cannot use at all — it clones over HTTPS with a token
-              // and is never given an SSH key — so the placeholder was teaching the very
-              // mistake core now refuses (rockysurf-k6xp).
-              placeholder={'https://github.com/you/project.git\nhttps://github.com/you/other'}
-            />
-            {/* What each URL resolves to, as it is typed (rockysurf-18lq). `aria-live` because
-                the answers arrive after the typing stops and a screen reader would otherwise
-                never learn that the line it just dictated needs a token nobody has configured. */}
-            {repositories.length > 0 && (
-              <ul className="repo-resolutions" aria-live="polite" data-testid="repo-resolutions">
-                {repositories.map((url, index) => (
+        {/* Always present, whatever the pack declares (issue #178). The pack's flag only changes
+            the sentence under the label and whether an empty list is confirmed at submit. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="repositories">
+            Repositories
+          </label>
+          {/* The private-repo sentence is here because the form is where the mistake is made:
+              a private URL is accepted, provisioning starts, and the clone fails minutes
+              later on the box with nothing on this page having hinted why (rockysurf-f1z1).
+              It names `github.pat` in the config file, which is the one place that populates
+              the token — not an environment variable core reads, because it reads none
+              (rockysurf-yzae wired the config key through; the box end was already done). */}
+          <p className="hint">
+            One git URL per line, or none at all. They are cloned onto the box during setup.
+            {requiresRepos && ' This pack expects at least one.'} Public URLs need no credentials;
+            private repositories need <code>github.pat</code> set in{' '}
+            <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+          </p>
+          {/* Above the field rather than beside it, because the order is the workflow: pick what
+              is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
+          <RepositoryPicker scopes={scopes} present={repositories} onInsert={insertRepository} />
+          <textarea
+            id="repositories"
+            rows={4}
+            value={repoInput}
+            onChange={(e) => setRepoInput(e.target.value)}
+            // HTTPS on both lines. The second used to read `git@github.com:you/other.git`,
+            // which is a form the box cannot use at all — it clones over HTTPS with a token
+            // and is never given an SSH key — so the placeholder was teaching the very
+            // mistake core now refuses (rockysurf-k6xp).
+            placeholder={'https://github.com/you/project.git\nhttps://github.com/you/other'}
+          />
+          {/* What each URL resolves to, as it is typed (rockysurf-18lq). `aria-live` because
+              the answers arrive after the typing stops and a screen reader would otherwise
+              never learn that the line it just dictated needs a token nobody has configured. */}
+          {repositories.length > 0 && (
+            <ul className="repo-resolutions" aria-live="polite" data-testid="repo-resolutions">
+              {repositories.map((url, index) => (
+                <li key={`${url}-${index}`}>
+                  <code>{url}</code> — <RepositoryTokenLine resolution={resolutions[url]} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Core checked each of these before launching anything, and this is what it found.
+              Rendered against the line the user typed rather than as one banner, because the
+              only useful next action is editing a specific URL. */}
+          {repoErrors.length > 0 && (
+            <ul className="repo-errors" role="alert">
+              {repositories.map((url, index) =>
+                repoErrors[index] ? (
                   <li key={`${url}-${index}`}>
-                    <code>{url}</code> — <RepositoryTokenLine resolution={resolutions[url]} />
+                    <code>{url}</code> — {repoErrors[index]}
                   </li>
-                ))}
-              </ul>
-            )}
-            {/* Core checked each of these before launching anything, and this is what it found.
-                Rendered against the line the user typed rather than as one banner, because the
-                only useful next action is editing a specific URL. */}
-            {repoErrors.length > 0 && (
-              <ul className="repo-errors" role="alert">
-                {repositories.map((url, index) =>
-                  repoErrors[index] ? (
-                    <li key={`${url}-${index}`}>
-                      <code>{url}</code> — {repoErrors[index]}
-                    </li>
-                  ) : null,
-                )}
-              </ul>
-            )}
-          </div>
-        )}
+                ) : null,
+              )}
+            </ul>
+          )}
+        </div>
 
         {requiresRdp && (
           <div className="form-group">
