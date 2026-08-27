@@ -67,14 +67,31 @@ export { createPackRoutes, type PackRoutesDeps } from './routes.js'
 export {
   CATEGORIES,
   DESKTOPS,
+  PACK_INPUT_MAX_COUNT,
+  PACK_INPUT_MAX_VALUE_BYTES,
+  RESERVED_INPUT_NAMES,
+  RESERVED_INPUT_PREFIXES,
   RUN_AS,
   packFileSchema,
+  packInputSchema,
+  packInputValueSchema,
+  packInputsSchema,
   packSchema,
   toolSchema,
   type PackDefinition,
   type PackFile,
+  type PackInput,
   type ToolDefinition,
 } from './schema.js'
+
+export {
+  PACK_INPUTS_MAX_TOTAL_BYTES,
+  resolvePackInputs,
+  summarizePackInputs,
+  type PackInputIssue,
+  type PackInputSummary,
+  type ResolvedPackInputs,
+} from './inputs.js'
 
 export { PackValidationError, syncPacksToDb, type SyncResult } from './sync.js'
 

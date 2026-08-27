@@ -75,6 +75,7 @@ export function syncPacksToDb(db: Db, loaded: LoadResult): SyncResult {
       requiresRdp: pack.requiresRdp,
       desktop: pack.desktop ?? null,
       webPort: pack.webPort ?? null,
+      inputs: pack.inputs ?? null,
       sourceFile: pack.sourceFile,
     })
   }
