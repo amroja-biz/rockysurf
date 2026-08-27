@@ -2499,6 +2499,83 @@ main.help section > pre {
   font-size: 0.95rem;
 }
 
+/* THE MARK IS THE CARD'S IDENTITY (issue #192), so on a card it is 3.5rem rather than the
+   2.5rem inline size the create form's rows and the admin table use — those are lists of text
+   with a mark beside them, and this is a grid of marks with a name under them. The margin goes
+   because the head is a flex row that already has a gap; keeping both put 1rem between the
+   mark and a name that now has less width to sit in. */
+.pack-card .pack-icon,
+.pack-card .pack-monogram {
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-right: 0;
+}
+
+.pack-card .pack-monogram {
+  font-size: 1.25rem;
+}
+
+/* The card's popup (issue #192). The `<li>` is the positioned box and the popup is a sibling
+   of the card's link rather than a child of it, because a link may not contain a button — see
+   `PackCard` for the whole reason. Hung under the card, at least as wide as it, so the grid
+   does not move when one opens. */
+.pack-card-slot {
+  position: relative;
+}
+
+.pack-popup {
+  position: absolute;
+  top: calc(100% - 1px);
+  left: 0;
+  width: 20rem;
+  min-width: 100%;
+  /* Above the cards in the rows below it, and below the header, which is the one fixed
+     element in the app. */
+  z-index: 20;
+  background: var(--rs-raised);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pack-popup h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+/* THE LIST SCROLLS, THE BUTTONS DO NOT. A pack with seventeen tools would otherwise push New
+   server and Export below the fold of the popup itself, which is where somebody who stopped on
+   this card was going. */
+.pack-popup ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  max-height: 13rem;
+  overflow-y: auto;
+}
+
+.pack-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* The shipped pack's own file on the detail page (issue #192): the same monospace block the
+   guide uses, capped so a long pack does not bury the rest of the page. */
+.pack-file {
+  margin-top: 1.5rem;
+}
+
+.pack-file-text {
+  max-height: 28rem;
+  overflow: auto;
+}
+
 /* `official` is the only label meaning "this came from us", so it is the only one that reads
    differently. Everything else shares one style deliberately: making `internal` look safer
    than `community` would invent a ranking the trust model does not have — both are just what

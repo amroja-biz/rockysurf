@@ -954,9 +954,16 @@ control. Read it.
 
 It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
-for anything that arrived from off this machine, and `local` for packs you created yourself.
-Under the badge, an admin also sees the source **and its URL** — or, for a one-off import, the
-URL it was fetched from. There is no install button anywhere except below those scripts.
+for anything that arrived from off this machine, and `local` for packs you created yourself. A
+card carries the pack's mark, its name and that badge; open the pack for the rest. On a pack's
+own page an admin also sees the source **and its URL** — or, for a one-off import, the URL it was
+fetched from. There is no install button anywhere except below those scripts.
+
+Resting on an **official** pack's card for a second opens what it installs, with a button to
+create a server with it and one to export its file. An official pack's page also shows that file
+in full, read-only: it shipped in your release, so there is nothing in it you cannot already read
+in `packs/`. A pack you created or installed from a registry has no such page — its text comes
+out through **Export**, as a file to drop into `packs/` and commit.
 
 One thing the summary on that page says about itself, worth repeating here: the list of URLs is
 derived by reading the scripts, so a script that builds a URL out of a variable will not appear

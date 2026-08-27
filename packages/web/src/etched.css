@@ -72,6 +72,7 @@ body[data-rs-skin='etched'] {
    reads as a sticker on top of it. */
 [data-rs-skin='etched'] .server-card,
 [data-rs-skin='etched'] .pack-card,
+[data-rs-skin='etched'] .pack-popup,
 [data-rs-skin='etched'] .activity-feed,
 [data-rs-skin='etched'] .modal,
 [data-rs-skin='etched'] .server-summary,
@@ -119,6 +120,15 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .pack-icon,
 [data-rs-skin='etched'] .pack-monogram { box-shadow: inset 0 0 0 1px var(--rs-ink-hair); }
 
+/* The pack card's popup (#192) hangs over the grid, so it needs an edge the cards in it do
+   not have: the beam at its rule, and enough shadow under it to sit above the row below. The
+   base system has no shadows; this skin's controls already broke that for the same reason. */
+[data-rs-skin='etched'] .pack-popup {
+  border-color: var(--rs-beam-soft);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+[data-rs-skin='etched'] .pack-popup h4 { color: var(--rs-beam); margin: 0; }
+
 /* ── Cut labels ────────────────────────────────────────────────────────────────────────
    Caps label a field. They NEVER carry a sentence: a paragraph in letterspaced caps is
    unreadable, and it turns sshAllowedCidr into SSHALLOWEDCIDR. */
@@ -135,6 +145,7 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .bootstrap-report dt,
 [data-rs-skin='etched'] .activity-label,
 [data-rs-skin='etched'] .preview-section h4,
+[data-rs-skin='etched'] .pack-popup h4,
 [data-rs-skin='etched'] th,
 [data-rs-skin='etched'] legend,
 [data-rs-skin='etched'] .form-label {

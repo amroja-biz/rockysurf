@@ -52,6 +52,11 @@
 
 ## Architecture
 
+- [everyone-who-runs-an-installation-is-its-admin](2026-08-27-everyone-who-runs-an-installation-is-its-admin.md):
+  owner ruling (#192): Rocky Surf is one engineer's own tooling, so there is no non-admin user to
+  design for — `isAdmin` is a seam in the code, not a population. Never add a route or a second
+  screen whose only justification is widening the audience; the `/admin/*` prefix and its
+  middleware stay exactly as they are.
 - [session-tokens-opaque-not-signed](2026-08-21-session-tokens-opaque-not-signed.md): why sessions
   are opaque random tokens validated by database lookup, not signed cookies.
 - [vendor-sdk-vs-rest-provider-ruling](2026-08-13-vendor-sdk-vs-rest-provider-ruling.md): the test

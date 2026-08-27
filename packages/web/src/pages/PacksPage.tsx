@@ -434,10 +434,97 @@ function ShelfSection({
 
 /* --------------------------------------------------------------------------------- pack card */
 
-function PackCard({ view, isAdmin }: { view: PackView; isAdmin: boolean }): React.JSX.Element {
+/**
+ * How long a pointer (or keyboard focus) has to rest on an official pack's card before the
+ * popup opens. Long enough that crossing the grid on the way somewhere else never opens one,
+ * short enough that stopping on a card is unmistakably a question about it.
+ */
+const POPUP_DELAY_MS = 1000
+
+/**
+ * One card in the grid (issue #192).
+ *
+ * WHAT THE CARD SAYS IS NOW THE MARK, THE NAME AND THE BADGE, and nothing else. The tool count
+ * and the admin-only origin sentence both left: neither answers a question anybody has while
+ * looking at a wall of packs, and the origin sentence is still on the detail page, where an
+ * admin asking "where did this come from" actually is.
+ *
+ * THE POPUP IS A SIBLING OF THE LINK, NOT A CHILD. The card is one link — that is what makes a
+ * click, a middle-click and a touch all open the detail page — and a link may not contain a
+ * button or another link. So the `<li>` is the positioned box, the `<a>` fills it, and the
+ * popup is absolutely positioned against the `<li>` beneath it. Because the popup is a DOM
+ * descendant of the `<li>` that carries the handlers, moving the pointer from the card into
+ * the popup is not a mouse-out and the popup does not flicker.
+ *
+ * ONLY OFFICIAL PACKS GET ONE. A community pack's card keeps exactly the behaviour it had.
+ */
+function PackCard({
+  view,
+  onExport,
+}: {
+  view: PackView
+  onExport: (view: PackView) => void
+}): React.JSX.Element {
+  const hasPopup = view.provenance === 'official'
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const link = useRef<HTMLAnchorElement>(null)
+
+  const cancel = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current)
+    timer.current = null
+  }, [])
+
+  const arm = useCallback(() => {
+    if (!hasPopup || open || timer.current !== null) return
+    timer.current = setTimeout(() => {
+      timer.current = null
+      setOpen(true)
+    }, POPUP_DELAY_MS)
+  }, [hasPopup, open])
+
+  const close = useCallback(() => {
+    cancel()
+    setOpen(false)
+  }, [cancel])
+
+  // A card can be unmounted mid-delay — the grid reloads after an install — and a timer that
+  // fires into a gone component is a React warning and a leak.
+  useEffect(() => cancel, [cancel])
+
   return (
-    <li key={view.packId}>
-      <Link to={`/packs/${view.packId}`} className="pack-card" data-testid={`pack-card-${view.packId}`}>
+    <li
+      className="pack-card-slot"
+      data-testid={`pack-card-slot-${view.packId}`}
+      onMouseEnter={hasPopup ? arm : undefined}
+      onMouseLeave={hasPopup ? close : undefined}
+      /* Focus and blur BUBBLE in React, so these cover the link and everything in the popup:
+         tabbing onto the card arms the same delay, and focus leaving the whole card — to the
+         next card, or out of the grid — closes it. No focus trap: the popup's controls sit
+         after the link in the DOM, so Tab walks into them and then out the other side. */
+      onFocus={hasPopup ? arm : undefined}
+      onBlur={
+        hasPopup
+          ? (event: React.FocusEvent<HTMLLIElement>) => {
+              if (event.currentTarget.contains(event.relatedTarget)) return
+              close()
+            }
+          : undefined
+      }
+      onKeyDown={
+        hasPopup
+          ? (event: React.KeyboardEvent<HTMLLIElement>) => {
+              if (event.key !== 'Escape' || !open) return
+              // Focus goes back to the card rather than to the document, so Escape does not
+              // cost a keyboard user their place in the grid. Nothing re-arms until they
+              // leave and come back, which is what dismissing should mean.
+              link.current?.focus()
+              close()
+            }
+          : undefined
+      }
+    >
+      <Link ref={link} to={`/packs/${view.packId}`} className="pack-card" data-testid={`pack-card-${view.packId}`}>
         <div className="pack-card-head">
           <PackIcon pack={view} />
           <h3>{view.name}</h3>
@@ -445,10 +532,29 @@ function PackCard({ view, isAdmin }: { view: PackView; isAdmin: boolean }): Reac
               recomputes provenance. */}
           <TrustBadge label={view.provenance === 'official' ? 'official' : view.provenance} />
         </div>
-        <p className="size-detail">{view.tools.length} tool(s)</p>
-        {isAdmin && view.origin && <p className="muted">{view.origin}</p>}
         {!view.enabled && <p className="hint">— disabled</p>}
       </Link>
+
+      {hasPopup && open && (
+        <div className="pack-popup" data-testid={`pack-popup-${view.packId}`} role="group" aria-label={view.name}>
+          <h4>Installs</h4>
+          {view.tools.length === 0 ? (
+            <p className="hint">Nothing — this pack installs no tools.</p>
+          ) : (
+            <ToolList tools={view.tools} testId={`pack-popup-tools-${view.packId}`} />
+          )}
+          <div className="pack-popup-actions">
+            {view.enabled && (
+              <Link className="button primary new-action" to={`/servers/new?pack=${view.packId}`}>
+                New server
+              </Link>
+            )}
+            <button type="button" className="button secondary" onClick={() => onExport(view)}>
+              Export
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   )
 }
@@ -524,6 +630,51 @@ export function PacksPage(): React.JSX.Element {
   const official = useMemo(() => views.filter((v) => v.provenance === 'official').sort(byOrder), [views])
   const community = useMemo(() => views.filter((v) => v.provenance !== 'official').sort(byOrder), [views])
 
+  /**
+   * THE PACK FILE ITSELF, on the detail page of a shipped pack (issue #192).
+   *
+   * `download()` used to record the opposite decision — export the file rather than show its
+   * text — and for a pack somebody made here that still holds: that text is only useful as a
+   * file you can commit. An OFFICIAL pack is the other case. Its file shipped in the release
+   * and is published in the repository, and it is the honest answer to "what will this
+   * actually run on my box as root", so making someone click through a save dialog to read it
+   * bought nothing. Both now: the text here, Export beside it.
+   *
+   * READ OVER THE EXISTING ADMIN EXPORT ROUTE, and no new one. Rocky Surf is self-hosted
+   * personal tooling — whoever runs it is its admin — so a second, non-admin read route for
+   * shipped files would be a public surface with no public to serve (owner ruling, #192).
+   *
+   * Only fetched in detail mode, and only for a file-backed pack: a pack somebody created or
+   * installed here is still Export-only, because its text is a file to commit, not a page.
+   */
+  const detailView = packId ? views.find((v) => v.packId === packId) : undefined
+  const showsPackFile = detailView?.provenance === 'official'
+  const [packFile, setPackFile] = useState<string | null>(null)
+  const [packFileProblem, setPackFileProblem] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!packId || !showsPackFile) {
+      setPackFile(null)
+      setPackFileProblem(null)
+      return
+    }
+    let cancelled = false
+    setPackFile(null)
+    setPackFileProblem(null)
+    exportSurgePackYaml(packId).then(
+      (text) => {
+        if (!cancelled) setPackFile(text)
+      },
+      (err: unknown) => {
+        // Never the whole page: the rest of this pack's detail is worth reading either way.
+        if (!cancelled) setPackFileProblem(err instanceof ApiError ? err.detail : 'Could not read the pack file.')
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [packId, showsPackFile])
+
   async function importFromFile(file: File) {
     try {
       const imported = await importSurgePack({ yaml: await file.text() })
@@ -545,19 +696,33 @@ export function PacksPage(): React.JSX.Element {
     }
   }
 
-  async function download(id: string) {
+  /**
+   * Export, from the detail page and from an official pack's card popup — the same existing
+   * admin route in both places (issue #192).
+   *
+   * NO SECOND ROUTE AND NO ROLE BRANCH. The obvious alternative was a non-admin read route for
+   * shipped packs' files, so that Export and the file could be shown to a member; the owner's
+   * ruling is that there is no such member — a Rocky Surf installation is one engineer's own
+   * tooling and whoever runs it is its admin — so the popup's Export is the export that was
+   * always there.
+   *
+   * Still a downloaded FILE here, because the point of exporting is that the operator can drop
+   * it into `packs/` and have it become the source of truth. Issue #192 adds the TEXT as well,
+   * on a shipped pack's page — it does not replace this.
+   */
+  async function downloadYaml(view: PackView) {
     try {
-      const yaml = await exportSurgePackYaml(id)
-      // A real file, so the operator can drop it into `packs/` and have it become the source
-      // of truth — which is the whole point of exporting rather than showing the text.
+      const yaml = await exportSurgePackYaml(view.packId)
       const url = URL.createObjectURL(new Blob([yaml], { type: 'application/yaml' }))
       const link = document.createElement('a')
       link.href = url
-      link.download = `${id}.yaml`
+      link.download = `${view.packId}.yaml`
       link.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed')
+      // A toast, not `setError`: a failed download is no reason to replace the grid — or the
+      // pack the user was reading — with an error page.
+      toast.error(err instanceof ApiError ? err.detail : 'Export failed')
     }
   }
 
@@ -641,7 +806,10 @@ export function PacksPage(): React.JSX.Element {
           <PackIcon pack={view} size="large" />
           <div>
             <TrustBadge label={view.provenance === 'official' ? 'official' : view.provenance} />
-            {isAdmin && view.origin && <p className="muted">{view.origin}</p>}
+            {/* The origin sentence, which used to be on the card too (issue #192). One pack's
+                page is where "where did this come from, exactly" gets asked; a grid is not.
+                `origin` is only ever built from the admin read, so no role check here. */}
+            {view.origin && <p className="muted">{view.origin}</p>}
             {!view.enabled && <p className="hint">Disabled — hidden from the New Server form.</p>}
           </div>
         </div>
@@ -680,11 +848,42 @@ export function PacksPage(): React.JSX.Element {
           </details>
         )}
 
+        {showsPackFile && (
+          <section className="pack-file">
+            <h2>The pack file</h2>
+            <p className="hint">
+              This file shipped with this Rocky Surf release. It is the whole of what a new box
+              runs for this pack — every install script, in the order they run.
+            </p>
+            {packFileProblem ? (
+              <p className="hint" data-testid="pack-file-unavailable">
+                {packFileProblem}
+              </p>
+            ) : packFile === null ? (
+              <p className="hint">Reading…</p>
+            ) : (
+              <pre className="pack-guide-text pack-file-text" data-testid="pack-file-text">
+                {packFile}
+              </pre>
+            )}
+            {/* The same file as a download, for the operator who wants it in `packs/` — and
+                the reason Export is not in the admin row below for an official pack: one
+                button per page, in the place the file is. */}
+            <p>
+              <button type="button" className="button secondary" onClick={() => void downloadYaml(view)}>
+                Export
+              </button>
+            </p>
+          </section>
+        )}
+
         {isAdmin && (
           <section className="pack-admin-actions">
-            <button type="button" onClick={() => void download(view.packId)}>
-              Export
-            </button>
+            {view.provenance !== 'official' && (
+              <button type="button" onClick={() => void downloadYaml(view)}>
+                Export
+              </button>
+            )}
             {view.editable ? (
               <>
                 <button type="button" onClick={() => setFormTarget(view.packId)}>
@@ -735,7 +934,7 @@ export function PacksPage(): React.JSX.Element {
         ) : (
           <ul className="pack-grid">
             {official.map((view) => (
-              <PackCard key={view.packId} view={view} isAdmin={isAdmin} />
+              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
             ))}
           </ul>
         )}
@@ -748,7 +947,7 @@ export function PacksPage(): React.JSX.Element {
         ) : (
           <ul className="pack-grid">
             {community.map((view) => (
-              <PackCard key={view.packId} view={view} isAdmin={isAdmin} />
+              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
             ))}
           </ul>
         )}
