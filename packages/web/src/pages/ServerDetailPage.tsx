@@ -426,7 +426,7 @@ export function ServerDetailPage() {
       {!historical && (
         <section className="server-actions">
           {providerCanStop && server.status === 'running' && (
-            <button disabled={busy} onClick={() => setConfirming('stop')}>
+            <button className="stop-action" disabled={busy} onClick={() => setConfirming('stop')}>
               {transition.pending === 'stop' || pending === 'stop' ? 'Stopping…' : 'Stop'}
             </button>
           )}
