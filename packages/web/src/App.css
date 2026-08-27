@@ -2492,6 +2492,77 @@ main.help section > pre {
   border-color: var(--rs-link);
 }
 
+/* The three sections as tabs (issue #204) — the `.tablist`/`.tab` pair Settings already uses
+   (issue #122), with a little breathing room before the first panel. */
+.packs-tabs {
+  margin-bottom: 1.25rem;
+}
+
+/* `New Surge Pack`'s chooser (issue #204): three ways in, laid out like the pack grid beside
+   it rather than as a form, because choosing HOW to start is not itself a form field. */
+.pack-create-chooser {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pack-create-option {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.pack-create-option:hover {
+  border-color: var(--rs-link);
+}
+
+/* The file input, styled as a target rather than the bare "Choose File" control (issue #204).
+   The input itself stays in the DOM and keyboard/click-reachable — only its own box is hidden —
+   so "click to choose one" and drag-and-drop are the same control, not two independent paths. */
+.pack-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 5rem;
+  border: 1px dashed var(--rs-border);
+  border-radius: var(--rs-radius);
+  color: var(--rs-muted);
+  cursor: pointer;
+  text-align: center;
+  padding: 1rem;
+}
+
+.pack-dropzone:hover {
+  border-color: var(--rs-link);
+  color: var(--rs-text);
+}
+
+.pack-dropzone input[type='file'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.pack-from-existing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
 .pack-card {
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);

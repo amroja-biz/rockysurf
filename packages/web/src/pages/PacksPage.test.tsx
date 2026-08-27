@@ -13,6 +13,14 @@ import { PacksPage } from './PacksPage'
  * card's badge reads core's own `provenance` (`official` / `registry` / `local`), never the
  * admin table's `file:`/`database` split or the old shop's `community`/`internal` trust label.
  * The admin-only origin sentence still names the real source underneath the badge.
+ *
+ * ISSUE #204 MADE THE THREE SECTIONS TABS, all three still mounted (`hidden`, not unmounted —
+ * see the file's own docblock for why). A `getByTestId` query finds a card on any tab
+ * regardless of which is active; a `getByRole` query does not, because `hidden` removes a
+ * subtree from the accessibility tree the same way real browsers do. So a test that only checks
+ * a card is IN THE DOM stays on the default tab; a test that CLICKS something, or that asserts a
+ * button/link/heading/tab role, renders with the tab it needs already active via `renderList({
+ * tab })` — the same `?tab=` the page itself reads.
  */
 
 vi.mock('../contexts/EventsContext', () => ({
@@ -216,9 +224,11 @@ afterEach(() => {
   localStorage.clear()
 })
 
-function renderList() {
+/** `tab` sets the initial `?tab=` — the same param the page itself reads (issue #204). */
+function renderList(opts: { tab?: 'official' | 'community' | 'personal' } = {}) {
+  const entry = opts.tab ? `/packs?tab=${opts.tab}` : '/packs'
   return render(
-    <MemoryRouter initialEntries={['/packs']}>
+    <MemoryRouter initialEntries={[entry]}>
       <Routes>
         <Route path="/packs" element={<PacksPage />} />
         <Route path="/packs/:packId" element={<PacksPage />} />
@@ -258,7 +268,7 @@ describe('provenance labelling', () => {
   })
 
   it('labels a registry-installed pack "registry", never "official", and names the real source', async () => {
-    renderList()
+    renderList({ tab: 'community' })
     const card = await screen.findByTestId('pack-card-rust-dev')
     expect(card.querySelector('[data-testid="trust-registry"]')).toBeTruthy()
     expect(card.querySelector('[data-testid="trust-official"]')).toBeNull()
@@ -298,7 +308,7 @@ describe('provenance labelling', () => {
   })
 
   it('reads an admin-created pack "local" rather than guessing at a source', async () => {
-    renderList()
+    renderList({ tab: 'personal' })
     const card = await screen.findByTestId('pack-card-mine')
     expect(card.querySelector('[data-testid="trust-local"]')).toBeTruthy()
     expect(card.textContent).not.toContain('created here, in this installation')
@@ -308,7 +318,7 @@ describe('provenance labelling', () => {
   })
 
   it('spends the card on the mark, the name and the badge — nothing else (#192)', async () => {
-    renderList()
+    renderList({ tab: 'community' })
     const card = await screen.findByTestId('pack-card-rust-dev')
     expect(card.textContent).toContain('Rust Dev')
     // The tool count went with the origin sentence: the popup and the detail page both list
@@ -332,13 +342,16 @@ describe('shelves', () => {
         ],
       }),
     )
-    renderList()
+    renderList({ tab: 'community' })
+    // The catalogue is `Not installed`'s job; Community defaults to `Installed` (issue #204).
+    fireEvent.click(await screen.findByTestId('community-filter-not-installed'))
     expect((await screen.findByTestId('shelf-failure-Rocky Surf Pack Shop')).textContent).toContain('Could not fetch')
   })
 
   it('says so when the registry is switched off, which is not a failure', async () => {
     vi.mocked(api.getPackRegistry).mockResolvedValue(emptyRegistry({ enabled: false }))
-    renderList()
+    renderList({ tab: 'community' })
+    fireEvent.click(await screen.findByTestId('community-filter-not-installed'))
     expect(await screen.findByTestId('registry-disabled')).toBeTruthy()
   })
 
@@ -380,7 +393,7 @@ describe('shelves', () => {
       }),
     ])
 
-    renderList()
+    renderList({ tab: 'community' })
     await screen.findByTestId('pack-card-aider')
     expect(screen.queryByTestId('registry-aider')).toBeNull()
   })
@@ -402,10 +415,16 @@ describe('installing goes through the disclosure', () => {
       }),
     )
 
+  /** Community defaults to `Installed` now (issue #204) — the catalogue needs `Not installed`. */
+  async function openCatalogue() {
+    renderList({ tab: 'community' })
+    fireEvent.click(await screen.findByTestId('community-filter-not-installed'))
+    return screen.findByTestId('shelf-Rocky Surf Pack Shop')
+  }
+
   it('has no install control until the pack has been reviewed', async () => {
     withShelf()
-    renderList()
-    await screen.findByTestId('shelf-Rocky Surf Pack Shop')
+    await openCatalogue()
     // `/^Install /` with the trailing space, not `/^Install/` — Community's own `Installed`
     // filter button matches the looser pattern too (issue #199).
     expect(screen.queryByRole('button', { name: /^Install / })).toBeNull()
@@ -414,8 +433,8 @@ describe('installing goes through the disclosure', () => {
 
   it('reviewing shows the scripts, then installing sends only the address', async () => {
     withShelf()
-    renderList()
-    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    await openCatalogue()
+    fireEvent.click(screen.getByRole('button', { name: 'Review' }))
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
     expect(screen.getByTestId('disclosure-tool-aider').textContent).toContain('pipx install aider-chat')
 
@@ -427,8 +446,7 @@ describe('installing goes through the disclosure', () => {
 
   it('reloads the catalogue after installing, so the new pack appears without a refresh — once, not twice', async () => {
     withShelf()
-    renderList()
-    await screen.findByTestId('shelf-Rocky Surf Pack Shop')
+    await openCatalogue()
 
     vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
       officialAdmin(),
@@ -462,6 +480,8 @@ describe('installing goes through the disclosure', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: /^Install / }))
 
+    // Installed is Community's default filter (issue #204) — switch there to see the result.
+    fireEvent.click(screen.getByTestId('community-filter-installed'))
     await waitFor(() => expect(screen.getByTestId('pack-card-aider')).toBeTruthy())
     expect(screen.queryByTestId('registry-aider')).toBeNull()
   })
@@ -494,30 +514,30 @@ describe('ported from the admin surge-packs page', () => {
 
   it('imports YAML from a file and says the result is a database row', async () => {
     vi.mocked(api.importSurgePack).mockResolvedValue(localAdmin({ packId: 'imported' }))
-    renderList()
-    await screen.findByTestId('import-file')
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
 
-    const input = screen.getByTestId('import-file') as HTMLInputElement
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    fireEvent.click(screen.getByTestId('create-option-upload'))
+    const input = (await screen.findByTestId('import-file')) as HTMLInputElement
     const file = new File(['version: 1\n'], 'pack.yaml', { type: 'application/yaml' })
     Object.defineProperty(input, 'files', { value: [file] })
     input.dispatchEvent(new Event('change', { bubbles: true }))
 
     await waitFor(() => expect(api.importSurgePack).toHaveBeenCalledWith({ yaml: 'version: 1\n' }))
     await waitFor(() => expect(screen.getByTestId('notice').textContent).toContain('packs/'))
+    // Back to the plain button — a successful import returns to the tab unchanged.
+    expect(await screen.findByRole('button', { name: 'New Surge Pack' })).toBeTruthy()
   })
 
-  it('offers the URL import path too', async () => {
-    renderList()
-    expect(await screen.findByTestId('import-url')).toBeTruthy()
-  })
-
-  it('renders the behaviour fields per pack, and offers a control for each when creating', async () => {
+  it('renders the behaviour fields per pack, and offers a control for each when starting from scratch', async () => {
     renderDetail('mine')
     expect(await screen.findByText('remote desktop')).toBeTruthy()
 
-    renderList()
+    renderList({ tab: 'personal' })
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: 'New Surge Pack' }))
+    await user.click(screen.getByTestId('create-option-scratch'))
     const form = await screen.findByTestId('pack-form')
     expect(form.textContent).toContain('Requires repositories')
     expect(form.textContent).toContain('Requires a remote-desktop password')
@@ -546,7 +566,7 @@ describe("the issue's own acceptance", () => {
 
   it("clicking a pack's card shows its tools, with names, descriptions and links", async () => {
     const user = userEvent.setup()
-    renderList()
+    renderList({ tab: 'community' })
     await user.click(await screen.findByTestId('pack-card-rust-dev'))
 
     const tools = await screen.findByTestId('pack-tools')
@@ -577,7 +597,7 @@ describe("the issue's own acceptance", () => {
 
   it('shows a member the grid, the detail view and the Launch button, and no admin regions', async () => {
     auth.isAdmin = false
-    renderList()
+    renderList({ tab: 'community' })
     await screen.findByTestId('pack-card-rust-dev')
 
     // Manage-pack controls: gone for a member, wherever they now live.
@@ -589,11 +609,10 @@ describe("the issue's own acceptance", () => {
     expect(api.listAdminSurgePacks).not.toHaveBeenCalled()
     expect(api.getPackRegistry).not.toHaveBeenCalled()
 
-    // The three sections themselves are not an admin region — a member still gets Official,
-    // Community (their installed packs, via the public read) and Personal.
-    expect(screen.getByRole('heading', { name: 'Official' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Community' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Personal' })).toBeTruthy()
+    // Every tab is reachable by a member — the tabs themselves are not an admin region.
+    expect(screen.getByRole('tab', { name: 'Official' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Community' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Personal' })).toBeTruthy()
 
     renderDetail('rust-dev')
     expect(await screen.findByRole('link', { name: /launch a server with this pack/i })).toBeTruthy()
@@ -664,7 +683,7 @@ describe("a pack's card popup", () => {
   })
 
   it('opens for a community pack too, not only an official one', async () => {
-    renderList()
+    renderList({ tab: 'community' })
     await screen.findByTestId('pack-card-rust-dev')
 
     vi.useFakeTimers()
@@ -679,7 +698,7 @@ describe("a pack's card popup", () => {
   })
 
   it('opens for a personal pack too', async () => {
-    renderList()
+    renderList({ tab: 'personal' })
     await screen.findByTestId('pack-card-mine')
 
     vi.useFakeTimers()
@@ -811,22 +830,19 @@ describe('a pack that asks for settings (issue #189)', () => {
  * them, asserted below alongside the word a person actually reads.
  */
 describe('three sections, one vocabulary (issue #199)', () => {
-  it('groups official, registry and local packs under Official, Community and Personal', async () => {
+  it('groups official, registry and local packs under the Official, Community and Personal panels', async () => {
     renderList()
     await screen.findByTestId('pack-card-ai-coding-agents')
 
-    const official = screen.getByRole('heading', { name: 'Official' }).closest('section')!
-    const community = screen.getByRole('heading', { name: 'Community' }).closest('section')!
-    const personal = screen.getByRole('heading', { name: 'Personal' }).closest('section')!
+    // All three panels are mounted at once (issue #204); which one a card lives under is a
+    // question about its ancestor `tabpanel`, not about which is currently visible.
+    const officialPanel = screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]')
+    const communityPanel = screen.getByTestId('pack-card-rust-dev').closest('[role="tabpanel"]')
+    const personalPanel = screen.getByTestId('pack-card-mine').closest('[role="tabpanel"]')
 
-    expect(within(official).getByTestId('pack-card-ai-coding-agents')).toBeTruthy()
-    expect(within(community).getByTestId('pack-card-rust-dev')).toBeTruthy()
-    expect(within(personal).getByTestId('pack-card-mine')).toBeTruthy()
-
-    // No pack sits under a heading its own section does not own.
-    expect(within(official).queryByTestId('pack-card-rust-dev')).toBeNull()
-    expect(within(community).queryByTestId('pack-card-mine')).toBeNull()
-    expect(within(personal).queryByTestId('pack-card-ai-coding-agents')).toBeNull()
+    expect(officialPanel?.id).toBe('packs-panel-official')
+    expect(communityPanel?.id).toBe('packs-panel-community')
+    expect(personalPanel?.id).toBe('packs-panel-personal')
   })
 
   it('badges a registry pack COMMUNITY and a local pack PERSONAL, never their wire words', async () => {
@@ -855,29 +871,65 @@ describe('three sections, one vocabulary (issue #199)', () => {
         ],
       }),
     )
-    renderList()
+    renderList({ tab: 'community' })
+    fireEvent.click(await screen.findByTestId('community-filter-not-installed'))
     const card = await screen.findByTestId('registry-aider')
     expect(card.querySelector('[data-testid="trust-registry"]')?.textContent).toBe('community')
   })
+})
 
-  it('moves file import, URL import and New Surge Pack into the Personal section', async () => {
+/**
+ * The three sections as tabs (issue #204), routed like Settings' own (issue #122): `?tab=` in
+ * the URL, Official shown first.
+ */
+describe('tabs (issue #204)', () => {
+  it('defaults to the Official tab', async () => {
     renderList()
-    const personal = (await screen.findByRole('heading', { name: 'Personal' })).closest('section')!
+    await screen.findByTestId('pack-card-ai-coding-agents')
 
-    expect(within(personal).getByTestId('import-file')).toBeTruthy()
-    expect(within(personal).getByTestId('import-url')).toBeTruthy()
-    expect(within(personal).getByRole('button', { name: 'New Surge Pack' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Official' }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
+      false,
+    )
+    expect((screen.getByTestId('pack-card-rust-dev').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(true)
+  })
 
-    // And out of Community, which keeps only Refresh and the filter.
-    const community = screen.getByRole('heading', { name: 'Community' }).closest('section')!
-    expect(within(community).queryByTestId('import-file')).toBeNull()
-    expect(within(community).getByRole('button', { name: 'Refresh' })).toBeTruthy()
+  it('?tab=community lands on Community with Installed selected', async () => {
+    renderList({ tab: 'community' })
+    await screen.findByTestId('pack-card-rust-dev')
+
+    expect(screen.getByRole('tab', { name: 'Community' }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByTestId('pack-card-rust-dev').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(false)
+    expect(screen.getByTestId('community-filter-installed').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('clicking a tab switches which panel is visible', async () => {
+    renderList()
+    await screen.findByTestId('pack-card-ai-coding-agents')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Personal' }))
+
+    expect(screen.getByRole('tab', { name: 'Personal' }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByTestId('pack-card-mine').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(false)
+    expect((screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
+      true,
+    )
+  })
+
+  it('shows the fixed Community caption, linking to Rocky Surf Shop', async () => {
+    renderList({ tab: 'community' })
+    await screen.findByTestId('pack-card-rust-dev')
+
+    const caption = screen.getByTestId('community-caption')
+    expect(caption.textContent).toContain('Community packs from')
+    const link = within(caption).getByRole('link', { name: 'Rocky Surf Shop' })
+    expect(link.getAttribute('href')).toBe('https://github.com/amroja-biz/rockysurf-shop')
   })
 })
 
 /**
  * Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
- * Connectors page.
+ * Connectors page. Default flipped to `Installed` by issue #204.
  */
 describe("Community's All / Installed / Not installed filter", () => {
   const withCatalogue = (installed = false) =>
@@ -895,48 +947,152 @@ describe("Community's All / Installed / Not installed filter", () => {
       }),
     )
 
-  it('defaults to All: shows the installed pack and the catalogue pack together', async () => {
+  it('defaults to Installed: shows the installed pack, not the catalogue (issue #204)', async () => {
     withCatalogue()
-    renderList()
+    renderList({ tab: 'community' })
     expect(await screen.findByTestId('pack-card-rust-dev')).toBeTruthy()
-    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
-    expect(screen.getByTestId('community-filter-all').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
+    expect(screen.getByTestId('community-filter-installed').getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('Installed hides the catalogue and keeps the installed card', async () => {
+  it('All shows the installed pack and the catalogue pack together', async () => {
     withCatalogue()
-    renderList()
-    await screen.findByTestId('registry-aider')
+    renderList({ tab: 'community' })
+    await screen.findByTestId('pack-card-rust-dev')
 
-    fireEvent.click(screen.getByTestId('community-filter-installed'))
+    fireEvent.click(screen.getByTestId('community-filter-all'))
 
     expect(screen.getByTestId('pack-card-rust-dev')).toBeTruthy()
-    expect(screen.queryByTestId('registry-aider')).toBeNull()
-    expect(screen.queryByTestId('shelf-Rocky Surf Pack Shop')).toBeNull()
+    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
   })
 
   it('Not installed hides the installed card and keeps the catalogue', async () => {
     withCatalogue()
-    renderList()
-    await screen.findByTestId('registry-aider')
+    renderList({ tab: 'community' })
+    await screen.findByTestId('pack-card-rust-dev')
 
     fireEvent.click(screen.getByTestId('community-filter-not-installed'))
 
     expect(screen.queryByTestId('pack-card-rust-dev')).toBeNull()
-    expect(screen.getByTestId('registry-aider')).toBeTruthy()
+    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
   })
 
   it('remembers the chosen filter per browser, and applies it on the next visit', async () => {
     withCatalogue()
-    const first = renderList()
-    await screen.findByTestId('registry-aider')
-    fireEvent.click(screen.getByTestId('community-filter-installed'))
-    expect(screen.queryByTestId('registry-aider')).toBeNull()
+    const first = renderList({ tab: 'community' })
+    await screen.findByTestId('pack-card-rust-dev')
+    fireEvent.click(screen.getByTestId('community-filter-all'))
+    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
     first.unmount()
 
-    renderList()
+    renderList({ tab: 'community' })
     await screen.findByTestId('pack-card-rust-dev')
-    expect(screen.getByTestId('community-filter-installed').getAttribute('aria-pressed')).toBe('true')
-    expect(screen.queryByTestId('registry-aider')).toBeNull()
+    expect(screen.getByTestId('community-filter-all').getAttribute('aria-pressed')).toBe('true')
+    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
+  })
+})
+
+/**
+ * Personal's `New Surge Pack` (issue #204): one cyan `new-action` button, opening a chooser
+ * between uploading a file, starting from an existing pack, and starting from scratch — rather
+ * than the bare file input, the "…or from a URL" field and the plain button this replaces.
+ */
+describe("Personal's New Surge Pack flow (issue #204)", () => {
+  it('the URL field and its Import button are gone', async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    expect(screen.queryByTestId('import-url')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Import from URL' })).toBeNull()
+  })
+
+  it('New Surge Pack is the cyan new-action button, and Choose File is hidden until it is clicked', async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    const button = screen.getByRole('button', { name: 'New Surge Pack' })
+    expect(button.className).toContain('new-action')
+    expect(screen.queryByTestId('import-file')).toBeNull()
+
+    fireEvent.click(button)
+    fireEvent.click(screen.getByTestId('create-option-upload'))
+    expect(await screen.findByTestId('import-file')).toBeTruthy()
+  })
+
+  it('offers three ways to start: upload, an existing pack, or from scratch', async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    const chooser = await screen.findByTestId('pack-create-chooser')
+    expect(within(chooser).getByTestId('create-option-upload')).toBeTruthy()
+    expect(within(chooser).getByTestId('create-option-existing')).toBeTruthy()
+    expect(within(chooser).getByTestId('create-option-scratch')).toBeTruthy()
+  })
+
+  it('Cancel from the chooser returns to the tab unchanged', async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    await screen.findByTestId('pack-create-chooser')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByTestId('pack-create-chooser')).toBeNull()
+    expect(screen.getByRole('button', { name: 'New Surge Pack' })).toBeTruthy()
+  })
+
+  it('says so in one sentence, and still offers New Surge Pack, when there are no personal packs yet', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([officialPublic(), registryPublic()])
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([officialAdmin(), registryAdmin()])
+    renderList({ tab: 'personal' })
+
+    expect(await screen.findByText('No personal packs yet.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'New Surge Pack' })).toBeTruthy()
+    expect(screen.queryByRole('list')).toBeNull()
+  })
+
+  /**
+   * Seeded from the source's own tool IDS, not from Export (`StartFromExistingPanel`'s own
+   * docblock explains why Export would be the wrong source here) — so this asserts the create
+   * form comes up pre-filled with a new id and the source's tools already checked, and that
+   * saving goes through `createAdminSurgePack`, never `importSurgePack`.
+   */
+  it("start from an existing pack seeds the create form with the source pack's tools, under a new id", async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    fireEvent.click(screen.getByTestId('create-option-existing'))
+
+    // Defaults to the first pack in `displayOrder` — `ai-coding-agents`.
+    const form = await screen.findByTestId('pack-form')
+    const packIdInput = within(form).getByLabelText(/Pack ID/i) as HTMLInputElement
+    const nameInput = within(form).getByLabelText('Name') as HTMLInputElement
+    expect(packIdInput.value).toBe('ai-coding-agents-copy')
+    expect(nameInput.value).toBe('Claude Code (copy)')
+    // Referenced, not redefined: the source's own tool comes up checked, nothing about it is
+    // ever sent as a new tool definition — the form only ever submits ids.
+    expect((within(form).getByRole('checkbox', { name: /Claude Code/ }) as HTMLInputElement).checked).toBe(true)
+
+    fireEvent.change(packIdInput, { target: { value: 'my-claude-fork' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.createAdminSurgePack).toHaveBeenCalled())
+    expect(api.importSurgePack).not.toHaveBeenCalled()
+    const call = vi.mocked(api.createAdminSurgePack).mock.calls[0]!
+    expect(call[0]).toMatchObject({ packId: 'my-claude-fork', tools: ['claude-code'] })
+  })
+
+  it('offers every installed pack as a source, official, community and personal alike', async () => {
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    fireEvent.click(screen.getByTestId('create-option-existing'))
+
+    const select = (await screen.findByTestId('from-existing-source')) as HTMLSelectElement
+    const optionValues = [...select.options].map((o) => o.value)
+    expect(optionValues).toEqual(expect.arrayContaining(['ai-coding-agents', 'rust-dev', 'mine']))
   })
 })

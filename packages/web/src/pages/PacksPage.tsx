@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import toast from 'react-hot-toast'
 import { AppShell } from '../components/AppShell'
 import { Shore } from '../components/etched'
 import { PackDisclosurePanel } from '../components/PackDisclosure'
 import { PackIcon } from '../components/PackIcon'
+import { Tabs } from '../components/Tabs'
 import { ToolList } from '../components/ToolList'
 import { TrustBadge } from '../components/TrustBadge'
 import { useAuth } from '../contexts/AuthContext'
@@ -72,6 +73,28 @@ import {
  * is-its-admin.md` for why "official only" was never a distinction worth drawing — Export
  * already read the same route for every pack, so withholding the popup and the read-only view
  * of the same bytes was a UI seam with nothing behind it).
+ *
+ * THE THREE SECTIONS ARE TABS (issue #204), routed the way Settings routes its own (issue #122):
+ * `?tab=` in the URL, not a `useState` beside it, so a pasted link lands on the right tab and
+ * Back/Forward walk through the ones actually visited. Official is `tabIds[0]` — shown first,
+ * same as the stacked layout read top to bottom. All three panels stay mounted (`hidden`, not
+ * unmounted), matching Settings' own reason for doing the same: nothing this page fetches is
+ * tab-gated, so mounting only the active one would buy nothing and would drop whatever a person
+ * had half-typed into Personal's create flow the moment they looked at another tab.
+ *
+ * COMMUNITY DEFAULTS TO INSTALLED, not All — issue #204 flips the default now that the tab
+ * itself already reads "Community", so opening it and seeing only the catalogue (which #204's
+ * caption now names as coming from Rocky Surf Shop) was a worse first look than seeing what is
+ * already on this installation. `localStorage` still remembers a person's own later choice.
+ *
+ * PERSONAL'S CREATE FLOW IS A SMALL STATE MACHINE (issue #204), not a single form: one
+ * `New Surge Pack` button (cyan, matching #183's `new-action` convention) opens a chooser
+ * between uploading a file, starting from an existing pack (the same structured form as
+ * `scratch`, seeded from the source's own tools and behaviour fields rather than from Export —
+ * see `StartFromExistingPanel`'s own docblock for why Export is the wrong source), and today's
+ * blank structured form. An inline panel, not a modal-overlay: the structured form it can still
+ * open was already inline before this issue, and a chooser that is sometimes a modal and sometimes
+ * not would be two behaviours for one button.
  */
 
 /** What one pack looks like on this page, after the public and admin reads are merged. */
@@ -115,8 +138,11 @@ const URL_IMPORT_SOURCE = 'a URL import'
 
 /**
  * Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
- * Connectors page. Remembered per browser, default `all` — a preference about how someone reads
- * this section, not data, so `localStorage` rather than a server round trip.
+ * Connectors page. Remembered per browser — a preference about how someone reads this section,
+ * not data, so `localStorage` rather than a server round trip. Default `installed` (issue #204;
+ * was `all`): with the sections now tabbed and Community's caption naming where the catalogue
+ * comes from, opening the tab to nothing but "not on this installation yet" was the wrong first
+ * look.
  */
 type CommunityFilter = 'all' | 'installed' | 'not-installed'
 const COMMUNITY_FILTER_KEY = 'rockysurf.packs.communityFilter'
@@ -133,8 +159,25 @@ function readStoredCommunityFilter(): CommunityFilter {
   } catch {
     // Private browsing, or storage disabled — the default is a fine fallback either way.
   }
-  return 'all'
+  return 'installed'
 }
+
+/**
+ * The three sections as tabs (issue #204), routed like Settings' own (issue #122):
+ * `?tab=<key>` in the URL is the only place the active tab lives. Official first, matching the
+ * order the stacked layout read top to bottom.
+ */
+type PacksTab = 'official' | 'community' | 'personal'
+const PACKS_TAB_PARAM = 'tab'
+const PACKS_TABS: readonly { key: PacksTab; label: string; controls: string }[] = [
+  { key: 'official', label: 'Official', controls: 'packs-panel-official' },
+  { key: 'community', label: 'Community', controls: 'packs-panel-community' },
+  { key: 'personal', label: 'Personal', controls: 'packs-panel-personal' },
+]
+const PACKS_TAB_KEYS = PACKS_TABS.map((t) => t.key)
+
+/** The Pack Shop this installation's own registry default points at (issue #204's caption). */
+const ROCKY_SURF_SHOP_URL = 'https://github.com/amroja-biz/rockysurf-shop'
 
 function originOf(pack: AdminSurgePack): string {
   if (pack.sourceFile) return `shipped with this release · ${pack.sourceFile}`
@@ -243,6 +286,21 @@ function badgeText(provenance: 'official' | 'registry' | 'local'): string {
   return provenance === 'registry' ? 'community' : provenance === 'local' ? 'personal' : provenance
 }
 
+/**
+ * A `packId` that is not `taken`, for "start from an existing pack" (issue #204). `-copy`, then
+ * `-copy-2`, `-copy-3`… — the same source can be copied more than once in one sitting without
+ * the second attempt silently colliding with the first.
+ */
+function suggestNewPackId(sourceId: string, taken: ReadonlySet<string>): string {
+  let candidate = `${sourceId}-copy`
+  let n = 2
+  while (taken.has(candidate)) {
+    candidate = `${sourceId}-copy-${n}`
+    n += 1
+  }
+  return candidate
+}
+
 function behaviourChips(
   view: Pick<PackView, 'requiresRepos' | 'requiresRdp' | 'desktop' | 'webPort' | 'inputs'>,
 ): string[] {
@@ -301,19 +359,31 @@ const toForm = (pack: AdminSurgePack): PackFormState => ({
 /**
  * The create/edit form (ported verbatim from `AdminSurgePacksPage`, rockysurf-4d8h). Behaviour
  * fields exist so a pack describes itself rather than the application special-casing a packId.
+ *
+ * `seed`, IGNORED WHEN `initial` IS SET (issue #204) — this is still create mode, not edit mode,
+ * for "start from an existing pack": the Pack ID field stays visible and editable exactly as it
+ * does for a blank form, only pre-filled with a suggested new id rather than empty. Whatever
+ * `tools` it seeds are ids `form.tools` already only ever holds — a checkbox list over the
+ * existing catalogue — so submitting a seeded form REFERENCES those tools, never redefines them,
+ * which is the whole reason this reads `AdminSurgePack.tools` and not `Export`'s inlined YAML
+ * (`docs/writing-a-pack.md` § "Building on an existing pack"; the `creating-surge-packs` skill's
+ * own warning against using Export as a "fork this pack" button is the trap this form's shape
+ * sidesteps for free).
  */
 function SurgePackFormModal({
   initial,
+  seed,
   tools,
   onCancel,
   onSaved,
 }: {
   initial: AdminSurgePack | null
+  seed?: PackFormState
   tools: AdminTool[]
   onCancel: () => void
   onSaved: () => void
 }) {
-  const [form, setForm] = useState<PackFormState>(initial ? toForm(initial) : emptyForm)
+  const [form, setForm] = useState<PackFormState>(initial ? toForm(initial) : (seed ?? emptyForm))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -457,6 +527,10 @@ type Shelf = PackRegistry['shelves'][number]
  * still on the shelf header above these cards (it names how much the OPERATOR trusts this
  * particular source), but the per-pack card in a Community section reads the same word every
  * other card in it does.
+ *
+ * NO RAW URL HERE (issue #204). The shelf's own source URL used to sit beside its name; the tab
+ * now carries one fixed caption instead — "Community packs from Rocky Surf Shop" — so a second,
+ * differently-worded address per shelf would be back to two things saying where this came from.
  */
 function ShelfSection({
   shelf,
@@ -473,7 +547,6 @@ function ShelfSection({
         <h3>
           {shelf.source.name} <TrustBadge label={shelf.source.trust} />
         </h3>
-        <span className="muted">{shelf.source.url}</span>
       </div>
 
       {shelf.failure ? (
@@ -633,6 +706,71 @@ function PackCard({
   )
 }
 
+/* ---------------------------------------------------------------- start from an existing pack */
+
+/**
+ * "Start from an existing pack" (issue #204) — one of `New Surge Pack`'s three ways to begin.
+ * Picks any installed pack and opens the same structured create form `Start from scratch` does,
+ * seeded from the source's own tools and behaviour fields.
+ *
+ * SEEDED FROM `AdminSurgePack.tools`, THE ID LIST — NOT FROM EXPORT. `docs/writing-a-pack.md` §
+ * "Building on an existing pack" builds on a pack by copying its `pack.tools` id LIST and
+ * referencing those ids, never redefining them. Export is the wrong source for that: it inlines
+ * a FULL definition for every tool the pack references (so the exported file is self-contained),
+ * and the `creating-surge-packs` skill warns explicitly against reusing that output to fork a
+ * pack — importing it back would upsert every inlined tool by id, silently overwriting the
+ * shared base definitions instance-wide. The structured form's `tools` field is always ids
+ * checked against the existing catalogue, so seeding it this way references the source's tools
+ * exactly the way the docs recommend, with no such risk — nothing here calls Export or import.
+ */
+function StartFromExistingPanel({
+  packs,
+  adminPacksById,
+  tools,
+  onCancel,
+  onSaved,
+}: {
+  /** Every installed pack, any provenance — "pick any installed pack" is the issue's own words. */
+  packs: PackView[]
+  adminPacksById: Map<string, AdminSurgePack>
+  tools: AdminTool[]
+  onCancel: () => void
+  onSaved: () => void
+}): React.JSX.Element {
+  const sorted = useMemo(() => [...packs].sort(byOrder), [packs])
+  const [sourceId, setSourceId] = useState(sorted[0]?.packId ?? '')
+  const source = adminPacksById.get(sourceId)
+
+  const seed = useMemo(() => {
+    if (!source) return null
+    const taken = new Set(packs.map((p) => p.packId))
+    return { ...toForm(source), packId: suggestNewPackId(sourceId, taken), name: `${source.name} (copy)` }
+  }, [source, sourceId, packs])
+
+  return (
+    <div className="pack-from-existing" data-testid="pack-from-existing-panel">
+      <label>
+        Copy from
+        <select data-testid="from-existing-source" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+          {sorted.map((p) => (
+            <option key={p.packId} value={p.packId}>
+              {p.name} ({p.packId})
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {seed ? (
+        // `key`, so choosing a different source remounts the form onto the new seed rather than
+        // keeping whatever the previous source's edits left in state.
+        <SurgePackFormModal key={sourceId} initial={null} seed={seed} tools={tools} onCancel={onCancel} onSaved={onSaved} />
+      ) : (
+        <p role="alert">That pack could not be read.</p>
+      )}
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------------------------- the page */
 
 export function PacksPage(): React.JSX.Element {
@@ -649,12 +787,20 @@ export function PacksPage(): React.JSX.Element {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [importUrl, setImportUrl] = useState('')
-  const [formTarget, setFormTarget] = useState<'new' | string | null>(null)
+  /** Editing an existing pack from its own detail page — `formTarget === view.packId`. Creating
+   *  a new one is `createFlow` below, not this: the two are different enough flows (this one
+   *  always has a real `AdminSurgePack` to seed from, the create flow does not) that sharing one
+   *  piece of state meant a `'new'` sentinel standing in for "nothing yet", which is what
+   *  `createFlow === 'closed'` says directly. */
+  const [formTarget, setFormTarget] = useState<string | null>(null)
   const [selectedRegistryPack, setSelectedRegistryPack] = useState<RegistryPackDetail | null>(null)
   const [selectingKey, setSelectingKey] = useState<string | null>(null)
   const [installing, setInstalling] = useState(false)
   const [communityFilter, setCommunityFilter] = useState<CommunityFilter>(readStoredCommunityFilter)
+  /** Personal's `New Surge Pack` chooser (issue #204) — closed, choosing how to start, or one
+   *  of the three ways in. `Cancel` from any of the three returns straight to `closed`, matching
+   *  the issue's own words: "Cancel returns to the tab unchanged". */
+  const [createFlow, setCreateFlow] = useState<'closed' | 'choose' | 'upload' | 'from-existing' | 'scratch'>('closed')
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -664,6 +810,26 @@ export function PacksPage(): React.JSX.Element {
       // Same fallback as the read: nothing this page does depends on the write succeeding.
     }
   }, [communityFilter])
+
+  /**
+   * WHICH TAB IS OPEN lives in the URL (issue #204), same reasoning as Settings' own `?section=`
+   * (issue #122): one place to keep in step, a pasted `?tab=community` opens Community, and a
+   * value naming nothing falls back to Official rather than to a blank page. `replace` on
+   * selection, so switching tabs does not pile up in history.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedTab = searchParams.get(PACKS_TAB_PARAM)
+  const activeTab: PacksTab = (PACKS_TAB_KEYS as readonly string[]).includes(requestedTab ?? '')
+    ? (requestedTab as PacksTab)
+    : 'official'
+  const openTab = useCallback(
+    (tab: PacksTab) => {
+      const next = new URLSearchParams(searchParams)
+      next.set(PACKS_TAB_PARAM, tab)
+      setSearchParams(next, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   const load = useCallback(
     async (opts: { refreshRegistry?: boolean } = {}) => {
@@ -776,21 +942,15 @@ export function PacksPage(): React.JSX.Element {
     }
   }, [packId, showsPackFile])
 
+  /**
+   * File upload, one of `New Surge Pack`'s three ways in (issue #204 drops the second one, URL
+   * import — "nobody installs from a URL" — leaving this and the two flows below it).
+   */
   async function importFromFile(file: File) {
     try {
       const imported = await importSurgePack({ yaml: await file.text() })
       setNotice(`Imported ${imported.packId}. It is a database row — put the file in packs/ to make it source-controlled.`)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed')
-    }
-  }
-
-  async function importFromUrl() {
-    try {
-      const imported = await importSurgePack({ url: importUrl })
-      setNotice(`Imported ${imported.packId} from URL.`)
-      setImportUrl('')
+      setCreateFlow('closed')
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed')
@@ -1031,7 +1191,22 @@ export function PacksPage(): React.JSX.Element {
         or not yet; Personal packs were created or imported on this installation.
       </p>
 
-      <section className="shop-section">
+      <Tabs
+        label="Surge Pack sections"
+        panelId="packs"
+        className="packs-tabs"
+        tabs={PACKS_TABS}
+        active={activeTab}
+        onSelect={openTab}
+      />
+
+      <section
+        className="shop-section"
+        role="tabpanel"
+        id="packs-panel-official"
+        aria-labelledby="packs-tab-official"
+        hidden={activeTab !== 'official'}
+      >
         <h2>Official</h2>
         {official.length === 0 ? (
           <Shore>No packs from this Rocky Surf release are enabled.</Shore>
@@ -1044,7 +1219,13 @@ export function PacksPage(): React.JSX.Element {
         )}
       </section>
 
-      <section className="shop-section">
+      <section
+        className="shop-section"
+        role="tabpanel"
+        id="packs-panel-community"
+        aria-labelledby="packs-tab-community"
+        hidden={activeTab !== 'community'}
+      >
         <div className="shop-section-head">
           <h2>Community</h2>
           {isAdmin && (
@@ -1058,6 +1239,17 @@ export function PacksPage(): React.JSX.Element {
             </button>
           )}
         </div>
+
+        {/* Verbatim, issue #204 — replaces the raw registry URL that used to sit on each
+            shelf below. One fixed sentence naming where the catalogue comes from, rather than
+            a URL that reads the same to everyone regardless of what it says. */}
+        <p className="hint" data-testid="community-caption">
+          Community packs from{' '}
+          <a href={ROCKY_SURF_SHOP_URL} target="_blank" rel="noreferrer">
+            Rocky Surf Shop
+          </a>
+          .
+        </p>
 
         {/* All / Installed / Not installed (issue #199), modelled on Claude's Connectors page.
             `aria-pressed`, not `role="tab"`: there is one section here, filtered, not several
@@ -1108,51 +1300,113 @@ export function PacksPage(): React.JSX.Element {
         )}
       </section>
 
-      <section className="shop-section">
+      <section
+        className="shop-section"
+        role="tabpanel"
+        id="packs-panel-personal"
+        aria-labelledby="packs-tab-personal"
+        hidden={activeTab !== 'personal'}
+      >
         <h2>Personal</h2>
 
         {isAdmin && (
           <>
             {notice && <p data-testid="notice">{notice}</p>}
 
-            <div className="pack-import">
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".yaml,.yml,application/yaml,text/yaml"
-                data-testid="import-file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) void importFromFile(file)
-                }}
-              />
-              <label>
-                …or from a URL
-                <input
-                  type="url"
-                  value={importUrl}
-                  data-testid="import-url"
-                  onChange={(e) => setImportUrl(e.target.value)}
-                  placeholder="https://example.com/pack.yaml"
-                />
-              </label>
-              <button type="button" onClick={() => void importFromUrl()} disabled={!importUrl}>
-                Import from URL
-              </button>
-            </div>
-
-            {formTarget === null && (
-              <button type="button" onClick={() => setFormTarget('new')}>
+            {createFlow === 'closed' && (
+              <button type="button" className="button primary new-action" onClick={() => setCreateFlow('choose')}>
                 New Surge Pack
               </button>
             )}
-            {formTarget === 'new' && (
+
+            {/* The chooser (issue #204): upload, start from an existing pack, or start from
+                scratch. An inline panel, not a modal-overlay — the structured form it can open
+                (`scratch`, below) was already inline before this issue, and a chooser that is
+                sometimes a modal and sometimes not would be two behaviours for one button. */}
+            {createFlow === 'choose' && (
+              <div className="pack-create-chooser" data-testid="pack-create-chooser">
+                <button
+                  type="button"
+                  className="pack-create-option"
+                  data-testid="create-option-upload"
+                  onClick={() => setCreateFlow('upload')}
+                >
+                  <strong>Upload a pack file</strong>
+                  <span className="hint">Bring a .yaml file from somewhere else.</span>
+                </button>
+                <button
+                  type="button"
+                  className="pack-create-option"
+                  data-testid="create-option-existing"
+                  onClick={() => setCreateFlow('from-existing')}
+                >
+                  <strong>Start from an existing pack</strong>
+                  <span className="hint">Copy an installed pack's file under a new id, and edit it.</span>
+                </button>
+                <button
+                  type="button"
+                  className="pack-create-option"
+                  data-testid="create-option-scratch"
+                  onClick={() => setCreateFlow('scratch')}
+                >
+                  <strong>Start from scratch</strong>
+                  <span className="hint">A blank pack, built from the tools already on this installation.</span>
+                </button>
+                <button type="button" className="button secondary" onClick={() => setCreateFlow('closed')}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {createFlow === 'upload' && (
+              <div className="pack-import" data-testid="pack-upload-panel">
+                <label
+                  className="pack-dropzone"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const file = e.dataTransfer.files?.[0]
+                    if (file) void importFromFile(file)
+                  }}
+                >
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".yaml,.yml,application/yaml,text/yaml"
+                    data-testid="import-file"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) void importFromFile(file)
+                    }}
+                  />
+                  <span>Drop a .yaml file here, or click to choose one</span>
+                </label>
+                <button type="button" className="button secondary" onClick={() => setCreateFlow('closed')}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {createFlow === 'from-existing' && (
+              <StartFromExistingPanel
+                packs={views}
+                adminPacksById={adminPacksById}
+                tools={tools}
+                onCancel={() => setCreateFlow('closed')}
+                onSaved={() => {
+                  setCreateFlow('closed')
+                  void load()
+                }}
+              />
+            )}
+
+            {createFlow === 'scratch' && (
               <SurgePackFormModal
                 initial={null}
                 tools={tools}
-                onCancel={() => setFormTarget(null)}
+                onCancel={() => setCreateFlow('closed')}
                 onSaved={() => {
-                  setFormTarget(null)
+                  setCreateFlow('closed')
                   void load()
                 }}
               />
