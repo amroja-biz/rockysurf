@@ -22,8 +22,9 @@
  * each line names what it was used for there.
  */
 
-/* Rocky Surf webfont, adopted for UI text only — headings and body (rockysurf-issue-185,
-   owner ruling). Served from `public/fonts/`, which `packages/web/public/` copies into the
+/* Rocky Surf webfont, for headings and subheadings ONLY (rockysurf-issue-185, owner ruling:
+   at body size the face is hard to read, so running text, tables, nav, fields and buttons
+   stay on the system stack). Served from `public/fonts/`, which `packages/web/public/` copies into the
    build and into `packages/core/public` — see `bundle-assets.test.ts`. Root-relative because
    this file is bundled and the font is served as a static asset, not resolved relative to the
    stylesheet. Deliberately NOT in --rs-mono: it is a proportional face (post.isFixedPitch=0,
@@ -63,6 +64,9 @@
 
   --rs-radius: 6px;
   --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* The system UI stack: everything except headings. */
+  --rs-font-system:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 * {
@@ -72,9 +76,7 @@
 }
 
 body {
-  font-family:
-    "Rocky Surf", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
-    sans-serif;
+  font-family: var(--rs-font-system);
   background-color: var(--rs-bg);
   color: var(--rs-text);
   min-height: 100vh;
@@ -97,6 +99,8 @@ h3,
 h4 {
   color: var(--rs-heading);
   line-height: 1.25;
+  /* The one place the brand face appears. */
+  font-family: "Rocky Surf", var(--rs-font-system);
 }
 
 h1 {
