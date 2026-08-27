@@ -171,39 +171,56 @@ report_progress() {
 }
 
 # --------------------------------------------------------------------------------------
-# apt mirror fallback
+# the apt retry standard
 # --------------------------------------------------------------------------------------
-# Every Ubuntu cloud image points apt at a PER-REGION Canonical mirror — us-east-1.ec2.ports.
-# ubuntu.com, azure.archive.ubuntu.com, europe-west1.gce.archive.ubuntu.com — and when that
-# one mirror's backend is sick its index files keep serving while every .deb in the pool
-# answers 503. apt does not retry a 503 at all (measured on 24.04's apt 2.8.3: one request,
-# then "E: Unable to fetch some archives"; Acquire::Retries only covers connection failures),
-# so the first apt step of the plan — build-essential, in every pack — dies, and with it the
-# whole bootstrap, before anything pack-specific has run. Seen in the wild four times in a
-# week, on two mirror IPs at once and for hours at a stretch (issue #117).
+# EVERY TOOL STEP GETS TWO ATTEMPTS AT AN APT FETCH FAILURE, AND NO MORE (issue #188). That is
+# the agent's promise to every pack, so no pack script has to write its own retry loop and none
+# of them may (docs/writing-a-pack.md § Bounded retries). Between the two attempts the agent
+# does what an operator would do by hand — swap a sick mirror if there is one to swap, wait for
+# an out-of-sync archive if there is not, refresh the lists, try again. A step that fails a
+# second time has failed for real: the plan stops, the box is released (ADR-0010) and the
+# failure report names the URL that would not serve (`bootstrap/failure-report.ts`).
 #
-# The remedy is the one an operator would apply by hand: switch to the global mirror, refresh
-# the lists, try the step again. The agent does that ONCE per bootstrap, ONLY for a failure
-# whose log carries an apt fetch signature, and says so loudly — a step that fails again after
-# the fallback fails for real. The regional mirror stays the default because it is fast and
-# in-region; the global one is reached for only when the regional one is proven sick.
+# WHY TWO ATTEMPTS AT THE STEP AND NOT `Acquire::Retries` IN AN apt.conf.d DROP-IN. A drop-in
+# retries the TRANSFER, inside one apt invocation, against the index apt already has. Measured
+# on 24.04's apt 2.8.3 (issue #117): the default is already three attempts with exponential
+# backoff, it covers connection failures only, and neither a 503 nor a 404 is retried at any
+# setting. Both failure modes we actually see need the thing a drop-in cannot do — a fresh
+# `apt-get update`, and time — so the retry lives here, where the agent can spend both.
+#
+# THE FIRST FAILURE MODE: A SICK REGIONAL MIRROR. Every Ubuntu cloud image points apt at a
+# PER-REGION Canonical mirror — us-east-1.ec2.ports.ubuntu.com, azure.archive.ubuntu.com,
+# europe-west1.gce.archive.ubuntu.com — and when that one mirror's backend is sick its index
+# files keep serving while every .deb in the pool answers 503. The first apt step of the plan —
+# build-essential, in every pack — dies, and with it the whole bootstrap, before anything
+# pack-specific has run. Seen in the wild four times in a week, on two mirror IPs at once and
+# for hours at a stretch (issue #117). The remedy is to switch to the global mirror. That swap
+# happens at most ONCE per bootstrap, because after it there is nothing left to swap; the
+# regional mirror stays the default until it is proven sick, because it is fast and in-region.
 #
 # Rewriting the sources is safe under the idempotency contract: every step is written to
 # converge, and `apt-get install` against a different mirror of the same archive converges on
 # the same packages. A pack that hard-codes a regional mirror hostname in its own script is
 # already broken on every other cloud (docs/writing-a-pack.md).
 #
-# THE SECOND FAILURE CLASS HAS NOTHING TO SWAP. A box already on the global mirror (the stock
-# `ubuntu:24.04` image the pack smoke runs in, or a box after this fallback has already
-# rewritten it) fails a fetch for a different reason: Canonical publishes an archive's index
-# ahead of its pool, so for some minutes a specific `.deb` the index names answers 404
-# (`libheif 1.17.6-1ubuntu4.8` on arm64, 2026-08-26, issue #129 — three packs red, the same
-# packs green fifteen minutes later with no change). A retry within seconds of that fails the
-# same way; the remedy is the one an operator applies — wait, refresh, try again. So when the
-# sources name no regional mirror the fallback WAITS before refreshing, for a bounded period
-# an operator would consider reasonable. A sick global mirror gets the same wait, which is
-# the most anyone can do for it.
-APT_FALLBACK_USED=0
+# THE SECOND FAILURE MODE HAS NOTHING TO SWAP. A box already on the global mirror (the stock
+# `ubuntu:24.04` image the pack smoke runs in, or a box after the swap above) fails a fetch for
+# a different reason: an archive's index and its pool are out of step, so a specific `.deb` the
+# index names answers 404 for some minutes (`libheif 1.17.6-1ubuntu4.8` on arm64, issue #129;
+# `perl-base 5.38.2-3.2ubuntu0.4` on arm64, issue #188 — packs red, the same packs green a few
+# minutes later with no change). A retry within seconds of that fails the same way, so when
+# there is no mirror to swap the agent WAITS before refreshing, for a bounded period an
+# operator would consider reasonable. A sick global mirror gets the same wait, which is the
+# most anyone can do for it.
+#
+# WHY THE BUDGET IS PER STEP AND NOT PER BOOTSTRAP. It used to be one retry for the whole
+# bootstrap: the first apt step to fail spent it, and every later step got none. That is not a
+# standard a pack author can rely on — whether tool number nine is retried depended on whether
+# tool number two happened to hit a flake. Two attempts per step is bounded in the same way,
+# because a required step that fails twice ends the plan there: at most one required step ever
+# pays the wait, and optional steps are repository clones, which are git and never match an apt
+# fetch signature.
+APT_MIRROR_SWAPPED=0
 
 # How long to wait before the retry when there is no regional mirror to swap. Overridable so a
 # test does not sit through it; a box never sets it.
@@ -215,32 +232,35 @@ APT_RETRY_WAIT_S="${ROCKYSURF_APT_RETRY_WAIT_S:-120}"
 REGIONAL_MIRROR_RE='[a-z0-9.-]+\.(archive|ports)\.ubuntu\.com'
 
 # $1 = a log file, $2 = the line count it had before this attempt. Only this attempt's output
-# is inspected: on a resume, an earlier attempt's fetch failure must not trigger the fallback
-# for a step that is now failing for some other reason.
+# is inspected: on a resume, an earlier attempt's fetch failure must not trigger a retry for a
+# step that is now failing for some other reason.
 apt_fetch_failed() {
   [ -f "$1" ] || return 1
   tail -n +"$(($2 + 1))" "$1" | grep -qE \
     'Failed to fetch|Unable to fetch some archives|Some index files failed to download|Mirror sync in progress|File has unexpected size|Hash Sum mismatch'
 }
 
-# Returns 0 when the fallback has just been engaged and the caller should retry, 1 when it has
-# already been spent — the caller then reports the failure it already has.
-apt_mirror_fallback() {
-  [ "$APT_FALLBACK_USED" = 0 ] || return 1
-  APT_FALLBACK_USED=1
-  log "!!! apt fetch failure — engaging the mirror fallback (once per bootstrap)"
+# Put the box in the best shape it can be in for one more attempt. $1 = what is being retried,
+# for the log. Always returns 0: the caller has already decided the failure was a fetch, and
+# the second attempt is owed whether or not there was a mirror to swap.
+apt_recover() {
+  log "!!! apt fetch failure in $1 — engaging the mirror fallback before this step's second and last attempt"
 
   local f rewritten=0
-  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-    [ -f "$f" ] || continue
-    grep -qE "$REGIONAL_MIRROR_RE" "$f" || continue
-    if sed -i -E "s#$REGIONAL_MIRROR_RE#\\1.ubuntu.com#g" "$f"; then
-      rewritten=1
-      log "!!! $f: regional Ubuntu mirror rewritten to the global one"
-    else
-      log "!!! $f: could not rewrite (not root?)"
-    fi
-  done
+  if [ "$APT_MIRROR_SWAPPED" = 0 ]; then
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+      [ -f "$f" ] || continue
+      grep -qE "$REGIONAL_MIRROR_RE" "$f" || continue
+      if sed -i -E "s#$REGIONAL_MIRROR_RE#\\1.ubuntu.com#g" "$f"; then
+        rewritten=1
+        log "!!! $f: regional Ubuntu mirror rewritten to the global one"
+      else
+        log "!!! $f: could not rewrite (not root?)"
+      fi
+    done
+    [ "$rewritten" = 1 ] && APT_MIRROR_SWAPPED=1
+  fi
+
   if [ "$rewritten" = 0 ]; then
     log "!!! already on the global Ubuntu mirror — nothing to swap; waiting ${APT_RETRY_WAIT_S}s for the archive to settle (an index published ahead of its pool answers 404 until it catches up), then refreshing lists and retrying as-is"
     # Two minutes under "Installing tools" with nothing moving looks like a hang. The journal
@@ -274,7 +294,8 @@ ensure_jq() {
   local jq_log="$STATE_DIR/steps/jq-bootstrap.log"
   apt-get update -qq >>"$jq_log" 2>&1 || true
   apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
-  if apt_fetch_failed "$jq_log" 0 && apt_mirror_fallback; then
+  if apt_fetch_failed "$jq_log" 0; then
+    apt_recover "the jq bootstrap"
     log "jq: retrying once on the fallback mirror"
     apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
   fi
@@ -474,14 +495,17 @@ run_plan() {
     run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
     rc=$?
 
-    # A fetch failure is the mirror's fault, not the step's: swap mirrors once and give the
-    # step one more go. The fallback is spent after the first use, so a second failing step
-    # goes straight to the failure below. Order matters — the signature check comes first, so
-    # the one fallback is not consumed by a failure it could never have fixed.
-    if [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before" && apt_mirror_fallback; then
-      log "--- $id: retrying once on the fallback mirror"
+    # A fetch failure is the mirror's fault, not the step's, so every step gets a second and
+    # final attempt at one — the tool-install retry standard (#188). The signature check comes
+    # first: a step that failed for its own reasons is not retried, and never pays the wait.
+    if [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before"; then
+      apt_recover "$id"
+      log "--- $id: retrying once on the fallback mirror (attempt 2 of 2)"
       run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
       rc=$?
+      if [ $rc -ne 0 ]; then
+        log "--- $id: the second attempt failed too — apt is out of retries for this step"
+      fi
     fi
 
     if [ $rc -eq 0 ]; then

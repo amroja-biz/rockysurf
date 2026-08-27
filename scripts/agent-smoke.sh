@@ -9,10 +9,14 @@
 #   1. a multi-step plan executes and every step's result lands in state.json;
 #   2. killing the agent mid-plan and re-running RESUMES — steps marked `done` are skipped and
 #      a step left `running` re-runs from the top;
-#   3. a sick regional Ubuntu mirror engages the apt mirror fallback (#117) — once, only for an
-#      apt fetch failure — and the plan completes on the global mirror;
-#   4. a box already ON the global mirror gets the same single retry, but waits first (#129):
-#      an apt fetch failure there is the archive's index ahead of its pool, and a retry within
+#   3. a sick regional Ubuntu mirror engages the apt mirror fallback (#117) — only for an apt
+#      fetch failure — and the plan completes on the global mirror;
+#   4. the retry standard is per STEP (#188): every step that hits an apt fetch failure gets a
+#      second and last attempt, whether or not an earlier step already had one. The mirror
+#      SWAP inside that recovery still happens at most once, because after it there is nothing
+#      left to swap;
+#   5. a box already ON the global mirror gets its retry too, but waits first (#129): an apt
+#      fetch failure there is the archive's index out of step with its pool, and a retry within
 #      seconds is the failure again.
 #
 # The counters are the actual evidence: a skipped step's counter does not grow, a re-run
@@ -225,7 +229,11 @@ else
   fail "global mirror in the sources"
 fi
 
-echo "==> run 6: the jq bootstrap gets the same fallback, and the fallback is spent after one use"
+# The jq bootstrap hits the dead mirror first and swaps it; the plan step that follows then hits
+# a fetch failure of its own. Under the old one-retry-per-bootstrap budget that step got nothing,
+# because jq had spent it. The standard is per step (#188), so it gets its own second attempt —
+# with nothing left to swap, which is why the wait override is needed here.
+echo "==> run 6: the jq bootstrap gets the same fallback, the swap happens once, and a later step still gets its own retry"
 rm -f "$WORK/state/state.json" "$WORK/state/sick.count"
 cat >"$WORK/state/plan.json" <<'EOF'
 {
@@ -239,6 +247,7 @@ cat >"$WORK/state/plan.json" <<'EOF'
 EOF
 set +e
 docker run --rm ${DOCKER_ARGS[@]+"${DOCKER_ARGS[@]}"} "${DEAD_MIRROR_ARGS[@]}" \
+  -e ROCKYSURF_APT_RETRY_WAIT_S=1 \
   -v "$WORK/state:/var/lib/rockysurf" -v "$WORK/agent.sh:/agent.sh:ro" \
   "$IMAGE" bash -c "$BREAK_MIRROR && bash /agent.sh" >"$WORK/run6.log" 2>&1
 RUN6_RC=$?
@@ -246,8 +255,11 @@ set -e
 check "jq bootstrapped through the fallback" "$(grep -c 'jq: retrying once on the fallback mirror' "$WORK/run6.log")" 1
 check "agent exited 1 (the sick step is a real failure)" "$RUN6_RC" 1
 check "failing step named" "$(state '.failedStep')" tool:sick
-check "fallback engaged exactly once per bootstrap" "$(grep -c 'engaging the mirror fallback' "$WORK/run6.log")" 1
-check "spent fallback — sick step ran once, no retry" "$(count sick)" 1
+check "recovery ran for both the jq bootstrap and the step" "$(grep -c 'engaging the mirror fallback' "$WORK/run6.log")" 2
+check "the mirror was swapped once — the second recovery had nothing left to swap" "$(grep -c 'rewritten to the global one' "$WORK/run6.log")" 1
+check "the second recovery waited instead" "$(grep -c 'already on the global Ubuntu mirror' "$WORK/run6.log")" 1
+check "the sick step got its own second attempt, and only one" "$(count sick)" 2
+check "and was told it is out of retries" "$(grep -c 'out of retries for this step' "$WORK/run6.log")" 1
 
 # --------------------------------------------------------- global mirror: wait, then retry (#129)
 # The sources already name the global mirror (the stock image's own, exactly what the pack smoke

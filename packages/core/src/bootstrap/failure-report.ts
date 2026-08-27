@@ -169,6 +169,50 @@ export function exitCodeOf(stepId: string, agentLog: string | undefined): number
   return last === undefined ? undefined : Number(last)
 }
 
+/* ------------------------------------------------------------------- apt fetch URLs */
+
+/**
+ * `E: Failed to fetch http://…/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb  404  Not Found [IP: …]`
+ * is the only line in a failed install that names the FILE the mirror would not serve, and it
+ * is the one thing a person can act on themselves: paste it into a browser or a `curl -I` and
+ * find out whether the mirror has caught up yet (issue #188). Everything else apt prints about
+ * a fetch failure — "Unable to fetch some archives", the exit code — is the same sentence on
+ * every mirror on every box.
+ *
+ * `W: Failed to fetch` counts: an index that fails to download is reported as a warning and
+ * the install then fails on the stale list it already had.
+ */
+const FETCH_FAILURE_LINE = /^[EW]: Failed to fetch\s+(\S+)(.*)$/gim
+
+export interface AptFetchFailure {
+  url: string
+  /** The HTTP status apt reported for it, when it reported one. `404`, `503`. */
+  status?: string
+  /** True when the host is a per-region Canonical mirror rather than the global archive. */
+  regional: boolean
+}
+
+const REGIONAL_MIRROR_HOST = /^https?:\/\/[a-z0-9-]+\.[a-z0-9.-]*\b(archive|ports)\.ubuntu\.com/i
+
+/**
+ * Every distinct URL apt could not fetch, in the order it gave up on them. Deduplicated by
+ * URL, because a step that installs thirty packages against a sick mirror prints the same
+ * host thirty times and a summary that lists all of them is not a summary.
+ */
+export function aptFetchFailures(log: string, limit = 3): AptFetchFailure[] {
+  const seen = new Set<string>()
+  const found: AptFetchFailure[] = []
+  for (const match of stripAnsi(log).matchAll(FETCH_FAILURE_LINE)) {
+    const url = match[1]
+    if (!url || seen.has(url)) continue
+    seen.add(url)
+    const status = /\b(\d{3})\b/.exec(match[2] ?? '')?.[1]
+    found.push({ url, ...(status ? { status } : {}), regional: REGIONAL_MIRROR_HOST.test(url) })
+    if (found.length >= limit) break
+  }
+  return found
+}
+
 /* -------------------------------------------------------------------------- summary */
 
 function firstKeyLine(keyLines: string[]): string {
@@ -190,6 +234,12 @@ export function summarize(input: {
   cause: FailureCause
   keyLines: string[]
   exitCode?: number
+  /**
+   * The step's whole log, when the caller has it. Only the `apt-mirror` case reads it, to name
+   * the URLs that would not serve; `keyLines` is the fallback so every existing caller keeps
+   * working and a callback-mode tail still yields what it can.
+   */
+  log?: string
 }): string {
   const { phase, label, cause, keyLines, exitCode } = input
   const thing =
@@ -203,13 +253,41 @@ export function summarize(input: {
   const evidence = firstKeyLine(keyLines)
 
   switch (cause) {
-    case 'apt-mirror':
+    case 'apt-mirror': {
+      // The URL is the whole point of this branch (#188): it is the one fact in the report the
+      // user can check themselves, and checking it is what tells them whether to create again
+      // now or in an hour. Without one — a mirror failure whose lines apt phrased some other
+      // way — the advice degrades to the generic outage sentence rather than inventing a URL.
+      const failures = aptFetchFailures(input.log ?? keyLines.join('\n'), 2)
+      const first = failures[0]
+      const what = first?.regional
+        ? "Ubuntu's package mirror for this region"
+        : "Ubuntu's package archive"
+      const statusPhrase = first?.status ? ` answered HTTP ${first.status}` : ' would not serve it'
+      const alsoPhrase = failures.length > 1 ? ` (and ${failures.length - 1} more file${failures.length > 2 ? 's' : ''})` : ''
+      // What the agent's second attempt actually did, which differs by case: a regional mirror
+      // is swapped for the global one, and a box already on the global one is only waited for.
+      const retried = first?.regional
+        ? 'Rocky Surf already retried the step once on the global mirror and got the same answer.'
+        : 'Rocky Surf already retried the step once, waiting first for the archive to catch up, and got the same answer.'
+      const diagnosis = first?.status === '404'
+        ? "The mirror's package index is naming files it is no longer serving — this is a fault on the mirror side, not in your pack or your settings, and it usually clears within the hour."
+        : 'This is an outage on the mirror side, not a problem with your pack or your settings; it usually clears within a few hours.'
+
+      if (!first) {
+        return (
+          `${thing}: ${what} was not serving packages ` +
+          `(${evidence.includes('503') ? 'HTTP 503' : 'missing or mismatched files'}). ` +
+          'Rocky Surf already retried the step once and got the same answer. ' +
+          `${diagnosis} Create the server again once it is back.`
+        )
+      }
       return (
-        `${thing}: Ubuntu's package mirror for this region was not serving packages ` +
-        `(${evidence.includes('503') ? 'HTTP 503' : 'missing or mismatched files'}). ` +
-        'Rocky Surf already retried once on the global mirror. This is an outage on the mirror side, ' +
-        'not a problem with your configuration; it usually clears within a few hours — create the server again later.'
+        `${thing}: ${what} would not serve a file the install needs — ${first.url}${statusPhrase}${alsoPhrase}. ` +
+        `${retried} ${diagnosis} ` +
+        `Check it yourself — \`curl -I ${first.url}\` answering 200 means the mirror has caught up — then create the server again.`
       )
+    }
     case 'apt':
       return `${thing}: apt reported ${withPeriod(evidence || 'an error')} If the package name is wrong the pack needs fixing; otherwise create the server again.`
     case 'git-auth': {
@@ -265,7 +343,7 @@ export function explainStep(input: {
     label,
     ...(exitCode !== undefined ? { exitCode } : {}),
     cause,
-    summary: summarize({ phase, label, cause, keyLines, ...(exitCode !== undefined ? { exitCode } : {}) }),
+    summary: summarize({ phase, label, cause, keyLines, log, ...(exitCode !== undefined ? { exitCode } : {}) }),
     keyLines,
     log,
     logComplete: input.captured.complete,

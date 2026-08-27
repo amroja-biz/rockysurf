@@ -35,7 +35,9 @@
   reject-whole consumer obliges its producer to validate with the same predicate.
 - [regional-ubuntu-mirrors-fail-as-a-unit](2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md):
   a cloud image's per-region Ubuntu mirror takes every box in the region down with it, and apt
-  never retries a 503 — the bootstrap agent's one-shot mirror fallback is the remedy, not retries.
+  never retries a 503 at any `Acquire::*` setting — the bootstrap agent's mirror fallback is the
+  remedy. Amended 2026-08-27 (#188): the fallback's retry is now per step, the global archive's
+  own 404s need a wait rather than a different mirror, and Pack smoke runs the real `agent.sh`.
 - [launchers-hand-the-agent-less-than-a-shell-does](2026-08-26-launchers-hand-the-agent-less-than-a-shell-does.md):
   the transient systemd unit gives the bootstrap agent no `HOME`, and every harness stood in
   for it with a shell that does — a harness must strip what the real launcher withholds, and

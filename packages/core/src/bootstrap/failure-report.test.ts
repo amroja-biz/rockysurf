@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aptFetchFailures,
   buildStepReports,
   classifyFailure,
   describeInstance,
@@ -32,6 +33,20 @@ const APT_503_LOG = [
 const AGENT_LOG = [
   '[02:28:10] ==> tool:build-essential (as root, arch=arm64)',
   '[02:28:54] --- tool:build-essential: FAILED (rc=100)',
+].join('\n')
+
+/**
+ * Verbatim from Pack smoke on #179 and again on #187, both arm64 legs, 2026-08-27 (issue
+ * #188). The box is on the GLOBAL mirror — the stock `ubuntu:24.04` image's own — so there is
+ * no region to blame and nothing to swap: the archive's index names a `.deb` its pool no
+ * longer has, and only the mirror catching up fixes it.
+ */
+const APT_404_LOG = [
+  'Reading package lists...',
+  'Err:1 http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 perl-base arm64 5.38.2-3.2ubuntu0.4',
+  '  404  Not Found [IP: 91.189.91.103 80]',
+  'E: Failed to fetch http://ports.ubuntu.com/ubuntu-ports/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb  404  Not Found [IP: 91.189.91.103 80]',
+  'E: Unable to fetch some archives, maybe run apt-get update or try with --fix-missing?',
 ].join('\n')
 
 describe('what a step is', () => {
@@ -115,6 +130,50 @@ describe('the decisive lines', () => {
   })
 })
 
+describe('the URLs apt could not fetch', () => {
+  it('names each one once, with the status and whether the host is a regional mirror', () => {
+    const found = aptFetchFailures(APT_503_LOG)
+    expect(found).toHaveLength(2)
+    expect(found[0]).toEqual({
+      url: 'http://us-east-1.ec2.ports.ubuntu.com/ubuntu-ports/pool/main/b/binutils/binutils_2.42-4ubuntu2.10_arm64.deb',
+      status: '503',
+      regional: true,
+    })
+    expect(found[1]?.url).toContain('manpages-dev_6.7-2_all.deb')
+  })
+
+  it('calls the bare global archive hosts what they are, not regional mirrors', () => {
+    expect(aptFetchFailures(APT_404_LOG)[0]).toEqual({
+      url: 'http://ports.ubuntu.com/ubuntu-ports/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb',
+      status: '404',
+      regional: false,
+    })
+    const global = 'E: Failed to fetch http://archive.ubuntu.com/ubuntu/pool/main/x/x.deb  404  Not Found'
+    expect(aptFetchFailures(global)[0]?.regional).toBe(false)
+    const security = 'E: Failed to fetch http://security.ubuntu.com/ubuntu/pool/main/x/x.deb  503  Service Unavailable'
+    expect(aptFetchFailures(security)[0]?.regional).toBe(false)
+  })
+
+  it('deduplicates, counts an index warning, and stops at the limit', () => {
+    const log = [
+      'W: Failed to fetch http://ports.ubuntu.com/ubuntu-ports/dists/noble/InRelease  503',
+      'E: Failed to fetch http://ports.ubuntu.com/a.deb  404  Not Found',
+      'E: Failed to fetch http://ports.ubuntu.com/a.deb  404  Not Found',
+      'E: Failed to fetch http://ports.ubuntu.com/b.deb  404  Not Found',
+    ].join('\n')
+    expect(aptFetchFailures(log).map((f) => f.url)).toEqual([
+      'http://ports.ubuntu.com/ubuntu-ports/dists/noble/InRelease',
+      'http://ports.ubuntu.com/a.deb',
+      'http://ports.ubuntu.com/b.deb',
+    ])
+    expect(aptFetchFailures(log, 1)).toHaveLength(1)
+  })
+
+  it('finds nothing in a log that never got as far as a fetch', () => {
+    expect(aptFetchFailures('E: Unable to locate package nosuchthing')).toEqual([])
+  })
+})
+
 describe('the explanation', () => {
   it('tells the user the mirror was down, that the fallback was tried, and that it is not their fault', () => {
     const report = explainStep({
@@ -127,8 +186,57 @@ describe('the explanation', () => {
     expect(report.exitCode).toBe(100)
     expect(report.summary).toContain('Build Essential could not be installed')
     expect(report.summary).toContain('HTTP 503')
-    expect(report.summary).toContain('not a problem with your configuration')
+    expect(report.summary).toContain("Ubuntu's package mirror for this region")
+    expect(report.summary).toContain('not a problem with your pack or your settings')
+    // The regional case is the one where the retry had somewhere else to go.
+    expect(report.summary).toContain('retried the step once on the global mirror')
     expect(report.logComplete).toBe(true)
+  })
+
+  it('names the URL that would not serve, and tells the user to test it and create again (#188)', () => {
+    const report = explainStep({
+      stepId: 'tool:build-essential',
+      captured: { log: APT_404_LOG, complete: true },
+      agentLog: AGENT_LOG,
+      labels: { toolName: () => 'Build Essential' },
+    })
+    const url = 'http://ports.ubuntu.com/ubuntu-ports/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb'
+
+    expect(report.cause).toBe('apt-mirror')
+    // The URL, so the user has the one fact they can check for themselves.
+    expect(report.summary).toContain(url)
+    expect(report.summary).toContain('HTTP 404')
+    // The mirror is the culprit, not the pack.
+    expect(report.summary).toContain('not in your pack or your settings')
+    // Not "for this region": the box is on the global archive and there is no region to blame.
+    expect(report.summary).not.toContain('for this region')
+    // What to do, in order: test it, then create again.
+    expect(report.summary).toContain(`curl -I ${url}`)
+    expect(report.summary).toContain('create the server again')
+    // And it says the retry already happened, so nobody thinks one more click would have done
+    // it — here with the wait, because on the global archive there was no mirror to switch to.
+    expect(report.summary).toContain('already retried the step once, waiting first')
+  })
+
+  it('counts the other files without listing them', () => {
+    const report = explainStep({
+      stepId: 'tool:build-essential',
+      captured: { log: APT_503_LOG, complete: true },
+      labels: { toolName: () => 'Build Essential' },
+    })
+    expect(report.summary).toContain('(and 1 more file)')
+    expect(report.summary).not.toContain('manpages-dev')
+  })
+
+  it('falls back to the outage sentence when no line named a URL', () => {
+    const report = explainStep({
+      stepId: 'tool:build-essential',
+      captured: { log: 'E: Unable to fetch some archives, maybe run apt-get update?', complete: true },
+      labels: { toolName: () => 'Build Essential' },
+    })
+    expect(report.cause).toBe('apt-mirror')
+    expect(report.summary).toContain('was not serving packages')
+    expect(report.summary).not.toContain('curl -I')
   })
 
   it('surfaces the clone script’s no-token sentence whole and leaves git’s stderr in the log (rockysurf-ldo1)', () => {

@@ -576,7 +576,7 @@ These are requirements, not recommendations. Each was learned from something tha
 |---|---|---|
 | Required step fails | records `failed`, attaches `logTail` (plan-level and on the step), stops the plan, exits 1 | reads the step's whole log off the box (push) or takes the agent's tail (callback), builds the `BootstrapReport`, fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
 | Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
-| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **once per bootstrap**: rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one, refreshes the lists, re-runs the step and its check; a second failure is recorded as a required or optional failure above. When the sources already name the global mirror there is nothing to swap — the failure is then an archive index published ahead of its pool (a `404` on one named `.deb`, #129) or the global mirror itself sick — and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead |
+| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **the apt retry standard, ADR-0012**: the step gets a second and last attempt — **two attempts per step, no more, and every step has its own budget**. Before the retry the agent rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one — that swap happens **at most once per bootstrap**, since afterwards there is nothing left to swap — refreshes the lists, and re-runs the step and its check. When the sources already name the global mirror there is nothing to swap: the failure is then an archive index out of step with its pool (a `404` on one named `.deb`, #129, #188) or the global mirror itself sick, and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower per apt step that flaked on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead. On the second failure the report names the URL(s) apt could not fetch, says the mirror is at fault rather than the pack, and tells the user to test the URL and create the server again once it serves (`bootstrap/failure-report.ts`) |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
@@ -611,9 +611,13 @@ An implementation conforms when all of the following hold.
 - [ ] Every step has a `runAs`, and privilege is dispatched by the agent, not the script.
 - [ ] A step with a `check` is `done` only when both the script and the check exit 0.
 - [ ] The agent bootstraps its own JSON parser and assumes nothing else about the image.
-- [ ] The apt mirror fallback engages at most once per bootstrap, only for a step whose own
-      output carries an apt fetch-failure signature, and is announced in the agent log. With no
-      regional mirror to swap it waits before the retry, and says so.
+- [ ] Every step gets exactly two attempts at an apt fetch failure and no more, independently of
+      what any other step has already used, only for a step whose own output carries an apt
+      fetch-failure signature, announced in the agent log (ADR-0012). The regional-mirror swap
+      inside that recovery happens at most once per bootstrap; with no regional mirror to swap
+      the agent waits before the retry, and says so.
+- [ ] A step that fails twice is reported with the URL(s) apt could not fetch named in the
+      summary, together with what to check and when to try again.
 - [ ] A failed step's own log tail is journalled on the step entry, and a callback report carries
       `stepStatus` and that tail; core builds one `BootstrapReport` from either topology.
 - [ ] A failed `tool:*` step releases the instance before the row is failed, unless
