@@ -2237,6 +2237,8 @@ p.hint {
 
 .app-brand img {
   display: block;
+  height: 44px;
+  width: auto;
   border-radius: 4px;
 }
 

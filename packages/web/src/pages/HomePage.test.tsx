@@ -33,7 +33,9 @@ function renderHome() {
 describe('HomePage', () => {
   it('opens with the hero illustration, served from the bundle', () => {
     renderHome()
-    const hero = screen.getByRole('img', { name: /rocky surf/i })
+    // By its subject, not the brand name: the nav's brand lockup is also an image named
+    // "Rocky Surf".
+    const hero = screen.getByRole('img', { name: /lighthouse/i })
     expect(hero.getAttribute('src')).toBe('/images/logo.png')
   })
 
