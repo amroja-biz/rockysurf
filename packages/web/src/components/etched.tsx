@@ -240,7 +240,7 @@ export function Beacon({
   labels?: Record<string, string>
   /** The bootstrap died on `current`: that row reads failed and the beam stops there. */
   failed?: boolean
-  /** One line of prose under the active step while it deliberately waits (#129). */
+  /** One line of prose under the active step while it waits or has gone quiet (#129, #205). */
   notice?: string | null
 }) {
   const reached = current ? steps.indexOf(current) : -1

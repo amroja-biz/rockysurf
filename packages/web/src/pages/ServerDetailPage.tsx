@@ -55,7 +55,7 @@ export function ServerDetailPage() {
   const [server, setServer] = useState<Server | null>(null)
   const [pack, setPack] = useState<SurgePack | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
-  /** One line under the active step while it deliberately waits (#129); cleared by the next event. */
+  /** One line under the active step while it waits or has gone quiet (#129, #205); cleared by the next event. */
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)

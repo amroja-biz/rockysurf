@@ -156,8 +156,10 @@ if they are all lost, the box still finishes and the journal still describes wha
   "failedStep": "tool:node",       // present only when status is "failed"
   "logTail": "curl: (6) Could not resolve host…",  // last ~25 lines of the failing step
   "notice": "Ubuntu's package archive is out of sync — waiting 2 min before retrying. Nothing is stuck.",
-                                   // present only WHILE the current step is deliberately waiting (#129);
-                                   // the agent deletes it when the wait ends. Bumps updatedAt.
+                                   // present only WHILE the current step is deliberately waiting (#129)
+                                   // or has written nothing for a minute or more (#205, re-posted
+                                   // each minute with the elapsed time); the agent deletes it the
+                                   // moment the wait ends or the step speaks. Bumps updatedAt.
   "steps": [
     {
       "id": "tool:claude-code",
@@ -471,8 +473,9 @@ Normative points specific to callback:
   `status`) and, when that step failed, its `logTail` (ADR-0010). Core builds the failure report
   from these; without them a callback-mode failure has no evidence and a failed optional step is
   invisible.
-- Reports SHOULD carry `notice` whenever the journal does (#129): the one line the timeline
-  shows under the active step while it waits. A report without one clears it.
+- Reports SHOULD carry `notice` whenever the journal does (#129, #205): the one line the
+  timeline shows under the active step while it waits, or while it has written nothing for a
+  minute or more. A report without one clears it.
 - A failed report MUST NOT stop the install. Progress is telemetry; the journal is the record.
 - **Timing that makes this work:** sshd comes up in cloud-init's *init* stage while `runcmd` runs
   in the *final* stage. On the verified AWS run core had its ingress path open at 23.9s and the

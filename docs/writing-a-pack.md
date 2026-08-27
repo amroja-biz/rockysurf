@@ -351,6 +351,15 @@ If the second attempt fails too, the launch fails, the box is released, and the 
 names the URL that would not serve so the user can test it themselves and create the server
 again once it is back.
 
+The first attempt is the one that takes the time when a mirror is merely slow to answer:
+`apt-get update -qq` prints nothing until it has succeeded or given up, and apt waits two
+minutes per connection before it does. The agent tells the user about that too — a step that
+has written nothing for a minute is announced under "Installing tools" with the elapsed time
+("build-essential has said nothing for 4 min … Nothing is stuck."), re-posted each minute and
+withdrawn the moment your script prints a line. You need do nothing for this either, but it is
+one more reason to let your script's tools talk: `-qq` on an `apt-get install`, or `-s` on a
+long `curl`, buys a tidier log at the price of a timeline that can only say "still quiet".
+
 So do **not** write your own apt retry: no `for i in 1 2 3; do apt-get install …; done`, no
 `|| apt-get install …` second chance, and no `Acquire::Retries` drop-in of your own. Yours
 would run inside the agent's first attempt, would not get the fresh `apt-get update` or the
