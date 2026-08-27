@@ -545,3 +545,104 @@ describe('import from URL', () => {
     expect(((await res.json()) as any).error).toBe('Could not resolve packs.example.com')
   })
 })
+
+/**
+ * `inputs` SURVIVES EVERY PATH IT HAS TO (issue #189, ADR-0013).
+ *
+ * A new pack field is only real if it makes the whole trip: YAML file → database row → public
+ * API → back to YAML. Each hop has its own mapping written by hand (`sync.ts`, `packs.ts`'s
+ * hydrate/upsert, `packFields`, `renderPackFile`), so a field that is added to the schema and
+ * forgotten in one of them typechecks, ships, and silently asks the user for nothing.
+ */
+describe('a pack that declares inputs (issue #189)', () => {
+  const YAML_WITH_INPUTS = [
+    'version: 1',
+    'pack:',
+    '  packId: headlong',
+    '  name: Headlong',
+    '  tools:',
+    '    - headlong',
+    '  displayOrder: 50',
+    '  enabled: true',
+    '  requiresRepos: false',
+    '  requiresRdp: false',
+    '  inputs:',
+    '    - name: HEADLONG_HEADLESS',
+    '      label: Headless install',
+    '      description: Install without Docker.',
+    '      required: true',
+    '      default: "1"',
+    '    - name: HEADLONG_API_KEY',
+    '      label: Headlong API key',
+    '      secret: true',
+    'tools:',
+    '  - toolId: headlong',
+    '    name: Headlong',
+    '    description: Headlong',
+    '    category: agent',
+    '    url: https://example.test/headlong',
+    '    installScript: |',
+    '      set -euo pipefail',
+    '      echo "$HEADLONG_HEADLESS"',
+    '    enabled: true',
+    '    installOrder: 40',
+    '    bootstrap: false',
+    '    runAs: rocky',
+    '',
+  ].join('\n')
+
+  it('reaches the public list, which is what the create form builds its fields from', async () => {
+    expect((await send('POST', '/api/v1/admin/surge-packs/import', { yaml: YAML_WITH_INPUTS }, auth())).status).toBe(200)
+
+    const packs = (await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))) as Array<Record<string, unknown>>
+    const headlong = packs.find((p) => p['packId'] === 'headlong')!
+    expect(headlong['inputs']).toEqual([
+      {
+        name: 'HEADLONG_HEADLESS',
+        label: 'Headless install',
+        description: 'Install without Docker.',
+        required: true,
+        secret: false,
+        default: '1',
+      },
+      { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+    ])
+  })
+
+  it('is absent, not empty, on a pack that asks for nothing', async () => {
+    const packs = (await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))) as Array<Record<string, unknown>>
+    expect('inputs' in packs.find((p) => p['packId'] === 'open-claw')!).toBe(false)
+  })
+
+  it('round-trips back out to YAML that re-imports identically', async () => {
+    await send('POST', '/api/v1/admin/surge-packs/import', { yaml: YAML_WITH_INPUTS }, auth())
+    const exported = await (await send('GET', '/api/v1/admin/surge-packs/headlong/export', undefined, auth())).text()
+    expect(exported).toContain('HEADLONG_HEADLESS')
+    expect(exported).toContain('secret: true')
+
+    expect((await send('POST', '/api/v1/admin/surge-packs/import', { yaml: exported }, auth())).status).toBe(200)
+    const again = await (await send('GET', '/api/v1/admin/surge-packs/headlong/export', undefined, auth())).text()
+    expect(again).toBe(exported)
+  })
+
+  it('survives an admin edit that says nothing about inputs', async () => {
+    // The admin pack editor has no inputs control and sends none. Without the `?? existing`
+    // fallback on the PUT, renaming a pack there would silently delete its declaration and
+    // break the create form for it.
+    await send('POST', '/api/v1/admin/surge-packs/import', { yaml: YAML_WITH_INPUTS }, auth())
+    const res = await send('PUT', '/api/v1/admin/surge-packs/headlong', { name: 'Headlong 2' }, auth())
+    expect(res.status).toBe(200)
+
+    const packs = (await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))) as Array<Record<string, unknown>>
+    const headlong = packs.find((p) => p['packId'] === 'headlong')!
+    expect(headlong['name']).toBe('Headlong 2')
+    expect((headlong['inputs'] as unknown[]).length).toBe(2)
+  })
+
+  it('refuses a pack whose input claims a name Rocky Surf already exports', async () => {
+    const bad = YAML_WITH_INPUTS.replace('name: HEADLONG_HEADLESS', 'name: GITHUB_TOKEN')
+    const res = await send('POST', '/api/v1/admin/surge-packs/import', { yaml: bad }, auth())
+    expect(res.status).toBe(400)
+    expect(JSON.stringify((await json(res)).issues)).toMatch(/already exports/)
+  })
+})
