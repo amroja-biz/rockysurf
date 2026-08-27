@@ -94,6 +94,31 @@ export {
 /* ------------------------------------------------------------------------------ packs */
 
 /**
+ * The names anything supplied at create time may not claim, and the rules a supplied name and
+ * value satisfy (issues #189, #197).
+ *
+ * Exported because the CLI checks `--env` and `--input` locally before it POSTs, so a typo
+ * costs a sentence rather than a round trip. Core remains the authority — every one of these
+ * checks runs again at the create route.
+ */
+export {
+  ENV_TOTAL_MAX_BYTES,
+  ENV_VALUE_MAX_BYTES,
+  RESERVED_ENV_NAMES,
+  RESERVED_ENV_PREFIXES,
+  envVarNameSchema,
+  envVarValueSchema,
+} from './env/names.js'
+
+export {
+  ENVIRONMENT_MAX_ENTRIES,
+  resolveServerEnvironment,
+  type EnvironmentEntry,
+  type EnvironmentIssue,
+  type ResolvedEnvironment,
+} from './servers/environment.js'
+
+/**
  * The pack contract, exported so the composition root can offer it as a command and the pack
  * registry (rockysurf-arym) can validate what it fetches with the same code that validates
  * `packs/`. One definition of the format, one definition of the author rules.
@@ -104,8 +129,6 @@ export {
   PACK_INPUTS_MAX_TOTAL_BYTES,
   PACK_INPUT_MAX_COUNT,
   PACK_INPUT_MAX_VALUE_BYTES,
-  RESERVED_INPUT_NAMES,
-  RESERVED_INPUT_PREFIXES,
   packInputSchema,
   packInputValueSchema,
   packInputsSchema,

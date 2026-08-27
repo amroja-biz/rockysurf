@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { SECRET_ENV_KEY_NAMES } from '../bootstrap/server-secrets.js'
 import { PACK_INPUTS_MAX_TOTAL_BYTES, resolvePackInputs, summarizePackInputs } from './inputs.js'
+import { RESERVED_ENV_NAMES } from '../env/names.js'
 import {
   PACK_INPUT_MAX_COUNT,
   PACK_INPUT_MAX_VALUE_BYTES,
-  RESERVED_INPUT_NAMES,
   packFileSchema,
   packInputSchema,
   packInputsSchema,
@@ -53,17 +53,34 @@ describe('the input declaration a pack may write', () => {
 
   it('refuses a name Rocky Surf already exports to every step', () => {
     // The whole reserved list, so adding a name to it without a test is not possible.
-    for (const name of RESERVED_INPUT_NAMES) {
+    for (const name of RESERVED_ENV_NAMES) {
       const result = packInputSchema.safeParse({ name, label: 'x' })
       expect(result.success, name).toBe(false)
     }
   })
 
-  it('refuses the ROCKYSURF_ and GIT_ namespaces, which are variable-length', () => {
-    // `ROCKYSURF_GITHUB_TOKEN_<n>` and `GIT_CONFIG_KEY_<n>` are indexed, so an exact-name list
-    // could never close them — the check has to be a prefix.
+  it('refuses the namespaces Rocky Surf generates with an index in them', () => {
+    // `ROCKYSURF_GITHUB_TOKEN_<n>`, `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>` are indexed,
+    // so an exact-name list could never close them — the check has to be a prefix.
     expect(packInputSchema.safeParse({ name: 'ROCKYSURF_ANYTHING', label: 'x' }).success).toBe(false)
     expect(packInputSchema.safeParse({ name: 'GIT_CONFIG_KEY_9', label: 'x' }).success).toBe(false)
+    expect(packInputSchema.safeParse({ name: 'GIT_CONFIG_VALUE_9', label: 'x' }).success).toBe(false)
+  })
+
+  /*
+   * THE NARROWED GIT RESERVATION (issue #197).
+   *
+   * `GIT_` used to be refused whole, which cost a pack — and a user — every name git reads but
+   * Rocky Surf never writes. What the setup preamble actually exports stays reserved by exact
+   * name; the rest is now a pack author's to use.
+   */
+  it('accepts a GIT_ name the setup preamble does not write, and still refuses the four it does', () => {
+    for (const name of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_SSH_COMMAND', 'GIT_PAGER']) {
+      expect(packInputSchema.safeParse({ name, label: 'x' }).success, name).toBe(true)
+    }
+    for (const name of ['GIT_TERMINAL_PROMPT', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']) {
+      expect(packInputSchema.safeParse({ name, label: 'x' }).success, name).toBe(false)
+    }
   })
 
   it('refuses a default on a secret input', () => {
@@ -130,7 +147,7 @@ describe('the input declaration a pack may write', () => {
  */
 describe('the reserved names and the secrets.env contract', () => {
   it('reserves every name the secrets.env contract promises', () => {
-    for (const name of SECRET_ENV_KEY_NAMES) expect(RESERVED_INPUT_NAMES.has(name), name).toBe(true)
+    for (const name of SECRET_ENV_KEY_NAMES) expect(RESERVED_ENV_NAMES.has(name), name).toBe(true)
   })
 })
 

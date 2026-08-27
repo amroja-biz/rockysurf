@@ -1874,3 +1874,71 @@ describe('a pack that asks for settings (issue #189)', () => {
     })
   })
 })
+
+/**
+ * THE ENVIRONMENT FIELD (issue #197, ADR-0014).
+ *
+ * On the form for every pack, like the startup script — a pack cannot grant or withhold a
+ * person's ability to hand their own box a value — so every case below uses the default pack,
+ * which declares no inputs at all.
+ */
+describe('an environment the creator types (issue #197)', () => {
+  it('is on the form for a pack that declares nothing', async () => {
+    renderPage()
+    expect(await screen.findByLabelText(/^environment/i)).toBeTruthy()
+  })
+
+  it('sends nothing at all when it is empty', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByLabelText(/^environment/i)
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    // A create with nothing typed goes on the wire exactly as it did before this field existed.
+    expect('environment' in (vi.mocked(api.createServer).mock.calls[0]?.[0] ?? {})).toBe(false)
+  })
+
+  it('puts each line on the wire, keyed by the variable name', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(await screen.findByLabelText(/^environment/i), 'MY_ENDPOINT=https://mine.test\nMY_FLAG=1')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0]?.environment).toEqual({
+      MY_ENDPOINT: { value: 'https://mine.test' },
+      MY_FLAG: { value: '1' },
+    })
+  })
+
+  it('marks a secret: line as secret and leaves the rest plain', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(await screen.findByLabelText(/^environment/i), 'secret:MY_TOKEN=ghp-x\nMY_FLAG=1')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0]?.environment).toEqual({
+      MY_TOKEN: { value: 'ghp-x', secret: true },
+      MY_FLAG: { value: '1' },
+    })
+  })
+
+  it('blocks the submit on a line that is not KEY=value, naming the line', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(await screen.findByLabelText(/^environment/i), 'MY_FLAG=1\nnonsense')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    expect(await screen.findByText(/Line 2 is not KEY=value/)).toBeTruthy()
+    expect(api.createServer).not.toHaveBeenCalled()
+  })
+
+  it('tells the startup script where to put a token instead of forbidding one', async () => {
+    // The hint changed with this issue: the field used to say "put no passwords or tokens in
+    // it", which was true and left the user nowhere to go.
+    renderPage()
+    await screen.findByLabelText(/startup script/i)
+    expect(screen.getByText(/put passwords and tokens in Environment below/i)).toBeTruthy()
+  })
+})

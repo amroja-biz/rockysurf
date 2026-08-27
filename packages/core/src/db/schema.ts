@@ -340,6 +340,24 @@ export const servers = sqliteTable(
      * Null means the pack asked for nothing, or the user answered nothing it needed.
      */
     packInputs: text('pack_inputs'),
+    /**
+     * The NON-SECRET half of the Environment the CREATOR typed at create time, as a JSON object
+     * of `NAME: value` (issue #197, [ADR-0014]).
+     *
+     * A SEPARATE COLUMN FROM `pack_inputs`, holding the same shape, because the two answer
+     * different questions and only the column remembers which. `pack_inputs` is what the pack
+     * asked for and the user answered; this is what the user added that the pack never
+     * mentioned. The detail page shows both and says which is which, a create-time collision
+     * between them is a 400, and merging them would throw away the provenance that makes both
+     * sentences true.
+     *
+     * The custody rule is identical: secret lines are NOT here — they go to the encrypted store
+     * under the `server-environment` kind — and neither half is ever written into the plan
+     * snapshot, which is `0644` on the box and quoted in failure reports.
+     *
+     * Null means the creator typed nothing, or typed only secret lines.
+     */
+    environment: text('environment'),
 
     /* --- idempotency --- */
     /**

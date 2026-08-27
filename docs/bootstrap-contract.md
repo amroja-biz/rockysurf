@@ -677,20 +677,24 @@ for the same pack.
 | `GITHUB_TOKEN` | the **user** — one token, reused across their servers | `secretsStore.getGithubToken(userId)`, else `github.pat` from the config file |
 | `RDP_PASSWORD` | the **server** — it is set on that box's own `rocky` account | `secretsStore.getRdpPassword(serverId)`, written at create time from the request's `rdpPassword` |
 | a pack's own `inputs` | the **server** — the answers its creator gave for the pack it was built with | the non-secret half off `servers.pack_inputs`; the secret half from `secretsStore.getPackInputSecrets(serverId)` (issue #189, [ADR-0013](adr/0013-packs-declare-their-inputs.md)) |
+| the creator's own **Environment** | the **server** — the `KEY=value` lines its creator typed at create time | the plain half off `servers.environment`; the `secret:` half from `secretsStore.getServerEnvironmentSecrets(serverId)` (issue #197, [ADR-0014](adr/0014-per-server-environment-at-create-time.md)) |
 
 Rules that follow, and the reason each exists:
 
 - **The set of ROCKY SURF's own names is closed.** Every name in the first two rows is a promise
   to pack authors, so adding one is a decision recorded here and in `docs/writing-a-pack.md`, not
   an implementation detail. A per-tool namespace is deliberately not offered.
-- **A pack's `inputs` are the pack's namespace, not the platform's** (issue #189, ADR-0013). The
-  third row is deliberately a row rather than two more names: the pack author chose them,
-  documents them, and they exist only on boxes built from that pack. The two sets cannot collide,
-  because `packs/schema.ts` refuses an input named after anything Rocky Surf exports
-  (`RESERVED_INPUT_NAMES`, plus the `ROCKYSURF_` and `GIT_` prefixes, which are indexed and so
-  cannot be closed by an exact-name list) and a test pins `SECRET_ENV_KEY_NAMES` as a subset of
-  that list. `createServerSecretsLoader` writes the pack's inputs FIRST all the same, so a name
-  that somehow got past the schema still cannot displace `GITHUB_TOKEN`.
+- **The last two rows are somebody else's namespace, not the platform's** (issues #189 and #197;
+  ADR-0013, ADR-0014). They are rows rather than more names because nothing here can enumerate
+  them: a pack's author chose their names and documents them, and the third row is one person's
+  answer for one box. None of the three sets can collide. `env/names.ts` refuses any supplied
+  name that Rocky Surf exports — `RESERVED_ENV_NAMES`, plus the `ROCKYSURF_`, `GIT_CONFIG_KEY_`
+  and `GIT_CONFIG_VALUE_` prefixes, which are indexed and so cannot be closed by an exact-name
+  list — and a test pins `SECRET_ENV_KEY_NAMES` as a subset of that list and reads the real setup
+  preamble to prove every variable it exports is unclaimable. The create route refuses an
+  Environment name the selected pack already declares. `createServerSecretsLoader` writes
+  everything supplied FIRST all the same, so a name that somehow got past the rules still cannot
+  displace `GITHUB_TOKEN`.
 - **Values are single-line, and every value is single-quoted on the wire** (issue #189). The
   agent sources this file (`set -a; . secrets.env`) AND re-reads it line by line to learn the
   variable NAMES it forwards into unprivileged steps. Quoting is what makes a value with a space,
@@ -698,9 +702,9 @@ Rules that follow, and the reason each exists:
   coming from a form field rather than from a shape core controlled. A newline quoting cannot
   fix, because the second line would read as a second name, so it is refused at the create route
   instead. Reading is unchanged: the name is everything before the first `=`.
-- **Pack inputs are NOT in the plan.** `plan.json` is written `0644` and is quoted in failure
-  reports; these values travel only in this `0600` file. `PLAN_VERSION` is unaffected — no step,
-  field or id changed.
+- **Nothing supplied at create time is in the plan.** `plan.json` is written `0644` and is quoted
+  in failure reports; these values travel only in this `0600` file. `PLAN_VERSION` is unaffected —
+  no step, field or id changed.
 - **A key with no secret is OMITTED, never emitted empty.** `RDP_PASSWORD=` would satisfy the
   resolver's `-z` guard and then set an empty desktop password; absent makes that step fail with
   the message it already carries.

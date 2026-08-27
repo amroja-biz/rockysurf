@@ -10,12 +10,14 @@ import { LimitExceededError } from '../jobs/limits.js'
 import { SERVER_SIZES, type ServerRow, type ServerSize, type StoredSize } from '../db/schema.js'
 import {
   getBootstrapReport,
+  getServerEnvironment,
   getServerPackInputs,
   getServerRepositories,
   getServerTools,
   isBillingRow,
 } from '../db/repositories/servers.js'
 import { resolvePackInputs } from '../packs/inputs.js'
+import { resolveServerEnvironment } from './environment.js'
 import type { PackInput } from '../packs/schema.js'
 import type { BootstrapReport } from '../bootstrap/failure-report.js'
 import { badRequest, created, notFound, success } from '../http/responses.js'
@@ -167,6 +169,24 @@ const createBody = z.object({
    */
   packInputs: z.record(z.string().max(64), z.string().max(65536)).optional(),
   /**
+   * The person's OWN environment for this box — `KEY=value` they chose, not the pack
+   * (issue #197, ADR-0014).
+   *
+   * THE SHAPE MIRRORS `packInputs` — keyed by variable name — with the one fact no pack file
+   * can supply: whether the value is a secret. There is no declaration here to read `secret`
+   * off, because the whole point of this field is the value the pack never thought of, so the
+   * request carries it, per entry. Per entry rather than as a second parallel map, because a
+   * name appearing in both maps would be a question with no answer.
+   *
+   * Shape-checked here and MEANING-checked in the handler (`resolveServerEnvironment`): a name
+   * Rocky Surf exports, a name the selected pack already asks for, an oversized or multi-line
+   * value are each a 400 naming the key. Bounded loosely here so the handler's refusal is the
+   * one a caller reads.
+   */
+  environment: z
+    .record(z.string().max(64), z.strictObject({ value: z.string().max(65536), secret: z.boolean().optional() }))
+    .optional(),
+  /**
    * Create even though a repository URL failed its preflight (rockysurf-k6xp).
    *
    * REFUSE BY DEFAULT, override on request — decided that way rather than warn-by-default
@@ -313,6 +333,15 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * send — a spread hides the key from it.
      */
     packInputs: row.packInputs ? getServerPackInputs(row) : undefined,
+    /**
+     * The NON-SECRET half of the Environment this box's creator typed (issue #197, ADR-0014).
+     *
+     * Beside `packInputs` and separate from it, because the server page says which of the two a
+     * variable came from — "the pack asked for this" and "you added this" are different
+     * sentences, and only two fields can carry both. Secret lines are in neither, here or on
+     * any other route.
+     */
+    environment: row.environment ? getServerEnvironment(row) : undefined,
     /**
      * WHICH GIT TOKENS THIS BOX HOLDS, by scope, never by value (rockysurf-18lq).
      *
@@ -598,6 +627,28 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     }
 
     /**
+     * THE USER'S OWN ENVIRONMENT, checked the same way and in the same place (issue #197).
+     *
+     * Immediately after the pack's own inputs, before the provider is touched, on the same
+     * doctrine: fail before the money. Both halves are validated by the same name and value
+     * rules — the box cannot tell a pack's variable from a user's — and the declaration is
+     * passed in for one purpose only, refusing a name both fields would write.
+     */
+    const environment = resolveServerEnvironment(
+      body.environment,
+      body.packId ? deps.packInputs?.(body.packId) : undefined,
+    )
+    if (environment.issues.length > 0) {
+      return badRequest(
+        c,
+        environment.issues.length === 1
+          ? environment.issues[0]!.message
+          : `${environment.issues.length} of the environment variables you set are wrong.`,
+        environment.issues,
+      )
+    }
+
+    /**
      * WHICH CLOUD THIS SERVER LANDS ON, and why there is no silent fallback (rockysurf-va2l).
      *
      * The old rule ended in `registry.ids()[0]`, so a request that named no provider on a
@@ -854,6 +905,12 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         // lifecycle files the two in two different places.
         ...(Object.keys(packInputs.values).length || Object.keys(packInputs.secrets).length
           ? { packInputs: { values: packInputs.values, secrets: packInputs.secrets } }
+          : {}),
+        // The same again for what the user typed themselves (issue #197): passed whenever there
+        // is anything at all, including when only the secret half is non-empty, because the
+        // lifecycle files the two in two different places.
+        ...(Object.keys(environment.values).length || Object.keys(environment.secrets).length
+          ? { environment: { values: environment.values, secrets: environment.secrets } }
           : {}),
         // A retried POST carrying the same key returns the original server and provisions
         // nothing — the standard header, so a client can be safe without inventing a scheme.

@@ -834,6 +834,50 @@ the pack's declaration before anything is created, so a misspelled name costs a 
 [ADR-0013](adr/0013-packs-declare-their-inputs.md) records the contract; pack authors should read
 the `inputs` section of [`writing-a-pack.md`](writing-a-pack.md#inputs--what-your-pack-asks-the-user-for).
 
+## Your own environment on a box
+
+A pack asks for what *it* needs. **Environment**, the field below the startup script on the create
+form, is for what *you* need — a token your startup script reads, an endpoint for something you
+install by hand, a `GIT_AUTHOR_NAME` for the box. One `KEY=value` per line:
+
+```
+MY_ENDPOINT=https://api.example.com
+GIT_AUTHOR_NAME=Ada Lovelace
+secret:MY_API_TOKEN=…
+```
+
+Every line becomes an environment variable in **every step of that box's setup**, including your
+startup script — which is why the startup script's hint tells you to put a token here and read
+`$MY_API_TOKEN` there, rather than typing it into the script itself. The script is stored and
+pushed in plain text; this is not.
+
+**A line starting with `secret:` is stored encrypted** and returned by no route: not the server
+page, not the API, not the list. Nothing can show it back to you, so keep your own copy. A line
+without the marker is stored in the clear and shown on the server's page, so you can answer "what
+was this box built with" months later.
+
+A few rules, and why:
+
+| | |
+|---|---|
+| **Names** | `UPPER_SNAKE_CASE`. Names Rocky Surf itself exports are refused — `HOME`, `PATH`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `REPOS`, anything starting with `ROCKYSURF_`, and the four `GIT_*` names the clone step writes. Everything else git reads is yours. |
+| **A name the pack already asks for** | Refused, naming the key. Both fields would write one variable and only one value could reach the box, so the create is refused rather than one of your answers being dropped silently. |
+| **Values** | One line, at most 4 KiB each. Spaces, `$`, backticks and quotes are all safe — values are quoted on the way to the box, never interpreted. |
+| **Afterwards** | There is no way to change any of it on a running box. The environment is written once, when the box is built. |
+
+From the CLI, one flag per line, or a file in the same format the form's box takes:
+
+```bash
+rockysurf create --pack claude-code --env MY_ENDPOINT=https://api.example.com
+rockysurf create --pack claude-code --env-file ./env.txt
+```
+
+A `secret:` value is refused on the command line, exactly as `--rdp-password <value>` is: an
+argument is readable through `ps` by every process on the machine and is written to your shell's
+history file. Put it in the file instead.
+
+[ADR-0014](adr/0014-per-server-environment-at-create-time.md) records the contract.
+
 ## Surge Packs, and what happens when one breaks
 
 Surge Packs are the software bundles a server is created with, loaded from YAML files in `packs/`

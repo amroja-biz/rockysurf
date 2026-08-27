@@ -42,6 +42,17 @@ export const SECRET_KINDS = [
    * show them. This kind holds only what a pack declared `secret: true`.
    */
   'pack-inputs',
+  /**
+   * The SECRET half of the Environment one server's CREATOR typed, as a JSON object of
+   * `NAME: value` (issue #197, ADR-0014).
+   *
+   * A kind of its own rather than more entries under `pack-inputs`, for the reason the row has
+   * its own column: the two are different namespaces with different provenance — what the pack
+   * asked for, and what the user added — and a create-time collision between them is refused
+   * precisely because they are distinct. Sharing a kind would make that refusal an invariant
+   * enforced only by hope.
+   */
+  'server-environment',
   /** A provider credential pasted into the UI. NEVER one that came from the environment. */
   'provider-token',
   /** Signs session cookies. Instance-level: one row, no owner. */
@@ -137,6 +148,10 @@ export interface SecretsStore {
   putPackInputSecrets(serverId: string, values: Record<string, string>): SecretMetadata | undefined
   /** PLAINTEXT. Never return this from an HTTP handler. `{}` when the server has none. */
   getPackInputSecrets(serverId: string): Record<string, string>
+  /** The secret half of a server's user-supplied Environment (issue #197). `{}` deletes the row. */
+  putServerEnvironmentSecrets(serverId: string, values: Record<string, string>): SecretMetadata | undefined
+  /** PLAINTEXT. Never return this from an HTTP handler. `{}` when the server has none. */
+  getServerEnvironmentSecrets(serverId: string): Record<string, string>
   putProviderToken(providerId: string, token: string, env?: NodeJS.ProcessEnv): SecretMetadata
   getProviderToken(providerId: string): string | undefined
   /** Returns the existing signing key, minting one on first call. */
@@ -161,6 +176,55 @@ export function createSecretsStore(db: Db, masterKey: Buffer): SecretsStore {
       keyId: row.keyId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    }
+  }
+
+  /**
+   * Seal a whole `{ NAME: value }` map under one kind, or delete the row when it is empty.
+   *
+   * ONE ROW FOR ALL OF THEM, because the store keys on `(kind, ownerId)` and a server can have
+   * several — a row per name would need a composite owner id (`<serverId>:<NAME>`), which is a
+   * second, undeclared key format inside a column that already has one. The whole object is
+   * sealed and unsealed together, which is also how it is used: `secrets.env` is written once,
+   * from all of them at once.
+   *
+   * An empty object is "this server has none", and the way to say that is to hold no row —
+   * sealing `{}` would leave a secret-shaped artefact with nothing in it, which every listing
+   * and audit then has to explain.
+   */
+  function putSecretMap(
+    kind: SecretKind,
+    serverId: string,
+    values: Record<string, string>,
+  ): SecretMetadata | undefined {
+    if (Object.keys(values).length === 0) {
+      store.deleteSecret({ kind, ownerId: serverId })
+      return undefined
+    }
+    return store.putSecret({ kind, ownerId: serverId }, JSON.stringify(values))
+  }
+
+  /**
+   * The map back, or `{}`.
+   *
+   * The parse is defensive rather than paranoid: these are the only readers, and a value that
+   * is not the object they wrote means the row was tampered with or written by something else.
+   * An empty environment is the safe answer — the affected step fails on a missing variable
+   * with its own message, which is far better than a crash inside the bootstrap driver.
+   */
+  function getSecretMap(kind: SecretKind, serverId: string): Record<string, string> {
+    const raw = store.getSecret({ kind, ownerId: serverId })
+    if (!raw) return {}
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+      return Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+      )
+    } catch {
+      return {}
     }
   }
 
@@ -266,35 +330,30 @@ export function createSecretsStore(db: Db, masterKey: Buffer): SecretsStore {
       return store.getSecret({ kind: 'rdp-password', ownerId: serverId })
     },
 
+    /*
+     * TWO KINDS, ONE IMPLEMENTATION (issues #189, #197).
+     *
+     * A pack's secret inputs and a user's secret Environment lines are the same material —
+     * a per-server map of names to values, sealed as one document, unsealed as one document,
+     * and read back only by `createServerSecretsLoader`. They are stored under two kinds
+     * because their provenance differs and a collision between them is refused at create; the
+     * sealing, the empty-means-delete rule and the defensive parse are identical, so they are
+     * written once below and not twice.
+     */
     putPackInputSecrets(serverId, values) {
-      // An empty object is "this server has no secret inputs", and the way to say that is to
-      // hold no row — sealing `{}` would leave a secret-shaped artefact with nothing in it,
-      // which every listing and audit then has to explain.
-      if (Object.keys(values).length === 0) {
-        store.deleteSecret({ kind: 'pack-inputs', ownerId: serverId })
-        return undefined
-      }
-      return store.putSecret({ kind: 'pack-inputs', ownerId: serverId }, JSON.stringify(values))
+      return putSecretMap('pack-inputs', serverId, values)
     },
 
     getPackInputSecrets(serverId) {
-      const raw = store.getSecret({ kind: 'pack-inputs', ownerId: serverId })
-      if (!raw) return {}
-      try {
-        const parsed = JSON.parse(raw) as unknown
-        // Defensive rather than paranoid: this is the only reader, and a value that is not the
-        // object it wrote means the row was tampered with or written by something else. An
-        // empty environment is the safe answer — the pack's step fails on a missing variable
-        // with its own message, which is far better than a crash inside the bootstrap driver.
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-        return Object.fromEntries(
-          Object.entries(parsed as Record<string, unknown>).filter(
-            (entry): entry is [string, string] => typeof entry[1] === 'string',
-          ),
-        )
-      } catch {
-        return {}
-      }
+      return getSecretMap('pack-inputs', serverId)
+    },
+
+    putServerEnvironmentSecrets(serverId, values) {
+      return putSecretMap('server-environment', serverId, values)
+    },
+
+    getServerEnvironmentSecrets(serverId) {
+      return getSecretMap('server-environment', serverId)
     },
 
     putProviderToken(providerId, token, env = process.env) {

@@ -23,6 +23,7 @@ const PLAINTEXT_ACCESSORS = [
   'getGithubToken',
   'getRdpPassword',
   'getPackInputSecrets',
+  'getServerEnvironmentSecrets',
   'getProviderToken',
   'ensureSessionSigningKey',
 ]

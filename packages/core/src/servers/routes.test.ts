@@ -833,3 +833,129 @@ describe('a pack that declares inputs', () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/asks for no inputs/)
   })
 })
+
+/**
+ * THE USER'S OWN ENVIRONMENT (issue #197, ADR-0014).
+ *
+ * Through the real `createApp` for the same reason the pack-input suite is: the collision check
+ * needs composition to supply the `packInputs` lookup, and a check nothing wires is a check that
+ * does not exist (`docs/memories/2026-08-21-whole-boot-wiring-tests.md`).
+ */
+describe('an environment the creator supplied', () => {
+  const PACK_ID = 'headlong'
+
+  const declare = (inputs: PackInput[]): void => {
+    upsertPack(opened.db, {
+      id: PACK_ID,
+      name: 'Headlong',
+      tools: [],
+      displayOrder: 1,
+      enabled: true,
+      requiresRepos: false,
+      requiresRdp: false,
+      inputs,
+    })
+  }
+
+  const create = (
+    environment?: Record<string, { value: string; secret?: boolean }>,
+    packInputs?: Record<string, string>,
+  ) =>
+    post('/api/v1/servers', {
+      ...CREATE,
+      packId: PACK_ID,
+      ...(environment ? { environment } : {}),
+      ...(packInputs ? { packInputs } : {}),
+    })
+
+  beforeEach(() => {
+    declare([{ name: 'HEADLONG_HEADLESS', label: 'Headless install', required: false, secret: false }])
+  })
+
+  it('stores the plain values on the row and returns them on the detail route', async () => {
+    const { serverId } = (await (
+      await create({ MY_ENDPOINT: { value: 'https://mine.test' }, MY_FLAG: { value: '1' } })
+    ).json()) as { serverId: string }
+
+    expect(JSON.parse(getServer(opened.db, serverId)!.environment!)).toEqual({
+      MY_ENDPOINT: 'https://mine.test',
+      MY_FLAG: '1',
+    })
+
+    const body = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+    expect(body['environment']).toEqual({ MY_ENDPOINT: 'https://mine.test', MY_FLAG: '1' })
+    // Kept apart from what the pack asked for, because the page says which is which.
+    expect(body['packInputs']).toBeUndefined()
+  })
+
+  it('keeps a secret line off the row and out of every route', async () => {
+    const { serverId } = (await (
+      await create({ MY_TOKEN: { value: 'ghp-do-not-leak', secret: true }, MY_FLAG: { value: '1' } })
+    ).json()) as { serverId: string }
+
+    expect(JSON.stringify(await (await get(`/api/v1/servers/${serverId}`)).json())).not.toContain('ghp-do-not-leak')
+    expect(JSON.stringify(await (await get('/api/v1/servers')).json())).not.toContain('ghp-do-not-leak')
+    const row = getServer(opened.db, serverId)!
+    expect(row.environment).not.toContain('ghp-do-not-leak')
+    expect(JSON.parse(row.environment!)).toEqual({ MY_FLAG: '1' })
+  })
+
+  it('keeps every value out of the plan snapshot, and does not move PLAN_VERSION', async () => {
+    const { serverId } = (await (
+      await create({
+        MY_TOKEN: { value: 'ghp-do-not-leak', secret: true },
+        MY_ENDPOINT: { value: 'https://mine.test' },
+      })
+    ).json()) as { serverId: string }
+
+    const plan = parseInstallPlan(JSON.parse(getServer(opened.db, serverId)!.installPlan!))
+    expect(JSON.stringify(plan)).not.toContain('ghp-do-not-leak')
+    expect(JSON.stringify(plan)).not.toContain('https://mine.test')
+    expect(plan.version).toBe(PLAN_VERSION)
+  })
+
+  it('refuses a name the pack already asks for, naming the key', async () => {
+    const before = fake.provisionCalls
+    const res = await create({ HEADLONG_HEADLESS: { value: '1' } })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; issues?: { path: string }[] }
+    expect(body.error).toContain('HEADLONG_HEADLESS')
+    expect(body.issues?.[0]?.path).toBe('environment.HEADLONG_HEADLESS')
+    // Fail before the money, like every other create-time check here.
+    expect(fake.provisionCalls).toBe(before)
+  })
+
+  it('refuses a name Rocky Surf exports to every step', async () => {
+    expect((await create({ GITHUB_TOKEN: { value: 'ghp-x' } })).status).toBe(400)
+    expect((await create({ HOME: { value: '/tmp' } })).status).toBe(400)
+  })
+
+  it('accepts GIT_AUTHOR_NAME, which the setup preamble never writes (issue #197)', async () => {
+    expect((await create({ GIT_AUTHOR_NAME: { value: 'Ada Lovelace' } })).status).toBe(201)
+    expect((await create({ GIT_CONFIG_COUNT: { value: '9' } })).status).toBe(400)
+  })
+
+  it('refuses an oversized or multi-line value', async () => {
+    expect((await create({ MY_KEY: { value: 'x'.repeat(4096) } })).status).toBe(201)
+    expect((await create({ MY_KEY: { value: 'x'.repeat(4097) } })).status).toBe(400)
+    expect((await create({ MY_KEY: { value: 'one\ntwo' } })).status).toBe(400)
+  })
+
+  it('refuses a shape that is not { value, secret }', async () => {
+    // A bare string is the shape `packInputs` takes, and sending it here would mean a caller
+    // believed a value was secret when nothing said so.
+    expect((await post('/api/v1/servers', { ...CREATE, environment: { MY_KEY: 'plain' } })).status).toBe(400)
+    expect(
+      (await post('/api/v1/servers', { ...CREATE, environment: { MY_KEY: { value: '1', sekret: true } } })).status,
+    ).toBe(400)
+  })
+
+  it('creates exactly as before when nothing is sent', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', { ...CREATE, packId: PACK_ID })).json()) as {
+      serverId: string
+    }
+    expect(getServer(opened.db, serverId)!.environment).toBeNull()
+    const body = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+    expect(body['environment']).toBeUndefined()
+  })
+})

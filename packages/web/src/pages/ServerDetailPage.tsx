@@ -658,6 +658,51 @@ export function ServerDetailPage() {
         */}
       </section>
 
+      {/*
+        WHAT THIS BOX WAS CONFIGURED WITH (issues #189, #197).
+
+        Two sources, one section, and the section says which is which: the pack asked for one
+        set and the creator typed the other, and after the create screen is gone this page is the
+        only thing that remembers either. Secret values are in neither list and are returned by
+        no route at all — saying so out loud is the honest half, because nothing can show them
+        back and the remedy for a lost one is a new box.
+
+        Absent entirely for a box with neither, which is every box built before this existed.
+      */}
+      {(server.packInputs || server.environment) && (
+        <section className="server-environment">
+          <h2>Configuration</h2>
+          {server.packInputs && (
+            <>
+              <p className="hint">{pack ? `Settings the ${pack.name} pack asked for.` : 'Settings the pack asked for.'}</p>
+              <ul data-testid="pack-inputs">
+                {Object.entries(server.packInputs).map(([name, value]) => (
+                  <li key={name}>
+                    <code>{name}</code>=<code>{value}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {server.environment && (
+            <>
+              <p className="hint">Environment you set when you created this box.</p>
+              <ul data-testid="server-environment">
+                {Object.entries(server.environment).map(([name, value]) => (
+                  <li key={name}>
+                    <code>{name}</code>=<code>{value}</code>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="hint">
+            Values marked secret are stored encrypted and are shown by nothing, here or anywhere else. There is no way
+            to change any of these on a running box — the environment is written once, when the box is built.
+          </p>
+        </section>
+      )}
+
       <section className="tools">
         <h2>Installed</h2>
         {installedTools.length === 0 ? (

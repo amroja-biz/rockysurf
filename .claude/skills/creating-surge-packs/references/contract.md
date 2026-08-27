@@ -82,7 +82,12 @@ find yourself wanting the application to special-case your `packId`, that is a b
 
 - **Prefix your names**, always: one environment is shared by every tool on the box.
 - **Refused at validation**: anything Rocky Surf exports (`ARCH`, `HOME`, `REPOS`, `GITHUB_TOKEN`,
-  `RDP_PASSWORD`, `PATH`, …) and the whole `ROCKYSURF_` and `GIT_` namespaces.
+  `RDP_PASSWORD`, `GIT_TERMINAL_PROMPT`, `GIT_CONFIG_COUNT`, `PATH`, …), plus the `ROCKYSURF_`,
+  `GIT_CONFIG_KEY_` and `GIT_CONFIG_VALUE_` prefixes, which are generated with an index. Any
+  other `GIT_` name is yours (issue #197).
+- **You are not the only contributor to that environment**: since issue #197 the person creating
+  the server can set their own `KEY=value` lines too. You cannot see them and must not plan around
+  them — and they cannot shadow you, because a name your pack declares is refused in that field.
 - **A `secret` input may not have a `default`** — a credential in a file everyone can read is not
   a secret.
 - **One line, ≤4 KiB per value**; the values reach the box through the line-oriented `secrets.env`.

@@ -397,6 +397,10 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
           // refuses a SECRET one given this way — see `pack-inputs.ts`.
           inputs: flagValues(argv, '--input'),
           ...(flagValue(argv, '--inputs-file') ? { inputsFile: flagValue(argv, '--inputs-file')! } : {}),
+          // The creator's own environment, repeatable like `--repo` (issue #197). A `secret:`
+          // value is refused on argv — see `environment.ts` — and belongs in `--env-file`.
+          env: flagValues(argv, '--env'),
+          ...(flagValue(argv, '--env-file') ? { envFile: flagValue(argv, '--env-file')! } : {}),
         })
       case 'stop':
         return argv[0] ? await stopCommand(deps, argv[0]) : usage('stop <name>')

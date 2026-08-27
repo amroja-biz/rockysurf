@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ENV_VALUE_MAX_BYTES, envVarNameSchema, envVarValueSchema } from '../env/names.js'
 
 /**
  * The frozen v0.1 pack file format, as a validator.
@@ -47,111 +48,23 @@ export const DESKTOPS = ['xfce'] as const
 /* ------------------------------------------------------------------------- pack inputs */
 
 /**
- * Every environment variable Rocky Surf itself puts in front of a bootstrap step, and
- * therefore every name a pack's `inputs` may NOT claim (issue #189, ADR-0013).
+ * The name and value rules come from `env/names.ts`, not from this file (issues #189, #197).
  *
- * THE LIST IS HERE, IN THE FORMAT FILE, ON PURPOSE. `inputs` is the first pack field whose
- * value becomes a shell variable in the same environment core's own variables live in, so
- * "which names are already taken" is part of the file format rather than a runtime detail.
- * A pack that declared `HOME` would not override anything — `agent.sh` exports its own
- * afterwards — it would simply produce a pack whose install script reads a value nobody sent.
- * Refusing at validation is the only place that failure is cheap.
- *
- * `server-secrets.test.ts` asserts `SECRET_ENV_KEY_NAMES` is a subset of this set, so a future
- * name added to the `secrets.env` contract cannot quietly become claimable by a pack.
- *
- * Sources, in the order a reader should check them:
- *  - `bootstrap/agent.sh`: `ARCH`, `DEBIAN_FRONTEND`, `HOME`, `USER`, `LOGNAME`;
- *  - `bootstrap/server-secrets.ts` `SECRET_ENV_KEYS`: `GITHUB_TOKEN`, `RDP_PASSWORD`;
- *  - `bootstrap/resolver.ts` `setupPreamble`: `REPOS`, and the `GIT_*` names below;
- *  - the shell itself: `PATH`, `SHELL`, `PWD`, `IFS`, and the rest.
+ * They were written here, in the format file, when a pack's `inputs` was the only thing that
+ * could put a variable in front of a bootstrap step. Issue #197 gave the person creating a
+ * server their own Environment field, and the two have to be refused by the same list: `HOME`
+ * breaks `agent.sh` identically whoever sent it. What stays here is what is genuinely about
+ * the FILE FORMAT — how many entries a pack may declare, and what an entry looks like.
  */
-export const RESERVED_INPUT_NAMES: ReadonlySet<string> = new Set([
-  // the agent's own environment
-  'ARCH',
-  'DEBIAN_FRONTEND',
-  'HOME',
-  'USER',
-  'LOGNAME',
-  // the secrets.env key-name contract
-  'GITHUB_TOKEN',
-  'RDP_PASSWORD',
-  // the setup/user-script preamble
-  'REPOS',
-  // the shell's own, where a pack's value would break the step rather than reach it
-  'PATH',
-  'SHELL',
-  'PWD',
-  'OLDPWD',
-  'IFS',
-  'LANG',
-  'LC_ALL',
-  'TERM',
-  'BASH_ENV',
-  'ENV',
-  'LD_PRELOAD',
-  'LD_LIBRARY_PATH',
-])
 
-/**
- * Whole NAMESPACES a pack may not claim, checked as prefixes.
- *
- * `ROCKYSURF_` is core's own (`ROCKYSURF_GITHUB_TOKEN_<n>`, `ROCKYSURF_STATE_DIR`,
- * `ROCKYSURF_APT_RETRY_WAIT_S`) and is variable-length, so an exact-name list could never
- * close it. `GIT_` is git's, and the setup preamble already writes four of them
- * (`GIT_TERMINAL_PROMPT`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, `GIT_CONFIG_VALUE_<n>`) —
- * a pack that set one would break the credential path for every private clone on the box.
- */
-export const RESERVED_INPUT_PREFIXES: readonly string[] = ['ROCKYSURF_', 'GIT_']
-
-/** A pack input name is an environment variable name, spelled the way shell scripts spell one. */
-const INPUT_NAME = z
-  .string()
-  .min(1)
-  .max(64)
-  .regex(/^[A-Z][A-Z0-9_]*$/, {
-    error: 'must be an UPPER_SNAKE_CASE environment variable name (e.g. "HEADLONG_HEADLESS")',
-  })
-  .refine((name) => !RESERVED_INPUT_NAMES.has(name), {
-    error: 'is a name Rocky Surf already exports to every step — choose one in your pack\'s own namespace',
-  })
-  .refine((name) => !RESERVED_INPUT_PREFIXES.some((prefix) => name.startsWith(prefix)), {
-    error: `must not start with ${RESERVED_INPUT_PREFIXES.join(' or ')} — those namespaces belong to Rocky Surf and to git`,
-  })
-
-/**
- * How much text one input may carry, at rest and on the wire.
- *
- * 4 KiB is generous for what this field is for — a flag, a key, an endpoint, a model name —
- * and small enough that sixteen of them cannot make a server row or a `secrets.env` line
- * unbounded. A pack that wants to hand a box a document wants a repository, not an input.
- */
-export const PACK_INPUT_MAX_VALUE_BYTES = 4096
+/** The pack-facing name for the shared per-value ceiling. One number, documented twice. */
+export const PACK_INPUT_MAX_VALUE_BYTES = ENV_VALUE_MAX_BYTES
 
 /** How many inputs one pack may declare. A create form is a form, not a questionnaire. */
 export const PACK_INPUT_MAX_COUNT = 16
 
-/**
- * ONE VALUE, ONE LINE — the constraint the delivery mechanism imposes, stated in the format.
- *
- * Inputs reach the box through `secrets.env`, which is `KEY=value` lines that `agent.sh`
- * sources and whose NAMES it re-reads line by line to forward into unprivileged steps. A value
- * containing a newline would appear to that reader as a second variable, so the second line of
- * somebody's PEM would become an environment variable name. Values are single-quoted by the
- * writer (`bootstrap/push.ts`), which makes spaces, `$` and backticks safe; a newline it cannot
- * make safe, so it is refused here and by the create route.
- */
-export const packInputValueSchema = z
-  .string()
-  // BYTES, not characters, and the distinction is the reason this is a refine rather than
-  // zod's `.max()`: the ceiling is about what a `secrets.env` line and a database column carry,
-  // and a 4096-character value of three-byte glyphs is three times the number quoted here.
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= PACK_INPUT_MAX_VALUE_BYTES, {
-    error: `must be at most ${PACK_INPUT_MAX_VALUE_BYTES} bytes`,
-  })
-  .refine((value) => !/[\n\r\0]/.test(value), {
-    error: 'must be a single line — no newlines or NUL (values travel as KEY=value lines in secrets.env)',
-  })
+/** A pack input value: at most 4 KiB, one line. See `env/names.ts` for why. */
+export const packInputValueSchema = envVarValueSchema
 
 /**
  * One value a pack asks the person creating a server for (issue #189).
@@ -167,7 +80,7 @@ export const packInputValueSchema = z
 export const packInputSchema = z
   .strictObject({
     /** The environment variable the install script reads. */
-    name: INPUT_NAME,
+    name: envVarNameSchema,
     /** The form's field label. Required — an unlabelled field asks a question in code. */
     label: NON_EMPTY,
     /** Rendered as the field's hint. Say what the value does and what a good one looks like. */
