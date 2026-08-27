@@ -201,6 +201,11 @@ uninstalled. Two lists, two kinds of promise, stated as such.
   reach a running box; a field that looked editable and did nothing would be worse than no field.
 - **The admin pack editor has no `inputs` control.** The PUT preserves what is there when none is
   sent, so an edit cannot silently delete a declaration; authoring inputs is done in the YAML.
+- **The MCP `create_server` tool takes no inputs.** It takes `rdp_password` because
+  `packRequiresRdp` can pre-empt that one refusal, and it did not gain `user_script` for ADR-0011
+  either. An agent creating a server for a pack with a required input gets core's 400, whose
+  message names the pack's own label and is actionable as it stands. Worth revisiting when a real
+  agent workflow needs it, rather than on speculation.
 - **Callback mode still fetches no secrets.** `GET /internal/servers/:id/secrets` serves the same
   material from the same loader, but the cloud-init stub does not call it — a gap that predates
   this decision and is unchanged by it.
