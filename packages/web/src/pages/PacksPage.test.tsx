@@ -211,6 +211,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  // The filter row remembers itself per browser (issue #199) — real `localStorage`, so one
+  // test's click must not decide another test's default.
+  localStorage.clear()
 })
 
 function renderList() {
@@ -339,7 +342,14 @@ describe('shelves', () => {
     expect(await screen.findByTestId('registry-disabled')).toBeTruthy()
   })
 
-  it('marks a pack already in the catalogue', async () => {
+  /**
+   * NO PACK APPEARS TWICE (issue #199). The old shop card said "already installed" next to a
+   * reinstall button for exactly this case; the new design drops that second card entirely —
+   * once a registry pack is on this installation, the catalogue's own `installed` flag is what
+   * keeps it out of `Not installed`, and it renders exactly once, as a normal card, under
+   * Community's `Installed` read.
+   */
+  it("renders an installed catalogue pack once — as a normal card, never as a 'not installed' one", async () => {
     vi.mocked(api.getPackRegistry).mockResolvedValue(
       emptyRegistry({
         sources: [{ name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' }],
@@ -353,8 +363,26 @@ describe('shelves', () => {
         ],
       }),
     )
+    vi.mocked(api.listSurgePacks).mockResolvedValue([
+      officialPublic(),
+      registryPublic(),
+      localPublic(),
+      registryPublic({ packId: 'aider', name: 'Aider', tools: [] }),
+    ])
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
+      officialAdmin(),
+      registryAdmin(),
+      localAdmin(),
+      registryAdmin({
+        packId: 'aider',
+        name: 'Aider',
+        registry: { source: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', sha256: 'b'.repeat(64), trust: 'community', installedAt: '2026-08-27T00:00:00.000Z' },
+      }),
+    ])
+
     renderList()
-    expect((await screen.findByTestId('registry-aider')).textContent).toContain('already installed')
+    await screen.findByTestId('pack-card-aider')
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
   })
 })
 
@@ -378,7 +406,9 @@ describe('installing goes through the disclosure', () => {
     withShelf()
     renderList()
     await screen.findByTestId('shelf-Rocky Surf Pack Shop')
-    expect(screen.queryByRole('button', { name: /^Install/ })).toBeNull()
+    // `/^Install /` with the trailing space, not `/^Install/` — Community's own `Installed`
+    // filter button matches the looser pattern too (issue #199).
+    expect(screen.queryByRole('button', { name: /^Install / })).toBeNull()
     expect(api.installRegistryPack).not.toHaveBeenCalled()
   })
 
@@ -389,13 +419,13 @@ describe('installing goes through the disclosure', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
     expect(screen.getByTestId('disclosure-tool-aider').textContent).toContain('pipx install aider-chat')
 
-    fireEvent.click(screen.getByRole('button', { name: /^Install/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Install / }))
     await waitFor(() => expect(api.installRegistryPack).toHaveBeenCalledWith('Rocky Surf Pack Shop', 'aider'))
     const [args] = vi.mocked(api.installRegistryPack).mock.calls
     expect(args).toHaveLength(2)
   })
 
-  it('reloads the catalogue after installing, so the new pack appears without a refresh', async () => {
+  it('reloads the catalogue after installing, so the new pack appears without a refresh — once, not twice', async () => {
     withShelf()
     renderList()
     await screen.findByTestId('shelf-Rocky Surf Pack Shop')
@@ -412,12 +442,28 @@ describe('installing goes through the disclosure', () => {
       localPublic(),
       registryPublic({ packId: 'aider', name: 'Aider', tools: [] }),
     ])
+    // Core's own answer to "is this installed" flips too — the same flag the catalogue read
+    // used to decide `Not installed` in the first place, refetched by the `load()` after install.
+    vi.mocked(api.getPackRegistry).mockResolvedValue(
+      emptyRegistry({
+        sources: [{ name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' }],
+        shelves: [
+          {
+            source: { name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' },
+            packs: [registryPackEntry({ installed: true })],
+            fetchedAt: null,
+            failure: null,
+          },
+        ],
+      }),
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Review' }))
     await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /^Install/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Install / }))
 
     await waitFor(() => expect(screen.getByTestId('pack-card-aider')).toBeTruthy())
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
   })
 })
 
@@ -534,13 +580,20 @@ describe("the issue's own acceptance", () => {
     renderList()
     await screen.findByTestId('pack-card-rust-dev')
 
-    expect(screen.queryByText('Manage packs')).toBeNull()
+    // Manage-pack controls: gone for a member, wherever they now live.
     expect(screen.queryByTestId('import-file')).toBeNull()
     expect(screen.queryByTestId('import-url')).toBeNull()
     expect(screen.queryByRole('button', { name: 'New Surge Pack' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull()
     expect(screen.queryByTestId('shelf-Rocky Surf Pack Shop')).toBeNull()
     expect(api.listAdminSurgePacks).not.toHaveBeenCalled()
     expect(api.getPackRegistry).not.toHaveBeenCalled()
+
+    // The three sections themselves are not an admin region — a member still gets Official,
+    // Community (their installed packs, via the public read) and Personal.
+    expect(screen.getByRole('heading', { name: 'Official' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Community' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Personal' })).toBeTruthy()
 
     renderDetail('rust-dev')
     expect(await screen.findByRole('link', { name: /launch a server with this pack/i })).toBeTruthy()
@@ -554,14 +607,15 @@ describe("the issue's own acceptance", () => {
 })
 
 /**
- * The hover popup on an official pack's card (issue #192).
+ * The hover popup, on every pack's card now (issue #192; issue #199 drops the official-only
+ * gate).
  *
  * FAKE TIMERS ONLY AROUND THE DELAY: the page loads under real timers so `findBy*` works
  * normally, and the clock is faked just long enough to walk through the one second the popup
  * waits. `mouseOver`/`mouseOut` rather than `mouseEnter`/`mouseLeave` because React derives
  * enter and leave from the delegated over/out pair.
  */
-describe("an official pack's card popup", () => {
+describe("a pack's card popup", () => {
   const slot = (packId: string) => screen.getByTestId(`pack-card-slot-${packId}`)
 
   it('opens only after a second of hovering, and lists what the pack installs', async () => {
@@ -609,15 +663,30 @@ describe("an official pack's card popup", () => {
     }
   })
 
-  it('leaves a community pack alone — no popup, however long you hover', async () => {
+  it('opens for a community pack too, not only an official one', async () => {
     renderList()
     await screen.findByTestId('pack-card-rust-dev')
 
     vi.useFakeTimers()
     try {
       fireEvent.mouseOver(slot('rust-dev'))
-      act(() => void vi.advanceTimersByTime(5000))
-      expect(screen.queryByTestId('pack-popup-rust-dev')).toBeNull()
+      act(() => void vi.advanceTimersByTime(1000))
+      const popup = screen.getByTestId('pack-popup-rust-dev')
+      expect(within(popup).getByTestId('pack-popup-tools-rust-dev').textContent).toContain('rustup')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('opens for a personal pack too', async () => {
+    renderList()
+    await screen.findByTestId('pack-card-mine')
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.mouseOver(slot('mine'))
+      act(() => void vi.advanceTimersByTime(1000))
+      expect(screen.getByTestId('pack-popup-mine')).toBeTruthy()
     } finally {
       vi.useRealTimers()
     }
@@ -652,12 +721,12 @@ describe("an official pack's card popup", () => {
 })
 
 /**
- * The shipped pack's own file, on the detail page (issue #192) — the thing `download()` used
- * to refuse to show. It reads over the export route that was already there; the alternative,
- * a second non-admin read route for shipped files, was ruled out because a Rocky Surf
+ * A pack's own file, on its detail page — every pack now (issue #192; issue #199 drops the
+ * official-only gate). It reads over the export route that was already there; the alternative,
+ * a second non-admin read route for a pack's file, was ruled out because a Rocky Surf
  * installation has no non-admin to serve it to.
  */
-describe("a shipped pack's file on the detail page", () => {
+describe("a pack's file on the detail page", () => {
   it('shows an official pack its own YAML, read over the export route', async () => {
     renderDetail('ai-coding-agents')
 
@@ -665,17 +734,26 @@ describe("a shipped pack's file on the detail page", () => {
     expect(file.textContent).toContain('packId: ai-coding-agents')
     expect(file.textContent).toContain('curl -fsSL https://claude.ai/install.sh')
     expect(api.exportSurgePackYaml).toHaveBeenCalledWith('ai-coding-agents')
+    // Only an official pack's file shipped WITH THE RELEASE — the sentence above it says so.
+    expect(screen.getByText(/shipped with this Rocky Surf release/)).toBeTruthy()
   })
 
-  it('shows none for a database-backed pack, and does not ask core for one', async () => {
+  it('shows a personal pack its own YAML too, without claiming it shipped with the release', async () => {
     renderDetail('mine')
-    await screen.findByRole('button', { name: 'Edit' })
 
-    expect(screen.queryByTestId('pack-file-text')).toBeNull()
-    // Nothing is fetched for a pack whose text is only useful as a file to commit — Export is
-    // still the way to that one, and nothing was downloaded here.
-    expect(api.exportSurgePackYaml).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Export' })).toBeTruthy()
+    const file = await screen.findByTestId('pack-file-text')
+    expect(api.exportSurgePackYaml).toHaveBeenCalledWith('mine')
+    expect(screen.queryByText(/shipped with this Rocky Surf release/)).toBeNull()
+    // Still exactly one Export button — the pack file section's, not a second one below it.
+    expect(screen.getAllByRole('button', { name: 'Export' })).toHaveLength(1)
+    expect(file).toBeTruthy()
+  })
+
+  it("shows a community pack's own YAML too", async () => {
+    renderDetail('rust-dev')
+
+    expect(await screen.findByTestId('pack-file-text')).toBeTruthy()
+    expect(api.exportSurgePackYaml).toHaveBeenCalledWith('rust-dev')
   })
 
   it('keeps the rest of the page when the file cannot be read', async () => {
@@ -724,5 +802,141 @@ describe('a pack that asks for settings (issue #189)', () => {
     // page that had not finished loading.
     expect(await screen.findByText('remote desktop')).toBeTruthy()
     expect(screen.queryByText(/asks for \d+ setting/)).toBeNull()
+  })
+})
+
+/**
+ * Three sections, named by the same word their badge uses (issue #199). The wire values
+ * (`official`/`registry`/`local`) are untouched — `TrustBadge`'s `data-testid` still keys off
+ * them, asserted below alongside the word a person actually reads.
+ */
+describe('three sections, one vocabulary (issue #199)', () => {
+  it('groups official, registry and local packs under Official, Community and Personal', async () => {
+    renderList()
+    await screen.findByTestId('pack-card-ai-coding-agents')
+
+    const official = screen.getByRole('heading', { name: 'Official' }).closest('section')!
+    const community = screen.getByRole('heading', { name: 'Community' }).closest('section')!
+    const personal = screen.getByRole('heading', { name: 'Personal' }).closest('section')!
+
+    expect(within(official).getByTestId('pack-card-ai-coding-agents')).toBeTruthy()
+    expect(within(community).getByTestId('pack-card-rust-dev')).toBeTruthy()
+    expect(within(personal).getByTestId('pack-card-mine')).toBeTruthy()
+
+    // No pack sits under a heading its own section does not own.
+    expect(within(official).queryByTestId('pack-card-rust-dev')).toBeNull()
+    expect(within(community).queryByTestId('pack-card-mine')).toBeNull()
+    expect(within(personal).queryByTestId('pack-card-ai-coding-agents')).toBeNull()
+  })
+
+  it('badges a registry pack COMMUNITY and a local pack PERSONAL, never their wire words', async () => {
+    renderList()
+    const registryBadge = (await screen.findByTestId('pack-card-rust-dev')).querySelector(
+      '[data-testid="trust-registry"]',
+    )!
+    const localBadge = screen.getByTestId('pack-card-mine').querySelector('[data-testid="trust-local"]')!
+
+    // The testid still keys off the wire value — the badge word is the only thing that changed.
+    expect(registryBadge.textContent).toBe('community')
+    expect(localBadge.textContent).toBe('personal')
+  })
+
+  it("badges a not-yet-installed catalogue pack COMMUNITY too, matching the section it's in", async () => {
+    vi.mocked(api.getPackRegistry).mockResolvedValue(
+      emptyRegistry({
+        sources: [{ name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' }],
+        shelves: [
+          {
+            source: { name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' },
+            packs: [registryPackEntry()],
+            fetchedAt: null,
+            failure: null,
+          },
+        ],
+      }),
+    )
+    renderList()
+    const card = await screen.findByTestId('registry-aider')
+    expect(card.querySelector('[data-testid="trust-registry"]')?.textContent).toBe('community')
+  })
+
+  it('moves file import, URL import and New Surge Pack into the Personal section', async () => {
+    renderList()
+    const personal = (await screen.findByRole('heading', { name: 'Personal' })).closest('section')!
+
+    expect(within(personal).getByTestId('import-file')).toBeTruthy()
+    expect(within(personal).getByTestId('import-url')).toBeTruthy()
+    expect(within(personal).getByRole('button', { name: 'New Surge Pack' })).toBeTruthy()
+
+    // And out of Community, which keeps only Refresh and the filter.
+    const community = screen.getByRole('heading', { name: 'Community' }).closest('section')!
+    expect(within(community).queryByTestId('import-file')).toBeNull()
+    expect(within(community).getByRole('button', { name: 'Refresh' })).toBeTruthy()
+  })
+})
+
+/**
+ * Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
+ * Connectors page.
+ */
+describe("Community's All / Installed / Not installed filter", () => {
+  const withCatalogue = (installed = false) =>
+    vi.mocked(api.getPackRegistry).mockResolvedValue(
+      emptyRegistry({
+        sources: [{ name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' }],
+        shelves: [
+          {
+            source: { name: 'Rocky Surf Pack Shop', url: 'https://example.com/shop', trust: 'community' },
+            packs: [registryPackEntry({ installed })],
+            fetchedAt: null,
+            failure: null,
+          },
+        ],
+      }),
+    )
+
+  it('defaults to All: shows the installed pack and the catalogue pack together', async () => {
+    withCatalogue()
+    renderList()
+    expect(await screen.findByTestId('pack-card-rust-dev')).toBeTruthy()
+    expect(await screen.findByTestId('registry-aider')).toBeTruthy()
+    expect(screen.getByTestId('community-filter-all').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('Installed hides the catalogue and keeps the installed card', async () => {
+    withCatalogue()
+    renderList()
+    await screen.findByTestId('registry-aider')
+
+    fireEvent.click(screen.getByTestId('community-filter-installed'))
+
+    expect(screen.getByTestId('pack-card-rust-dev')).toBeTruthy()
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
+    expect(screen.queryByTestId('shelf-Rocky Surf Pack Shop')).toBeNull()
+  })
+
+  it('Not installed hides the installed card and keeps the catalogue', async () => {
+    withCatalogue()
+    renderList()
+    await screen.findByTestId('registry-aider')
+
+    fireEvent.click(screen.getByTestId('community-filter-not-installed'))
+
+    expect(screen.queryByTestId('pack-card-rust-dev')).toBeNull()
+    expect(screen.getByTestId('registry-aider')).toBeTruthy()
+  })
+
+  it('remembers the chosen filter per browser, and applies it on the next visit', async () => {
+    withCatalogue()
+    const first = renderList()
+    await screen.findByTestId('registry-aider')
+    fireEvent.click(screen.getByTestId('community-filter-installed'))
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
+    first.unmount()
+
+    renderList()
+    await screen.findByTestId('pack-card-rust-dev')
+    expect(screen.getByTestId('community-filter-installed').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.queryByTestId('registry-aider')).toBeNull()
   })
 })

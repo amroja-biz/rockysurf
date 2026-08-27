@@ -38,8 +38,8 @@ import {
  * admin-only, both reading `listAdminSurgePacks()`, and neither reachable by a member or
  * showing what a pack actually installs. This page is member-reachable at `/packs` (list) and
  * `/packs/:packId` (detail, same component, branching on `useParams()`), with every admin
- * capability of both old pages surviving in a "Manage packs" region gated on `user.isAdmin`
- * rather than on the route.
+ * capability of both old pages surviving, gated on `user.isAdmin` rather than on the route —
+ * import and creation sit in the Personal section's header (issue #199), Refresh in Community's.
  *
  * PROVENANCE COMES FROM CORE, NEVER RECOMPUTED HERE. `SurgePack.provenance` is derived
  * server-side from `sourceFile` and a registry install can never claim `official` (ADR-0006).
@@ -49,6 +49,29 @@ import {
  * THE PUBLIC LIST IS ENABLED-ONLY. A disabled pack reaches this page only through the admin
  * list, which is why an admin's view is a MERGE of the public rows (the base) and any admin
  * row the public list withheld — never a second, wider public read.
+ *
+ * THREE SECTIONS, NAMED BY THE SAME WORD THEIR BADGE USES (issue #199). `official` shipped with
+ * this release, `registry` came from a Pack Shop catalogue, `local` was created or imported on
+ * this installation — and the headings read Official / Community / Personal, because a section
+ * called "Community" that also held locally-created packs, sitting above a *second* block also
+ * badged COMMUNITY, was one word carrying three meanings. The wire values above this line never
+ * change; `badgeText()` below is the only place they get a different word to wear.
+ *
+ * COMMUNITY IS ONE SECTION WITH A FILTER, not two blocks. The old "Community" grid (registry
+ * packs already installed) and the old "Rocky Surf Pack Shop" block (the registry catalogue,
+ * installed or not) covered the same packs from two different reads, so an installed one could
+ * appear in both. All / Installed / Not installed — modelled on Claude's Connectors page — picks
+ * ONE of those reads at a time: Installed renders `views` (a normal `PackCard`, so it gets the
+ * popup and opens the detail page like anything else), Not installed renders the catalogue
+ * entries the registry itself says are not (`RegistryPack.installed === false`), and All is the
+ * concatenation of both. Because the split is on that flag rather than on set membership, a pack
+ * can never land in both halves.
+ *
+ * THE POPUP AND THE PACK FILE ARE FOR EVERY PACK, not only `official` ones (issue #199 undoes
+ * the gate issue #192 put here; see `docs/memories/2026-08-27-everyone-who-runs-an-installation-
+ * is-its-admin.md` for why "official only" was never a distinction worth drawing — Export
+ * already read the same route for every pack, so withholding the popup and the read-only view
+ * of the same bytes was a UI seam with nothing behind it).
  */
 
 /** What one pack looks like on this page, after the public and admin reads are merged. */
@@ -89,6 +112,29 @@ interface PackView {
  * the generic "installed from …" wording rather than as a broken page.
  */
 const URL_IMPORT_SOURCE = 'a URL import'
+
+/**
+ * Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
+ * Connectors page. Remembered per browser, default `all` — a preference about how someone reads
+ * this section, not data, so `localStorage` rather than a server round trip.
+ */
+type CommunityFilter = 'all' | 'installed' | 'not-installed'
+const COMMUNITY_FILTER_KEY = 'rockysurf.packs.communityFilter'
+const COMMUNITY_FILTERS: readonly { key: CommunityFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'installed', label: 'Installed' },
+  { key: 'not-installed', label: 'Not installed' },
+]
+
+function readStoredCommunityFilter(): CommunityFilter {
+  try {
+    const stored = localStorage.getItem(COMMUNITY_FILTER_KEY)
+    if (stored === 'all' || stored === 'installed' || stored === 'not-installed') return stored
+  } catch {
+    // Private browsing, or storage disabled — the default is a fine fallback either way.
+  }
+  return 'all'
+}
 
 function originOf(pack: AdminSurgePack): string {
   if (pack.sourceFile) return `shipped with this release · ${pack.sourceFile}`
@@ -186,6 +232,16 @@ function buildViews(
 
 /** Same order core sorts the public list by: `displayOrder`, then `packId`. */
 const byOrder = (a: PackView, b: PackView) => a.displayOrder - b.displayOrder || a.packId.localeCompare(b.packId)
+
+/**
+ * The word a badge shows, as distinct from `provenance` itself (issue #199). Everywhere this
+ * page passes a wire value to `TrustBadge`'s `label` — the styling and the `data-testid` — this
+ * is what it passes as `text`, the word a person reads. `official` needs no entry: its badge
+ * already reads the same word as its heading.
+ */
+function badgeText(provenance: 'official' | 'registry' | 'local'): string {
+  return provenance === 'registry' ? 'community' : provenance === 'local' ? 'personal' : provenance
+}
 
 function behaviourChips(
   view: Pick<PackView, 'requiresRepos' | 'requiresRdp' | 'desktop' | 'webPort' | 'inputs'>,
@@ -389,7 +445,19 @@ function SurgePackFormModal({
 
 type Shelf = PackRegistry['shelves'][number]
 
-/** One configured registry and its packs (ported from `AdminPackShopPage`, rockysurf-4d8h). */
+/**
+ * One configured registry's NOT-INSTALLED packs (ported from `AdminPackShopPage`,
+ * rockysurf-4d8h; narrowed to not-installed by issue #199). The caller filters `shelf.packs` to
+ * `!pack.installed` before this ever renders — an installed registry pack is `Installed`'s job,
+ * as a normal `PackCard`, not a second card here — so nothing this component renders ever needs
+ * to say "already installed" or offer a reinstall; every card here is one thing, an offer to
+ * install something not present yet.
+ *
+ * BADGED COMMUNITY, not the registry's own `community`/`internal` trust label — that label is
+ * still on the shelf header above these cards (it names how much the OPERATOR trusts this
+ * particular source), but the per-pack card in a Community section reads the same word every
+ * other card in it does.
+ */
 function ShelfSection({
   shelf,
   busyKey,
@@ -400,11 +468,11 @@ function ShelfSection({
   onSelect: (pack: RegistryPack) => void
 }): React.JSX.Element {
   return (
-    <section className="shop-section" data-testid={`shelf-${shelf.source.name}`}>
+    <div data-testid={`shelf-${shelf.source.name}`}>
       <div className="shop-section-head">
-        <h2>
+        <h3>
           {shelf.source.name} <TrustBadge label={shelf.source.trust} />
-        </h2>
+        </h3>
         <span className="muted">{shelf.source.url}</span>
       </div>
 
@@ -413,7 +481,7 @@ function ShelfSection({
           {shelf.failure.reason}
         </p>
       ) : shelf.packs.length === 0 ? (
-        <Shore>This registry has no packs yet.</Shore>
+        <Shore>Nothing here to install — every pack from this registry is already on this installation.</Shore>
       ) : (
         <ul className="pack-grid">
           {shelf.packs.map((pack) => {
@@ -422,7 +490,7 @@ function ShelfSection({
               <li key={pack.packId} className="pack-card" data-testid={`registry-${pack.packId}`}>
                 <div className="pack-card-head">
                   <h3>{pack.name}</h3>
-                  <TrustBadge label={pack.trust} />
+                  <TrustBadge label="registry" text="community" />
                 </div>
                 <p className="muted">{pack.description}</p>
                 <button
@@ -431,29 +499,28 @@ function ShelfSection({
                   onClick={() => onSelect(pack)}
                   disabled={busyKey === key}
                 >
-                  {busyKey === key ? 'Reading…' : pack.installed ? 'Review and reinstall' : 'Review'}
+                  {busyKey === key ? 'Reading…' : 'Review'}
                 </button>
-                {pack.installed && <span className="size-detail">already installed</span>}
               </li>
             )
           })}
         </ul>
       )}
-    </section>
+    </div>
   )
 }
 
 /* --------------------------------------------------------------------------------- pack card */
 
 /**
- * How long a pointer (or keyboard focus) has to rest on an official pack's card before the
- * popup opens. Long enough that crossing the grid on the way somewhere else never opens one,
- * short enough that stopping on a card is unmistakably a question about it.
+ * How long a pointer (or keyboard focus) has to rest on a card before the popup opens. Long
+ * enough that crossing the grid on the way somewhere else never opens one, short enough that
+ * stopping on a card is unmistakably a question about it.
  */
 const POPUP_DELAY_MS = 1000
 
 /**
- * One card in the grid (issue #192).
+ * One card in the grid (issue #192; issue #199 drops the official-only gate).
  *
  * WHAT THE CARD SAYS IS NOW THE MARK, THE NAME AND THE BADGE, and nothing else. The tool count
  * and the admin-only origin sentence both left: neither answers a question anybody has while
@@ -467,7 +534,12 @@ const POPUP_DELAY_MS = 1000
  * descendant of the `<li>` that carries the handlers, moving the pointer from the card into
  * the popup is not a mouse-out and the popup does not flicker.
  *
- * ONLY OFFICIAL PACKS GET ONE. A community pack's card keeps exactly the behaviour it had.
+ * EVERY PACK GETS ONE. Issue #192 gated this on `provenance === 'official'`; the owner ruling
+ * that followed it (`docs/memories/2026-08-27-everyone-who-runs-an-installation-is-its-admin.md`)
+ * is the reason issue #199 removes the gate rather than widening it to a role check — a Rocky
+ * Surf installation has no population the popup needed protecting from, official or otherwise,
+ * and Export already worked for a registry or local pack, so a card two sections down withholding
+ * the same information was a seam with nothing behind it.
  */
 function PackCard({
   view,
@@ -476,7 +548,6 @@ function PackCard({
   view: PackView
   onExport: (view: PackView) => void
 }): React.JSX.Element {
-  const hasPopup = view.provenance === 'official'
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const link = useRef<HTMLAnchorElement>(null)
@@ -487,12 +558,12 @@ function PackCard({
   }, [])
 
   const arm = useCallback(() => {
-    if (!hasPopup || open || timer.current !== null) return
+    if (open || timer.current !== null) return
     timer.current = setTimeout(() => {
       timer.current = null
       setOpen(true)
     }, POPUP_DELAY_MS)
-  }, [hasPopup, open])
+  }, [open])
 
   const close = useCallback(() => {
     cancel()
@@ -507,46 +578,38 @@ function PackCard({
     <li
       className="pack-card-slot"
       data-testid={`pack-card-slot-${view.packId}`}
-      onMouseEnter={hasPopup ? arm : undefined}
-      onMouseLeave={hasPopup ? close : undefined}
+      onMouseEnter={arm}
+      onMouseLeave={close}
       /* Focus and blur BUBBLE in React, so these cover the link and everything in the popup:
          tabbing onto the card arms the same delay, and focus leaving the whole card — to the
          next card, or out of the grid — closes it. No focus trap: the popup's controls sit
          after the link in the DOM, so Tab walks into them and then out the other side. */
-      onFocus={hasPopup ? arm : undefined}
-      onBlur={
-        hasPopup
-          ? (event: React.FocusEvent<HTMLLIElement>) => {
-              if (event.currentTarget.contains(event.relatedTarget)) return
-              close()
-            }
-          : undefined
-      }
-      onKeyDown={
-        hasPopup
-          ? (event: React.KeyboardEvent<HTMLLIElement>) => {
-              if (event.key !== 'Escape' || !open) return
-              // Focus goes back to the card rather than to the document, so Escape does not
-              // cost a keyboard user their place in the grid. Nothing re-arms until they
-              // leave and come back, which is what dismissing should mean.
-              link.current?.focus()
-              close()
-            }
-          : undefined
-      }
+      onFocus={arm}
+      onBlur={(event: React.FocusEvent<HTMLLIElement>) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return
+        close()
+      }}
+      onKeyDown={(event: React.KeyboardEvent<HTMLLIElement>) => {
+        if (event.key !== 'Escape' || !open) return
+        // Focus goes back to the card rather than to the document, so Escape does not cost a
+        // keyboard user their place in the grid. Nothing re-arms until they leave and come
+        // back, which is what dismissing should mean.
+        link.current?.focus()
+        close()
+      }}
     >
       <Link ref={link} to={`/packs/${view.packId}`} className="pack-card" data-testid={`pack-card-${view.packId}`}>
         <div className="pack-card-head">
           <PackIcon pack={view} />
           <h3>{view.name}</h3>
-          {/* Core's own three words, unchanged — see the file docblock on why this never
-              recomputes provenance. */}
-          <TrustBadge label={view.provenance === 'official' ? 'official' : view.provenance} />
+          {/* Core's own three words key the styling and the testid, unchanged — see the file
+              docblock. `badgeText` is only ever the word a person reads. */}
+          <TrustBadge label={view.provenance} text={badgeText(view.provenance)} />
         </div>
         {!view.enabled && <p className="hint">— disabled</p>}
       </Link>
 
-      {hasPopup && open && (
+      {open && (
         <div className="pack-popup" data-testid={`pack-popup-${view.packId}`} role="group" aria-label={view.name}>
           <h4>Installs</h4>
           {view.tools.length === 0 ? (
@@ -591,7 +654,16 @@ export function PacksPage(): React.JSX.Element {
   const [selectedRegistryPack, setSelectedRegistryPack] = useState<RegistryPackDetail | null>(null)
   const [selectingKey, setSelectingKey] = useState<string | null>(null)
   const [installing, setInstalling] = useState(false)
+  const [communityFilter, setCommunityFilter] = useState<CommunityFilter>(readStoredCommunityFilter)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COMMUNITY_FILTER_KEY, communityFilter)
+    } catch {
+      // Same fallback as the read: nothing this page does depends on the write succeeding.
+    }
+  }, [communityFilter])
 
   const load = useCallback(
     async (opts: { refreshRegistry?: boolean } = {}) => {
@@ -639,27 +711,45 @@ export function PacksPage(): React.JSX.Element {
     [publicPacks, adminPacksById, toolsById, isAdmin],
   )
   const official = useMemo(() => views.filter((v) => v.provenance === 'official').sort(byOrder), [views])
-  const community = useMemo(() => views.filter((v) => v.provenance !== 'official').sort(byOrder), [views])
+  const communityInstalled = useMemo(() => views.filter((v) => v.provenance === 'registry').sort(byOrder), [views])
+  const personal = useMemo(() => views.filter((v) => v.provenance === 'local').sort(byOrder), [views])
 
   /**
-   * THE PACK FILE ITSELF, on the detail page of a shipped pack (issue #192).
+   * The catalogue side of Community's filter, one shelf at a time, narrowed to what is not on
+   * this installation yet. `RegistryPack.installed` is core's own answer to "is this here
+   * already" — the same flag `communityInstalled` above is the other side of — so filtering on
+   * it is what keeps a pack from ever appearing under both Installed and Not installed at once.
+   * `null` (no registry read — a member, or the fetch failed) renders as no shelves rather than
+   * as a hint about who is signed in; see the file docblock.
+   */
+  const notInstalledShelves = useMemo(
+    () => (registry?.shelves ?? []).map((shelf) => ({ ...shelf, packs: shelf.packs.filter((p) => !p.installed) })),
+    [registry],
+  )
+
+  /**
+   * THE PACK FILE ITSELF, on the detail page of every pack (issue #192; issue #199 drops the
+   * official-only gate).
    *
    * `download()` used to record the opposite decision — export the file rather than show its
-   * text — and for a pack somebody made here that still holds: that text is only useful as a
-   * file you can commit. An OFFICIAL pack is the other case. Its file shipped in the release
-   * and is published in the repository, and it is the honest answer to "what will this
-   * actually run on my box as root", so making someone click through a save dialog to read it
-   * bought nothing. Both now: the text here, Export beside it.
+   * text — and for a pack somebody made here that still holds AS A DEFAULT: that text is only
+   * useful as a file you can commit. What issue #192 got backwards was treating that as true only
+   * of an official pack. It is not: a registry pack's file is exactly as readable, exported
+   * through the exact same route, and the operator asking "what will this run on my box as root"
+   * does not stop being a real question the moment the pack came from a shop instead of the
+   * tarball. Both now, for every pack: the text here, Export beside it.
    *
    * READ OVER THE EXISTING ADMIN EXPORT ROUTE, and no new one. Rocky Surf is self-hosted
-   * personal tooling — whoever runs it is its admin — so a second, non-admin read route for
-   * shipped files would be a public surface with no public to serve (owner ruling, #192).
+   * personal tooling — whoever runs it is its admin — so a second, non-admin read route for a
+   * pack's file would be a public surface with no public to serve (owner ruling, #192; restated
+   * for the general case at `docs/memories/2026-08-27-everyone-who-runs-an-installation-is-its-
+   * admin.md`).
    *
-   * Only fetched in detail mode, and only for a file-backed pack: a pack somebody created or
-   * installed here is still Export-only, because its text is a file to commit, not a page.
+   * Only fetched in detail mode, and only once a pack is found — `detailView` is `undefined` for
+   * an unknown `:packId`, and this must not fetch for that.
    */
   const detailView = packId ? views.find((v) => v.packId === packId) : undefined
-  const showsPackFile = detailView?.provenance === 'official'
+  const showsPackFile = detailView !== undefined
   const [packFile, setPackFile] = useState<string | null>(null)
   const [packFileProblem, setPackFileProblem] = useState<string | null>(null)
 
@@ -708,18 +798,17 @@ export function PacksPage(): React.JSX.Element {
   }
 
   /**
-   * Export, from the detail page and from an official pack's card popup — the same existing
-   * admin route in both places (issue #192).
+   * Export, from the detail page and from a card's popup — every pack, the same existing admin
+   * route in both places (issue #192; issue #199 drops the official-only gate from both).
    *
-   * NO SECOND ROUTE AND NO ROLE BRANCH. The obvious alternative was a non-admin read route for
-   * shipped packs' files, so that Export and the file could be shown to a member; the owner's
-   * ruling is that there is no such member — a Rocky Surf installation is one engineer's own
-   * tooling and whoever runs it is its admin — so the popup's Export is the export that was
-   * always there.
+   * NO SECOND ROUTE AND NO ROLE BRANCH. The obvious alternative was a non-admin read route for a
+   * pack's file, so that Export and the file could be shown to a member; the owner's ruling is
+   * that there is no such member — a Rocky Surf installation is one engineer's own tooling and
+   * whoever runs it is its admin — so the popup's Export is the export that was always there.
    *
    * Still a downloaded FILE here, because the point of exporting is that the operator can drop
-   * it into `packs/` and have it become the source of truth. Issue #192 adds the TEXT as well,
-   * on a shipped pack's page — it does not replace this.
+   * it into `packs/` and have it become the source of truth. The pack file section on a pack's
+   * own page adds the TEXT as well, for every pack now — it does not replace this.
    */
   async function downloadYaml(view: PackView) {
     try {
@@ -816,7 +905,7 @@ export function PacksPage(): React.JSX.Element {
         <div className="pack-detail-header">
           <PackIcon pack={view} size="large" />
           <div>
-            <TrustBadge label={view.provenance === 'official' ? 'official' : view.provenance} />
+            <TrustBadge label={view.provenance} text={badgeText(view.provenance)} />
             {/* The origin sentence, which used to be on the card too (issue #192). One pack's
                 page is where "where did this come from, exactly" gets asked; a grid is not.
                 `origin` is only ever built from the admin read, so no role check here. */}
@@ -863,8 +952,9 @@ export function PacksPage(): React.JSX.Element {
           <section className="pack-file">
             <h2>The pack file</h2>
             <p className="hint">
-              This file shipped with this Rocky Surf release. It is the whole of what a new box
-              runs for this pack — every install script, in the order they run.
+              {view.provenance === 'official'
+                ? 'This file shipped with this Rocky Surf release. It is the whole of what a new box runs for this pack — every install script, in the order they run.'
+                : 'This is the whole of what a new box runs for this pack — every install script, in the order they run.'}
             </p>
             {packFileProblem ? (
               <p className="hint" data-testid="pack-file-unavailable">
@@ -877,9 +967,9 @@ export function PacksPage(): React.JSX.Element {
                 {packFile}
               </pre>
             )}
-            {/* The same file as a download, for the operator who wants it in `packs/` — and
-                the reason Export is not in the admin row below for an official pack: one
-                button per page, in the place the file is. */}
+            {/* The same file as a download, for the operator who wants it in `packs/` — and the
+                reason Export is not in the admin row below: one button per page, in the place
+                the file is. */}
             <p>
               <button type="button" className="button secondary" onClick={() => void downloadYaml(view)}>
                 Export
@@ -890,11 +980,6 @@ export function PacksPage(): React.JSX.Element {
 
         {isAdmin && (
           <section className="pack-admin-actions">
-            {view.provenance !== 'official' && (
-              <button type="button" onClick={() => void downloadYaml(view)}>
-                Export
-              </button>
-            )}
             {view.editable ? (
               <>
                 <button type="button" onClick={() => setFormTarget(view.packId)}>
@@ -931,11 +1016,19 @@ export function PacksPage(): React.JSX.Element {
   }
 
   /* --------------------------------------------------------------------------- list mode */
+
+  // Which halves of Community the filter shows. "All" is both; the other two are one each — the
+  // installed half and the catalogue half never both name the same pack, so there is nothing to
+  // dedupe here beyond picking which side(s) to render.
+  const showCommunityInstalled = communityFilter !== 'not-installed'
+  const showCommunityCatalog = communityFilter !== 'installed'
+
   return (
     <AppShell title="Surge Packs">
       <p className="hint">
         A Surge Pack decides which tools a new box is set up with. Official packs shipped with
-        this Rocky Surf release; Community packs were installed from a registry or created here.
+        this Rocky Surf release; Community packs come from a Pack Shop registry, installed here
+        or not yet; Personal packs were created or imported on this installation.
       </p>
 
       <section className="shop-section">
@@ -952,22 +1045,9 @@ export function PacksPage(): React.JSX.Element {
       </section>
 
       <section className="shop-section">
-        <h2>Community</h2>
-        {community.length === 0 ? (
-          <Shore>No community packs are installed.</Shore>
-        ) : (
-          <ul className="pack-grid">
-            {community.map((view) => (
-              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {isAdmin && (
-        <section className="shop-section">
-          <div className="shop-section-head">
-            <h2>Manage packs</h2>
+        <div className="shop-section-head">
+          <h2>Community</h2>
+          {isAdmin && (
             <button
               type="button"
               className="button secondary"
@@ -976,70 +1056,120 @@ export function PacksPage(): React.JSX.Element {
             >
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
-          </div>
+          )}
+        </div>
 
-          {notice && <p data-testid="notice">{notice}</p>}
-
-          <div className="pack-import">
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".yaml,.yml,application/yaml,text/yaml"
-              data-testid="import-file"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) void importFromFile(file)
-              }}
-            />
-            <label>
-              …or from a URL
-              <input
-                type="url"
-                value={importUrl}
-                data-testid="import-url"
-                onChange={(e) => setImportUrl(e.target.value)}
-                placeholder="https://example.com/pack.yaml"
-              />
-            </label>
-            <button type="button" onClick={() => void importFromUrl()} disabled={!importUrl}>
-              Import from URL
+        {/* All / Installed / Not installed (issue #199), modelled on Claude's Connectors page.
+            `aria-pressed`, not `role="tab"`: there is one section here, filtered, not several
+            panels swapped for one another. */}
+        <div className="pack-filter-row" role="group" aria-label="Filter Community packs">
+          {COMMUNITY_FILTERS.map((filter) => (
+            <button
+              key={filter.key}
+              type="button"
+              className="button secondary"
+              aria-pressed={communityFilter === filter.key}
+              data-testid={`community-filter-${filter.key}`}
+              onClick={() => setCommunityFilter(filter.key)}
+            >
+              {filter.label}
             </button>
-          </div>
-
-          {formTarget === null && (
-            <button type="button" onClick={() => setFormTarget('new')}>
-              New Surge Pack
-            </button>
-          )}
-          {formTarget === 'new' && (
-            <SurgePackFormModal
-              initial={null}
-              tools={tools}
-              onCancel={() => setFormTarget(null)}
-              onSaved={() => {
-                setFormTarget(null)
-                void load()
-              }}
-            />
-          )}
-
-          {registry && !registry.enabled && (
-            <p className="hint" data-testid="registry-disabled">
-              The pack registry is switched off (<code>registry.enabled: false</code>). Packs
-              already installed are unaffected, and you can still create packs above.
-            </p>
-          )}
-
-          {registry?.shelves.map((shelf) => (
-            <ShelfSection
-              key={shelf.source.name}
-              shelf={shelf}
-              busyKey={selectingKey}
-              onSelect={(pack) => void openDisclosure(pack)}
-            />
           ))}
-        </section>
-      )}
+        </div>
+
+        {showCommunityInstalled &&
+          (communityInstalled.length === 0 ? (
+            <Shore>No community packs are installed.</Shore>
+          ) : (
+            <ul className="pack-grid">
+              {communityInstalled.map((view) => (
+                <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
+              ))}
+            </ul>
+          ))}
+
+        {showCommunityCatalog && (
+          <>
+            {registry && !registry.enabled && (
+              <p className="hint" data-testid="registry-disabled">
+                The pack registry is switched off (<code>registry.enabled: false</code>). Packs
+                already installed are unaffected.
+              </p>
+            )}
+            {notInstalledShelves.map((shelf) => (
+              <ShelfSection
+                key={shelf.source.name}
+                shelf={shelf}
+                busyKey={selectingKey}
+                onSelect={(pack) => void openDisclosure(pack)}
+              />
+            ))}
+          </>
+        )}
+      </section>
+
+      <section className="shop-section">
+        <h2>Personal</h2>
+
+        {isAdmin && (
+          <>
+            {notice && <p data-testid="notice">{notice}</p>}
+
+            <div className="pack-import">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".yaml,.yml,application/yaml,text/yaml"
+                data-testid="import-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void importFromFile(file)
+                }}
+              />
+              <label>
+                …or from a URL
+                <input
+                  type="url"
+                  value={importUrl}
+                  data-testid="import-url"
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  placeholder="https://example.com/pack.yaml"
+                />
+              </label>
+              <button type="button" onClick={() => void importFromUrl()} disabled={!importUrl}>
+                Import from URL
+              </button>
+            </div>
+
+            {formTarget === null && (
+              <button type="button" onClick={() => setFormTarget('new')}>
+                New Surge Pack
+              </button>
+            )}
+            {formTarget === 'new' && (
+              <SurgePackFormModal
+                initial={null}
+                tools={tools}
+                onCancel={() => setFormTarget(null)}
+                onSaved={() => {
+                  setFormTarget(null)
+                  void load()
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {personal.length === 0 ? (
+          <Shore>No personal packs yet.</Shore>
+        ) : (
+          <ul className="pack-grid">
+            {personal.map((view) => (
+              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
+            ))}
+          </ul>
+        )}
+      </section>
 
       {selectedRegistryPack && (
         <PackDisclosurePanel
