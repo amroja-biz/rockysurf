@@ -448,6 +448,7 @@ Two more, worth calling out separately:
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
 | `REPOS` | every `setupScript`, whatever the pack's `requiresRepos` | comma-separated list of the repositories the user chose — empty when they chose none, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it. Any `git` your setup script runs against these URLs — directly, or through a tool that clones on its own the way `gt rig add` does — authenticates with the same credential helper the clone step used, handed to the step through git's `GIT_CONFIG_*` environment when the box carries a token (issue #142). You write no credential code and must not: the token never goes on a command line or into a git config |
 | your pack's own `inputs` | every step of every tool on the box, **when the user supplied one** | the values your pack asked for at create time — see [`inputs`](#inputs--what-your-pack-asks-the-user-for). Your names, in your namespace, promised by your pack rather than by Rocky Surf |
+| the user's own **Environment** | every step of every tool on the box, **when the user set one** | `KEY=value` the person creating the server typed for themselves (issue #197). Names you have never heard of, chosen by someone who has your pack installed — you cannot see them, must not plan around them, and cannot collide with them: a name your pack declares is refused in that field |
 
 The person creating the server can add a **startup script** of their own, which runs after every
 step your pack contributes and gets this same environment plus the choice of running as `root` or
@@ -743,10 +744,13 @@ fi
 environment, and a short generic name is a name some other tool already reads.
 
 **Names Rocky Surf already uses are refused at validation** — `ARCH`, `DEBIAN_FRONTEND`, `HOME`,
-`USER`, `LOGNAME`, `REPOS`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `PATH` and the rest of the shell's
-own, plus anything starting with `ROCKYSURF_` or `GIT_`. Such a pack would not override anything;
-it would just read a value nobody could send, so `rockysurf pack lint` and the importer both
-refuse it.
+`USER`, `LOGNAME`, `REPOS`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `GIT_TERMINAL_PROMPT`,
+`GIT_CONFIG_COUNT`, `PATH` and the rest of the shell's own, plus anything starting with
+`ROCKYSURF_`, `GIT_CONFIG_KEY_` or `GIT_CONFIG_VALUE_` (those are generated with an index, so no
+list could name them all). Such a pack would not override anything; it would just read a value
+nobody could send, so `rockysurf pack lint` and the importer both refuse it. Every other `GIT_`
+name — `GIT_AUTHOR_NAME`, `GIT_SSH_COMMAND` — is yours to use: Rocky Surf never writes them
+(issue #197).
 
 **One line, and not too long.** A value is at most 4 KiB and may not contain a newline: the
 values reach your box through `secrets.env`, whose reader is line-oriented. A pack that wants to
@@ -1204,10 +1208,11 @@ hardcode what they carry.
 | `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
 | `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
 | your pack's own `inputs` | every step, **when the user supplied one** | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
+| the user's own **Environment** | every step, **when the user set one** | `KEY=value` the person creating the server chose for themselves, whatever your pack declares (issue #197). Their namespace, not yours and not Rocky Surf's. |
 
 The user's own startup script (issue #184) gets exactly this environment too, including the
-`GIT_CONFIG_*` trio and your pack's inputs, and runs after every step of yours. You cannot see it
-and must not plan around it.
+`GIT_CONFIG_*` trio, your pack's inputs and their own Environment, and runs after every step of
+yours. You cannot see it and must not plan around it.
 
 ### The two secrets, and how to use them safely
 
@@ -1220,9 +1225,17 @@ Since issue #189 that is not the whole environment, and the distinction is worth
 A pack's own [`inputs`](#inputs--what-your-pack-asks-the-user-for) arrive through the same
 `secrets.env` and are read the same way, but they are **your** namespace, promised by **your**
 pack: you chose the names, you document them, and they exist only on boxes built from your pack.
-Rocky Surf guarantees the delivery, not the names. The two lists cannot collide, because an input
-that claims a name Rocky Surf exports is refused at validation. So the closed list above is still
-closed — it just is not the only thing in the environment any more.
+Rocky Surf guarantees the delivery, not the names.
+
+Since issue #197 there is a third namespace in that file, and it is neither yours nor Rocky
+Surf's: the person creating the server can set their **own** `KEY=value` environment on their own
+box. You will never know those names, and you do not need to — a name your pack declares is
+refused in that field, so nothing a user sets can shadow anything you asked for.
+
+None of the three can collide, because a supplied name that claims something Rocky Surf exports is
+refused at validation and a user's name that claims something the pack declared is refused at
+create. So the closed list above is still closed — it just is not the only thing in the
+environment any more.
 
 **Both may be absent.** A key with no secret behind it is omitted entirely rather than set
 empty, so guard before you use one:

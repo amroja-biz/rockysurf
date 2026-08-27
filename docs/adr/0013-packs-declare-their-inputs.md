@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted — 2026-08-27. Issue #189. Extends [ADR-0004](0004-packs-as-pr-able-yaml.md)'s frozen
+Accepted — 2026-08-27. Issue #189. **Amended 2026-08-27 by
+[ADR-0014](0014-per-server-environment-at-create-time.md)** (issue #197): the reserved names and
+the name/value schemas moved to `env/names.ts` so a user's own Environment is refused by exactly
+the same rules, and the `GIT_` prefix reservation in point 3 narrowed to the four names the
+setup preamble actually writes. Extends [ADR-0004](0004-packs-as-pr-able-yaml.md)'s frozen
 v0.1 pack format with one optional field, and amends the closed `secrets.env` key-name contract
 that [ADR-0002](0002-push-bootstrap-default-callback-fallback.md)'s bootstrap established — not by
 adding a name to it, but by putting a second, pack-owned namespace beside it.
@@ -74,7 +78,11 @@ the level the value is actually scoped to is the honest shape.
 `LOGNAME`), the `secrets.env` contract (`GITHUB_TOKEN`, `RDP_PASSWORD`), the setup preamble
 (`REPOS`), and the shell's own (`PATH`, `IFS`, `LD_PRELOAD`, …). `ROCKYSURF_` and `GIT_` are
 refused as whole prefixes, because both are indexed (`ROCKYSURF_GITHUB_TOKEN_<n>`,
-`GIT_CONFIG_KEY_<n>`) and no exact-name list could close them. A test pins
+`GIT_CONFIG_KEY_<n>`) and no exact-name list could close them. **Amended by ADR-0014:** the
+`GIT_` half was too wide — it refused `GIT_AUTHOR_NAME` and everything else git reads but Rocky
+Surf never writes, to protect four names. `GIT_TERMINAL_PROMPT` and `GIT_CONFIG_COUNT` are now
+reserved exact names and only `GIT_CONFIG_KEY_`/`GIT_CONFIG_VALUE_` remain prefixes;
+`ROCKYSURF_` is unchanged. A test pins
 `SECRET_ENV_KEY_NAMES` as a subset of the reserved list, so a future name added to the
 `secrets.env` contract cannot quietly become claimable.
 
@@ -153,6 +161,12 @@ render a form (the app would have no idea what to ask), nothing could mark a val
 could refuse a typo, and a pack author would be reasoning about an environment anybody could put
 anything into. The declaration is what makes the rest possible.
 
+> **This rejection is about the PACK's mechanism, and it stands.** A pack states its needs by
+> declaring them. [ADR-0014](0014-per-server-environment-at-create-time.md) later gave the USER
+> a free-form environment of their own, which is a different actor with a different problem —
+> there is nothing for them to declare, and the values they set are refused if they collide with
+> anything a pack declared. A pack that needs a value still declares it.
+
 **D. A second "pre-install" user-script slot.** Rejected in the issue itself: every plan step runs
 in its own process, so an `export` in one never reaches another.
 
@@ -227,3 +241,6 @@ uninstalled. Two lists, two kinds of promise, stated as such.
   values like any other step.
 - [ADR-0002](0002-push-bootstrap-default-callback-fallback.md) — the `secrets.env` channel and the
   frozen plan version this decision does not move.
+- [ADR-0014](0014-per-server-environment-at-create-time.md) — the user's own environment, which
+  reuses this decision's delivery, custody split and name rules, and narrows its `GIT_`
+  reservation.
