@@ -9,6 +9,8 @@ import { openTestDatabase } from '../db/client.js'
 import { getServer, insertServer, setInstallPlan } from '../db/repositories/servers.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import type { ToolRow } from '../db/schema.js'
+import { isValidProvisioningStep } from '../db/transitions.js'
+import { stepPhase } from './failure-report.js'
 import { installPlanSchema, parseInstallPlan, serializeInstallPlan } from './plan.js'
 import {
   GIT_CREDENTIAL_HELPER,
@@ -57,7 +59,7 @@ const base = (over: Partial<ResolveInstallPlanInput> = {}): ResolveInstallPlanIn
 const ids = (input: ResolveInstallPlanInput) => resolveInstallPlan(input).steps.map((s) => s.id)
 
 describe('phase ordering', () => {
-  it('renders the six phases in the documented order with namespaced ids', () => {
+  it('renders the documented phases in order with namespaced ids', () => {
     const plan = resolveInstallPlan(
       base({
         pack: { id: 'p', tools: ['node', 'claude-code'], requiresRdp: true, desktop: 'xfce' },
@@ -67,6 +69,7 @@ describe('phase ordering', () => {
           tool({ id: 'claude-code', installOrder: 40, runAs: 'rocky', setupScript: 'setup claude\n' }),
         ],
         repositories: ['https://github.com/example/thing.git'],
+        userScript: { script: 'echo mine\n', runAs: 'rocky' },
       }),
     )
 
@@ -76,8 +79,9 @@ describe('phase ordering', () => {
       'tool:claude-code',
       'repo:thing', // 3 clones
       'tool-setup:claude-code', // 4 setup, after clones so it can read $REPOS
-      'branding', // 5
-      'rdp', // 6 only because requiresRdp
+      'user-script', // 5 the user's own, after everything the pack does (issue #184)
+      'branding', // 6
+      'rdp', // 7 only because requiresRdp
     ])
   })
 
@@ -139,7 +143,7 @@ describe('phase ordering', () => {
   })
 })
 
-describe('phase 7: retiring the managed key (ADR-0008, issue #92)', () => {
+describe('phase 8: retiring the managed key (ADR-0008, issue #92)', () => {
   const USER_KEY = 'ssh-ed25519 AAAAuser me@laptop'
   const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'
 
@@ -197,6 +201,83 @@ describe('phase 7: retiring the managed key (ADR-0008, issue #92)', () => {
       base({ branding: false, userSuppliedPublicKey: tricky, managedPublicKey: MANAGED_KEY }),
     ).steps.find((s) => s.id === 'supplied-key-only')!
     expect(step.run).toContain(`'\\''`)
+  })
+})
+
+describe("phase 5: the user's own script (ADR-0011, issue #184)", () => {
+  const withScript = (over: Partial<ResolveInstallPlanInput> = {}) =>
+    base({ branding: false, userScript: { script: 'echo mine\n', runAs: 'rocky' }, ...over })
+
+  it('renders no step at all when the user supplied none', () => {
+    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code'])
+    expect(ids(base({ branding: false }))).not.toContain('user-script')
+  })
+
+  it('runs after every tool, clone and setup script, and before core\'s own finishing steps', () => {
+    expect(
+      ids(
+        withScript({
+          pack: { id: 'p', tools: ['claude-code'], requiresRdp: true },
+          tools: [tool({ id: 'claude-code', installOrder: 40, runAs: 'rocky', setupScript: 'setup\n' })],
+          repositories: ['https://github.com/example/thing.git'],
+          branding: true,
+          userSuppliedPublicKey: 'ssh-ed25519 AAAAuser me@laptop',
+          managedPublicKey: 'ssh-ed25519 AAAAmanaged rockysurf',
+        }),
+      ),
+    ).toEqual([
+      'tool:claude-code',
+      'repo:thing',
+      'tool-setup:claude-code',
+      'user-script',
+      'branding',
+      'rdp',
+      'supplied-key-only',
+    ])
+  })
+
+  it('is OPTIONAL, so a script that fails leaves the user a running box to fix it on (ADR-0010)', () => {
+    const step = resolveInstallPlan(withScript()).steps.find((s) => s.id === 'user-script')!
+    expect(step.optional).toBe(true)
+    // `finishing`, not `tool` — so even if the plan were failed by it, `terminatesInstance`
+    // would keep the machine. Belt and braces, on purpose.
+    expect(stepPhase(step.id)).toBe('finishing')
+  })
+
+  it('reports a word of its own, so the feed can say whose script is running', () => {
+    const step = resolveInstallPlan(withScript()).steps.find((s) => s.id === 'user-script')!
+    expect(step.reports).toBe('running_user_script')
+    expect(isValidProvisioningStep(step.reports)).toBe(true)
+    // It must NOT be the label that promotes a row to running: this step is not the end.
+    expect(step.reports).not.toBe('ready')
+  })
+
+  it('honours the run-as the user chose — the freedom EC2 user data does not give', () => {
+    expect(resolveInstallPlan(withScript()).steps.find((s) => s.id === 'user-script')!.runAs).toBe('rocky')
+    expect(
+      resolveInstallPlan(withScript({ userScript: { script: 'echo mine\n', runAs: 'root' } })).steps.find(
+        (s) => s.id === 'user-script',
+      )!.runAs,
+    ).toBe('root')
+  })
+
+  it('gets the setup preamble — $REPOS and the clone step\'s git auth — and the script verbatim', () => {
+    const step = resolveInstallPlan(
+      withScript({ repositories: ['https://github.com/example/thing.git'], userScript: { script: 'cd "$REPOS"\n', runAs: 'rocky' } }),
+    ).steps.find((s) => s.id === 'user-script')!
+
+    expect(step.run).toContain("export REPOS='https://github.com/example/thing.git'")
+    expect(step.run).toContain(SETUP_GIT_AUTH_PREAMBLE)
+    expect(step.run.endsWith('cd "$REPOS"\n')).toBe(true)
+    // NOT wrapped in `set -euo pipefail`: the script's own semantics are the user's to choose,
+    // exactly as EC2 leaves user-data alone.
+    expect(step.run).not.toContain('set -euo pipefail')
+  })
+
+  it('renders a valid plan and stays deterministic across two renders', () => {
+    const input = withScript({ repositories: ['https://github.com/example/thing.git'] })
+    expect(() => installPlanSchema.parse(resolveInstallPlan(input))).not.toThrow()
+    expect(serializeInstallPlan(resolveInstallPlan(input))).toBe(serializeInstallPlan(resolveInstallPlan(input)))
   })
 })
 

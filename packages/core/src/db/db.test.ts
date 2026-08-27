@@ -134,8 +134,16 @@ describe('enums', () => {
       'installing_tools',
       'tools_installed',
       'cloning_repos',
+      // Issue #184. Second to last because that is where the step runs, and `advancesProvisioning`
+      // reads this array's order — a word inserted anywhere else would make the timeline go
+      // backwards.
+      'running_user_script',
       'ready',
     ])
+  })
+
+  it('keeps ready last, because reaching it is what promotes a row to running', () => {
+    expect(PROVISIONING_STEPS.at(-1)).toBe('ready')
   })
 })
 

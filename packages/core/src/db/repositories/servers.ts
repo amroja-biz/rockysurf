@@ -2,6 +2,7 @@ import type { InstanceState } from '@rockysurf/provider-sdk'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../client.js'
 import { buildIdempotencyKey, newServerId } from '../ids.js'
+import type { StepRunAs } from '../../bootstrap/plan.js'
 import {
   servers,
   type Architecture,
@@ -44,6 +45,14 @@ export interface CreateServerInput {
   sshUser?: string
   /** Normalized (trimmed) public key line the user pasted at create time, if any (issue #41). */
   userSuppliedPublicKey?: string
+  /**
+   * The script the user asked this box to run at first boot, and who runs it (issue #184).
+   *
+   * Trimmed and length-checked by the create route before it gets here. Both fields travel
+   * together — a `runAs` with no script would describe nobody running nothing — so the writer
+   * below stores the pair or neither.
+   */
+  userScript?: { script: string; runAs: StepRunAs }
   hourlyCost?: { amount: number; currency: string; fetchedAt: string } | null
   /** Test seam. Production always mints a fresh one. */
   id?: string
@@ -83,6 +92,8 @@ export function insertServer(db: Db, input: CreateServerInput): ServerRow {
     packId: input.packId ?? null,
     tools: JSON.stringify(input.tools ?? []),
     repositories: JSON.stringify(input.repositories ?? []),
+    userScript: input.userScript?.script ?? null,
+    userScriptRunAs: input.userScript?.runAs ?? null,
     idempotencyKey:
       input.idempotencyKey ??
       buildIdempotencyKey({

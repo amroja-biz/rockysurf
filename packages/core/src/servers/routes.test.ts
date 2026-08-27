@@ -6,6 +6,7 @@ import { MemorySecretStore } from '../auth/secret-store.js'
 import { configSchema, type Config } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
 import { getServer } from '../db/repositories/servers.js'
+import { parseInstallPlan } from '../bootstrap/plan.js'
 import { markBootstrapReady } from '../bootstrap/supervisor.js'
 import { makeFakeProvider, type FakeProvider } from '../providers/fake.js'
 import { ProviderRegistry } from '../providers/registry.js'
@@ -641,5 +642,75 @@ describe('size is optional once offeringId names the machine (rockysurf-kh3u)', 
     const res = await post('/api/v1/servers', CREATE)
     expect(res.status).toBe(201)
     expect(((await res.json()) as Record<string, unknown>)['size']).toBe('small')
+  })
+})
+
+/**
+ * The user's own first-boot script (issue #184, ADR-0011).
+ *
+ * Asserted at the ROUTE rather than only at the resolver, because the route is where the three
+ * decisions that are not the resolver's live: what counts as "no script", what a bare `runAs`
+ * means, and how big a script may be. All three are reachable by the CLI and the MCP server as
+ * well as by the form, which is exactly why they are here and not in the SPA.
+ */
+describe('a user script at create time (issue #184)', () => {
+  const planFor = (serverId: string) => parseInstallPlan(JSON.parse(getServer(opened.db, serverId)!.installPlan!))
+
+  it('stores the script and renders it as the plan\'s user-script step', async () => {
+    const res = await post('/api/v1/servers', { ...CREATE, userScript: 'echo hello\n', userScriptRunAs: 'root' })
+    expect(res.status).toBe(201)
+    const { serverId } = (await res.json()) as { serverId: string }
+
+    const row = getServer(opened.db, serverId)!
+    expect(row.userScript).toBe('echo hello')
+    expect(row.userScriptRunAs).toBe('root')
+
+    const step = planFor(serverId).steps.find((s) => s.id === 'user-script')!
+    expect(step).toBeDefined()
+    expect(step.runAs).toBe('root')
+    expect(step.optional).toBe(true)
+    expect(step.run.endsWith('echo hello')).toBe(true)
+  })
+
+  it('defaults the runner to rocky — the account whose toolchain the pack just built', async () => {
+    const { serverId } = (await (await post('/api/v1/servers', { ...CREATE, userScript: 'echo hi' })).json()) as {
+      serverId: string
+    }
+    expect(getServer(opened.db, serverId)!.userScriptRunAs).toBe('rocky')
+    expect(planFor(serverId).steps.find((s) => s.id === 'user-script')!.runAs).toBe('rocky')
+  })
+
+  it('treats an empty or whitespace-only script as no script at all', async () => {
+    for (const userScript of ['', '   \n\t ']) {
+      const { serverId } = (await (await post('/api/v1/servers', { ...CREATE, userScript })).json()) as {
+        serverId: string
+      }
+      expect(getServer(opened.db, serverId)!.userScript).toBeNull()
+      expect(planFor(serverId).steps.map((s) => s.id)).not.toContain('user-script')
+    }
+  })
+
+  it('refuses a runAs with nothing to run, rather than creating a box without the script', async () => {
+    const res = await post('/api/v1/servers', { ...CREATE, userScriptRunAs: 'root' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string; issues?: { path: string }[] }
+    expect(body.error).toMatch(/userScriptRunAs/)
+    expect(body.issues?.[0]?.path).toBe('userScript')
+  })
+
+  it('refuses a runAs that names nobody', async () => {
+    expect((await post('/api/v1/servers', { ...CREATE, userScript: 'x', userScriptRunAs: 'nobody' })).status).toBe(400)
+  })
+
+  it('refuses a script over 16 KiB — the ceiling EC2 puts on user data', async () => {
+    expect((await post('/api/v1/servers', { ...CREATE, userScript: 'x'.repeat(16384) })).status).toBe(201)
+    expect((await post('/api/v1/servers', { ...CREATE, userScript: 'x'.repeat(16385) })).status).toBe(400)
+  })
+
+  it('does not echo the script back on the response — nothing renders it', async () => {
+    const res = await post('/api/v1/servers', { ...CREATE, userScript: 'echo hello' })
+    const body = (await res.json()) as Record<string, unknown>
+    expect('userScript' in body).toBe(false)
+    expect(JSON.stringify(body)).not.toContain('echo hello')
   })
 })

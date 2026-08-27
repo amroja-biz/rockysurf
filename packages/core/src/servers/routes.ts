@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { z } from 'zod'
 import type { AppEnv } from '../app.js'
+import { STEP_RUN_AS } from '../bootstrap/plan.js'
 import { DEFAULT_SSH_PORT } from '../bootstrap/push.js'
 import { InvalidTransitionError } from '../db/transitions.js'
 import { LimitExceededError } from '../jobs/limits.js'
@@ -122,6 +123,27 @@ const createBody = z.object({
    * authenticating a desktop session.
    */
   rdpPassword: z.string().min(8).optional(),
+  /**
+   * A script this box runs once, at the end of its bootstrap (issue #184, ADR-0011).
+   *
+   * BOUNDED AT 16 KiB, which is EC2's own ceiling on user-data and is quoted rather than
+   * invented: the feature is deliberately that idea, the number is one a user may already know,
+   * and a limit is needed at all because this text is copied into the install plan, snapshotted
+   * on the row and pushed to the box — an unbounded field would be an unbounded row. A script
+   * that does not fit belongs in a repository the box clones.
+   *
+   * TRIMMED, AND WHITESPACE-ONLY MEANS NONE. A textarea the user tabbed through and left with a
+   * newline in it is not a request to run anything, and rendering a step for it would put an
+   * empty `user-script` in the plan and a meaningless line in the feed.
+   */
+  userScript: z.string().max(16384).optional(),
+  /**
+   * Who runs it — the freedom the issue asked for over EC2's root-only user-data.
+   *
+   * Defaulted in the handler rather than here, so that "the caller said nothing" and "the caller
+   * said rocky" stay distinguishable at the point the pair is validated below.
+   */
+  userScriptRunAs: z.enum(STEP_RUN_AS).optional(),
   /**
    * Create even though a repository URL failed its preflight (rockysurf-k6xp).
    *
@@ -475,6 +497,24 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     }
 
     /**
+     * THE USER'S OWN SCRIPT, and the one way of getting it wrong worth a refusal (issue #184).
+     *
+     * Whitespace is not a script, so the trimmed value is what decides whether there is one at
+     * all — and a `userScriptRunAs` with nothing to run is refused rather than ignored. A caller
+     * that named a user for a script it forgot to send has a bug, and silently creating a box
+     * with no script on it would let that bug reach the bill. `rocky` is the default when a
+     * script arrives with no user, because the unprivileged account is the one whose home,
+     * PATH and toolchain the pack just built.
+     */
+    const userScriptBody = body.userScript?.trim()
+    if (!userScriptBody && body.userScriptRunAs) {
+      return badRequest(c, 'userScriptRunAs was sent without a userScript to run', [
+        { path: 'userScript', message: 'send the script this runAs applies to, or drop userScriptRunAs' },
+      ])
+    }
+    const userScript = userScriptBody ? { script: userScriptBody, runAs: body.userScriptRunAs ?? 'rocky' } : undefined
+
+    /**
      * WHICH CLOUD THIS SERVER LANDS ON, and why there is no silent fallback (rockysurf-va2l).
      *
      * The old rule ended in `registry.ids()[0]`, so a request that named no provider on a
@@ -723,6 +763,9 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
          */
         ...(body.sshPublicKey ? { sshPublicKey: body.sshPublicKey } : {}),
         ...(body.rdpPassword ? { rdpPassword: body.rdpPassword } : {}),
+        // Trimmed, paired with its runAs and defaulted above (issue #184). Not echoed back on
+        // the response: `present()` renders what a screen shows, and nothing shows this.
+        ...(userScript ? { userScript } : {}),
         // A retried POST carrying the same key returns the original server and provisions
         // nothing — the standard header, so a client can be safe without inventing a scheme.
         ...(c.req.header('idempotency-key') ? { idempotencyKey: c.req.header('idempotency-key')! } : {}),

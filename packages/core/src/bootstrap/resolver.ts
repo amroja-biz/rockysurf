@@ -1,14 +1,15 @@
 import type { ToolRow } from '../db/schema.js'
 import { brandingScript } from './branding.js'
-import { PLAN_VERSION, type BootstrapMode, type InstallPlan, type InstallStep } from './plan.js'
+import { PLAN_VERSION, type BootstrapMode, type InstallPlan, type InstallStep, type StepRunAs } from './plan.js'
 import { shellQuote } from './shell.js'
 
 /**
  * Rendering an InstallPlan from pack data.
  *
- * The six-phase order is `docs/bootstrap-contract.md` § Step ordering, and it is not a
- * preference: setup scripts run after clones because a setup script may read `$REPOS`, and
- * branding runs after both because it describes a box that already exists.
+ * The eight-phase order is `docs/bootstrap-contract.md` § Step ordering, and it is not a
+ * preference: setup scripts run after clones because a setup script may read `$REPOS`, the
+ * user's own script runs after all of those because it is written against the finished box,
+ * and branding runs after that because it describes a box that already exists.
  *
  * Determinism is a conformance requirement, not a nicety. A snapshotted plan has to render
  * identically twice or resume across a re-render skips the wrong work — so ties on
@@ -36,11 +37,19 @@ export interface ResolveInstallPlanInput {
   tools: ToolRow[]
   /** Repository clone URLs the user chose. Ignored when the pack does not want repos. */
   repositories?: string[]
+  /**
+   * The script the user supplied at create time, and who they asked to run it (issue #184,
+   * ADR-0011). Absent for every server that named none, which gets no such step.
+   *
+   * Already trimmed and length-checked by the create route — this function renders whatever it
+   * is handed and validates nothing, the same as it does for a tool's `installScript`.
+   */
+  userScript?: { script: string; runAs: StepRunAs }
   /** Off only for tests and for a box the operator wants left alone. */
   branding?: boolean
   /**
    * The key the user pasted at create time, normalized (ADR-0008, issue #92). Required
-   * together with `managedPublicKey` to render phase 7 — see `suppliedKeyOnlyScript`. Absent
+   * together with `managedPublicKey` to render phase 8 — see `suppliedKeyOnlyScript`. Absent
    * for every server with no supplied key, which never gets this step.
    */
   userSuppliedPublicKey?: string
@@ -57,6 +66,8 @@ const REPORTS = {
   tools: 'installing_tools',
   repos: 'cloning_repos',
   setup: 'tools_installed',
+  /** The user's own script gets its own word, so the feed can say whose script is running. */
+  userScript: 'running_user_script',
   finishing: 'ready',
 } as const
 
@@ -131,7 +142,41 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 5: branding --- */
+  /* --- phase 5: the user's own script (issue #184, ADR-0011) --- */
+  // AFTER everything the pack does — tools, clones, setup scripts — because that is the box
+  // the user wrote their script against: the pack's toolchain is on PATH and `$REPOS` is
+  // checked out. BEFORE branding, the desktop password and the key retirement, because those
+  // are core's own housekeeping and all three report `ready`, which in callback mode promotes
+  // the row and stops it accepting further progress — a user-script report arriving after one
+  // of them would be dropped on the floor.
+  if (input.userScript) {
+    steps.push({
+      id: 'user-script',
+      reports: REPORTS.userScript,
+      runAs: input.userScript.runAs,
+      // The SAME preamble a setup script gets, and for the same reasons: `$REPOS` is the only
+      // way to find the clones, and a `git` the script runs against a private one needs the
+      // clone step's credential helper or it hangs on a username prompt with no TTY (#142).
+      // Nothing else is prepended — in particular NOT `set -euo pipefail`, which every pack
+      // script is told to open with. This script is the user's, not a pack's: forcing `-e`
+      // onto it would change the meaning of a script that already works elsewhere, and EC2
+      // user-data — the thing this deliberately mimics — forces nothing either. The step's
+      // exit status is the script's own, and `docs/self-hosting.md` says to write `set -e`
+      // yourself if that is what you want.
+      run: `${setupPreamble(repositories)}${input.userScript.script}`,
+      // OPTIONAL, on ADR-0010's own rule (see ADR-0011 clause 3). A failed tool install
+      // releases the machine because a half-installed toolchain is worthless; this is the
+      // opposite case. Every tool the pack promised is installed and every repository is
+      // cloned — the box is exactly what was ordered — and the only thing that failed is text
+      // the user typed. Failing the plan would hand them a `failed` row instead of the box
+      // they need in order to fix their own script; so the step's whole log is captured as a
+      // warning on a running box, exactly as a repository that would not clone is.
+      optional: true,
+      timeoutSeconds: DEFAULT_TOOL_TIMEOUT_SECONDS,
+    })
+  }
+
+  /* --- phase 6: branding --- */
   if (input.branding !== false) {
     steps.push({
       id: 'branding',
@@ -144,7 +189,7 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 6: remote desktop password --- */
+  /* --- phase 7: remote desktop password --- */
   if (input.pack.requiresRdp) {
     steps.push({
       id: 'rdp',
@@ -155,7 +200,7 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 7: retire core's own key once the user supplied one (ADR-0008, issue #92) --- */
+  /* --- phase 8: retire core's own key once the user supplied one (ADR-0008, issue #92) --- */
   // LAST, after every step that needs SSH — which in push mode is all of them, over the one
   // connection this whole drive holds open. Removing the authorized_keys LINE mid-session does
   // not close that already-authenticated SESSION (sshd only re-checks the file on a NEW

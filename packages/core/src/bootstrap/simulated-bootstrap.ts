@@ -198,6 +198,10 @@ function describe(step: InstallStep): string {
       return `configuring ${name}`
     case 'repo':
       return `cloning ${name}`
+    // A singleton id, so `split(':')` leaves the whole thing in `kind` (issue #184). Worth a
+    // sentence of its own because it is the one step a trial user recognises as theirs.
+    case 'user-script':
+      return 'running your script (not really — nothing on this box is real)'
     default:
       return `${step.id}`
   }
