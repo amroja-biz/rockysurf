@@ -51,6 +51,15 @@ env:
 jobs:
   # Which packs exist is data, not something to keep in sync by hand: a contributor who adds
   # packs/rust-dev.yaml gets a matrix leg for it without touching this file.
+  #
+  # WHICH PACKS A PULL REQUEST TESTS (owner ruling). A pull request that changes ONLY pack files
+  # tests the packs it changed — plus every pack whose `pack.tools` lists a tool one of those
+  # files defines, because ids resolve across files (gas-town lists claude-code, amp and codex
+  # from three other packs, so a change to any of those files is a change to gas-town). A pull
+  # request that changes anything else this workflow triggers on — the agent, core, the harness,
+  # the lockfile, this file — tests every pack, since every pack runs through it. A push to main
+  # always tests every pack. A pull request whose pack changes select nothing (a deletion) falls
+  # back to every pack rather than an empty matrix.
   discover:
     name: Discover packs
     runs-on: ubuntu-latest
@@ -59,14 +68,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: list
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           # `find`, not a `ls packs/*.yaml packs/*.yml` glob: with no .yml files present bash
           # hands ls the unmatched pattern, ls exits 2, and `set -o pipefail` turns a correct
           # listing into a failed job.
-          packs=$(find packs -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) -printf '%f\n' \
-            | sed 's/\.[^.]*$//' | sort | jq -R . | jq -sc .)
-          test "$packs" != '[]' || { echo '::error::no pack files in packs/'; exit 1; }
+          all=$(find packs -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) -printf '%f\n' \
+            | sed 's/\.[^.]*$//' | sort)
+          test -n "$all" || { echo '::error::no pack files in packs/'; exit 1; }
+
+          pack_file() { if [ -f "packs/$1.yaml" ]; then echo "packs/$1.yaml"; else echo "packs/$1.yml"; fi; }
+
+          selected="$all"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
+            if printf '%s\n' "$files" | grep -qvE '^packs/[^/]+\.ya?ml$'; then
+              echo "every pack: the pull request changes more than pack files"
+            else
+              changed=$(printf '%s\n' "$files" | sed -E 's|^packs/||; s/\.[^.]*$//' | sort -u)
+              # Tool ids the changed files define (a deleted file defines nothing any more).
+              ids=$(for p in $changed; do f=$(pack_file "$p"); [ -f "$f" ] || continue
+                      grep -E '^[[:space:]]*-?[[:space:]]*toolId:' "$f" | sed -E 's/.*toolId:[[:space:]]*//; s/["'"'"']//g'; done | sort -u)
+              alt=$(printf '%s\n' "$ids" | grep . | paste -sd'|' - || true)
+              selected=$(for p in $all; do
+                if printf '%s\n' "$changed" | grep -qx "$p"; then echo "$p"
+                elif [ -n "$alt" ] && grep -qE "^[[:space:]]*-[[:space:]]*($alt)[[:space:]]*$" "$(pack_file "$p")"; then echo "$p"
+                fi; done | sort -u)
+              if [ -n "$selected" ]; then
+                echo "pack files only: the changed packs and the packs that list their tools"
+              else
+                selected="$all"; echo "every pack: the pack changes select nothing (deletion only)"
+              fi
+            fi
+          fi
+
+          packs=$(printf '%s\n' "$selected" | jq -R . | jq -sc .)
           echo "packs=$packs" >> "$GITHUB_OUTPUT"
           echo "matrix: $packs"
 

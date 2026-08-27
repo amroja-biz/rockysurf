@@ -973,9 +973,11 @@ optional step, and shows up as a warning on the running server.
 
 ## The CI smoke test
 
-**Normative.** Every pack in the repository is smoke-tested on every pull request that touches
-what runs on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts or the
-lockfile — and on every push to `main`, and the test gates merge. It is deliberately harsher than a real cloud image, because a pack that only works
+**Normative.** A pull request that changes only pack files smoke-tests the packs it changed,
+plus every pack whose `pack.tools` lists a tool one of those files defines (ids resolve across
+files). A pull request that touches anything else that runs on a box — `packages/core/`,
+`packages/rockysurf/`, the smoke scripts or the lockfile — smoke-tests every pack, as does every
+push to `main`. The test gates merge. It is deliberately harsher than a real cloud image, because a pack that only works
 on one provider's idea of Ubuntu is exactly the failure this project is trying to avoid.
 
 For each pack file, for each of **`amd64` and `arm64`**, CI:
