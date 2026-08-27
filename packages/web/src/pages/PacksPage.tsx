@@ -27,6 +27,7 @@ import {
   type RegistryPack,
   type RegistryPackDetail,
   type SurgePack,
+  type PackInput,
   type SurgePackTool,
 } from '../lib/api'
 
@@ -64,6 +65,8 @@ interface PackView {
   requiresRdp: boolean
   desktop?: 'xfce'
   webPort?: number
+  /** What the pack asks the user for at create time (issue #189). Public list only. */
+  inputs?: PackInput[]
   displayOrder: number
   /** Admin only: where this pack came from, in more detail than the badge carries. */
   origin?: string
@@ -145,6 +148,7 @@ function buildViews(
       requiresRdp: p.requiresRdp,
       desktop: p.desktop,
       webPort: p.webPort,
+      inputs: p.inputs,
       displayOrder: p.displayOrder,
       origin: isAdmin && admin ? originOf(admin) : undefined,
       sourceFile: admin?.sourceFile ?? null,
@@ -183,12 +187,19 @@ function buildViews(
 /** Same order core sorts the public list by: `displayOrder`, then `packId`. */
 const byOrder = (a: PackView, b: PackView) => a.displayOrder - b.displayOrder || a.packId.localeCompare(b.packId)
 
-function behaviourChips(view: Pick<PackView, 'requiresRepos' | 'requiresRdp' | 'desktop' | 'webPort'>): string[] {
+function behaviourChips(
+  view: Pick<PackView, 'requiresRepos' | 'requiresRdp' | 'desktop' | 'webPort' | 'inputs'>,
+): string[] {
+  const inputCount = view.inputs?.length ?? 0
   return [
     view.requiresRepos ? 'needs a repository' : null,
     view.requiresRdp ? 'remote desktop' : null,
     view.desktop ? `${view.desktop} desktop` : null,
     view.webPort ? `web UI on :${view.webPort}` : null,
+    // What the pack will ASK you for (issue #189) — a count rather than the names, because this
+    // is a card in a list and the names are on the create form and in the disclosure, where a
+    // person is deciding rather than browsing.
+    inputCount > 0 ? `asks for ${inputCount} setting${inputCount === 1 ? '' : 's'}` : null,
   ].filter((chip): chip is string => Boolean(chip))
 }
 
