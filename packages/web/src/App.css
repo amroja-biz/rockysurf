@@ -22,10 +22,13 @@
  * each line names what it was used for there.
  */
 
-/* Rocky Surf webfont, adopted across UI and mono text (rockysurf-issue-185). Served from
-   `public/fonts/`, which `packages/web/public/` copies into the build and into
-   `packages/core/public` — see `bundle-assets.test.ts`. Root-relative because this file is
-   bundled and the font is served as a static asset, not resolved relative to the stylesheet. */
+/* Rocky Surf webfont, adopted for UI text only — headings and body (rockysurf-issue-185,
+   owner ruling). Served from `public/fonts/`, which `packages/web/public/` copies into the
+   build and into `packages/core/public` — see `bundle-assets.test.ts`. Root-relative because
+   this file is bundled and the font is served as a static asset, not resolved relative to the
+   stylesheet. Deliberately NOT in --rs-mono: it is a proportional face (post.isFixedPitch=0,
+   advance widths 294-987/1000em across a glyph sample), and code/commands must stay in a real
+   monospace font. */
 @font-face {
   font-family: "Rocky Surf";
   src: url("/fonts/RockySurf-Regular.ttf") format("truetype");
@@ -59,7 +62,7 @@
   --rs-purple: #a371f7;
 
   --rs-radius: 6px;
-  --rs-mono: "Rocky Surf", ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --rs-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 * {
