@@ -442,7 +442,7 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
 - **Pull request against `packs/`** — the intended path, and the only one that gets the pack
   smoke-tested on both architectures by CI forever. Reference the shared base tool ids; do not
   redefine them. Work through the checklist at the end of `docs/writing-a-pack.md` first.
-- **Import into their own running instance** — Surge Packs (`/packs`) → Manage packs → Import,
+- **Import into their own running instance** — Surge Packs (`/packs`) → Personal → Import,
   either uploading the file or fetching a URL. An imported pack becomes a database row that boot
   never overwrites and
   never restores. The URL fetch goes through an SSRF guard: public `http`/`https` only, 2 MB cap,

@@ -961,7 +961,7 @@ All three end in the same place: a database row the boot reconcile never overwri
 deletes. What differs is who else can get the pack, and whether Rocky Surf remembers where it
 came from.
 
-1. **Upload or paste it.** Surge Packs (`/packs`) → Manage packs → Import. One file, one time,
+1. **Upload or paste it.** Surge Packs (`/packs`) → Personal → Import. One file, one time,
    nothing recorded about its origin because there is nothing true to record — the bytes came
    from your own machine.
 2. **Import from a URL.** The same Import box takes an `https` URL. Rocky Surf fetches it through
@@ -1046,16 +1046,25 @@ control. Read it.
 
 It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
-for anything that arrived from off this machine, and `local` for packs you created yourself. A
-card carries the pack's mark, its name and that badge; open the pack for the rest. On a pack's
-own page an admin also sees the source **and its URL** — or, for a one-off import, the URL it was
-fetched from. There is no install button anywhere except below those scripts.
+for anything that arrived from off this machine, and `local` for packs you created yourself. Three
+sections carry those three words as their heading — **Official**, **Community**, **Personal** —
+and a card's badge reads the same word its section does (`registry` shows as COMMUNITY, `local` as
+PERSONAL; the value behind the badge does not change, only what you read). Community is one
+section with a filter — **All** / **Installed** / **Not installed** — rather than an installed
+registry pack and its catalogue listing being two different things to scroll past. **Not
+installed** is where the catalogue's Review button, and installing, still happen. A card carries
+the pack's mark, its name and that badge; open the pack for the rest. On a pack's own page an
+admin also sees the source **and its URL** — or, for a one-off import, the URL it was fetched
+from. There is no install button anywhere
+except below those scripts.
 
-Resting on an **official** pack's card for a second opens what it installs, with a button to
-create a server with it and one to export its file. An official pack's page also shows that file
-in full, read-only: it shipped in your release, so there is nothing in it you cannot already read
-in `packs/`. A pack you created or installed from a registry has no such page — its text comes
-out through **Export**, as a file to drop into `packs/` and commit.
+Resting on **any** pack's card for a second opens what it installs, with a button to create a
+server with it and one to export its file. Every pack's own page also shows that file in full,
+read-only, with **Export** beside it as a file to drop into `packs/` and commit — for an official
+pack because it shipped in your release and there is nothing in it you cannot already read in
+`packs/`, and for a pack you created or installed from a registry because the same route already
+answered `Export`, so withholding the read-only view of the same bytes was never protecting
+anything.
 
 One thing the summary on that page says about itself, worth repeating here: the list of URLs is
 derived by reading the scripts, so a script that builds a URL out of a variable will not appear

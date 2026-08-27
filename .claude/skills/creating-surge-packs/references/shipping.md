@@ -85,7 +85,7 @@ shared base file can.
 
 ## 2. Import into a running instance
 
-**Surge Packs (`/packs`) → Manage packs → Import.** Two inputs:
+**Surge Packs (`/packs`) → Personal → Import.** Two inputs:
 
 - **Upload a `.yaml` file.** The browser reads the bytes, so there are no restrictions beyond the
   file being a valid pack.
@@ -111,8 +111,8 @@ tools: …`.
 One convenience: the `packId`-must-match-the-filename rule is dropped on import, since a paste has
 no filename.
 
-An import **from a URL** also records that URL against the pack, so Manage packs shows it as
-*imported from `https://…`* rather than as a pack created in the UI. It is still fetched exactly
+An import **from a URL** also records that URL against the pack, so the pack's own page shows it
+as *imported from `https://…`* rather than as a pack created in the UI. It is still fetched exactly
 once — editing the file at that URL changes nothing until it is imported again. For a pack that
 should track its source, use a pack source (below) instead.
 
