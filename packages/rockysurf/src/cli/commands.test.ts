@@ -644,3 +644,96 @@ describe('ssh-config', () => {
     expect(readFileSync(paths.userConfig, 'utf8')).toBe(firstUserConfig)
   })
 })
+
+/**
+ * `rockysurf create --input NAME=VALUE` (issue #189, ADR-0013).
+ *
+ * The unit-level parsing lives in `pack-inputs.test.ts`; what is pinned here is the COMMAND —
+ * that it reads the pack's declaration before the POST, refuses locally what core would refuse
+ * remotely, and puts what it collected on the wire. Refusing before the POST is the same ruling
+ * the desktop password gets above: a `requiresRdp` pack with no password, or a pack missing a
+ * required input, builds a machine that fails its own install step minutes and one bill later.
+ */
+describe('create passes a pack the inputs it asked for', () => {
+  const PACKS = [
+    {
+      packId: 'headlong',
+      name: 'Headlong',
+      inputs: [
+        { name: 'HEADLONG_HEADLESS', label: 'Headless install', required: true, secret: false, default: '1' },
+        { name: 'HEADLONG_API_KEY', label: 'Headlong API key', required: false, secret: true },
+        { name: 'HEADLONG_TOKEN', label: 'Headlong token', required: true, secret: false },
+      ],
+    },
+    { packId: 'plain', name: 'Plain' },
+  ]
+
+  function inputDeps(overrides: Partial<CliDeps> = {}) {
+    const post = vi.fn(async (_path: string, _body?: unknown) => ({ serverId: 'srv-new', name: 'fresh' }))
+    const client = {
+      get: (async (path: string) => (path === '/api/v1/surge-packs' ? PACKS : SERVERS)) as CoreClient['get'],
+      post: post as unknown as CoreClient['post'],
+      getText: (async () => PEM) as CoreClient['getText'],
+    } as CoreClient
+    return { ...deps({ client, ...overrides }), post }
+  }
+
+  it('sends the values it collected, and leaves the defaulting to core', async () => {
+    const d = inputDeps()
+    expect(await createCommand(d, { packId: 'headlong', inputs: ['HEADLONG_TOKEN=t-1'] })).toBe(0)
+
+    const [, body] = d.post.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    // `HEADLONG_HEADLESS` is NOT sent: core applies the pack's own default, and a CLI that sent
+    // it back would be the surface deciding what a default is.
+    expect(body['packInputs']).toEqual({ HEADLONG_TOKEN: 't-1' })
+  })
+
+  it('refuses a required input with no value BEFORE the POST', async () => {
+    const d = inputDeps()
+    expect(await createCommand(d, { packId: 'headlong' })).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+    expect(d.stderr.join('\n')).toContain('Headlong token is required by this pack')
+  })
+
+  it('refuses a name the pack does not ask for, naming the ones it does', async () => {
+    const d = inputDeps()
+    expect(await createCommand(d, { packId: 'headlong', inputs: ['HEADLONG_TOKN=t-1'] })).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+    expect(d.stderr.join('\n')).toContain('HEADLONG_HEADLESS')
+  })
+
+  it('refuses a secret given on the command line, and never puts it on the wire', async () => {
+    const d = inputDeps()
+    expect(
+      await createCommand(d, { packId: 'headlong', inputs: ['HEADLONG_TOKEN=t', 'HEADLONG_API_KEY=sk-live'] }),
+    ).toBe(1)
+    expect(d.post).not.toHaveBeenCalled()
+    // The refusal says how to supply it instead, and never repeats the value it refused.
+    expect(d.stderr.join('\n')).toContain('ROCKYSURF_INPUT_HEADLONG_API_KEY')
+    expect(d.stderr.join('\n')).not.toContain('sk-live')
+  })
+
+  it('takes a secret from the environment and sends it, without printing it', async () => {
+    const d = inputDeps({ env: { ROCKYSURF_INPUT_HEADLONG_API_KEY: 'sk-live' } })
+    // `collectPackInputs` reads `process.env` by default; the command passes nothing else, so
+    // the value is injected here the way a CI job would set it.
+    const previous = process.env['ROCKYSURF_INPUT_HEADLONG_API_KEY']
+    process.env['ROCKYSURF_INPUT_HEADLONG_API_KEY'] = 'sk-live'
+    try {
+      expect(await createCommand(d, { packId: 'headlong', inputs: ['HEADLONG_TOKEN=t'] })).toBe(0)
+      const [, body] = d.post.mock.calls[0] as unknown as [string, Record<string, unknown>]
+      expect(body['packInputs']).toEqual({ HEADLONG_API_KEY: 'sk-live', HEADLONG_TOKEN: 't' })
+      expect([...d.stdout, ...d.stderr].join('\n')).not.toContain('sk-live')
+    } finally {
+      if (previous === undefined) delete process.env['ROCKYSURF_INPUT_HEADLONG_API_KEY']
+      else process.env['ROCKYSURF_INPUT_HEADLONG_API_KEY'] = previous
+    }
+  })
+
+  it('sends no packInputs at all for a pack that asks for nothing', async () => {
+    const d = inputDeps()
+    expect(await createCommand(d, { packId: 'plain' })).toBe(0)
+    const [, body] = d.post.mock.calls[0] as unknown as [string, Record<string, unknown>]
+    expect('packInputs' in body).toBe(false)
+  })
+})

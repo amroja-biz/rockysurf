@@ -2,8 +2,10 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { resolvePackInputs } from '@rockysurf/core'
 import { CoreApiError, type CoreClient } from '../mcp/client.js'
 import type { ProviderCatalogue } from '../mcp/tools.js'
+import { collectPackInputs, fetchPackInputs } from '../pack-inputs.js'
 import { packRequiresRdp, RDP_MIN_LENGTH, RDP_PASSWORD_ENV } from '../rdp.js'
 import { SecretPromptCancelled, type SecretPrompt } from './secret-prompt.js'
 import {
@@ -224,6 +226,18 @@ export interface CreateArgs {
   /** `--user-script-as root|rocky`. A closed choice, checked like `--arch`. */
   userScriptRunAs?: string
   /**
+   * Repeated `--input NAME=VALUE` — the values the chosen pack declared as `inputs`
+   * (issue #189, ADR-0013).
+   *
+   * Raw strings rather than a parsed record, because the parse can FAIL and the sentence that
+   * says so must name the flag as it was typed. Split on the first `=` only, so a base64 value
+   * survives. A name the pack declared `secret: true` is refused here on the same reasoning
+   * `--rdp-password <value>` is (`pack-inputs.ts`).
+   */
+  inputs?: string[]
+  /** `--inputs-file <path>`: `NAME=VALUE` lines, `#` comments. Where a secret value belongs. */
+  inputsFile?: string
+  /**
    * What `--rdp-password` was, NOT what it said.
    *
    * `'literal'` means a value followed it on the command line, and the value is deliberately
@@ -313,6 +327,33 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
     return 1
   }
 
+  /*
+   * WHAT THE PACK ASKS FOR, resolved BEFORE the POST (issue #189, ADR-0013).
+   *
+   * One GET, and only when the caller actually passed something or named a pack that might ask
+   * for something — the same courtesy `packRequiresRdp` performs for the desktop password, and
+   * refusing for the same reason: a missing required input is discovered on the box, minutes
+   * and one billed instance later, when the pack's own install script reads an empty variable.
+   *
+   * `resolvePackInputs` is CORE'S OWN function, imported rather than reimplemented. Two
+   * implementations of "is this request valid" is how the CLI and the API start disagreeing
+   * about a name that is off by one letter. When the pack list cannot be read the declaration
+   * is `undefined`, nothing is checked here, and core's 400 is what the user reads.
+   */
+  const declaredInputs = args.packId ? await fetchPackInputs(deps.client, args.packId) : undefined
+  const collected = collectPackInputs(args, declaredInputs)
+  if (collected.refusal) {
+    deps.err(collected.refusal)
+    return 1
+  }
+  if (declaredInputs) {
+    const resolved = resolvePackInputs(declaredInputs, collected.values)
+    if (resolved.issues.length > 0) {
+      for (const issue of resolved.issues) deps.err(issue.message)
+      return 1
+    }
+  }
+
   let body: unknown
   try {
     body = await deps.client.post('/api/v1/servers', {
@@ -338,6 +379,9 @@ export async function createCommand(deps: CliDeps, args: CreateArgs): Promise<nu
       ...(userScript.script
         ? { userScript: userScript.script, userScriptRunAs: args.userScriptRunAs ?? 'rocky' }
         : {}),
+      // The values as collected, NOT as resolved: core applies the pack's own defaults, and
+      // sending them back would make this surface the one that decides what a default is.
+      ...(Object.keys(collected.values).length > 0 ? { packInputs: collected.values } : {}),
     })
   } catch (error) {
     /*
