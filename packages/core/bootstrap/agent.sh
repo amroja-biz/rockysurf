@@ -448,8 +448,90 @@ install_tool() {
     cmd=(timeout "$timeout_s" "${cmd[@]}")
   fi
 
-  "${cmd[@]}" 2>&1 | tee -a "$step_log"
-  return "${PIPESTATUS[0]}"
+  # The step runs in the background so the agent can watch its log while it runs (issue #205).
+  # Its exit status travels through a file because `$PIPESTATUS` is not available for a
+  # backgrounded pipeline and `wait` would answer for `tee`, not for the script.
+  local rc_file="$step_log.rc" pipe_pid rc waited
+  rm -f "$rc_file"
+  { "${cmd[@]}" 2>&1; echo "$?" >"$rc_file"; } | tee -a "$step_log" &
+  pipe_pid=$!
+  watch_quiet "$tool_id" "$step_log" "$pipe_pid"
+  wait "$pipe_pid"
+  waited=$?
+  rc=$(cat "$rc_file" 2>/dev/null || true)
+  rm -f "$rc_file"
+  return "${rc:-$waited}"
+}
+
+# How long a step may run without writing a line before the journal says so on its behalf.
+# Overridable so a test does not sit through a minute; a box never sets it. 0 turns it off.
+STEP_QUIET_S="${ROCKYSURF_STEP_QUIET_S:-60}"
+
+# "4 min" on a box, "3 s" under a test's override.
+human_seconds() {
+  if [ "$1" -ge 60 ]; then echo "$(($1 / 60)) min"; else echo "$1 s"; fi
+}
+
+# A STEP THAT SAYS NOTHING IS ANNOUNCED, ON THE JOURNAL, WHILE IT LASTS (issue #205).
+#
+# $1 = the step id, $2 = its log, $3 = the pid of the pipeline running it. Returns once that
+# pid is gone.
+#
+# The #129 notice covers the wait the agent takes BETWEEN two attempts at an apt step; it did
+# not cover the first attempt itself, which is where a box actually spends its time when a
+# mirror is slow to answer. `apt-get update -qq` prints nothing until it has either succeeded
+# or given up, and apt's own connect and read timeout is two minutes per try, so a step can sit
+# for several minutes with its log not moving before the agent ever gets to engage the mirror
+# fallback (ADR-0012). From the timeline that is indistinguishable from a hang: "Installing
+# tools", a log that stopped, no reason — and the owner who filed #205 terminated a healthy box
+# at five minutes, on the same day the same step had taken 4 min 21 s on their previous launch
+# and finished. The retry standard cannot help until apt fails; this is what the user is told
+# in the meantime.
+#
+# Silence is measured on the STEP'S LOG rather than on the journal, because the journal is what
+# this writes to. Every STEP_QUIET_S of silence re-posts the notice with the elapsed time, so
+# the line under the active step carries a clock that moves; the first byte the step writes
+# after that takes the notice back, and so does the step ending. A notice never outlives its
+# cause (#129's rule), and it is never posted for a step that is talking.
+#
+# Time is counted in polls rather than read from a clock: five polls a second, each a `sleep`
+# and a `wc`, and a second of silence is five polls with the same byte count. A poll can only
+# take LONGER than its sleep, so the count never announces early, and the step is released the
+# moment it exits (its pipeline is gone at the next poll) — a step costs at most a fifth of a
+# second more than it did. `$SECONDS` was tried and rejected: it is whole seconds since the
+# agent started, so a threshold of one second could fire after a few hundred milliseconds.
+watch_quiet() {
+  local id="$1" step_log="$2" pid="$3"
+  if [ "$STEP_QUIET_S" -le 0 ] 2>/dev/null; then
+    wait "$pid" 2>/dev/null
+    return 0
+  fi
+  local name="${id#tool:}" size last_size='' ticks=0 quiet units=0 announced=0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 0.2
+    size=$(wc -c <"$step_log" 2>/dev/null || echo 0)
+    if [ "$size" != "$last_size" ]; then
+      last_size=$size
+      ticks=0
+      units=0
+      if [ "$announced" = 1 ]; then
+        announced=0
+        log "--- $id: output resumed"
+        clear_notice
+      fi
+      continue
+    fi
+    ticks=$((ticks + 1))
+    quiet=$((ticks / 5))
+    if [ "$quiet" -ge "$STEP_QUIET_S" ] && [ $((quiet / STEP_QUIET_S)) -gt "$units" ]; then
+      units=$((quiet / STEP_QUIET_S))
+      announced=1
+      log "--- $id: no output for $(human_seconds "$quiet") — still running"
+      set_notice "$name has said nothing for $(human_seconds "$quiet") — usually a download waiting on a mirror that is slow to answer. It is still running; if apt gives up, the agent retries it on another mirror. Nothing is stuck."
+    fi
+  done
+  [ "$announced" = 1 ] && clear_notice
+  return 0
 }
 
 # One attempt at a step: the script, then its check. A step is only done when its own check
