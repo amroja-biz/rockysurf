@@ -242,6 +242,11 @@ put a secret, credential, IP address, or account ID in either one.
   request.
 - Run `pnpm run check` before pushing. If a package you did not touch is failing, say so
   explicitly rather than silently working around it.
+- A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/` or
+  `.pass-along/` fires no CI: the local `pnpm run check` is its gate, and the full workflows run
+  on `main` the moment it merges. Pack smoke runs on a pull request only when it touches what
+  runs on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the
+  lockfile or its own workflow file.
 
 ## A note on this repository's history
 
