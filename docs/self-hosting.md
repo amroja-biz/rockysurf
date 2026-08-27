@@ -1005,18 +1005,27 @@ All three end in the same place: a database row the boot reconcile never overwri
 deletes. What differs is who else can get the pack, and whether Rocky Surf remembers where it
 came from.
 
-1. **Upload or paste it.** Surge Packs (`/packs`) → Personal → Import. One file, one time,
-   nothing recorded about its origin because there is nothing true to record — the bytes came
-   from your own machine.
-2. **Import from a URL.** The same Import box takes an `https` URL. Rocky Surf fetches it through
-   the SSRF guard, validates it against the frozen format, and **records the URL**, so the pack
-   reads as `imported from https://…` rather than as something typed here. Still one time: it is
-   not refetched, and editing the file at that URL changes nothing here until you import again.
-3. **Add it as a source.** A line in `registry.sources` — or the **Pack sources** tab of the
-   admin Settings page, which writes the same file. The pack then appears in the shop beside the
-   community ones, refreshes when you press Refresh, and can be reinstalled after you have edited
-   it. This is the option for a pack you are still working on, and the only one somebody else can
-   subscribe to.
+Surge Packs (`/packs`) → **Personal** → **New Surge Pack** opens a chooser between the first and
+third of these; the second is a config-file thing, not a button on this page.
+
+1. **Upload a file.** One `.yaml` file, one time, nothing recorded about its origin because there
+   is nothing true to record — the bytes came from your own machine.
+2. **Add it as a source.** A line in `registry.sources` — or the **Pack sources** tab of the
+   admin Settings page, which writes the same file. A source URL ending in `.yaml`/`.yml` is a
+   one-file pack, fetched exactly like a directory-backed registry; either way the pack appears
+   in Community's catalogue, refreshes when you press Refresh, and can be reinstalled after you
+   have edited it. This is the option for a pack you are still working on, and the only one
+   somebody else can subscribe to — a one-off `https` URL import used to be a second button on
+   this page, and issue #204 retired it in favour of this: a source you add once is remembered
+   and reinstallable, where a one-time fetch of the same URL was neither.
+3. **Start from an existing pack.** New Surge Pack's third choice: pick any pack already on this
+   installation — official, community or personal — and the same create form as **Start from
+   scratch** opens, seeded with a new `packId` and name and the source's own tools already
+   checked. Deliberately not `Export`'s output: Export inlines a full definition for every tool
+   the pack references, and importing that back would redefine — not reference — every one of
+   them, up to and including the shared base tools other packs depend on. This seeds from the
+   pack's tool **ids** instead, the same as picking them by hand, which is the UI version of
+   `docs/writing-a-pack.md` § "Building on an existing pack".
 
 A source's URL says what shape it is. **Ending in `.yaml` or `.yml`, the URL is the pack** — one
 file, the way you publish one of your own. **Anything else is a directory** serving `index.json`
@@ -1091,16 +1100,19 @@ control. Read it.
 It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
 for anything that arrived from off this machine, and `local` for packs you created yourself. Three
-sections carry those three words as their heading — **Official**, **Community**, **Personal** —
-and a card's badge reads the same word its section does (`registry` shows as COMMUNITY, `local` as
-PERSONAL; the value behind the badge does not change, only what you read). Community is one
-section with a filter — **All** / **Installed** / **Not installed** — rather than an installed
-registry pack and its catalogue listing being two different things to scroll past. **Not
-installed** is where the catalogue's Review button, and installing, still happen. A card carries
-the pack's mark, its name and that badge; open the pack for the rest. On a pack's own page an
-admin also sees the source **and its URL** — or, for a one-off import, the URL it was fetched
-from. There is no install button anywhere
-except below those scripts.
+tabs carry those three words as their name — **Official**, **Community**, **Personal**, Official
+shown first — and a card's badge reads the same word its tab does (`registry` shows as COMMUNITY,
+`local` as PERSONAL; the value behind the badge does not change, only what you read). The tab is
+in the URL (`?tab=community`), so a link lands on the one it names.
+
+Community carries a fixed caption naming where its catalogue comes from — *Community packs from
+Rocky Surf Shop* — and a filter — **All** / **Installed** / **Not installed**, defaulting to
+**Installed** — rather than an installed registry pack and its catalogue listing being two
+different things to scroll past. **Not installed** is where the catalogue's Review button, and
+installing, still happen. A card carries the pack's mark, its name and that badge; open the pack
+for the rest. On a pack's own page an admin also sees the source **and its URL** — or, for a
+one-off import, the URL it was fetched from. There is no install button anywhere except below
+those scripts.
 
 Resting on **any** pack's card for a second opens what it installs, with a button to create a
 server with it and one to export its file. Every pack's own page also shows that file in full,

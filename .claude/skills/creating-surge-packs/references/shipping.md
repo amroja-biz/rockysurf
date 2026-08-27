@@ -85,18 +85,20 @@ shared base file can.
 
 ## 2. Import into a running instance
 
-**Surge Packs (`/packs`) → Personal → Import.** Two inputs:
+**Surge Packs (`/packs`) → Personal → New Surge Pack → Upload a pack file.** The browser reads
+the bytes, so there are no restrictions beyond the file being a valid pack.
 
-- **Upload a `.yaml` file.** The browser reads the bytes, so there are no restrictions beyond the
-  file being a valid pack.
-- **Import from URL.** The server fetches it, so this path goes through an SSRF guard (below).
+(A one-off "import from a URL" button used to sit beside this; issue #204 retired it — a `.yaml`
+URL now goes through **Add it as a source** instead, below, which remembers the URL and can
+refetch and reinstall it, where the old button only ever fetched once. The same SSRF guard
+screens both.)
 
-Either way the result is a **database row with no source file**. That has three consequences the
-user should hear:
+The result is a **database row with no source file**. That has three consequences the user should
+hear:
 
 - Boot never overwrites it, so it will not be clobbered by a repository update.
 - Boot never restores it either. It lives in the instance's data directory and nowhere else —
-  back it up, or keep the `.yaml` you imported.
+  back it up, or keep the `.yaml` you uploaded.
 - **Every tool in the imported file is upserted by id.** If your file defines a `toolId` that the
   instance already has — `curl`, `nodejs`, `claude-code` — your definition replaces the existing
   row for *every pack that references it*, instance-wide, until the next restart re-syncs it from
@@ -110,11 +112,6 @@ tools: …`.
 
 One convenience: the `packId`-must-match-the-filename rule is dropped on import, since a paste has
 no filename.
-
-An import **from a URL** also records that URL against the pack, so the pack's own page shows it
-as *imported from `https://…`* rather than as a pack created in the UI. It is still fetched exactly
-once — editing the file at that URL changes nothing until it is imported again. For a pack that
-should track its source, use a pack source (below) instead.
 
 ### What the SSRF guard allows
 

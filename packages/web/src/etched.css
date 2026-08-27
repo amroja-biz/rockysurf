@@ -84,6 +84,7 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .provisioning-timeline,
 [data-rs-skin='etched'] .pack-guide,
 [data-rs-skin='etched'] .settings-panel,
+[data-rs-skin='etched'] .pack-create-option,
 [data-rs-skin='etched'] .wizard section {
   background-image: linear-gradient(148deg, rgba(252, 245, 232, 0.045) 0%, rgba(252, 245, 232, 0.008) 46%, rgba(0, 0, 0, 0.12) 100%);
 }
@@ -112,6 +113,8 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .log pre,
 [data-rs-skin='etched'] .pack-guide-text,
 [data-rs-skin='etched'] .disclosure-script,
+[data-rs-skin='etched'] .pack-create-option,
+[data-rs-skin='etched'] .pack-dropzone,
 [data-rs-skin='etched'] code,
 [data-rs-skin='etched'] kbd,
 [data-rs-skin='etched'] samp { border-radius: 0; }

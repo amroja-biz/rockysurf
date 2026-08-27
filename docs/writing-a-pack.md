@@ -1063,15 +1063,17 @@ line, because the interface is built so that they can.
 Not every pack is for anybody else. Three ways to get one onto a running Rocky Surf, none of
 which needs a pull request here:
 
-1. **Upload it.** Surge Packs (`/packs`) → Personal → Import, and choose the file. It becomes
-   a database row the boot reconcile never overwrites and never deletes.
-2. **Import it from a URL.** The same box takes an `https` URL — a raw GitHub file, a gist, a
-   static host. Rocky Surf fetches it through the SSRF guard (public addresses only, 2 MB cap, no
-   credentials sent), validates it against the frozen format, and records the URL, so the pack
-   later reads as *imported from* that URL rather than as something typed in. One time only: it
-   is not refetched.
-3. **Add it as a source**, which is the one to use while you are still editing the pack. A line
-   in `registry.sources`, or the **Pack sources** tab of the admin Settings page:
+1. **Upload it.** Surge Packs (`/packs`) → Personal → New Surge Pack → Upload a pack file, and
+   choose it. It becomes a database row the boot reconcile never overwrites and never deletes.
+2. **Start from an existing pack.** New Surge Pack's third choice: pick any pack already on this
+   installation, official, community or personal, and the same create form as "start from
+   scratch" opens, seeded with a new `packId`/name and the source's own tools already checked —
+   referenced, the way "Building on an existing pack" below describes, never redefined the way
+   `Export`'s inlined output would be if reimported.
+3. **Add it as a source**, which is the one to use while you are still editing the pack, and the
+   one for a `.yaml` URL — a raw GitHub file, a gist, a static host — now that issue #204 retired
+   the one-off "import from a URL" button that used to sit beside Upload. A line in
+   `registry.sources`, or the **Pack sources** tab of the admin Settings page:
 
    ```yaml
    registry:
