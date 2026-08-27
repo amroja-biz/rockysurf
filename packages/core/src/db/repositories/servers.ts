@@ -61,6 +61,13 @@ export interface CreateServerInput {
    * passes through this function at all.
    */
   packInputs?: Record<string, string>
+  /**
+   * The NON-SECRET half of the Environment the creator typed (issue #197, ADR-0014).
+   *
+   * Validated and split from the secret half by the create route, exactly like `packInputs`
+   * above, so what arrives here is already only what belongs on a row.
+   */
+  environment?: Record<string, string>
   hourlyCost?: { amount: number; currency: string; fetchedAt: string } | null
   /** Test seam. Production always mints a fresh one. */
   id?: string
@@ -107,6 +114,10 @@ export function insertServer(db: Db, input: CreateServerInput): ServerRow {
     // would only mean "somebody thought about it", which nothing reads.
     packInputs:
       input.packInputs && Object.keys(input.packInputs).length > 0 ? JSON.stringify(input.packInputs) : null,
+    // Same rule, same reason (issue #197): omitted and empty are the same row value, and a `{}`
+    // in the column would only mean "somebody thought about it", which nothing reads.
+    environment:
+      input.environment && Object.keys(input.environment).length > 0 ? JSON.stringify(input.environment) : null,
     idempotencyKey:
       input.idempotencyKey ??
       buildIdempotencyKey({
@@ -514,16 +525,34 @@ export function getServerRepositories(row: ServerRow): string[] {
 
 /**
  * The non-secret pack inputs this box was built with (issue #189), already parsed.
+ */
+export function getServerPackInputs(row: ServerRow): Record<string, string> {
+  return parseStringRecord(row.packInputs)
+}
+
+/**
+ * The non-secret half of the Environment this box's creator typed (issue #197), already parsed.
+ *
+ * A separate column from the pack's inputs, read the same way. The two are never merged at rest
+ * because the detail page tells the user which of the two a variable came from, and only the
+ * column knows.
+ */
+export function getServerEnvironment(row: ServerRow): Record<string, string> {
+  return parseStringRecord(row.environment)
+}
+
+/**
+ * A JSON column holding `{ NAME: value }`, parsed leniently.
  *
  * Reject-nothing on a malformed column, for the same reason `parseStringArray` does: this is
  * read while a bootstrap is being driven, and a row somebody edited by hand should cost the
- * pack's own step its "missing variable" message rather than crash the driver. The write path
- * is the only writer and it writes an object of strings.
+ * affected step its "missing variable" message rather than crash the driver. The write paths
+ * are the only writers and they write an object of strings.
  */
-export function getServerPackInputs(row: ServerRow): Record<string, string> {
-  if (!row.packInputs) return {}
+function parseStringRecord(value: string | null): Record<string, string> {
+  if (!value) return {}
   try {
-    const parsed: unknown = JSON.parse(row.packInputs)
+    const parsed: unknown = JSON.parse(value)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     return Object.fromEntries(
       Object.entries(parsed as Record<string, unknown>).filter(

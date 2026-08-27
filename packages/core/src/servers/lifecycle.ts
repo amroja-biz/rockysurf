@@ -304,6 +304,15 @@ export interface CreateServerInput {
    */
   packInputs?: { values: Record<string, string>; secrets: Record<string, string> }
   /**
+   * The creator's OWN environment for this box, already validated and split by custody
+   * (issue #197, ADR-0014).
+   *
+   * The same two-record shape as `packInputs` above, filed the same two ways, and separate
+   * from it at rest: the server page tells the user which variables the pack asked for and
+   * which they added, and merging the two here would lose the only thing that knows.
+   */
+  environment?: { values: Record<string, string>; secrets: Record<string, string> }
+  /**
    * Supplied by a caller that may retry — an `Idempotency-Key` header, say.
    *
    * Reusing a key returns the ORIGINAL row without provisioning again, which is what makes a
@@ -795,6 +804,8 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         // column, and because `snapshotInstallPlan` below re-reads this row — a value written
         // afterwards would be missing from anything that read it in between.
         ...(input.packInputs ? { packInputs: input.packInputs.values } : {}),
+        // And the user's own half, on its own column, for the same reason (issue #197).
+        ...(input.environment ? { environment: input.environment.values } : {}),
       })
 
       // Only now can tokens be minted: they are written onto the row that has just appeared.
@@ -834,6 +845,8 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // `createServerSecretsLoader`, and neither has the create request in hand by then
       // (issue #189). An empty object writes no row at all — see `putPackInputSecrets`.
       if (input.packInputs && deps.secretsStore) deps.secretsStore.putPackInputSecrets(row.id, input.packInputs.secrets)
+      if (input.environment && deps.secretsStore)
+        deps.secretsStore.putServerEnvironmentSecrets(row.id, input.environment.secrets)
 
       /* ---- STEP 3: only now does the provider hear about it. ---- */
       const spec = {

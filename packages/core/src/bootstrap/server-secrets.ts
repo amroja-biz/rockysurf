@@ -1,5 +1,5 @@
 import type { GithubTokenEntry } from '../config/schema.js'
-import { getServerPackInputs, getServerRepositories } from '../db/repositories/servers.js'
+import { getServerEnvironment, getServerPackInputs, getServerRepositories } from '../db/repositories/servers.js'
 import type { ServerRow } from '../db/schema.js'
 import { narrowTokensToRepositories } from '../git/token-matching.js'
 import type { SecretsStore } from '../secrets/index.js'
@@ -48,20 +48,23 @@ export const SECRET_ENV_KEYS = {
 } as const
 
 /**
- * THE THIRD SOURCE OF NAMES, and why it does not belong in `SECRET_ENV_KEYS` (issue #189,
- * ADR-0013).
+ * THE OTHER TWO SOURCES OF NAMES, and why neither belongs in `SECRET_ENV_KEYS` (issues #189 and
+ * #197; ADR-0013, ADR-0014).
  *
  * `SECRET_ENV_KEYS` is the closed set of names ROCKY SURF promises every pack. A pack's own
- * `inputs` are a different kind of promise: the pack author chose the names, the pack author
- * documents them, and they exist on exactly the boxes built from that pack. Folding them into
- * the table above would be claiming the platform guarantees `HEADLONG_API_KEY`, which it does
- * not and could not — the pack that defines it can be uninstalled.
+ * `inputs` are a different kind of promise: the pack author chose the names, documents them,
+ * and they exist on exactly the boxes built from that pack. A user's own Environment is not a
+ * promise at all — it is one person's answer for one box. Folding either into the table above
+ * would be claiming the platform guarantees `HEADLONG_API_KEY`, which it does not and could
+ * not: the pack that defines it can be uninstalled, and the box that carries it was configured
+ * by hand.
  *
- * The two sets can never collide, because `packs/schema.ts` refuses an input named after
- * anything Rocky Surf exports (`RESERVED_INPUT_NAMES`, plus the `ROCKYSURF_`/`GIT_` prefixes)
- * and `server-secrets.test.ts` pins `SECRET_ENV_KEY_NAMES` as a subset of that list. Belt and
- * braces below all the same: pack inputs are written into the environment FIRST, so a name
- * that somehow got through cannot displace `GITHUB_TOKEN`.
+ * None of the three sets can collide. `env/names.ts` refuses any supplied name that Rocky Surf
+ * exports (`RESERVED_ENV_NAMES`, `RESERVED_ENV_PREFIXES`) and `server-secrets.test.ts` pins
+ * `SECRET_ENV_KEY_NAMES` as a subset of that list; the create route refuses an Environment name
+ * the selected pack already declares. Belt and braces below all the same: everything supplied
+ * is written into the environment FIRST, so a name that somehow got through cannot displace
+ * `GITHUB_TOKEN`.
  */
 
 export type SecretEnvKey = (typeof SECRET_ENV_KEYS)[keyof typeof SECRET_ENV_KEYS]
@@ -188,23 +191,33 @@ export function createServerSecretsLoader(
     const env: Record<string, string> = {}
 
     /*
-     * THE PACK'S OWN INPUTS, FIRST (issue #189, ADR-0013).
+     * EVERYTHING SUPPLIED AT CREATE TIME, FIRST (issues #189 and #197; ADR-0013, ADR-0014).
      *
-     * First so that core's own names always win a collision the pack schema should have made
-     * impossible — see the note on `SECRET_ENV_KEYS` above. Both halves are read here, from
-     * their two different homes, because this is the one function both bootstrap topologies
-     * build their environment from: push writes the result into `secrets.env`, callback serves
-     * the same object from `/internal/servers/:id/secrets`. Splitting delivery would let a pack
-     * see different values depending on which topology its box happened to use.
+     * FOUR SOURCES, ONE LOOP, because the box cannot tell them apart and neither should this
+     * function: a pack's declared inputs and the creator's own Environment, each in a plain
+     * half on the server row and a secret half in the encrypted store. All four are read here
+     * because this is the one function both bootstrap topologies build their environment from
+     * — push writes the result into `secrets.env`, callback serves the same object from
+     * `/internal/servers/:id/secrets` — and splitting delivery would let a box see different
+     * values depending on which topology it happened to use.
      *
-     * The non-secret half comes off the ROW, which is what makes this stable over time: a
-     * re-render of the plan months later, after the pack file has changed, still hands the box
-     * the values the user actually chose. A newly-required input the pack gained since is
-     * simply absent — nobody was ever asked for it — and the pack's step fails with its own
-     * message rather than core inventing a value.
+     * FIRST, so that core's own names below always win a collision the name rules should have
+     * made impossible (see the note on `SECRET_ENV_KEYS` above). The four cannot collide with
+     * each other either: a name declared by the pack is refused in Environment at create.
+     *
+     * The plain halves come off the ROW, which is what makes this stable over time: a re-render
+     * of the plan months later, after the pack file has changed, still hands the box the values
+     * the user actually chose. A newly-required input the pack gained since is simply absent —
+     * nobody was ever asked for it — and the pack's step fails with its own message rather than
+     * core inventing a value.
      */
-    for (const [name, value] of Object.entries(getServerPackInputs(server))) env[name] = value
-    for (const [name, value] of Object.entries(secrets.getPackInputSecrets(server.id))) env[name] = value
+    const supplied = [
+      getServerPackInputs(server),
+      secrets.getPackInputSecrets(server.id),
+      getServerEnvironment(server),
+      secrets.getServerEnvironmentSecrets(server.id),
+    ]
+    for (const source of supplied) for (const [name, value] of Object.entries(source)) env[name] = value
 
     // The git token belongs to the USER — one token, reused across their servers — while the
     // desktop password belongs to the SERVER, because it is set on that box's `rocky` account.

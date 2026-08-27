@@ -1050,3 +1050,69 @@ describe('the secrets.env writer quotes what a shell would otherwise execute', (
     expect(rendered.split('\n').map((line) => line.split('=')[0])).toEqual(['A', 'B'])
   })
 })
+
+/**
+ * THE USER'S OWN ENVIRONMENT REACHES THE BOX THE SAME WAY (issue #197, ADR-0014).
+ *
+ * The point of the feature is that a startup script (ADR-0011) can read `$MY_TOKEN` without the
+ * token being stored in plain text anywhere — so the delivery claim is what has to be true. Four
+ * sources fold into one environment here; `agent-environment.test.ts` proves the real `agent.sh`
+ * forwards it to root and unprivileged steps alike.
+ */
+describe('an environment the creator supplied, in secrets.env (issue #197)', () => {
+  const store = () => createSecretsStore(opened.db, Buffer.alloc(32, 7))
+
+  function seedWith(columns: { packInputs?: Record<string, string>; environment?: Record<string, string> }) {
+    const seeded = seed()
+    opened.db
+      .update(servers)
+      .set({
+        ...(columns.packInputs ? { packInputs: JSON.stringify(columns.packInputs) } : {}),
+        ...(columns.environment ? { environment: JSON.stringify(columns.environment) } : {}),
+      })
+      .where(eq(servers.id, seeded.row.id))
+      .run()
+    return { ...seeded, row: getServer(opened.db, seeded.row.id)! }
+  }
+
+  it('folds all four sources into one environment', async () => {
+    const secrets = store()
+    const { row } = seedWith({ packInputs: { HEADLONG_HEADLESS: '1' }, environment: { MY_ENDPOINT: 'https://mine' } })
+    secrets.putPackInputSecrets(row.id, { HEADLONG_API_KEY: 'sk-live' })
+    secrets.putServerEnvironmentSecrets(row.id, { MY_TOKEN: 'ghp-mine' })
+
+    const env = await createServerSecretsLoader(secrets)(row)
+    expect(env['HEADLONG_HEADLESS']).toBe('1')
+    expect(env['HEADLONG_API_KEY']).toBe('sk-live')
+    expect(env['MY_ENDPOINT']).toBe('https://mine')
+    expect(env['MY_TOKEN']).toBe('ghp-mine')
+  })
+
+  it('never lets a supplied name displace one the platform promises', async () => {
+    // `env/names.ts` refuses `GITHUB_TOKEN` at the create route, so this cannot happen through
+    // the API at all. The ordering here is the second lock: a row hand-edited past the rules
+    // still cannot take a name a pack author was promised.
+    const secrets = store()
+    const { row, userId } = seedWith({ environment: { GITHUB_TOKEN: 'attacker-token' } })
+    secrets.putGithubToken(userId, 'ghp_real')
+
+    expect((await createServerSecretsLoader(secrets)(row))['GITHUB_TOKEN']).toBe('ghp_real')
+  })
+
+  it('writes no secret row at all for a server with no secret lines', () => {
+    const secrets = store()
+    const { row } = seed()
+    expect(secrets.putServerEnvironmentSecrets(row.id, {})).toBeUndefined()
+    expect(secrets.listSecretRefs({ kind: 'server-environment' })).toEqual([])
+    expect(secrets.getServerEnvironmentSecrets(row.id)).toEqual({})
+  })
+
+  it('keeps the two kinds apart, so a pack input is never read back as an environment line', () => {
+    const secrets = store()
+    const { row } = seed()
+    secrets.putPackInputSecrets(row.id, { FROM_PACK: 'a' })
+    secrets.putServerEnvironmentSecrets(row.id, { FROM_USER: 'b' })
+    expect(secrets.getPackInputSecrets(row.id)).toEqual({ FROM_PACK: 'a' })
+    expect(secrets.getServerEnvironmentSecrets(row.id)).toEqual({ FROM_USER: 'b' })
+  })
+})
