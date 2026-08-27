@@ -1044,7 +1044,7 @@ line, because the interface is built so that they can.
 Not every pack is for anybody else. Three ways to get one onto a running Rocky Surf, none of
 which needs a pull request here:
 
-1. **Upload it.** Surge Packs (`/packs`) → Manage packs → Import, and choose the file. It becomes
+1. **Upload it.** Surge Packs (`/packs`) → Personal → Import, and choose the file. It becomes
    a database row the boot reconcile never overwrites and never deletes.
 2. **Import it from a URL.** The same box takes an `https` URL — a raw GitHub file, a gist, a
    static host. Rocky Surf fetches it through the SSRF guard (public addresses only, 2 MB cap, no

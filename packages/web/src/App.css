@@ -2477,6 +2477,21 @@ main.help section > pre {
   gap: 0.75rem;
 }
 
+/* Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
+   Connectors page: three toggle buttons over one list, not a tab strip that swaps panels — so
+   `.button` plus an `aria-pressed` modifier, rather than `.tablist`/`.tab`. */
+.pack-filter-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.pack-filter-row .button[aria-pressed='true'] {
+  background: var(--rs-raised);
+  color: var(--rs-heading);
+  border-color: var(--rs-link);
+}
+
 .pack-card {
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);
