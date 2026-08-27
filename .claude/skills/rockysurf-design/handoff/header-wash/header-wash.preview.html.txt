@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en" data-rs-preview>
+<head>
+<meta charset="utf-8">
+<title>Header cloud wash — visual target</title>
+<style>
+:root {
+  --rs-surface: #1d1b26;
+  --rs-border: #30363d;
+  --rs-muted: #8b949e;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+}
+body { margin: 0; background: #0d1117; color: #c9d1d9; font-family: var(--font-ui); }
+p.note { max-width: 60rem; margin: 1.5rem auto 0; padding: 0 1.5rem; font-size: 0.8125rem; line-height: 1.6; color: var(--rs-muted); }
+.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+  padding: 0 2.125rem; height: 80px;
+  background: var(--rs-surface);
+  border-bottom: 1px solid var(--rs-border);
+}
+.app-header nav { display: flex; align-items: center; gap: 1.875rem; }
+.app-brand { display: flex; align-items: center; margin-right: 1rem; }
+.app-brand img { height: 44px; width: auto; display: block; }
+.app-header nav a { color: var(--rs-muted); font-size: 0.875rem; text-decoration: none; }
+.app-header-right { font-size: 0.875rem; color: var(--rs-muted); }
+
+/* ===== the change under test ===== */
+.app-header { position: relative; overflow: hidden; }
+
+/* The band. Positioned so the painting's lighthouse glow falls under the
+   mark and the moon clears the last nav link. */
+.app-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url(clouds-band.png) -30px 34% / 1500px auto no-repeat;
+  opacity: 0.62;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.62) 46%,
+                              rgba(0, 0, 0, 0.28) 72%, transparent 94%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.62) 46%,
+                                      rgba(0, 0, 0, 0.28) 72%, transparent 94%);
+  pointer-events: none;
+}
+
+/* Washes the band back to the bar colour at top and bottom, so the header
+   still meets the page on a flat edge and the 1px border-bottom stays a
+   hairline instead of a horizon. Keyed to --rs-surface so it follows the
+   token rather than duplicating its value. */
+.app-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+              rgb(from var(--rs-surface) r g b / 0.55) 0%,
+              rgb(from var(--rs-surface) r g b / 0) 42%,
+              rgb(from var(--rs-surface) r g b / 0.82) 100%);
+  pointer-events: none;
+}
+
+/* Both layers are absolute inside a flex row, so the row's own children need
+   a stacking position to stay above them. */
+.app-header > nav,
+.app-header-right { position: relative; }
+
+/* The mark, given the same treatment as the band so the two read as one
+   image: darks screened away, contrast lifted so the lettering holds, edges
+   dissolved by a radial mask. */
+.app-brand img {
+  mix-blend-mode: screen;
+  filter: contrast(1.6);
+  mask-image: radial-gradient(115% 125% at 38% 50%, #000 46%, transparent 94%);
+  -webkit-mask-image: radial-gradient(115% 125% at 38% 50%, #000 46%, transparent 94%);
+}
+
+/* On a narrow bar the nav wraps to a second row and the band's right-hand
+   fade lands under the links. Drop it. */
+@media (max-width: 768px) {
+  .app-header::before { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="app-header">
+  <nav aria-label="Primary">
+    <a class="app-brand" href="/home"><img src="logo-plate.png" alt="Rocky Surf"></a>
+    <a href="/">Servers</a>
+    <a href="/servers/new">New</a>
+    <a href="/costs">Costs</a>
+    <a href="/admin/tools">Tools</a>
+    <a href="/packs">Surge Packs</a>
+    <a href="/settings">Settings</a>
+    <a href="/help">Help</a>
+  </nav>
+  <div class="app-header-right">admin</div>
+</header>
+<p class="note">Design reference. The bar here is #1d1b26 (what the screenshot of the running app samples to), not the design system's #161b22 &mdash; see the README. The lockup is a screen-resolution crop; your app already has the real one. The band path is relative here rather than /assets/clouds-band.png.</p>
+</body>
+</html>

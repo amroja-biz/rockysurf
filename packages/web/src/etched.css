@@ -94,6 +94,17 @@ body[data-rs-skin='etched'] {
   background-image: linear-gradient(100deg, rgba(252, 245, 232, 0.09) 0%, rgba(252, 245, 232, 0.02) 34%, rgba(252, 245, 232, 0) 62%);
 }
 
+/* Header cloud wash (design handoff: header-wash), skin-specific half. The base rule in
+   App.css sets the band to 0.62 for the true --rs-surface ground (#161b22, the design
+   mockups' target). Under this skin the ground is --rs-surface: #171420 PLUS this file's own
+   cream highlight two rules up — measured against the design's reference preview
+   (`.claude/skills/rockysurf-design/handoff/header-wash/header-wash.preview.html.txt`), 0.62
+   reads busier here than the target and leaves the brand mark's plate edge more visible, not
+   less, so this drops it rather than raising it. Confirmed against the reference at 0.5. */
+[data-rs-skin='etched'] .app-header::before {
+  opacity: 0.5;
+}
+
 /* ── Squared ───────────────────────────────────────────────────────────────────────────
    An engraved plate has corners. --rs-radius covers most of it; these are the places
    App.css hardcodes a radius instead. */
