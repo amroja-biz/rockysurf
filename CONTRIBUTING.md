@@ -243,10 +243,11 @@ put a secret, credential, IP address, or account ID in either one.
 - Run `pnpm run check` before pushing. If a package you did not touch is failing, say so
   explicitly rather than silently working around it.
 - A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/` or
-  `.pass-along/` fires no CI: the local `pnpm run check` is its gate, and the full workflows run
-  on `main` the moment it merges. Pack smoke runs on a pull request only when it touches what
-  runs on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the
-  lockfile or its own workflow file.
+  `.pass-along/` runs typecheck, the unit tests and the secret scan, and nothing else; release
+  tarballs, the BYO lifecycle, the structural lint and Pack smoke wait for the push to `main`,
+  which always runs everything. Pack smoke runs on a pull request only when it touches what runs
+  on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile
+  or its own workflow file.
 
 ## A note on this repository's history
 
@@ -262,7 +263,7 @@ So the history is not published, and nothing is lost that mattered: the developm
 preserved as prose in [`docs/history/`](docs/history/), scrubbed, alongside the original phase
 specifications. The ADRs carry the decisions, and `spike/recordings/` carries the evidence.
 
-`gitleaks` runs over the full history on every push to `main` and on every pull request that fires CI, which is what keeps the fresh start
+`gitleaks` runs on every pull request over the full history, which is what keeps the fresh start
 from being a one-time cleanup. If it fires on your branch, do not force-push around it — the
 value is in the scan being unignorable.
 
