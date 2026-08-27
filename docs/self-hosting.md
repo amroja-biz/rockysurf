@@ -788,6 +788,52 @@ one reads as progress rather than as a hang.
 [ADR-0011](adr/0011-user-script-at-create-time.md) records why the step sits where it does, and
 why a failure is a warning rather than a dead machine.
 
+## Settings a pack asks you for
+
+A pack can need a value before it installs anything — an API key, an endpoint, a flag that picks
+between two install modes. It declares them in its own file, so the create form grows a field per
+value with nobody editing the app: the same mechanism that gives a desktop pack its password
+field. A pack that asks for nothing shows no such section, which is every pack Rocky Surf ships
+today.
+
+What you type is delivered to that pack's install scripts as **environment variables**, in the
+same `0600` file the GitHub token and desktop password arrive in. It is not exported into your
+shell once the box is up, and it is not a secret store you can read back.
+
+**Where the values live afterwards:**
+
+| | |
+|---|---|
+| **An ordinary value** | Stored on the server's row and shown on its page, so "what was this box built with" has an answer after the create screen is gone. |
+| **A value the pack marked secret** | Stored encrypted, beside the desktop password, and returned by **no** route — not the server page, not the API, not the list. Nothing can show it back to you, so keep your own copy. |
+| **Either** | Never written into the install plan, which is stored in the clear and quoted in failure reports. |
+
+**A required setting with nothing in it refuses the create**, before a machine is launched. That
+is deliberate: the alternative is a box that boots, installs everything, and then fails the
+pack's own step — minutes later, and billed by the hour.
+
+**Changing a pack after a server exists changes nothing about that server.** The values are the
+ones its creator gave, kept on its row; if the pack later adds a setting, an existing box simply
+does not have it, and if the pack drops one, the box keeps it. Only new servers are asked the new
+questions.
+
+From the CLI, one flag per value, or a file:
+
+```bash
+rockysurf create --pack headlong --input HEADLONG_HEADLESS=1 --input HEADLONG_MODEL=large
+rockysurf create --pack headlong --inputs-file ./headlong.env
+ROCKYSURF_INPUT_HEADLONG_API_KEY=... rockysurf create --pack headlong --input HEADLONG_HEADLESS=1
+```
+
+`--inputs-file` is `NAME=VALUE` per line with `#` comments — nothing in it is expanded or run.
+A **secret** setting is refused on the command line, exactly as `--rdp-password <value>` is: an
+argument is readable through `ps` by every process on the machine and is written to your shell's
+history file. Supply it in a file or in `ROCKYSURF_INPUT_<NAME>`. Everything is checked against
+the pack's declaration before anything is created, so a misspelled name costs a sentence.
+
+[ADR-0013](adr/0013-packs-declare-their-inputs.md) records the contract; pack authors should read
+the `inputs` section of [`writing-a-pack.md`](writing-a-pack.md#inputs--what-your-pack-asks-the-user-for).
+
 ## Surge Packs, and what happens when one breaks
 
 Surge Packs are the software bundles a server is created with, loaded from YAML files in `packs/`

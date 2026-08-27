@@ -25,6 +25,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
 - [What you may not assume](#what-you-may-not-assume)
 - [Which version to install](#which-version-to-install)
 - [The file format](#the-file-format)
+  - [`inputs` — what your pack asks the user for](#inputs--what-your-pack-asks-the-user-for)
   - [Building on an existing pack](#building-on-an-existing-pack)
 - [A complete pack](#a-complete-pack)
 - [The CI smoke test](#the-ci-smoke-test)
@@ -446,7 +447,7 @@ Two more, worth calling out separately:
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
 | `REPOS` | every `setupScript`, whatever the pack's `requiresRepos` | comma-separated list of the repositories the user chose — empty when they chose none, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it. Any `git` your setup script runs against these URLs — directly, or through a tool that clones on its own the way `gt rig add` does — authenticates with the same credential helper the clone step used, handed to the step through git's `GIT_CONFIG_*` environment when the box carries a token (issue #142). You write no credential code and must not: the token never goes on a command line or into a git config |
-| your tool's secrets | steps of the tool they belong to | whatever the user supplied |
+| your pack's own `inputs` | every step of every tool on the box, **when the user supplied one** | the values your pack asked for at create time — see [`inputs`](#inputs--what-your-pack-asks-the-user-for). Your names, in your namespace, promised by your pack rather than by Rocky Surf |
 
 The person creating the server can add a **startup script** of their own, which runs after every
 step your pack contributes and gets this same environment plus the choice of running as `root` or
@@ -690,8 +691,9 @@ away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-orde
 | `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
 | `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
 | `webPort` | number (1–65535) | no | The loopback port of a web UI your pack serves on the box. The server page's Connect section renders the `ssh -L` forward and the `http://localhost:<port>` link from it. Omit if the pack has no web UI |
+| `inputs` | PackInput[] (max 16) | no | Values your pack needs from the person creating the server, delivered to every step as environment variables. See [below](#inputs--what-your-pack-asks-the-user-for) |
 
-`requiresRepos`, `requiresRdp`, `desktop` and `webPort` exist so that pack behaviour is
+`requiresRepos`, `requiresRdp`, `desktop`, `webPort` and `inputs` exist so that pack behaviour is
 described by the pack. If you find yourself wanting the application to special-case your
 `packId`, that is a bug in this format — please open an issue instead of working around it.
 
@@ -701,6 +703,82 @@ it, the one command that changes how the user connects exists only inside your g
 and a user who has already run the plain ssh command from Connect has no reason to reread it.
 The guide should still open with the forward, since it is also where you say how to start the
 UI; `packs/deepseek-harness.yaml` is the worked example.
+
+#### `inputs` — what your pack asks the user for
+
+Some packs need a value before they can install anything: a licence key, an API key, an
+endpoint, a flag that picks between two install modes. `inputs` is how your pack asks. Each entry
+becomes a field on the create form and an **environment variable in every one of your steps**.
+
+```yaml
+  inputs:
+    - name: HEADLONG_HEADLESS        # the env var your install script reads
+      label: Headless install        # the form's field label
+      description: Install without Docker. Set to 1 on a box with no Docker.
+      required: true
+      default: "1"
+    - name: HEADLONG_API_KEY
+      label: Headlong API key
+      secret: true                   # password field; never returned by a route
+```
+
+Your script then simply reads it:
+
+```bash
+if [ "${HEADLONG_HEADLESS:-0}" = "1" ]; then
+  ./install.sh --headless
+fi
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | `^[A-Z][A-Z0-9_]*$`, at most 64 characters. The variable your scripts read |
+| `label` | string | yes | The form's field label. Write it as a question a person can answer |
+| `description` | string | no | The field's hint. Say what the value does and what a good one looks like |
+| `required` | boolean | no (defaults `false`) | The create is refused when it is missing and has no `default` |
+| `secret` | boolean | no (defaults `false`) | Renders a password field; stored encrypted; returned by no route; never in the plan snapshot. A `secret` input **may not** have a `default` |
+| `default` | string | no | Prefilled on the form and applied when a request omits the name |
+
+**Prefix your names.** `HEADLONG_API_KEY`, not `API_KEY`. Every input on a box shares one
+environment, and a short generic name is a name some other tool already reads.
+
+**Names Rocky Surf already uses are refused at validation** — `ARCH`, `DEBIAN_FRONTEND`, `HOME`,
+`USER`, `LOGNAME`, `REPOS`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `PATH` and the rest of the shell's
+own, plus anything starting with `ROCKYSURF_` or `GIT_`. Such a pack would not override anything;
+it would just read a value nobody could send, so `rockysurf pack lint` and the importer both
+refuse it.
+
+**One line, and not too long.** A value is at most 4 KiB and may not contain a newline: the
+values reach your box through `secrets.env`, whose reader is line-oriented. A pack that wants to
+hand a box a document wants a repository the box clones.
+
+**What the four rules imply for `inputs`:**
+
+- **Idempotent** ([Rule 1](#rule-1-idempotent)) — the values are identical on every re-run of the
+  plan, because they are stored on the server when it is created. Do not use one to decide
+  whether work has already been done; use a stamp, as you would anywhere else.
+- **`$ARCH`-aware** ([Rule 2](#rule-2-arch-aware)) — an input is never the place to ask which
+  architecture the box is. `$ARCH` already knows, and asking would let a user get it wrong.
+- **Non-interactive** ([Rule 3](#rule-3-non-interactive)) — this is the *only* way to ask a
+  question. Everything is collected before the plan runs, so your script still never prompts.
+  If you catch yourself wanting a `read`, you want an input.
+- **`runAs`-honest** ([Rule 4](#rule-4-runas-honest)) — inputs are declared per PACK and reach
+  every step of every tool on the box, `root` and `rocky` alike. They do not narrow with
+  privilege, so do not treat one as a secret only your root step can see.
+
+**Ask for as little as possible.** Every input is a field between a user and their box, and one
+that could have had a `default` is a question that did not need asking. Sixteen is the ceiling;
+two is usually the right answer.
+
+**A value is not a place to put a credential your pack could fetch itself.** If a tool has a
+`login` command, say so in your [`guide`](#guide--what-the-user-has-to-do-themselves) and let the
+user run it on their own box — a credential that never reaches Rocky Surf is one it can never
+leak. Reach for `secret: true` when the install genuinely cannot proceed without it.
+
+**What the user is told.** The create form renders your `label`, your `description` and the
+variable name; the pack's card says how many settings it asks for; and the pre-install disclosure
+lists every name and label, marking the required and secret ones — so an operator sees what a
+pack will ask for *before* they consent to installing it.
 
 #### `guide` — what the user has to do themselves
 
@@ -1076,6 +1154,9 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 - [ ] Each script ends with a command that verifies the install actually worked.
 - [ ] `installOrder` uses the bands above and leaves gaps of 10.
 - [ ] `requiresRepos`, `requiresRdp`, `desktop` and `webPort` describe what your pack actually needs.
+- [ ] Every value your install scripts read from the environment is either one of the two names
+      Rocky Surf promises or one your pack declares in `inputs` — nothing reads a variable
+      nobody sends.
 - [ ] `guide` tells the user how to authenticate everything the pack installs, and admits
       anything the install could not finish.
 - [ ] If this pack builds on another, it references that pack's tool ids, redefines none of
@@ -1122,17 +1203,26 @@ hardcode what they carry.
 | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
 | `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
 | `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
+| your pack's own `inputs` | every step, **when the user supplied one** | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
 
 The user's own startup script (issue #184) gets exactly this environment too, including the
-`GIT_CONFIG_*` trio, and runs after every step of yours. You cannot see it and must not plan
-around it.
+`GIT_CONFIG_*` trio and your pack's inputs, and runs after every step of yours. You cannot see it
+and must not plan around it.
 
 ### The two secrets, and how to use them safely
 
 `$GITHUB_TOKEN` and `$RDP_PASSWORD` arrive through `secrets.env`, a `0600` file written at the
-moment it is created. They are the only credential names Rocky Surf promises a pack, and that
-list is closed on purpose: every name here is a commitment to keep working, and a per-tool
-namespace would let packs depend on names nothing ever agreed to.
+moment it is created. They are the only credential names **Rocky Surf** promises a pack, and that
+list is closed on purpose: every name here is a commitment the platform has to keep working
+forever, and a per-tool namespace would let packs depend on names nothing ever agreed to.
+
+Since issue #189 that is not the whole environment, and the distinction is worth stating exactly.
+A pack's own [`inputs`](#inputs--what-your-pack-asks-the-user-for) arrive through the same
+`secrets.env` and are read the same way, but they are **your** namespace, promised by **your**
+pack: you chose the names, you document them, and they exist only on boxes built from your pack.
+Rocky Surf guarantees the delivery, not the names. The two lists cannot collide, because an input
+that claims a name Rocky Surf exports is refused at validation. So the closed list above is still
+closed — it just is not the only thing in the environment any more.
 
 **Both may be absent.** A key with no secret behind it is omitted entirely rather than set
 empty, so guard before you use one:
