@@ -1089,6 +1089,8 @@ during the project's de-risking work. If you want the evidence:
   polite.
 - `docs/adr/0004-packs-as-pr-able-yaml.md` — why packs are files, why the format is frozen at
   v0.1, and why CI runs every pack twice on two architectures.
+- `docs/adr/0012-apt-retry-is-the-agents-standard.md` — why the apt retry is the agent's and
+  not yours, what was measured before deciding that, and what the user reads when it runs out.
 
 Found something this page gets wrong, or a rule that fights a legitimate pack? Open an issue.
 The format is frozen; the documentation isn't.
