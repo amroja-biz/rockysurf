@@ -448,7 +448,7 @@ function ServerCard({
 
       <footer className="server-card-actions">
         {showStop && (
-          <button disabled={busy} onClick={() => setConfirming('stop')}>
+          <button className="stop-action" disabled={busy} onClick={() => setConfirming('stop')}>
             {pending === 'stop' || transition.pending === 'stop' ? 'Stopping…' : 'Stop'}
           </button>
         )}

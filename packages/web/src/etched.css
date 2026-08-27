@@ -147,25 +147,36 @@ body[data-rs-skin='etched'] {
   text-transform: none; letter-spacing: normal;
 }
 
-/* ── Nothing is filled ─────────────────────────────────────────────────────────────────
-   Except the one thing currently true. Buttons are cut outlines; the primary action is the
-   only hatched fill on a page. */
+/* ── Buttons ───────────────────────────────────────────────────────────────────────────
+   Dimensional, not flat-cut: a top highlight, a drop shadow, and a press state — a
+   deliberate departure from the base system's flat/no-shadow rule for this skin's controls.
+   Colour meanings are unchanged: green acts, yellow pauses (reversible), red is
+   irreversible, no modifier is neutral. */
 
 [data-rs-skin='etched'] button,
 [data-rs-skin='etched'] .button {
   background: transparent; border-color: rgba(252, 245, 232, 0.3); color: var(--rs-heading);
   text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.7rem; font-weight: 700;
+  border-radius: 6px; border-bottom-width: 2px;
+  box-shadow: inset 0 1px 0 rgba(252, 245, 232, 0.15), 0 1px 0 rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.35);
+  background-image: linear-gradient(to bottom, rgba(252, 245, 232, 0.06), transparent 40%);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.15s ease, border-color 0.15s ease;
 }
 [data-rs-skin='etched'] button:hover:not(:disabled),
 [data-rs-skin='etched'] .button:hover:not(:disabled) {
-  background: rgba(252, 245, 232, 0.07); border-color: var(--rs-heading); color: var(--rs-heading);
+  background-color: rgba(252, 245, 232, 0.07); border-color: var(--rs-heading); color: var(--rs-heading);
+}
+[data-rs-skin='etched'] button:active:not(:disabled),
+[data-rs-skin='etched'] .button:active:not(:disabled) {
+  transform: translateY(1px); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 [data-rs-skin='etched'] button.primary,
 [data-rs-skin='etched'] .button.primary,
 [data-rs-skin='etched'] .btn-primary,
 [data-rs-skin='etched'] button[type='submit'] {
-  background-color: transparent; border-color: var(--rs-green-bright, #3fb950); color: #7ee08f;
-  background-image: repeating-linear-gradient(45deg, rgba(63, 185, 80, 0.28) 0 1px, transparent 1px 5px);
+  background-color: rgba(63, 185, 80, 0.16); border-color: var(--rs-green-bright, #3fb950); color: #7ee08f;
+  box-shadow: inset 0 1px 0 rgba(126, 224, 143, 0.25), 0 1px 0 rgba(0, 0, 0, 0.5), 0 2px 5px rgba(63, 185, 80, 0.25);
+  background-image: linear-gradient(to bottom, rgba(126, 224, 143, 0.14), transparent 45%);
 }
 [data-rs-skin='etched'] button.primary:hover:not(:disabled),
 [data-rs-skin='etched'] .button.primary:hover:not(:disabled),
@@ -176,10 +187,24 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] button.destructive,
 [data-rs-skin='etched'] .button.destructive {
   background-color: transparent; border-color: #f85149; color: #f8837d;
+  box-shadow: inset 0 1px 0 rgba(248, 131, 125, 0.2), 0 1px 0 rgba(0, 0, 0, 0.5), 0 2px 5px rgba(248, 81, 73, 0.2);
+  background-image: linear-gradient(to bottom, rgba(248, 131, 125, 0.1), transparent 45%);
 }
 [data-rs-skin='etched'] button.destructive:hover:not(:disabled),
 [data-rs-skin='etched'] .button.destructive:hover:not(:disabled) {
   background-color: rgba(248, 81, 73, 0.12); color: #f8837d;
+}
+/* Stop is reversible — pauses billing, keeps the disk — so it gets its own colour rather
+   than sharing neutral secondary or destructive. */
+[data-rs-skin='etched'] button.stop-action,
+[data-rs-skin='etched'] .button.stop-action {
+  border-color: #d29922; color: #e3b341;
+  box-shadow: inset 0 1px 0 rgba(227, 179, 65, 0.2), 0 1px 0 rgba(0, 0, 0, 0.5), 0 2px 5px rgba(210, 153, 34, 0.2);
+  background-image: linear-gradient(to bottom, rgba(227, 179, 65, 0.1), transparent 45%);
+}
+[data-rs-skin='etched'] button.stop-action:hover:not(:disabled),
+[data-rs-skin='etched'] .button.stop-action:hover:not(:disabled) {
+  background-color: rgba(210, 153, 34, 0.12); color: #e3b341;
 }
 /* A chip names a repository, and a URL in caps is unreadable. */
 [data-rs-skin='etched'] .repo-chip {

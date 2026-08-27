@@ -164,7 +164,7 @@ describe('the home hero (rockysurf-n0zr)', () => {
   })
 
   it('is the quantised export, not a full-size original', () => {
-    // docs/media/logo.png is already downscaled and palette-quantised (~236KB). The README's
+    // docs/media/logo.png is already downscaled and palette-quantised (~370KB). The README's
     // original-asset history says originals ran to megabytes; this keeps one from landing here.
     expect(statSync(join(distDir, HERO)).size).toBeLessThan(400 * 1024)
   })
