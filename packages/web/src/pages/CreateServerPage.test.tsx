@@ -341,6 +341,62 @@ describe('pack metadata drives the conditional fields', () => {
     expect(screen.queryByRole('checkbox', { name: /without a repository/i })).toBeNull()
   })
 
+  /**
+   * The user's own first-boot script (issue #184). Asserted through the `createServer` argument
+   * rather than through the DOM, for the reason the pack cases give: what matters is what goes
+   * on the wire, and core decides everything after that.
+   */
+  describe('the startup script field', () => {
+    it('is on the form for every pack, like Repositories', async () => {
+      renderPage()
+      await screen.findByRole('heading', { name: /small-arm/ })
+      expect(screen.getByLabelText(/startup script/i)).toBeTruthy()
+      expect(screen.getByRole('radio', { name: /rocky/i })).toBeTruthy()
+      expect(screen.getByRole('radio', { name: /root/i })).toBeTruthy()
+    })
+
+    it('sends the script and the default runner', async () => {
+      const user = userEvent.setup()
+      renderPage()
+
+      await user.type(await screen.findByLabelText(/startup script/i), 'echo hello')
+      await user.click(screen.getByRole('button', { name: /create server/i }))
+
+      await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+      expect(vi.mocked(api.createServer).mock.calls[0]?.[0]).toMatchObject({
+        userScript: 'echo hello',
+        userScriptRunAs: 'rocky',
+      })
+    })
+
+    it('sends root when the user asks for root — the freedom EC2 user data does not give', async () => {
+      const user = userEvent.setup()
+      renderPage()
+
+      await user.type(await screen.findByLabelText(/startup script/i), 'apt-get install -y jq')
+      await user.click(screen.getByRole('radio', { name: /root/i }))
+      await user.click(screen.getByRole('button', { name: /create server/i }))
+
+      await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+      expect(vi.mocked(api.createServer).mock.calls[0]?.[0].userScriptRunAs).toBe('root')
+    })
+
+    it('sends nothing at all when the field is empty or only whitespace', async () => {
+      const user = userEvent.setup()
+      renderPage()
+
+      // Whitespace, because a tabbed-through textarea holding a newline is not a request to
+      // run anything — and core would 400 a runAs with nothing to run.
+      await user.type(await screen.findByLabelText(/startup script/i), '   ')
+      await user.click(screen.getByRole('button', { name: /create server/i }))
+
+      await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+      const request = vi.mocked(api.createServer).mock.calls[0]?.[0] ?? {}
+      expect('userScript' in request).toBe(false)
+      expect('userScriptRunAs' in request).toBe(false)
+    })
+  })
+
   it('shows the RDP fields only when the pack declares requiresRdp', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRdp: true })])
     renderPage()

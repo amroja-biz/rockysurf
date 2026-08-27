@@ -206,6 +206,8 @@ export type ProvisioningStep =
   | 'installing_tools'
   | 'tools_installed'
   | 'cloning_repos'
+  /** The script the user supplied at create time, running on the box (issue #184). */
+  | 'running_user_script'
   | 'ready'
 
 /** Hourly price as the SDK models it: a provider may quote in its own currency, or not at all. */
@@ -414,6 +416,15 @@ export interface CreateServerRequest {
   repositories?: string[]
   sshPublicKey?: string
   rdpPassword?: string
+  /**
+   * A script the box runs once, at the end of its bootstrap (issue #184).
+   *
+   * Omitted entirely when the field is empty or whitespace — an empty string would be a request
+   * to run nothing, and core would have to decide what that meant. Core bounds it at 16 KiB.
+   */
+  userScript?: string
+  /** Who runs it. Omitted with `userScript`; core defaults it to `rocky`. */
+  userScriptRunAs?: 'root' | 'rocky'
   /**
    * Create even though a repository URL failed core's preflight (rockysurf-k6xp).
    *

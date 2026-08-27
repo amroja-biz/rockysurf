@@ -73,6 +73,11 @@ export function snapshotInstallPlan(db: Db, row: ServerRow, options: SnapshotIns
     pack: resolvePack(db, row),
     tools: listTools(db),
     repositories: getServerRepositories(row),
+    // From the ROW, like the repositories and the supplied key beside it (issue #184): the row
+    // is the record of what the user asked for, and the plan is derived from it — so a
+    // re-render months later still renders the script the server was created with rather than
+    // needing the create request to be replayed.
+    ...(row.userScript ? { userScript: { script: row.userScript, runAs: row.userScriptRunAs ?? 'rocky' } } : {}),
     ...(options.branding === false ? { branding: false } : {}),
     ...(row.userSuppliedPublicKey && options.managedPublicKey
       ? { userSuppliedPublicKey: row.userSuppliedPublicKey, managedPublicKey: options.managedPublicKey }

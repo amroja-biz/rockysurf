@@ -31,6 +31,9 @@ const STEP_LABELS: Record<ProvisioningStep, string> = {
   installing_tools: 'Installing tools',
   tools_installed: 'Tools installed',
   cloning_repos: 'Cloning repositories',
+  // Whose script it is, said out loud: this is the one step the user can debug themselves,
+  // and a wait here is theirs rather than the pack's (issue #184).
+  running_user_script: 'Running your script',
   ready: 'Ready',
 }
 

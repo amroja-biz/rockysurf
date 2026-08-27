@@ -1,5 +1,6 @@
 import type { InstanceState } from '@rockysurf/provider-sdk'
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import type { StepRunAs } from '../bootstrap/plan.js'
 
 /**
  * The control plane's schema. SQLite today, Postgres-ready by construction (ADR-0001).
@@ -39,6 +40,18 @@ export type ServerStatus = (typeof SERVER_STATUSES)[number]
  * Ported verbatim from the legacy backend's shared types, with exactly one change the plan mandates:
  * `stack_creating` → `requested`, because there is no CloudFormation stack any more. Every
  * other step keeps its name so the UI's progress vocabulary ports unchanged.
+ *
+ * `running_user_script` joined it for issue #184 (ADR-0011) — a word of its own rather than a
+ * reuse of `tools_installed`, because it is the one step in a plan core did not write: a person
+ * watching the feed needs to know that what is running now is THEIR script, not the pack's, and
+ * that a wait here is theirs to explain. It sits immediately before `ready` because that is
+ * where the step runs (after every tool, clone and setup script; before the finishing steps,
+ * which all report `ready`) and because `advancesProvisioning` reads this array's ORDER — a word
+ * inserted anywhere else would make the timeline appear to go backwards.
+ *
+ * KEEP THIS ARRAY LITERAL AND COMMENT-FREE. `ServerDetailPage.wiring.test.tsx` reads this file
+ * as TEXT and pulls the values out with a regex over single-quoted strings, so an apostrophe in
+ * a comment between the brackets becomes a step name.
  */
 export const PROVISIONING_STEPS = [
   'requested',
@@ -47,6 +60,7 @@ export const PROVISIONING_STEPS = [
   'installing_tools',
   'tools_installed',
   'cloning_repos',
+  'running_user_script',
   'ready',
 ] as const
 export type ProvisioningStep = (typeof PROVISIONING_STEPS)[number]
@@ -283,6 +297,30 @@ export const servers = sqliteTable(
     tools: text('tools'),
     /** JSON array of repository URLs, parsed by the application. */
     repositories: text('repositories'),
+    /**
+     * The script the user asked this box to run at first boot (issue #184, ADR-0011) — Rocky
+     * Surf's answer to EC2 user-data, with a choice of who runs it.
+     *
+     * PLAIN TEXT ON THE ROW, and deliberately not in the secrets store. It is rendered into the
+     * install plan as one more step, so it is already snapshotted in `installPlan` above and
+     * pushed to the box as `plan.json` like every other script in the plan; a second, encrypted
+     * copy would buy custody for the row while the plan sat in the clear beside it. The
+     * create form and `docs/self-hosting.md` say so in as many words: this is not a place to
+     * put a credential — the box already receives those through `secrets.env`.
+     *
+     * Bounded at 16 KiB by the create route, the same ceiling EC2 puts on user-data.
+     * Null means the user asked for nothing and no such step is rendered.
+     */
+    userScript: text('user_script'),
+    /**
+     * Who runs `userScript` — `root` or the unprivileged `rocky` (issue #184).
+     *
+     * The freedom the issue asked for, and the reason this is a column rather than a constant:
+     * EC2 runs user-data as root and gives you no say, so anything that wants to land in
+     * `rocky`'s home or under `rocky`'s toolchain has to remember to drop privileges by hand.
+     * Null whenever `userScript` is null; `rocky` is the default the route applies.
+     */
+    userScriptRunAs: text('user_script_run_as').$type<StepRunAs>(),
 
     /* --- idempotency --- */
     /**

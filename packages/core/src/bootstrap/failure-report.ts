@@ -103,7 +103,13 @@ export function stepLabel(stepId: string, sources: LabelSources = {}): string {
     return `${name} (setup script)`
   }
   if (phase === 'repo') return sources.repoUrl?.(stepId.slice('repo:'.length)) ?? stepId.slice('repo:'.length)
-  return stepId === 'branding' ? 'login banner' : stepId === 'rdp' ? 'remote desktop password' : stepId
+  if (stepId === 'branding') return 'login banner'
+  if (stepId === 'rdp') return 'remote desktop password'
+  // Named in the SECOND PERSON on purpose (issue #184): every other label in this list is
+  // something Rocky Surf chose to run, and the whole point of the warning this ends up on is
+  // that this one is not — the fix is in the reader's own text, not in a pack.
+  if (stepId === 'user-script') return 'your setup script'
+  return stepId
 }
 
 /** ANSI SGR sequences out — a report is read as text, and `[0;31mError:` helps nobody. */

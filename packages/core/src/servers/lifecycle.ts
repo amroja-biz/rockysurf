@@ -39,6 +39,7 @@ import type { SecretsStore } from '../secrets/store.js'
 import type { EventsService } from '../services/events.js'
 import { fingerprintPublicKey, generateServerKeys } from '../ssh/keys.js'
 import { ensureServerKeys, normalizeUserPublicKey } from '../ssh/server-keys.js'
+import type { StepRunAs } from '../bootstrap/plan.js'
 import { bootstrapProgressEvent, serverStatusEvent } from '../bootstrap/progress-event.js'
 import { renderPushUserData } from '../bootstrap/user-data.js'
 
@@ -262,6 +263,18 @@ export interface CreateServerInput {
   repositories?: string[]
   /** An extra public key the user wants authorized alongside core's own. */
   sshPublicKey?: string
+  /**
+   * The script this box should run at first boot, and who runs it (issue #184, ADR-0011).
+   *
+   * NOT SECRET MATERIAL, and so unlike `rdpPassword` it goes on the row rather than into the
+   * secrets store: it is rendered into the install plan as one more step, and the plan is
+   * snapshotted on that same row and pushed to the box in the clear. Encrypting one copy while
+   * the other sits beside it would buy nothing and cost a custody exemption.
+   *
+   * Trimmed and bounded by the create route, which is also where the `rocky` default is
+   * applied — this service takes whatever pair it is handed.
+   */
+  userScript?: { script: string; runAs: StepRunAs }
   /**
    * The remote-desktop password for a `requiresRdp` pack (rockysurf-z0wf).
    *
@@ -762,6 +775,10 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         ...(input.packId ? { packId: input.packId } : {}),
         ...(input.tools ? { tools: input.tools } : {}),
         ...(input.repositories ? { repositories: input.repositories } : {}),
+        // On the row BEFORE the plan is snapshotted below, because that is where
+        // `snapshotInstallPlan` reads it from — same path the repositories and the supplied key
+        // take (issue #184).
+        ...(input.userScript ? { userScript: input.userScript } : {}),
       })
 
       // Only now can tokens be minted: they are written onto the row that has just appeared.

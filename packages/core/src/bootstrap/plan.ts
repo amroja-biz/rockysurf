@@ -27,8 +27,19 @@ export type StepRunAs = (typeof STEP_RUN_AS)[number]
  * tool called `branding` from colliding with the branding phase.
  */
 export const STEP_ID_PREFIXES = ['tool:', 'tool-setup:', 'repo:'] as const
-/** `supplied-key-only`: ADR-0008 / issue #92, phase 7 of `docs/bootstrap-contract.md`. */
-export const SINGLETON_STEP_IDS = ['branding', 'rdp', 'supplied-key-only'] as const
+/**
+ * `user-script`: ADR-0011 / issue #184, phase 5. `supplied-key-only`: ADR-0008 / issue #92,
+ * phase 8 of `docs/bootstrap-contract.md`.
+ *
+ * Adding an id here does NOT bump `PLAN_VERSION`. What version 1 freezes is the wire FORMAT —
+ * the fields of a step and of a plan — and no field changed: `user-script` is one more value in
+ * a namespace the format already defines, executed by the agent through the same
+ * `run`/`runAs`/`optional`/`timeoutSeconds` path as every other step. An older agent handed a
+ * plan containing it runs it correctly without knowing the name, which is the property the
+ * freeze exists to protect; a new FIELD would not have that property, and would bump the
+ * version.
+ */
+export const SINGLETON_STEP_IDS = ['branding', 'rdp', 'user-script', 'supplied-key-only'] as const
 
 const stepId = z.string().min(1).refine(
   (id) => STEP_ID_PREFIXES.some((p) => id.startsWith(p) && id.length > p.length) || SINGLETON_STEP_IDS.includes(id as never),

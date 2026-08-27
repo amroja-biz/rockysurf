@@ -448,6 +448,14 @@ Two more, worth calling out separately:
 | `REPOS` | every `setupScript`, whatever the pack's `requiresRepos` | comma-separated list of the repositories the user chose — empty when they chose none, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it. Any `git` your setup script runs against these URLs — directly, or through a tool that clones on its own the way `gt rig add` does — authenticates with the same credential helper the clone step used, handed to the step through git's `GIT_CONFIG_*` environment when the box carries a token (issue #142). You write no credential code and must not: the token never goes on a command line or into a git config |
 | your tool's secrets | steps of the tool they belong to | whatever the user supplied |
 
+The person creating the server can add a **startup script** of their own, which runs after every
+step your pack contributes and gets this same environment plus the choice of running as `root` or
+as `rocky` ([`self-hosting.md`](self-hosting.md#your-own-startup-script-on-a-new-server), issue
+#184). It is not something your pack declares or can see, and it is not a hook: write your pack
+as though it were not there. What it does mean is that the last word on a box belongs to its
+owner — if your pack writes a config file a user might reasonably want to change, leave it
+changeable rather than regenerating it on every boot.
+
 Standard output and standard error are captured per step. Log freely; it is the only debugging
 signal a user gets when something fails on their box.
 
@@ -1114,6 +1122,10 @@ hardcode what they carry.
 | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
 | `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
 | `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
+
+The user's own startup script (issue #184) gets exactly this environment too, including the
+`GIT_CONFIG_*` trio, and runs after every step of yours. You cannot see it and must not plan
+around it.
 
 ### The two secrets, and how to use them safely
 
