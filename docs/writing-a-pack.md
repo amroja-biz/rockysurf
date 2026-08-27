@@ -21,6 +21,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
   2. [`$ARCH`-aware](#rule-2-arch-aware)
   3. [Non-interactive](#rule-3-non-interactive)
   4. [`runAs`-honest](#rule-4-runas-honest)
+- [Bounded retries](#bounded-retries)
 - [What you may not assume](#what-you-may-not-assume)
 - [Which version to install](#which-version-to-install)
 - [The file format](#the-file-format)
@@ -227,7 +228,9 @@ ssh-keygen -t ed25519                  # prompts for a path and a passphrase
 
 Also avoid anything that *waits* without prompting: no `systemctl start … && sleep 60`, no
 polling loops without a bounded retry count. Give long installs a real completion check
-instead.
+instead. Where a download genuinely deserves one more go, the bound is small and belongs on
+the command — see [Bounded retries](#bounded-retries) below, which also covers the apt retry
+you do **not** have to write.
 
 ---
 
@@ -316,6 +319,85 @@ running as `rocky`. That split is exactly what `setupScript` is for.
 
 Both should declare `runAs: root` for the privileged half and move the user-level half into a
 `setupScript`, or split into two tools.
+
+---
+
+## Bounded retries
+
+**apt is the agent's problem. `curl` is yours, and three attempts is the bound.**
+
+A cloud box downloads everything it will ever have, from mirrors and release hosts that are
+occasionally sick, over a network that occasionally resets. One transient answer should cost
+a second, not a box — a failed tool install terminates the instance (ADR-0010), so a flake
+that nobody retried is a machine the user has to create again.
+
+### apt: the agent already retries, so your script must not
+
+**Every step that fails with an apt fetch signature in its own output gets a second attempt,
+automatically, and exactly one.** Between the two attempts the agent does what an operator
+would do by hand:
+
+- if the apt sources name a **per-region** Canonical mirror (`us-east-1.ec2.ports.ubuntu.com`,
+  `azure.archive.ubuntu.com`, …), it rewrites them to the global `archive.ubuntu.com` /
+  `ports.ubuntu.com` — that swap happens at most once per bootstrap, because after it there is
+  nothing left to swap;
+- if the sources already name the global archive, there is no mirror to change, so it **waits
+  two minutes** for the archive to catch up with itself and refreshes the lists;
+- either way it runs `apt-get update` before handing your script its second attempt, which is
+  why the `apt-updated` stamp idiom in [Rule 1](#rule-1-idempotent) keeps working.
+
+If the second attempt fails too, the launch fails, the box is released, and the failure report
+names the URL that would not serve so the user can test it themselves and create the server
+again once it is back.
+
+So do **not** write your own apt retry: no `for i in 1 2 3; do apt-get install …; done`, no
+`|| apt-get install …` second chance, and no `Acquire::Retries` drop-in of your own. Yours
+would run inside the agent's first attempt, would not get the fresh `apt-get update` or the
+wait that actually fixes these failures, and would multiply with the agent's own retry into a
+step that takes four times as long to fail.
+
+```bash
+# Do this. One attempt; the agent owns the second.
+[ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && touch /var/lib/rockysurf/apt-updated; }
+apt-get install -y build-essential
+```
+
+```bash
+# Not this.
+for i in 1 2 3; do apt-get install -y build-essential && break; sleep 10; done
+apt-get install -y build-essential || { sleep 30; apt-get install -y build-essential; }
+```
+
+Two things are outside the agent's reach, and they stay yours:
+
+- **A third-party apt repository** you add yourself. The agent's mirror swap knows Canonical's
+  hostnames and nothing else. It will still give your step its second attempt, which is all
+  anyone can do for `packages.mozilla.org` mid-sync.
+- **A hard-coded mirror hostname** in your own script. That is already broken on every cloud
+  but the one you wrote it on — use whatever the image points at.
+
+### `curl` and friends: bound it yourself, at three
+
+Everything the agent cannot see inside — a release tarball, an upstream install script, a
+`npm`/`pipx`/`cargo` fetch — is retried by the command that does it, or not at all:
+
+```bash
+curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+  "https://example.com/tool-${ARCH}.tar.gz" -o "$tmp/tool.tar.gz"
+```
+
+`--retry-all-errors` is the part people leave off: without it `curl` retries only transient
+transport errors, and a `500` from a release host is not one of them. Keep the count at 3 and
+the delay small. A bound of 3 with a 2-second delay costs at most a few seconds when it fails
+for real; an unbounded loop costs a step timeout and tells the user nothing.
+
+Pipe-to-shell installers get the same treatment — fetch to a file with retries, then run the
+file, which is also what lets you check a digest:
+
+```bash
+curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors https://example.com/install.sh -o "$tmp/install.sh"
+sh "$tmp/install.sh"
+```
 
 ---
 
@@ -976,6 +1058,9 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 - [ ] No `sudo` anywhere in a `runAs: rocky` script.
 - [ ] No root-owned files left in `/home/rocky`.
 - [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
+- [ ] No apt retry loop of your own — the agent already gives every step a second attempt. Every
+      `curl` that matters carries `--retry 3 --retry-delay 2 --retry-all-errors`. See
+      [Bounded retries](#bounded-retries).
 - [ ] The agent installs **unversioned** from its registry channel — or, if it has no registry
       channel, is pinned to a version and verified against a `sha256`, the same treatment
       anything fetched from GitHub releases or a vendor CDN gets. Nothing resolves a version
@@ -1004,6 +1089,8 @@ during the project's de-risking work. If you want the evidence:
   polite.
 - `docs/adr/0004-packs-as-pr-able-yaml.md` — why packs are files, why the format is frozen at
   v0.1, and why CI runs every pack twice on two architectures.
+- `docs/adr/0012-apt-retry-is-the-agents-standard.md` — why the apt retry is the agent's and
+  not yours, what was measured before deciding that, and what the user reads when it runs out.
 
 Found something this page gets wrong, or a rule that fights a legitimate pack? Open an issue.
 The format is frozen; the documentation isn't.

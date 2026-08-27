@@ -17,7 +17,7 @@ const FAILED: Report = {
     exitCode: 100,
     cause: 'apt-mirror',
     summary:
-      "Build Essential could not be installed: Ubuntu's package mirror for this region was not serving packages (HTTP 503). Rocky Surf already retried once on the global mirror.",
+      "Build Essential could not be installed: Ubuntu's package mirror for this region would not serve a file the install needs — http://us-east-1.ec2.ports.ubuntu.com/x.deb answered HTTP 503. Rocky Surf already retried the step once on the global mirror and got the same answer.",
     keyLines: ['E: Failed to fetch http://us-east-1.ec2.ports.ubuntu.com/x.deb  503  Service Unavailable', 'E: Unable to fetch some archives'],
     log: 'Reading package lists...\nE: Failed to fetch http://us-east-1.ec2.ports.ubuntu.com/x.deb  503  Service Unavailable\nE: Unable to fetch some archives',
     logComplete: true,
@@ -54,7 +54,7 @@ describe('a failure', () => {
     const text = card.textContent ?? ''
     expect(text.indexOf('What failed')).toBeLessThan(text.indexOf('Why'))
     expect(text.indexOf('Why')).toBeLessThan(text.indexOf('The machine'))
-    expect(text).toContain('not serving packages')
+    expect(text).toContain('would not serve a file the install needs')
     expect(text).toContain('E: Unable to fetch some archives')
     expect(text).toContain('not billing')
 
@@ -62,6 +62,31 @@ describe('a failure', () => {
     expect(details, 'the full log is there').toBeTruthy()
     expect(details!.hasAttribute('open'), 'but collapsed').toBe(false)
     expect(details!.textContent).toContain('complete')
+  })
+
+  /**
+   * The summary is prose built in core (`bootstrap/failure-report.ts`); what this asserts is
+   * that the card puts the whole of it in front of the user unbroken — the URL included, which
+   * is the one fact in a broken-mirror report they can act on (#188). A long URL that the card
+   * truncated or split would take the actionable part of the advice with it.
+   */
+  it('shows a broken mirror’s URL and the advice to test it, whole', () => {
+    const url = 'http://ports.ubuntu.com/ubuntu-ports/pool/main/p/perl/perl-base_5.38.2-3.2ubuntu0.4_arm64.deb'
+    const summary =
+      `Build Essential could not be installed: Ubuntu's package archive would not serve a file the install needs — ${url} answered HTTP 404. ` +
+      'Rocky Surf already retried the step once, waiting first, and got the same answer. ' +
+      "The mirror's package index is naming files it is no longer serving — this is a fault on the mirror side, not in your pack or your settings, and it usually clears within the hour. " +
+      `Check it yourself — \`curl -I ${url}\` answering 200 means the mirror has caught up — then create the server again.`
+    render(
+      <BootstrapReport
+        report={{ ...FAILED, failure: { ...FAILED.failure!, summary, keyLines: [`E: Failed to fetch ${url}  404  Not Found`] } }}
+      />,
+    )
+    const text = screen.getByTestId('bootstrap-failure').textContent ?? ''
+    expect(text).toContain(url)
+    expect(text).toContain('not in your pack or your settings')
+    expect(text).toContain(`curl -I ${url}`)
+    expect(text).toContain('create the server again')
   })
 })
 
