@@ -8,7 +8,15 @@ import { DEFAULT_SSH_PORT } from '../bootstrap/push.js'
 import { InvalidTransitionError } from '../db/transitions.js'
 import { LimitExceededError } from '../jobs/limits.js'
 import { SERVER_SIZES, type ServerRow, type ServerSize, type StoredSize } from '../db/schema.js'
-import { getBootstrapReport, getServerRepositories, getServerTools, isBillingRow } from '../db/repositories/servers.js'
+import {
+  getBootstrapReport,
+  getServerPackInputs,
+  getServerRepositories,
+  getServerTools,
+  isBillingRow,
+} from '../db/repositories/servers.js'
+import { resolvePackInputs } from '../packs/inputs.js'
+import type { PackInput } from '../packs/schema.js'
 import type { BootstrapReport } from '../bootstrap/failure-report.js'
 import { badRequest, created, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
@@ -145,6 +153,20 @@ const createBody = z.object({
    */
   userScriptRunAs: z.enum(STEP_RUN_AS).optional(),
   /**
+   * The values the selected pack declared as `inputs` (issue #189, ADR-0013).
+   *
+   * A FLAT `NAME: value` MAP, deliberately, rather than a list of objects: the pack has already
+   * said what each name means, so a client repeating the label or the `secret` flag would be
+   * sending the server facts it must not believe anyway. Everything about how a value is
+   * treated comes from the pack file, never from the request.
+   *
+   * Shape-checked here and MEANING-checked in the handler, against the pack's own declaration
+   * (`resolvePackInputs`): unknown name, missing required, oversized or multi-line value are
+   * each a 400 naming the field. Bounded loosely here so that the handler's refusal — which can
+   * quote the pack's label — is the one a caller reads.
+   */
+  packInputs: z.record(z.string().max(64), z.string().max(65536)).optional(),
+  /**
    * Create even though a repository URL failed its preflight (rockysurf-k6xp).
    *
    * REFUSE BY DEFAULT, override on request — decided that way rather than warn-by-default
@@ -204,6 +226,23 @@ export interface ServerRoutesDeps {
    * which is the default resolution this route has always done.
    */
   tierPreference?: (providerId: string, size: ServerSize) => string | undefined
+  /**
+   * What the pack the request names asks the user for — its `inputs` declaration (issue #189).
+   *
+   * A FUNCTION over the pack id rather than a database handle, on the same discipline as
+   * `offeringAllowlist`: this route validates a request, and giving it a `Db` would let the
+   * next edit reach for anything. Returning `undefined` means "no such pack, or it asks for
+   * nothing", which this route treats identically — a request naming a pack that does not exist
+   * is already refused downstream by the plan render, and duplicating that refusal here would
+   * put two different sentences on one mistake.
+   *
+   * Optional so a test that does not care wires nothing. Production always supplies it, and
+   * `servers/routes.wiring.test.ts` drives the real `boot()`-built app to prove it: the
+   * validation exists to stop a value reaching a box that nobody asked for, and a hook nothing
+   * supplies is exactly the failure `docs/memories/2026-08-21-whole-boot-wiring-tests.md`
+   * describes.
+   */
+  packInputs?: (packId: string) => readonly PackInput[] | undefined
 }
 
 /**
@@ -258,6 +297,22 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
     packId: row.packId ?? undefined,
     tools: getServerTools(row),
     repositories: repos,
+    /**
+     * The NON-SECRET pack inputs this box was built with (issue #189, ADR-0013).
+     *
+     * Safe to return, and useful: they are the answers a person typed into a form they can
+     * still see, and showing them is how "what is this box configured with" gets an answer
+     * after the create screen is gone. A pack's SECRET inputs are not here and are not in any
+     * other route either — the custody rule (`secrets/route-inventory.test.ts`) has exactly one
+     * exemption and this is not it.
+     *
+     * Absent rather than `{}` when there are none, so the SPA can tell "asked for nothing" from
+     * "asked and got nothing". A plain key holding `undefined` rather than a conditional spread,
+     * like `githubTokenScopes` below: JSON drops it either way, and `DashboardPage.wiring.test`
+     * reads this object's keys out of the SOURCE to prove the SPA declares nothing core does not
+     * send — a spread hides the key from it.
+     */
+    packInputs: row.packInputs ? getServerPackInputs(row) : undefined,
     /**
      * WHICH GIT TOKENS THIS BOX HOLDS, by scope, never by value (rockysurf-18lq).
      *
@@ -515,6 +570,34 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     const userScript = userScriptBody ? { script: userScriptBody, runAs: body.userScriptRunAs ?? 'rocky' } : undefined
 
     /**
+     * WHAT THE PACK ASKED FOR, checked against what arrived (issue #189, ADR-0013).
+     *
+     * BEFORE THE PROVIDER IS TOUCHED, on the doctrine every other create-time check here is
+     * built on (`rockysurf-kvkr`, `rockysurf-k6xp`): fail before the money. A missing required
+     * input is not discoverable on the box until the pack's own install script reads an empty
+     * variable, which is minutes and one launched instance later — and on a pack whose tools are
+     * required, ADR-0010 then confiscates the machine. The refusal is field-level and names every
+     * problem rather than the first, so a form can put each message on its own field.
+     *
+     * The split it returns is the custody decision, made once, here: non-secret values go on
+     * the row and secret ones to the encrypted store. Nothing downstream re-reads the pack to
+     * work out which is which.
+     */
+    const packInputs = resolvePackInputs(
+      body.packId ? deps.packInputs?.(body.packId) : undefined,
+      body.packInputs,
+    )
+    if (packInputs.issues.length > 0) {
+      return badRequest(
+        c,
+        packInputs.issues.length === 1
+          ? packInputs.issues[0]!.message
+          : `${packInputs.issues.length} of this pack's inputs are wrong or missing.`,
+        packInputs.issues,
+      )
+    }
+
+    /**
      * WHICH CLOUD THIS SERVER LANDS ON, and why there is no silent fallback (rockysurf-va2l).
      *
      * The old rule ended in `registry.ids()[0]`, so a request that named no provider on a
@@ -766,6 +849,12 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
         // Trimmed, paired with its runAs and defaulted above (issue #184). Not echoed back on
         // the response: `present()` renders what a screen shows, and nothing shows this.
         ...(userScript ? { userScript } : {}),
+        // Already validated and split by custody above (issue #189). Passed whenever there is
+        // anything at all — including when only the secret half is non-empty, because the
+        // lifecycle files the two in two different places.
+        ...(Object.keys(packInputs.values).length || Object.keys(packInputs.secrets).length
+          ? { packInputs: { values: packInputs.values, secrets: packInputs.secrets } }
+          : {}),
         // A retried POST carrying the same key returns the original server and provisions
         // nothing — the standard header, so a client can be safe without inventing a scheme.
         ...(c.req.header('idempotency-key') ? { idempotencyKey: c.req.header('idempotency-key')! } : {}),
