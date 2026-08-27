@@ -216,6 +216,9 @@ describe('the explanation', () => {
     // And it says the retry already happened, so nobody thinks one more click would have done
     // it — here with the wait, because on the global archive there was no mirror to switch to.
     expect(report.summary).toContain('already retried the step once, waiting first')
+    // The same two options the retry notice offered while the second attempt ran (#205):
+    // wait, or another provider — in the same words, so the notice and the report agree.
+    expect(report.summary).toContain('You can wait and create the server again then, or launch it on another provider now.')
   })
 
   it('counts the other files without listing them', () => {
@@ -237,6 +240,7 @@ describe('the explanation', () => {
     expect(report.cause).toBe('apt-mirror')
     expect(report.summary).toContain('was not serving packages')
     expect(report.summary).not.toContain('curl -I')
+    expect(report.summary).toContain('or launch it on another provider now')
   })
 
   it('surfaces the clone script’s no-token sentence whole and leaves git’s stderr in the log (rockysurf-ldo1)', () => {

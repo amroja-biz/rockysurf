@@ -347,9 +347,17 @@ would do by hand:
 - either way it runs `apt-get update` before handing your script its second attempt, which is
   why the `apt-updated` stamp idiom in [Rule 1](#rule-1-idempotent) keeps working.
 
+The retry is not silent. The moment the first attempt fails, the timeline says under the
+step what could not be downloaded and from where (the URL from apt's `Failed to fetch` line,
+when there is one), what the agent is doing about it, how long the step can take at most
+before it gives up (the second attempt is capped by the step's own timeout — 30 minutes for
+a tool — plus the two-minute wait when there is one), and the choice that leaves the user:
+wait, or terminate the server now and launch it on another provider.
+
 If the second attempt fails too, the launch fails, the box is released, and the failure report
-names the URL that would not serve so the user can test it themselves and create the server
-again once it is back.
+names the URL that would not serve so the user can test it themselves — and offers the same
+two options in the same words: wait and create the server again once it is back, or launch it
+on another provider now.
 
 The first attempt is the one that takes the time when a mirror is merely slow to answer:
 `apt-get update -qq` prints nothing until it has succeeded or given up, and apt waits two

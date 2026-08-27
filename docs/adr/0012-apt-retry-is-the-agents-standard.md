@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-08-27. Issue #188. Complements [ADR-0010](0010-failed-tool-install-terminates-the-box.md),
+Accepted — 2026-08-27. Issue #188. Amended by [ADR-0015](0015-a-quiet-step-announces-itself.md) (clause 3: the wait notice became the retry notice, with the bound and the choice). Complements [ADR-0010](0010-failed-tool-install-terminates-the-box.md),
 whose terminate rule is unchanged: a tool step that fails after its retries still releases the box.
 
 ## Context

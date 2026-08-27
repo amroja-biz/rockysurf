@@ -264,10 +264,9 @@ apt_recover() {
   if [ "$rewritten" = 0 ]; then
     log "!!! already on the global Ubuntu mirror — nothing to swap; waiting ${APT_RETRY_WAIT_S}s for the archive to settle (an index published ahead of its pool answers 404 until it catches up), then refreshing lists and retrying as-is"
     # Two minutes under "Installing tools" with nothing moving looks like a hang. The journal
-    # carries a one-line reason for the timeline while the wait lasts, and drops it after.
-    set_notice "Ubuntu's package archive is out of sync — waiting $(human_wait) before retrying. Nothing is stuck."
+    # already carries the step's retry notice (`retry_notice`, issue #205) for the whole of
+    # this wait and the attempt after it — it names the wait, so nothing is posted here.
     sleep "$APT_RETRY_WAIT_S"
-    clear_notice
   fi
 
   # The step's own `apt-updated` stamp is stale by definition now, but the lists it guards are
@@ -278,6 +277,64 @@ apt_recover() {
     log "!!! apt-get update still failing — the retry below will tell"
   fi
   return 0
+}
+
+# True when `apt_recover` would still find a regional mirror to swap — the question the retry
+# notice has to answer before apt_recover answers it for real.
+apt_can_swap() {
+  [ "$APT_MIRROR_SWAPPED" = 0 ] || return 1
+  local f
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    [ -f "$f" ] && grep -qE "$REGIONAL_MIRROR_RE" "$f" && return 0
+  done
+  return 1
+}
+
+# THE RETRY IS ANNOUNCED, WITH THE CHOICE IT LEAVES THE USER (issue #205, owner's ruling).
+#
+# $1 = step id, $2 = its log, $3 = the log's line count before the attempt that just failed,
+# $4 = the step's timeoutSeconds. Prints one line for the journal's `notice`, posted before
+# `apt_recover` and standing until the second attempt has ended, whichever way.
+#
+# What it says, in the user's terms and in this order: what could not be downloaded, from
+# where and with what answer (the first `Failed to fetch <url>  <status>` of THIS attempt —
+# the one fact a person can check for themselves, and the one the failure report will name
+# again if the retry fails); what is being done about it (the mirror swap or the wait, then
+# one more attempt — never a third); the bounded worst case, derived rather than guessed: the
+# second attempt is capped by the step's own `timeout`, plus the wait when there is one; and
+# the choice — wait, or terminate now (the button already on the server page) and launch the
+# same server on another provider. `retried once … same answer … create again or another
+# provider` is what the failure report says afterwards, so the two agree.
+retry_notice() {
+  local id="$1" step_log="$2" before="$3" timeout_s="$4"
+  local name="${id#tool:}" line url='' status='' host what remedy budget_s bound
+  line=$(tail -n +"$((before + 1))" "$step_log" 2>/dev/null | grep -oE 'Failed to fetch [^[:space:]]+([[:space:]]+[0-9]{3})?' | head -n 1)
+  if [ -n "$line" ]; then
+    url=$(awk '{print $4}' <<<"$line")
+    status=$(awk '{print $5}' <<<"$line")
+    host=${url#*://}
+    host=${host%%/*}
+    if [ -n "$status" ]; then
+      what="$name could not be downloaded — $host answered HTTP $status for $url"
+    else
+      what="$name could not be downloaded — $host would not serve $url"
+    fi
+  else
+    what="$name could not be downloaded — Ubuntu's package mirror was not serving what apt asked for"
+  fi
+  if apt_can_swap; then
+    remedy="switching to Ubuntu's global mirror"
+    budget_s=$timeout_s
+  else
+    remedy="waiting $(human_wait) for the archive to catch up"
+    budget_s=$((timeout_s + APT_RETRY_WAIT_S))
+  fi
+  if [ "$timeout_s" -gt 0 ] 2>/dev/null; then
+    bound="it gives up after $(((budget_s + 59) / 60)) more minutes at most"
+  else
+    bound="this step has no time limit"
+  fi
+  echo "$what. Rocky Surf is $remedy, then trying this step once more; $bound. You can wait, or terminate this server now (Terminate, on this page) and launch it on another provider."
 }
 
 # --------------------------------------------------------------------------------------
@@ -413,6 +470,16 @@ clear_notice() {
   flush_state
 }
 
+# The notice that STANDS for the current step — the retry notice, while a step is on its
+# second attempt (#205) — as opposed to one the quiet watcher posts over it for a while. The
+# watcher restores this rather than clearing outright, so a step's output resuming mid-retry
+# does not wipe the line telling the user what the retry is and what they can do about it.
+STEP_NOTICE=''
+
+restore_notice() {
+  if [ -n "$STEP_NOTICE" ]; then set_notice "$STEP_NOTICE"; else clear_notice; fi
+}
+
 # "2 min" for a real box, "1 s" under the smoke harness's override.
 human_wait() {
   if [ "$APT_RETRY_WAIT_S" -ge 60 ]; then echo "$((APT_RETRY_WAIT_S / 60)) min"; else echo "${APT_RETRY_WAIT_S} s"; fi
@@ -517,7 +584,7 @@ watch_quiet() {
       if [ "$announced" = 1 ]; then
         announced=0
         log "--- $id: output resumed"
-        clear_notice
+        restore_notice
       fi
       continue
     fi
@@ -527,10 +594,16 @@ watch_quiet() {
       units=$((quiet / STEP_QUIET_S))
       announced=1
       log "--- $id: no output for $(human_seconds "$quiet") — still running"
-      set_notice "$name has said nothing for $(human_seconds "$quiet") — usually a download waiting on a mirror that is slow to answer. It is still running; if apt gives up, the agent retries it on another mirror. Nothing is stuck."
+      if [ -n "$STEP_NOTICE" ]; then
+        # On a second attempt the standing notice already says what is happening and what the
+        # user can do; the clock is appended rather than replacing it.
+        set_notice "$STEP_NOTICE Nothing has been written for $(human_seconds "$quiet")."
+      else
+        set_notice "$name has said nothing for $(human_seconds "$quiet") — usually a download waiting on a mirror that is slow to answer. It is still running; if apt gives up, the agent retries it on another mirror. Nothing is stuck."
+      fi
     fi
   done
-  [ "$announced" = 1 ] && clear_notice
+  [ "$announced" = 1 ] && restore_notice
   return 0
 }
 
@@ -581,10 +654,17 @@ run_plan() {
     # final attempt at one — the tool-install retry standard (#188). The signature check comes
     # first: a step that failed for its own reasons is not retried, and never pays the wait.
     if [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before"; then
+      # The user is told what failed, what happens next, how long it can take at most, and
+      # that they may terminate now and go elsewhere (#205) — before the wait, so the wait is
+      # never silent, and standing until the second attempt has ended either way.
+      STEP_NOTICE=$(retry_notice "$id" "$step_log" "$before" "$timeout_s")
+      set_notice "$STEP_NOTICE"
       apt_recover "$id"
       log "--- $id: retrying once on the fallback mirror (attempt 2 of 2)"
       run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
       rc=$?
+      STEP_NOTICE=''
+      clear_notice
       if [ $rc -ne 0 ]; then
         log "--- $id: the second attempt failed too — apt is out of retries for this step"
       fi
