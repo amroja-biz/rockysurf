@@ -444,17 +444,17 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
 - **Pull request against `packs/`** — the intended path, and the only one that gets the pack
   smoke-tested on both architectures by CI forever. Reference the shared base tool ids; do not
   redefine them. Work through the checklist at the end of `docs/writing-a-pack.md` first.
-- **Import into their own running instance** — Surge Packs (`/packs`) → Personal → Import,
-  either uploading the file or fetching a URL. An imported pack becomes a database row that boot
-  never overwrites and
-  never restores. The URL fetch goes through an SSRF guard: public `http`/`https` only, 2 MB cap,
-  no credentials sent, so a raw GitHub or raw gist URL works and anything private or on the
-  operator's LAN does not. A URL import records the URL, so the pack reads as *imported from* it
-  rather than as one created in the UI — but it is fetched once and never refetched. **Do not use
-  Export as a "fork this pack" button** — Export inlines
-  every referenced tool, so the result redefines the shared base ids, which the loader rejects
-  in-tree and which overwrites the shipped tool rows instance-wide on import. Deriving by hand
-  from the base's `pack.tools` id list (Step 1E) is the supported way to fork a pack.
+- **Upload it into their own running instance** — Surge Packs (`/packs`) → Personal → New Surge
+  Pack → Upload a pack file. An imported pack becomes a database row that boot never overwrites
+  and never restores. (Issue #204 retired the one-off "import from a URL" button that used to
+  sit beside this — the UI path for a URL-published pack is now **add it as a pack source**,
+  below, which remembers and can refetch it.)
+- **Start from an existing pack, in the same page** — New Surge Pack's third choice seeds the
+  create form with a new id and the source pack's own tools already checked, referencing them
+  the same way deriving by hand does (Step 1E). **Do not use Export as a "fork this pack"
+  button** for this instead — Export inlines every referenced tool, so reimporting its output
+  redefines the shared base ids, which the loader rejects in-tree and which overwrites the
+  shipped tool rows instance-wide on import.
 - **Publish it at an https URL and add it as a pack source** — the one to suggest when the user
   is still editing the pack, or wants somebody else to be able to subscribe to it. A line in
   `registry.sources` (`name`, `url`, `trust`), or the **Pack sources** tab of the admin Settings
