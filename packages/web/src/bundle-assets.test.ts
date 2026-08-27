@@ -170,6 +170,30 @@ describe('the home hero (rockysurf-n0zr)', () => {
   })
 })
 
+describe('the header cloud wash band (design handoff: header-wash)', () => {
+  // App.css points `.app-header::before` at this path the same way HomePage points its hero
+  // at `images/logo.png`: the reference is in a stylesheet (a `url(...)`, not an import), the
+  // file is in `public/`, and nothing else connects them.
+  const BAND = 'images/clouds-band.webp'
+
+  it('is in the build and in the bundle core serves', () => {
+    for (const [dir, what] of [
+      [distDir, 'the web build'],
+      [publicDir, 'packages/core/public'],
+    ] as const) {
+      const asset = join(dir, BAND)
+      expect(existsSync(asset), `${BAND} is missing from ${what}. ${BUILD_FIRST}`).toBe(true)
+      expect(statSync(asset).size).toBeGreaterThan(0)
+    }
+  })
+
+  it('is the compressed export, not the 1.1MB handoff original', () => {
+    // The handoff shipped clouds-band.png at 1.1MB — "a night sky at 62% opacity and nothing
+    // about it needs lossless" per its README. Re-encoded as WebP q80, ~65KB.
+    expect(statSync(join(distDir, BAND)).size).toBeLessThan(150 * 1024)
+  })
+})
+
 describe('the Rocky Surf webfont (issue #185)', () => {
   // App.css points --rs-mono and the body stack at `/fonts/RockySurf-Regular.ttf` the same way
   // HomePage points its hero at `images/logo.png`: the reference is in a stylesheet, the file is

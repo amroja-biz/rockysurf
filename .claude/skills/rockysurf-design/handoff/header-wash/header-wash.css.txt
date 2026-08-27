@@ -1,0 +1,65 @@
+/* ---------------------------------------------------------------------------
+   Header cloud wash — append after the existing .app-header rules in
+   packages/web/src/App.css
+
+   The brand mark is a painting, so its plate edge reads as pasted on.
+   Rather than crop the plate away, the same painting's cloud band runs the
+   width of the bar and fades out: the imagery never ends, so there is no
+   edge to notice. Screened, not overlaid — screen against an opaque ground
+   drops the painting's night to nothing and keeps only the lamp glow, the
+   moon, and the lit cloud faces.
+   --------------------------------------------------------------------------- */
+
+.app-header { position: relative; overflow: hidden; }
+
+/* The band. Positioned so the painting's lighthouse glow falls under the
+   mark and the moon clears the last nav link. */
+.app-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url(/assets/clouds-band.png) -30px 34% / 1500px auto no-repeat;
+  opacity: 0.62;
+  mix-blend-mode: screen;
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.62) 46%,
+                              rgba(0, 0, 0, 0.28) 72%, transparent 94%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0, 0, 0, 0.62) 46%,
+                                      rgba(0, 0, 0, 0.28) 72%, transparent 94%);
+  pointer-events: none;
+}
+
+/* Washes the band back to the bar colour at top and bottom, so the header
+   still meets the page on a flat edge and the 1px border-bottom stays a
+   hairline instead of a horizon. Keyed to --rs-surface so it follows the
+   token rather than duplicating its value. */
+.app-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+              rgb(from var(--rs-surface) r g b / 0.55) 0%,
+              rgb(from var(--rs-surface) r g b / 0) 42%,
+              rgb(from var(--rs-surface) r g b / 0.82) 100%);
+  pointer-events: none;
+}
+
+/* Both layers are absolute inside a flex row, so the row's own children need
+   a stacking position to stay above them. */
+.app-header > nav,
+.app-header-right { position: relative; }
+
+/* The mark, given the same treatment as the band so the two read as one
+   image: darks screened away, contrast lifted so the lettering holds, edges
+   dissolved by a radial mask. */
+.app-brand img {
+  mix-blend-mode: screen;
+  filter: contrast(1.6);
+  mask-image: radial-gradient(115% 125% at 38% 50%, #000 46%, transparent 94%);
+  -webkit-mask-image: radial-gradient(115% 125% at 38% 50%, #000 46%, transparent 94%);
+}
+
+/* On a narrow bar the nav wraps to a second row and the band's right-hand
+   fade lands under the links. Drop it. */
+@media (max-width: 768px) {
+  .app-header::before { display: none; }
+}
