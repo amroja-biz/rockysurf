@@ -292,6 +292,18 @@ export interface CreateServerInput {
    */
   rdpPassword?: string
   /**
+   * The values the selected pack asked for at create time, already validated against its
+   * declaration and already split by custody (issue #189, ADR-0013).
+   *
+   * TWO RECORDS, NOT ONE, and the split is made by the create route because only the pack's
+   * declaration knows which name is which. `values` goes on the row, where a re-render can
+   * read it and the detail page can show it; `secrets` goes to the encrypted store under this
+   * server's id, exactly like `rdpPassword` above and for the same reason — it is per-SERVER
+   * material that no route may ever hand back. This service is handed the answer rather than
+   * the question, so it never has to look a pack up.
+   */
+  packInputs?: { values: Record<string, string>; secrets: Record<string, string> }
+  /**
    * Supplied by a caller that may retry — an `Idempotency-Key` header, say.
    *
    * Reusing a key returns the ORIGINAL row without provisioning again, which is what makes a
@@ -779,6 +791,10 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         // `snapshotInstallPlan` reads it from — same path the repositories and the supplied key
         // take (issue #184).
         ...(input.userScript ? { userScript: input.userScript } : {}),
+        // The non-secret half only. Written with the row rather than after it because it is a
+        // column, and because `snapshotInstallPlan` below re-reads this row — a value written
+        // afterwards would be missing from anything that read it in between.
+        ...(input.packInputs ? { packInputs: input.packInputs.values } : {}),
       })
 
       // Only now can tokens be minted: they are written onto the row that has just appeared.
@@ -812,6 +828,12 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // and neither has the create request in hand by then. A store is only absent in tests
       // that never open a connection; production always has one, built by `boot()`.
       if (input.rdpPassword && deps.secretsStore) deps.secretsStore.putRdpPassword(row.id, input.rdpPassword)
+
+      // The secret half of the pack's inputs, filed the same way and in the same step, for the
+      // same reason: it is server-scoped secret material, both topologies read it back through
+      // `createServerSecretsLoader`, and neither has the create request in hand by then
+      // (issue #189). An empty object writes no row at all — see `putPackInputSecrets`.
+      if (input.packInputs && deps.secretsStore) deps.secretsStore.putPackInputSecrets(row.id, input.packInputs.secrets)
 
       /* ---- STEP 3: only now does the provider hear about it. ---- */
       const spec = {

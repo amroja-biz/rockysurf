@@ -7,6 +7,7 @@ import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { createPreferenceReader, type Config } from './config/index.js'
 import type { Db } from './db/client.js'
+import { getPack } from './db/repositories/packs.js'
 import { getUserByGithubUsername } from './db/repositories/users.js'
 import type { ServerRow, Session, User } from './db/schema.js'
 import { ADMIN_PASSWORD_HASH_KEY, LOCAL_ADMIN_USERNAME } from './auth/admin.js'
@@ -448,6 +449,18 @@ export function createApp(deps: AppDeps): CreatedApp {
       githubTokenScopes: (repositories) =>
         narrowTokensToRepositories(config.github.tokens, repositories).map(githubTokenScope),
       carriesFallbackToken: Boolean(config.github.pat),
+      /*
+       * WHAT THE SELECTED PACK ASKS FOR, so the create route can check the request against it
+       * (issue #189, ADR-0013).
+       *
+       * A lookup rather than the database, for the reason every other hook on this route is one:
+       * the route validates a request and must not grow the ability to read anything else. The
+       * declaration comes off the packs table, which is the cache of `packs/*.yaml` (ADR-0004),
+       * so an operator who edits a pack's inputs and restarts gets the new question on the next
+       * create — and servers already built keep the answers they were built with, on their own
+       * rows.
+       */
+      packInputs: (packId) => getPack(db, packId)?.inputs,
       /*
        * `providers.<cloud>.sizes`, finally read by something (rockysurf-j10e).
        *
