@@ -143,7 +143,12 @@ export const PACK_INPUT_MAX_COUNT = 16
  */
 export const packInputValueSchema = z
   .string()
-  .max(PACK_INPUT_MAX_VALUE_BYTES, { error: `must be at most ${PACK_INPUT_MAX_VALUE_BYTES} bytes` })
+  // BYTES, not characters, and the distinction is the reason this is a refine rather than
+  // zod's `.max()`: the ceiling is about what a `secrets.env` line and a database column carry,
+  // and a 4096-character value of three-byte glyphs is three times the number quoted here.
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= PACK_INPUT_MAX_VALUE_BYTES, {
+    error: `must be at most ${PACK_INPUT_MAX_VALUE_BYTES} bytes`,
+  })
   .refine((value) => !/[\n\r\0]/.test(value), {
     error: 'must be a single line — no newlines or NUL (values travel as KEY=value lines in secrets.env)',
   })

@@ -191,6 +191,15 @@ describe('resolving a create request against the declaration', () => {
     expect(resolvePackInputs([input({ name: 'FLAG' })], {}).values).toEqual({})
   })
 
+  it('measures a value in BYTES, not characters', () => {
+    // The ceiling is about what a `secrets.env` line and a column carry. `PACK_INPUT_MAX_VALUE_
+    // BYTES` characters of a three-byte glyph is three times the documented number, and zod's
+    // own `.max()` on a string would have accepted it.
+    const wide = '\u3042'.repeat(PACK_INPUT_MAX_VALUE_BYTES / 3 + 1)
+    expect(wide.length).toBeLessThan(PACK_INPUT_MAX_VALUE_BYTES)
+    expect(resolvePackInputs([input({ name: 'FLAG' })], { FLAG: wide }).issues).toHaveLength(1)
+  })
+
   it('refuses an oversized value, and an oversized total', () => {
     const tooLong = 'x'.repeat(PACK_INPUT_MAX_VALUE_BYTES + 1)
     expect(resolvePackInputs([input({ name: 'FLAG' })], { FLAG: tooLong }).issues).toHaveLength(1)
