@@ -247,7 +247,8 @@ put a secret, credential, IP address, or account ID in either one.
   tarballs, the BYO lifecycle, the structural lint and Pack smoke wait for the push to `main`,
   which always runs everything. Pack smoke runs on a pull request only when it touches what runs
   on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile
-  or its own workflow file.
+  or its own workflow file — and a pull request that changes only pack files tests just those
+  packs (plus any pack that lists a tool they define); everything else runs every pack.
 
 ## A note on this repository's history
 
