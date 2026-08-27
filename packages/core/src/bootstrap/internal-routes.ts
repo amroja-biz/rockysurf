@@ -80,7 +80,10 @@ const statusBody = z.strictObject({
   logTail: z.string().max(64 * 1024).optional(),
   publicIp: z.string().min(1).optional(),
   /** Why the current step is waiting, in one line (#129). Shown under the active step. */
-  notice: z.string().max(300).optional(),
+  // Room for the retry notice (#205): a tool name, a mirror URL that can run to 120
+  // characters, the remedy, the bound and the choice. A report over the cap is refused whole,
+  // and a refused report is a notice the user never sees.
+  notice: z.string().max(1000).optional(),
 })
 
 /** `?token=` for the GETs: a query parameter is what a `curl` in cloud-init can carry. */

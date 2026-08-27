@@ -55,11 +55,37 @@ time. From the timeline the two are indistinguishable from a hang, and a user wh
    through a file beside its log, because `$PIPESTATUS` does not exist for a background job and
    `wait` would answer for `tee`.
 
-3. **Nothing else changes.** Core forwards the notice exactly as it forwards #129's — same
+3. **The retry is announced, with the choice it leaves the user** (owner's ruling on #207:
+   "if we have to retry installs, we should tell the user what's going on and give them a
+   choice of terminating the server and trying on another provider, or waiting"). The moment a
+   step's first attempt fails with an apt fetch signature — before ADR-0012's mirror swap or
+   wait begins — the journal's `notice` says, in this order: what could not be downloaded, from
+   where and with what answer (the first `Failed to fetch <url>  <status>` of that attempt,
+   when there is one); what is being done (the swap or the wait, then one more attempt, never
+   a third); the bounded worst case, derived rather than guessed (the second attempt is capped
+   by the step's own `timeoutSeconds`, plus `ROCKYSURF_APT_RETRY_WAIT_S` when there is no
+   mirror to swap — *"it gives up after 32 more minutes at most"*); and the choice — *"You can
+   wait, or terminate this server now (Terminate, on this page) and launch it on another
+   provider."* It stands for the whole second attempt (the quiet-step clock is appended to it
+   rather than replacing it) and is withdrawn when that attempt ends, either way. The
+   `apt-mirror` failure report, written when the second attempt fails too and ADR-0010 releases
+   the box, ends with the same two options in the same words — *"You can wait and create the
+   server again then, or launch it on another provider now."* — so the notice and the report
+   agree. The #129 wait notice is subsumed: the retry notice names the wait itself. The
+   callback report's `notice` cap rises from 300 to 1000 characters to carry a URL.
+
+4. **The bound, in writing.** A tool step's `timeoutSeconds` is 1800 (`bootstrap/resolver.ts`)
+   and `agent.sh` wraps *each attempt* in `timeout`. So the worst case for one tool step is
+   two attempts of 30 minutes plus the 2-minute wait plus an `apt-get update`: **62 minutes,
+   and then it fails by URL**. A required step that fails twice ends the plan there (ADR-0012),
+   so at most one required step ever pays that; core's 15-minute stall guard remains behind it
+   for a journal that has truly stopped. Nothing waits indefinitely.
+
+5. **Nothing else changes.** Core forwards the notice exactly as it forwards #129's — same
    field, same progress event, same line under the active step in both bootstrap modes — and
-   the retry standard, the failure report and the 15-minute stall guard are untouched. A step
-   that stays silent to its `timeoutSeconds` still fails with its own exit code; it just says
-   "still quiet, N min" on the way there.
+   the retry standard and the 15-minute stall guard are untouched. A step that stays silent to
+   its `timeoutSeconds` still fails with its own exit code; it just says "still quiet, N min"
+   on the way there.
 
 ## Considered options
 
@@ -121,13 +147,17 @@ time. From the timeline the two are indistinguishable from a hang, and a user wh
 
 - Issue #205; the owner's screenshot; `events` rows for `srv-30514bcda504` and
   `srv-53970c42d082` in the owner's installation.
-- `packages/core/bootstrap/agent.sh` — `install_tool`, `watch_quiet`.
-- `packages/core/src/bootstrap/quiet-step.test.ts` — the real agent, a one-second threshold.
+- `packages/core/bootstrap/agent.sh` — `install_tool`, `watch_quiet`, `retry_notice`,
+  `restore_notice`.
+- `packages/core/src/bootstrap/failure-report.ts` — the `apt-mirror` summary's closing options.
+- `packages/core/src/bootstrap/quiet-step.test.ts` — the real agent, a one-second threshold;
+  the retry notice with and without a URL.
 - `docs/bootstrap-contract.md` § state.json — the `notice` field.
 - `docs/writing-a-pack.md` § Bounded retries.
 
 ## Related decisions
 
-- ADR-0012 — complements: the retry still starts only when apt fails; this is what the user is
-  told until then.
+- ADR-0012 — amends clause 3: the retry still starts only when apt fails, and this is what the
+  user is told until then and during it; the wait's own notice is replaced by the retry notice,
+  which names the wait, the bound and the choice.
 - ADR-0010 — unchanged: a step that stays silent to its timeout fails as a tool step fails.
