@@ -625,57 +625,78 @@ describe('a provider whose credentials expired (rockysurf-gg9x)', () => {
  * display name the provider list gives it, and the heading the group renders under; and the
  * shape of the created stamp, whose formatter has its own unit test in `lib/format.test.ts`.
  */
-describe('the fleet, grouped by the cloud each box is on', () => {
-  const groups = (container: HTMLElement) => [...container.querySelectorAll('.provider-group')] as HTMLElement[]
-  const headings = (container: HTMLElement) =>
-    groups(container).map((group) => group.querySelector('.provider-group-heading')!.firstChild!.textContent)
+describe('the fleet, one tab per cloud', () => {
+  const tabs = (container: HTMLElement) => [...container.querySelectorAll('.provider-tabs .tab')] as HTMLElement[]
+  const labels = (container: HTMLElement) => tabs(container).map((tab) => tab.firstChild!.textContent)
+  const counts = (container: HTMLElement) =>
+    tabs(container).map((tab) => {
+      const count = tab.querySelector('.provider-tab-count')!
+      return `${count.textContent}:${count.getAttribute('data-tone')}`
+    })
+  const panel = (container: HTMLElement) => container.querySelector('.provider-group') as HTMLElement
+  const open = (container: HTMLElement, label: string) =>
+    fireEvent.click(tabs(container).find((tab) => tab.firstChild!.textContent === label)!)
 
-  it('gives each cloud its own heading, by the display name the provider list reports', async () => {
+  it('gives each cloud its own tab, by the display name the provider list reports', async () => {
     rows = [RUNNING, ON_ANOTHER_CLOUD]
     const { container } = renderPage()
 
-    await waitFor(() => expect(groups(container)).toHaveLength(2))
+    await waitFor(() => expect(tabs(container)).toHaveLength(2))
     // Alphabetical by name, so a create landing or a terminate emptying a cloud does not
-    // reshuffle the page under the reader.
-    expect(headings(container)).toEqual(['Another Cloud', 'Fake'])
+    // reshuffle the tabs under the reader.
+    expect(labels(container)).toEqual(['Another Cloud', 'Fake'])
 
-    // And each card is inside its own cloud's group, which is the claim the heading makes.
-    const [another, fake] = groups(container)
-    expect(cardFor(another!, 'other-box')).toBeTruthy()
-    expect(cardFor(fake!, 'dev-box')).toBeTruthy()
-    expect(another!.querySelectorAll('.server-card')).toHaveLength(1)
+    // One cloud's cards at a time, and the tab switches which.
+    expect(cardFor(panel(container), 'other-box')).toBeTruthy()
+    expect(panel(container).querySelectorAll('.server-card')).toHaveLength(1)
+    open(container, 'Fake')
+    await waitFor(() => expect(cardFor(panel(container), 'dev-box')).toBeTruthy())
+    expect(panel(container).querySelectorAll('.server-card')).toHaveLength(1)
   })
 
-  it('counts the boxes in each group, singular and plural', async () => {
-    rows = [RUNNING, UNPRICED, ON_ANOTHER_CLOUD]
+  it('counts the boxes on each tab, coloured by whether any of them is running', async () => {
+    // Fake has one stopped box and nothing running; Another Cloud has one running.
+    rows = [STOPPED, ON_ANOTHER_CLOUD]
     const { container } = renderPage()
 
-    await waitFor(() => expect(groups(container)).toHaveLength(2))
-    const counts = groups(container).map((group) => group.querySelector('.provider-group-count')!.textContent)
-    expect(counts).toEqual(['1 server', '2 servers'])
+    await waitFor(() => expect(tabs(container)).toHaveLength(2))
+    expect(counts(container)).toEqual(['1:running', '1:stopped'])
+  })
+
+  it('still lists a configured cloud with nothing on it, as a plain zero', async () => {
+    rows = [RUNNING]
+    const { container } = renderPage()
+
+    await waitFor(() => expect(tabs(container)).toHaveLength(2))
+    expect(counts(container)).toEqual(['0:empty', '1:running'])
+    // The tab that opens by default is the first one with a box on it, not the empty one.
+    expect(cardFor(panel(container), 'dev-box')).toBeTruthy()
+    open(container, 'Another Cloud')
+    await waitFor(() => expect(panel(container).textContent).toContain('Nothing on Another Cloud'))
   })
 
   it('still shows a box on a cloud the provider list has never heard of', async () => {
     // A bring-your-own machine, or a cloud the operator has removed from their config since
-    // this row was created. There is no display name to look up, so the group wears the id —
+    // this row was created. There is no display name to look up, so the tab wears the id —
     // which still answers the question — rather than swallowing the row.
     rows = [RUNNING, ON_AN_UNLISTED_CLOUD]
     const { container } = renderPage()
 
-    await waitFor(() => expect(groups(container)).toHaveLength(2))
-    expect(headings(container)).toContain('byo')
-    const byo = groups(container).find((group) => group.textContent?.includes('byo-box'))!
-    expect(cardFor(byo, 'byo-box')).toBeTruthy()
+    await waitFor(() => expect(tabs(container)).toHaveLength(3))
+    expect(labels(container)).toContain('byo')
+    open(container, 'byo')
+    await waitFor(() => expect(cardFor(panel(container), 'byo-box')).toBeTruthy())
   })
 
-  it('puts a row naming no cloud at all in one generic group, last', async () => {
+  it('puts a row naming no cloud at all under one generic tab, last', async () => {
     rows = [ON_NO_CLOUD, RUNNING]
     const { container } = renderPage()
 
-    await waitFor(() => expect(groups(container)).toHaveLength(2))
-    // Last, because a heading that says nothing should not be the first thing read.
-    expect(headings(container)).toEqual(['Fake', 'Other'])
-    expect(cardFor(groups(container)[1]!, 'nameless-box')).toBeTruthy()
+    await waitFor(() => expect(tabs(container)).toHaveLength(3))
+    // Last, because a tab that says nothing should not be the first thing read.
+    expect(labels(container)).toEqual(['Another Cloud', 'Fake', 'Other'])
+    open(container, 'Other')
+    await waitFor(() => expect(cardFor(panel(container), 'nameless-box')).toBeTruthy())
   })
 
   it('stamps each card with when the box was created, as YYYY-MON-DD HH:MI', async () => {

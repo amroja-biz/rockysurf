@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import toast from 'react-hot-toast'
 import { ActivityFeed } from '../components/ActivityFeed'
 import { BackupReminder } from '../components/BackupReminder'
@@ -9,6 +9,7 @@ import { IpChangeAlert } from '../components/IpChangeAlert'
 import { PackIcon } from '../components/PackIcon'
 import { AppShell } from '../components/AppShell'
 import { StaleServersNotice } from '../components/StaleServersNotice'
+import { Tabs } from '../components/Tabs'
 import { Lamp, Plate, Shore, Swell, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
 import { SyncErrorNotice } from '../components/SyncErrorNotice'
@@ -56,6 +57,12 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [packById, setPackById] = useState<Map<string, SurgePack>>(new Map())
   const { byId: capabilities, providers } = useProviderCapabilities()
+  /**
+   * Which cloud's tab is open lives in the URL, the same way the packs page keeps `?tab=`
+   * (issue #204): a pasted link opens the same cloud, and `replace` keeps switching out of
+   * history. A value naming no tab falls back to the first cloud that has a box on it.
+   */
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const refresh = useCallback(async () => {
     try {
@@ -148,6 +155,15 @@ export function DashboardPage() {
   )
 
   const live = servers.filter((server) => server.status !== 'terminated')
+  const groups = groupByProvider(live, providers)
+  const requested = searchParams.get(PROVIDER_TAB_PARAM)
+  const activeGroup =
+    groups.find((group) => group.id === requested) ?? groups.find((group) => group.servers.length > 0) ?? groups[0]
+  const openTab = (id: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set(PROVIDER_TAB_PARAM, id)
+    setSearchParams(next, { replace: true })
+  }
 
   /**
    * One notice per provider whose view is stale, not one per row (rockysurf-gg9x): the cause
@@ -196,28 +212,63 @@ export function DashboardPage() {
         </Shore>
       )}
 
-      {groupByProvider(live, providers).map((group) => (
-        <section className="provider-group" key={group.id} data-testid={`provider-group-${group.id}`}>
-          <h2 className="provider-group-heading">
-            {group.label}
-            <span className="provider-group-count">
-              {group.servers.length} {group.servers.length === 1 ? 'server' : 'servers'}
-            </span>
-          </h2>
+      {/*
+        One tab per cloud (after the one-heading-per-cloud grouping of issue #121): every
+        configured provider gets a tab even with nothing on it, so the page also says where a
+        box COULD go, and a cloud the provider list has never heard of still gets one from the
+        rows that name it. The count beside the name carries the only state that matters at a
+        glance — green if anything on that cloud is running, yellow if boxes are there but none
+        is, plain for none at all.
+      */}
+      {activeGroup && (
+        <>
+          <Tabs
+            label="Cloud providers"
+            panelId="fleet"
+            className="provider-tabs"
+            tabs={groups.map((group) => ({
+              key: group.id,
+              label: (
+                <>
+                  {group.label}
+                  <span className="provider-tab-count" data-tone={fleetTone(group.servers)}>
+                    {group.servers.length}
+                  </span>
+                </>
+              ),
+              controls: `fleet-panel-${group.id}`,
+            }))}
+            active={activeGroup.id}
+            onSelect={openTab}
+          />
           <Swell opacity={0.3} />
-          <div className="server-grid">
-            {group.servers.map((server) => (
-              <ServerCard
-                key={server.serverId}
-                server={server}
-                capabilities={capabilities}
-                pack={server.packId ? packById.get(server.packId) : undefined}
-                onChanged={refresh}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+          <section
+            className="provider-group"
+            role="tabpanel"
+            id={`fleet-panel-${activeGroup.id}`}
+            aria-labelledby={`fleet-tab-${activeGroup.id}`}
+            data-testid={`provider-group-${activeGroup.id}`}
+          >
+            {activeGroup.servers.length === 0 && live.length > 0 ? (
+              <Shore>
+                Nothing on {activeGroup.label}. <Link to="/servers/new">Create a server</Link> there.
+              </Shore>
+            ) : (
+              <div className="server-grid">
+                {activeGroup.servers.map((server) => (
+                  <ServerCard
+                    key={server.serverId}
+                    server={server}
+                    capabilities={capabilities}
+                    pack={server.packId ? packById.get(server.packId) : undefined}
+                    onChanged={refresh}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
 
       <ActivityFeed servers={servers} />
     </AppShell>
@@ -226,6 +277,13 @@ export function DashboardPage() {
 
 /** The bucket a row lands in when it names no provider at all — see `groupByProvider`. */
 const UNGROUPED = '__none__'
+const PROVIDER_TAB_PARAM = 'provider'
+
+/** What the count on a cloud's tab says about it: something running, boxes but none up, or none. */
+export function fleetTone(servers: ServerSummary[]): 'running' | 'stopped' | 'empty' {
+  if (servers.some((server) => server.status === 'running')) return 'running'
+  return servers.length > 0 ? 'stopped' : 'empty'
+}
 
 /**
  * The fleet, split by the cloud each box is on (issue #121).
@@ -249,7 +307,9 @@ export function groupByProvider(
   servers: ServerSummary[],
   providers: ProviderInfo[],
 ): Array<{ id: string; label: string; servers: ServerSummary[] }> {
-  const buckets = new Map<string, ServerSummary[]>()
+  // Every configured cloud is a bucket before any row is read, so a cloud with nothing on it
+  // still gets its tab (and its zero).
+  const buckets = new Map<string, ServerSummary[]>(providers.map((p) => [p.id, []]))
   for (const server of servers) {
     const id = server.provider || UNGROUPED
     const bucket = buckets.get(id)

@@ -805,6 +805,35 @@ button.destructive:hover:not(:disabled),
   font-weight: 400;
 }
 
+/* The clouds as tabs: the `.tablist`/`.tab` pair Settings and the packs page use, in the
+   subheading's own size and weight, with the count beside the name saying the one thing worth
+   knowing at a glance — green, something is running; yellow, boxes but none up; plain, none. */
+.provider-tabs {
+  margin-bottom: 0;
+}
+
+.provider-tabs .tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.provider-tab-count {
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--rs-heading);
+}
+
+.provider-tab-count[data-tone='running'] {
+  color: var(--rs-green-bright);
+}
+
+.provider-tab-count[data-tone='stopped'] {
+  color: var(--rs-yellow);
+}
+
 .server-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
