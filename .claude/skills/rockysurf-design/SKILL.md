@@ -13,6 +13,7 @@ If the user invokes this skill without any other guidance, ask them what they wa
 | Path | What it is |
 |---|---|
 | `README.md` | The design guide: content fundamentals, visual foundations, iconography, the etched skin |
+| `design-guide.html.txt` | The designer's rendered guide to the system as applied in `packages/web` — header, buttons, Beacon, notices, voice, and a coverage table of which parts are live. Open it (strip `.txt`) when you need to SEE a rule rather than read it |
 | `styles.css` | The global entry point — `@import` lines only |
 | `tokens/` | Colours, type, spacing, borders, motion, and the etched skin's palette |
 | `css/` | The product's stylesheet, split by concern |

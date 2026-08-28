@@ -8,6 +8,11 @@
      explorations (palette, light, material, and three readings of "etched") stayed behind —
      they were the search, not the answer.
 
+  3. design-guide.html.txt is the designer's rendered guide to the system AS APPLIED in
+     packages/web on 2026-08-27 — the three layers, colour, type and the caps rule, light and
+     edges, the header, buttons, the Beacon, notices, controls, voice, and a coverage table of
+     which parts are live. Self-contained (no external assets); strip the suffix to open it.
+
   Everything else — the guide below, the tokens, the CSS, the assets, the component contracts,
   the handoff — is verbatim.
 -->
