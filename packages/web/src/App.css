@@ -860,6 +860,30 @@ button.destructive:hover:not(:disabled),
   font-weight: 600;
 }
 
+/* Name and lamp on the left, the pack's mark in the top-right corner the header leaves
+   empty. The mark is the same `.pack-icon` / `.pack-monogram` box every other page uses;
+   its inline `margin-right` is for a row with text after it, which this corner has none of. */
+.server-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.server-card-head > div {
+  min-width: 0;
+}
+
+.server-card-pack {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.server-card-pack .pack-icon,
+.server-card-pack .pack-monogram {
+  margin-right: 0;
+}
+
 .server-card h2 a,
 .server-card h3 a {
   color: var(--rs-link);

@@ -6,6 +6,7 @@ import { BackupReminder } from '../components/BackupReminder'
 import { warningsSummary } from '../components/BootstrapReport'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
+import { PackIcon } from '../components/PackIcon'
 import { AppShell } from '../components/AppShell'
 import { StaleServersNotice } from '../components/StaleServersNotice'
 import { Lamp, Plate, Shore, Swell, Tally } from '../components/etched'
@@ -53,7 +54,7 @@ export function DashboardPage() {
   const [servers, setServers] = useState<ServerSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [packNameById, setPackNameById] = useState<Map<string, string>>(new Map())
+  const [packById, setPackById] = useState<Map<string, SurgePack>>(new Map())
   const { byId: capabilities, providers } = useProviderCapabilities()
 
   const refresh = useCallback(async () => {
@@ -99,7 +100,7 @@ export function DashboardPage() {
     void (async () => {
       try {
         const packs = await listSurgePacks()
-        if (!cancelled) setPackNameById(new Map(packs.map((p: SurgePack) => [p.packId, p.name])))
+        if (!cancelled) setPackById(new Map(packs.map((p: SurgePack) => [p.packId, p])))
       } catch {
         // The cards are still useful without pack names; they fall back to showing the id.
       }
@@ -210,7 +211,7 @@ export function DashboardPage() {
                 key={server.serverId}
                 server={server}
                 capabilities={capabilities}
-                packName={server.packId ? packNameById.get(server.packId) : undefined}
+                pack={server.packId ? packById.get(server.packId) : undefined}
                 onChanged={refresh}
               />
             ))}
@@ -274,13 +275,14 @@ type PendingAction = TransitionAction | 'terminate'
 function ServerCard({
   server,
   capabilities,
-  packName,
+  pack,
   onChanged,
 }: {
   server: ServerSummary
   capabilities: Map<string, ProviderCapabilities>
-  /** The pack's display name, when the dashboard's pack list still has it (issue #137). */
-  packName?: string
+  /** The pack itself, when the dashboard's pack list still has it (issue #137): its name for
+   *  the Pack row, its mark for the corner. */
+  pack?: SurgePack
   onChanged: () => void | Promise<void>
 }) {
   const [pending, setPending] = useState<PendingAction | null>(null)
@@ -352,11 +354,22 @@ function ServerCard({
         />
       )}
 
-      <header>
-        <h3>
-          <Link to={`/servers/${server.serverId}`}>{server.name}</Link>
-        </h3>
-        <Lamp status={server.status} transition={transition.pending} />
+      <header className="server-card-head">
+        <div>
+          <h3>
+            <Link to={`/servers/${server.serverId}`}>{server.name}</Link>
+          </h3>
+          <Lamp status={server.status} transition={transition.pending} />
+        </div>
+        {/* The pack's mark in the corner the header leaves empty: the same image or monogram
+            the packs page and the create form show, so a box reads as "a Headlong box" at a
+            glance rather than only in the Pack row below. Nothing until the pack list has
+            answered — a monogram that turns into an image a beat later is a flicker. */}
+        {pack && (
+          <span className="server-card-pack" title={pack.name} data-testid="card-pack-icon">
+            <PackIcon pack={pack} />
+          </span>
+        )}
       </header>
 
       {transition.stalled && (
@@ -417,8 +430,8 @@ function ServerCard({
         {server.packId && (
           <div>
             <dt>Pack</dt>
-            <dd data-testid="card-pack" title={packName ? server.packId : undefined}>
-              {packName ?? server.packId}
+            <dd data-testid="card-pack" title={pack ? server.packId : undefined}>
+              {pack?.name ?? server.packId}
             </dd>
           </div>
         )}
