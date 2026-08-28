@@ -7,6 +7,7 @@ import { ConfirmModal } from '../components/ConfirmModal'
 import { IpChangeAlert } from '../components/IpChangeAlert'
 import { Beacon, Lamp, Plate, Swell, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
+import { SyncErrorNotice } from '../components/SyncErrorNotice'
 import { ToolList } from '../components/ToolList'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
 import {
@@ -267,9 +268,11 @@ export function ServerDetailPage() {
           because the provider wrote the remedy into it.
         */}
         {server.syncError && (
-          <p role="alert" className="sync-error" data-testid="sync-error">
-            Could not refresh this server from its provider — showing its last known state. {server.syncError}
-          </p>
+          <SyncErrorNotice
+            testId="sync-error"
+            lead="Could not refresh this server from its provider — showing its last known state."
+            message={server.syncError}
+          />
         )}
         {/*
           Said once, at the top, before any of the numbers below it (issue #125): every fact on

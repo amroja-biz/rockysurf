@@ -10,6 +10,7 @@ import { AppShell } from '../components/AppShell'
 import { StaleServersNotice } from '../components/StaleServersNotice'
 import { Lamp, Plate, Shore, Swell, Tally } from '../components/etched'
 import { StillBillingNotice } from '../components/StillBillingNotice'
+import { SyncErrorNotice } from '../components/SyncErrorNotice'
 import { canStop, useProviderCapabilities } from '../hooks/useProviderCapabilities'
 import {
   TRANSITION_STALLED_HINT,
@@ -181,10 +182,12 @@ export function DashboardPage() {
       {loading && <p>Loading your servers…</p>}
       {error && <p role="alert">{error}</p>}
       {staleProviders.map(([providerId, message]) => (
-        <p key={providerId} role="alert" className="sync-error" data-testid={`sync-error-${providerId}`}>
-          Could not refresh your {providers.find((p) => p.id === providerId)?.displayName ?? providerId} servers —
-          showing their last known state. {message}
-        </p>
+        <SyncErrorNotice
+          key={providerId}
+          testId={`sync-error-${providerId}`}
+          lead={`Could not refresh your ${providers.find((p) => p.id === providerId)?.displayName ?? providerId} servers — showing their last known state.`}
+          message={message}
+        />
       ))}
       {!loading && !error && live.length === 0 && (
         <Shore>
