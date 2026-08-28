@@ -881,6 +881,8 @@ button.destructive:hover:not(:disabled),
 
 .server-card:hover {
   border-color: var(--rs-link);
+  /* The card is the link (see `ServerCard`'s onClick); the pointer says so. */
+  cursor: pointer;
 }
 
 .server-card h2,

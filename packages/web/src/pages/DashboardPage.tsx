@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import toast from 'react-hot-toast'
 import { ActivityFeed } from '../components/ActivityFeed'
 import { BackupReminder } from '../components/BackupReminder'
@@ -346,6 +346,7 @@ function ServerCard({
   onChanged: () => void | Promise<void>
 }) {
   const [pending, setPending] = useState<PendingAction | null>(null)
+  const navigate = useNavigate()
   const [confirming, setConfirming] = useState<'stop' | 'terminate' | null>(null)
 
   /**
@@ -404,7 +405,24 @@ function ServerCard({
   return (
     // The card is a Plate (#174): same element, same class, same `data-status` the stylesheet
     // and the tests read. Lit only while the box is genuinely live — every plate lit is none.
-    <Plate as="article" className="server-card" data-status={server.status} lit={server.status === 'running'}>
+    <Plate
+      as="article"
+      className="server-card"
+      data-status={server.status}
+      lit={server.status === 'running'}
+      onClick={(event) => {
+        // The whole card goes to the detail page, not just the name: a card that lights up
+        // under the pointer promises to be clickable. Not a wrapping <a>, because the card
+        // holds buttons and a confirm dialog, and a link around a button is neither valid nor
+        // what a click on Terminate means — so a click that landed on any control, or on the
+        // dialog, or that was really a text selection, is left alone. The name keeps its own
+        // link for middle-click, cmd-click and a screen reader.
+        const target = event.target as HTMLElement
+        if (target.closest('a, button, input, select, textarea, [role="dialog"]')) return
+        if (window.getSelection()?.toString()) return
+        navigate(`/servers/${server.serverId}`)
+      }}
+    >
       {server.previousIp && server.publicIp && server.ipChangedAt && (
         <IpChangeAlert
           serverId={server.serverId}

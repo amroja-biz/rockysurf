@@ -737,6 +737,43 @@ describe('the fleet, one tab per cloud', () => {
  * pack's NAME where a user is already looking. `ServerDetailPage` has shown this since #46; the
  * card had shown nothing about the pack at all.
  */
+describe('the whole card is the link to the detail page', () => {
+  function renderWithDetailRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <AuthProvider>
+          <EventsProvider>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/servers/:serverId" element={<p data-testid="detail-route">detail</p>} />
+            </Routes>
+          </EventsProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+  }
+
+  it('goes to the detail page on a click anywhere on the card body', async () => {
+    rows = [RUNNING]
+    const { container } = renderWithDetailRoute()
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+
+    fireEvent.click(value(cardFor(container, 'dev-box'), 'Address'))
+    expect(await screen.findByTestId('detail-route')).toBeTruthy()
+  })
+
+  it('leaves a click on one of its buttons to the button', async () => {
+    rows = [RUNNING]
+    const { container } = renderWithDetailRoute()
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+
+    fireEvent.click(within(cardFor(container, 'dev-box')).getByRole('button', { name: /terminate/i }))
+    // The confirm dialog opened, and the page did not go anywhere.
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.queryByTestId('detail-route')).toBeNull()
+  })
+})
+
 describe('the Surge Pack name on a card (issue #137)', () => {
   it('shows the pack by name once the public list answers', async () => {
     rows = [{ ...RUNNING, packId: 'claude-code' }]
