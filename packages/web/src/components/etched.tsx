@@ -142,7 +142,7 @@ export function Tally({ hours, max = 18 }: { hours: number; max?: number }) {
         x += groupW(n)
         return (
           <g key={gi}>
-            {Array.from({ length: n }, (_, i) => (
+            {Array.from({ length: n === 5 ? 4 : n }, (_, i) => (
               <line key={i} x1={start + i * 4} y1="2" x2={start + i * 4} y2="13" stroke="currentColor" strokeWidth="1.1" />
             ))}
             {n === 5 ? (
