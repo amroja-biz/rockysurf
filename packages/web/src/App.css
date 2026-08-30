@@ -2420,6 +2420,19 @@ p.hint {
   .server-grid {
     grid-template-columns: 1fr;
   }
+
+  /* Below 768px everything collapses to one column, and these three notices were the
+     exception: a flex row with `space-between` and a non-shrinking actions group kept
+     Dismiss / Don't show again at full size on the right while the sentence beside them was
+     squeezed into a ~90px column, one or two words a line, fifteen lines deep (issue #217).
+     The actions go under the text, at their own width — not stretched, because the IP
+     alert's action is a single `×`. */
+  .stale-servers-notice,
+  .backup-reminder,
+  .ip-change-alert {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* ── Brand, Home and Help (rockysurf-n0zr, issue #16) ──────────────────────────────────
