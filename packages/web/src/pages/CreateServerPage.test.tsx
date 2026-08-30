@@ -1603,6 +1603,25 @@ describe('the machine type picker', () => {
     expect(screen.getByPlaceholderText(/search by type or region/i)).toBeTruthy()
   })
 
+  // Issue #260: the table's scroll container (`.machine-picker-table-wrap`, overflow-x: auto,
+  // issue #113) hides the Select button with everything else once the eight-column table is
+  // wider than the form column, which it usually is. jsdom does not lay anything out, so no
+  // test here can measure the real clip — the sticky class name is what makes the fix real
+  // (verified separately in a real browser: unpatched, the button sits ~9px inside a ~67px-wide
+  // clipped strip at the row's right edge and is unreachable without discovering the scroll;
+  // patched, it is pinned to the scroller's right edge and always on screen). This test pins the
+  // marker the CSS fix depends on, so removing `.machine-picker-actions` fails it immediately.
+  it('keeps the Select control reachable when the table scrolls — sticky action column (issue #260)', async () => {
+    await openPicker()
+
+    const row = screen.getByRole('cell', { name: 'small-arm' }).closest('tr')!
+    const actionCell = within(row).getByRole('button', { name: /^select$/i }).closest('td')!
+    expect(actionCell.className).toContain('machine-picker-actions')
+
+    const headerCell = screen.getByText('Select', { selector: '.sr-only' }).closest('th')!
+    expect(headerCell.className).toContain('machine-picker-actions')
+  })
+
   describe('the "Available only" checkbox (issue #153)', () => {
     it('is checked by default and hides rows with available:false', async () => {
       await openPicker()

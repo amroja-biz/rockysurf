@@ -166,7 +166,7 @@ export function MachineTypePicker({
                   <th>Arch</th>
                   <th>Region</th>
                   <th>Price</th>
-                  <th>
+                  <th className="machine-picker-actions">
                     <span className="sr-only">Select</span>
                   </th>
                 </tr>
@@ -196,7 +196,17 @@ export function MachineTypePicker({
                           'price unknown'
                         )}
                       </td>
-                      <td>
+                      {/*
+                        STICKY, not just scrolled-to (issue #260). The wrapper below scrolls the
+                        whole row horizontally on a screen too narrow for eight columns — that
+                        is the point of it — but a row whose Select button scrolls off with
+                        everything else shows a table of machines with no visible way to pick
+                        one, which is indistinguishable from broken. Pinned to the scroller's
+                        own right edge, this cell (and its header) stay in view at every scroll
+                        position; the opaque background is what stops the columns still
+                        scrolling underneath from showing through it.
+                      */}
+                      <td className="machine-picker-actions">
                         {!offering.available ? (
                           // The provider's own reason where it gives one — Azure says which
                           // quota gate refused (issue #116) — and the generic sentence where
