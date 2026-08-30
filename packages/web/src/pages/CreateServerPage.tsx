@@ -1793,7 +1793,7 @@ export function CreateServerPage() {
           </label>
         )}
 
-        <button type="submit" className="btn-primary" disabled={submitting || !resolved}>
+        <button type="submit" className="btn-primary new-action" disabled={submitting || !resolved}>
           {submitting ? 'Creating…' : 'Create server'}
         </button>
       </form>
