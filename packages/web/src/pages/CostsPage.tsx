@@ -159,7 +159,7 @@ export function CostsPage() {
         ) : (
           // One figure per currency, never a single total: a EUR project and a USD account
           // cannot be added without inventing an exchange rate.
-          <ul data-testid="mtd-by-currency">
+          <ul className="cost-totals" data-testid="mtd-by-currency">
             {currencies.map((currency) => (
               <li key={currency} title={ESTIMATE_HINT}>
                 <strong className="cost-figure">{money(costs.monthToDate.byCurrency[currency]!, currency)}</strong>

@@ -1410,6 +1410,15 @@ span.cost-figure {
   font-variant-numeric: tabular-nums;
 }
 
+/* The month-to-date total is a `<ul>` only because there is one figure per currency and they
+   must not be added together. It is a layout list, not prose, so it loses the disc and the
+   indent the way every other layout list in this stylesheet does (#231). */
+.cost-totals {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
 .tool-name {
   color: var(--rs-heading);
   font-weight: 600;
