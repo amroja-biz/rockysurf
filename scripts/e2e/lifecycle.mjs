@@ -52,14 +52,15 @@ import {
  * therefore break the amd64 leg to fix the arm64 one. `t2a-standard-1` is also the type the
  * 2026-08-14 hand run used, so a failure here is a regression rather than an unknown.
  *
- * AZURE'S PAIR IS THE HAND RUN'S PAIR, for that same reason (gh issue #170). `Standard_B2ls_v2`
- * and `Standard_B2ps_v2` are what rockysurf-ihtq.8 proved the published role against on
- * 2026-08-26, under a principal holding exactly the two roles docs/providers/azure.md publishes —
- * so a red morning here is a regression against a known-good pair rather than a new unknown. The
- * genuinely cheapest B-series entries, `Standard_B2ats_v2` and `Standard_B2pts_v2`, carry 1 GiB
- * of memory against these two's 4 and 8; that is under half the smallest box any other leg in
- * this table uses and not a machine the pack has ever been installed on. Saving a fraction of a
- * cent a night by turning the nightly into a memory experiment is not the trade.
+ * AZURE'S PAIR IS NOT THE HAND RUN'S PAIR (gh issue #170). rockysurf-ihtq.8 proved the
+ * published role with `Standard_B2ls_v2`/`Standard_B2ps_v2` on 2026-08-26, but every B-series
+ * v2 family ships with ZERO vCPU quota on a fresh subscription, and the CI subscription's SKU
+ * lists restrict those sizes outright — a leg built on them could never start (verified
+ * 2026-08-30). `Standard_D2ls_v6` (amd64, 2c/4 GiB) and `Standard_D2pls_v6` (arm64 Ampere,
+ * 2c/4 GiB, the cheaper of the two) are the commodity Dv6 equivalents: their families default
+ * to 10 vCPUs with no quota request, and both are unrestricted in westus3 and centralus. Same
+ * 4 GiB memory floor as the other legs, so the nightly stays a regression check rather than a
+ * memory experiment.
  *
  * Cheapest type per cloud that runs the pack. Budget discipline is not optional here.
  */
@@ -67,7 +68,7 @@ const RUNS = {
   hetzner: { cpx12: 'amd64' },
   aws: { 't4g.small': 'arm64', 't3.small': 'amd64' },
   gcp: { 't2a-standard-1': 'arm64', 'e2-small': 'amd64' },
-  azure: { Standard_B2ps_v2: 'arm64', Standard_B2ls_v2: 'amd64' },
+  azure: { Standard_D2pls_v6: 'arm64', Standard_D2ls_v6: 'amd64' },
 }
 
 const CLOUD = process.argv[2]
@@ -115,7 +116,7 @@ const GCP_ZONE = process.env.ROCKYSURF_E2E_GCP_ZONE || 'us-central1-a'
  */
 const AZURE_SUBSCRIPTION = process.env.ROCKYSURF_E2E_AZURE_SUBSCRIPTION ?? ''
 const AZURE_RESOURCE_GROUP = process.env.ROCKYSURF_E2E_AZURE_RESOURCE_GROUP ?? ''
-const AZURE_LOCATION = process.env.ROCKYSURF_E2E_AZURE_LOCATION || 'eastus'
+const AZURE_LOCATION = process.env.ROCKYSURF_E2E_AZURE_LOCATION || 'westus3'
 const PORT = 3200 + Math.floor(Math.random() * 300)
 const ADMIN_PASSWORD = 'e2e-admin-password'
 
