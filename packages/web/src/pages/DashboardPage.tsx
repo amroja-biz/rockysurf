@@ -197,7 +197,13 @@ export function DashboardPage() {
       </div>
 
       {loading && <p>Loading your servers…</p>}
-      {error && <p role="alert">{error}</p>}
+      {/* The list did not load at all — a refusal, and it takes the red the `SyncErrorNotice`
+          below it takes yellow for: that one is a stale list, this one is no list (issue #216). */}
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
       {staleProviders.map(([providerId, message]) => (
         <SyncErrorNotice
           key={providerId}
