@@ -1843,6 +1843,39 @@ describe('a pack that asks for settings (issue #189)', () => {
     expect(vi.mocked(api.createServer).mock.calls[0]?.[0]?.packInputs).toEqual({ HEADLONG_HEADLESS: '1' })
   })
 
+  it('has the default in the field on the very first render that shows it (issue #209)', async () => {
+    /*
+     * The default was written by an effect, which runs only AFTER the render it belongs to has
+     * been committed — so the field appeared empty for one render and filled itself a beat
+     * later. Two costs: the fields visibly flash empty, and anything that acts on the field the
+     * moment it appears acts on an empty box. That second one is issue #209: `findBy*` resolves
+     * inside that window, so `user.clear()` cleared nothing, the effect then put `1` back, and
+     * `user.type(field, '0')` appended to it — `10` on the wire where `0` was typed. It failed
+     * roughly one full-suite run in six and never once in isolation.
+     *
+     * Asserted through a MutationObserver rather than by waiting, because waiting is the bug:
+     * the observer callback runs on the microtask right after the DOM changes, which is the
+     * earliest any onlooker — this test, `waitFor`, or a person typing — can see the field. A
+     * value read there is what the field FIRST showed, not what it settled on.
+     */
+    inputsPack([HEADLESS])
+    let firstShown: string | undefined
+    const observer = new MutationObserver(() => {
+      if (firstShown !== undefined) return
+      const field = document.getElementById('packInput-HEADLONG_HEADLESS') as HTMLInputElement | null
+      if (field) firstShown = field.value
+    })
+    observer.observe(document.body, { subtree: true, childList: true })
+    try {
+      renderPage()
+      await screen.findByLabelText(/headless install/i)
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(firstShown).toBe('1')
+  })
+
   it('renders a secret input as a password field', async () => {
     inputsPack([API_KEY])
     renderPage()
