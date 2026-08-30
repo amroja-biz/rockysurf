@@ -1025,6 +1025,18 @@ button.destructive:hover:not(:disabled),
   overflow-wrap: anywhere;
 }
 
+/* Same record, same treatment (issue #220): the detail page's summary showed these values in
+   the proportional body font while the dashboard card that describes the same server shows
+   them mono. Left-aligned rather than `.server-meta dd`'s right — this list already sits at
+   the page's own left edge, not a narrow card's right column. */
+.server-summary dl dd {
+  color: var(--rs-text);
+  margin: 0;
+  font-family: var(--rs-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
 .provisioning-step {
   margin: 0.75rem 0 0;
   padding: 0.375rem 0.5rem;

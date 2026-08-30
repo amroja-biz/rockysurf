@@ -165,6 +165,7 @@ body[data-rs-skin='etched'] {
   color: var(--rs-beam); font-weight: 700;
 }
 [data-rs-skin='etched'] .server-meta dt,
+[data-rs-skin='etched'] .server-summary dl dt,
 [data-rs-skin='etched'] .connection dt,
 [data-rs-skin='etched'] .bootstrap-report dt,
 [data-rs-skin='etched'] .activity-label,
