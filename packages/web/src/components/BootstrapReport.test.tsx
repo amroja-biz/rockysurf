@@ -108,6 +108,36 @@ describe('a warning', () => {
   })
 })
 
+/**
+ * Issue #168: the report has carried the last ~200 lines of the whole install log
+ * (`agentLogTail`) since ADR-0010 — captured over SSH in push mode, sent by the agent in
+ * callback mode — but the card never rendered it, so a failed step whose own log was one line
+ * left the user exactly one line to troubleshoot with.
+ */
+describe('the whole-setup install log (#168)', () => {
+  const agentLogTail = [
+    '[10:00:00] === rockysurf bootstrap agent (arch=amd64, user=root, plan=/var/lib/rockysurf/plan.json) ===',
+    '[10:00:01] ==> tool:git (as root, arch=amd64)',
+    '[10:00:09] --- tool:git: done (reports=installing_tools)',
+    '[10:00:10] ==> tool:build-essential (as root, arch=amd64)',
+    '[10:00:30] --- tool:build-essential: FAILED (rc=100)',
+  ].join('\n')
+
+  it('renders it collapsed, saying how many lines it holds', () => {
+    render(<BootstrapReport report={{ ...FAILED, agentLogTail }} />)
+    const details = screen.getByTestId('agent-log')
+    expect(details.hasAttribute('open'), 'there but collapsed').toBe(false)
+    expect(details.textContent).toContain('Install log for the whole setup (last 5 lines)')
+    // The context the failed step's own one-line log cannot give: what installed before it.
+    expect(details.textContent).toContain('--- tool:git: done')
+  })
+
+  it('is simply absent from a report that has none — a row from before #168 loses nothing', () => {
+    render(<BootstrapReport report={FAILED} />)
+    expect(screen.queryByTestId('agent-log')).toBeNull()
+  })
+})
+
 describe('nothing to say', () => {
   it('renders nothing for an empty report', () => {
     const { container } = render(<BootstrapReport report={{ warnings: [] }} />)
