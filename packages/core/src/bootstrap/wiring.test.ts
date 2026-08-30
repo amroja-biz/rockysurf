@@ -106,6 +106,25 @@ describe('the create path', () => {
     // snapshot past `provisionKeys`.
     expect(step.run).toMatch(/managed_line='ssh-ed25519 \S+ rockysurf-core@/)
   })
+
+  it("names the creator's Environment — the secret half included — in the shell-environment step (issue #244)", async () => {
+    // The secret half never reaches the row, so its NAMES travel from the create handler into
+    // the snapshot by a separate argument; only the whole path, wired as `boot()` wires it, can
+    // show that argument is actually threaded through. The value must not be in the plan.
+    const res = await post('/api/v1/servers', {
+      size: 'small',
+      packId: 'ai-coding-agents',
+      environment: { MY_ENDPOINT: { value: 'https://api.example.com' }, MY_TOKEN: { value: 'tok-secret-value', secret: true } },
+    })
+    expect(res.status).toBe(201)
+    const serverId = ((await res.json()) as { serverId: string }).serverId
+
+    const plan = parseInstallPlan(getServer(opened.db, serverId)!.installPlan!)
+    const step = plan.steps.find((s) => s.id === 'shell-environment')!
+    expect(step.run).toContain("names=('MY_ENDPOINT' 'MY_TOKEN' 'GITHUB_TOKEN')")
+    expect(JSON.stringify(plan)).not.toContain('tok-secret-value')
+    expect(JSON.stringify(plan)).not.toContain('https://api.example.com')
+  })
 })
 
 describe('the job loop', () => {

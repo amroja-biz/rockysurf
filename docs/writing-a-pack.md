@@ -464,8 +464,8 @@ Two more, worth calling out separately:
 | `DEBIAN_FRONTEND` | every step | `noninteractive` |
 | `HOME` | every step | `/root` for root steps, `/home/rocky` for `rocky` steps |
 | `REPOS` | every `setupScript`, whatever the pack's `requiresRepos` | comma-separated list of the repositories the user chose — empty when they chose none, so scripts must tolerate `$REPOS` being `''`. A listed repository may also be **absent from disk**: clones are optional steps (ADR-0010), and one that failed is reported to the user as a warning rather than failing the box, so guard `[ -d "$HOME/<name>" ]` before using it. Any `git` your setup script runs against these URLs — directly, or through a tool that clones on its own the way `gt rig add` does — authenticates with the same credential helper the clone step used, handed to the step through git's `GIT_CONFIG_*` environment when the box carries a token (issue #142). You write no credential code and must not: the token never goes on a command line or into a git config |
-| your pack's own `inputs` | every step of every tool on the box, **when the user supplied one** | the values your pack asked for at create time — see [`inputs`](#inputs--what-your-pack-asks-the-user-for). Your names, in your namespace, promised by your pack rather than by Rocky Surf |
-| the user's own **Environment** | every step of every tool on the box, **when the user set one** | `KEY=value` the person creating the server typed for themselves (issue #197). Names you have never heard of, chosen by someone who has your pack installed — you cannot see them, must not plan around them, and cannot collide with them: a name your pack declares is refused in that field |
+| your pack's own `inputs` | every step of every tool on the box, **when the user supplied one** — and `rocky`'s shell afterwards | the values your pack asked for at create time — see [`inputs`](#inputs--what-your-pack-asks-the-user-for). Your names, in your namespace, promised by your pack rather than by Rocky Surf. Once setup is done they are in every shell `rocky` gets (issue #244), so a tool your pack installs that reads `$YOUR_INPUT` at run time finds it without your setup script writing anything into a dotfile |
+| the user's own **Environment** | every step of every tool on the box, **when the user set one** — and `rocky`'s shell afterwards | `KEY=value` the person creating the server typed for themselves (issue #197). Names you have never heard of, chosen by someone who has your pack installed — you cannot see them, must not plan around them, and cannot collide with them: a name your pack declares is refused in that field |
 
 The person creating the server can add a **startup script** of their own, which runs after every
 step your pack contributes and gets this same environment plus the choice of running as `root` or
@@ -836,9 +836,12 @@ Two rules, both about honesty:
 - **Say what the box actually has.** If your setup script left something half-done — a daemon
   it could not install, a wizard that only works from a desktop session — the guide is where
   the user finds out, not a support thread.
-- **`$GITHUB_TOKEN` is not in the user's shell.** It is delivered to bootstrap steps through
-  `secrets.env` and nothing exports it into an interactive session, so a guide that says "you
-  already have a token" is wrong. Clones performed during setup did use it; `gh` will not.
+- **`$GITHUB_TOKEN` is in the user's shell only when the operator configured one.** Since
+  issue #244 the box exports it into every shell `rocky` gets, alongside your inputs and the
+  user's Environment, so `gh` works with no login on a box whose operator set `github.pat` —
+  and finds nothing on a box whose operator did not. A guide that says "you already have a
+  token" is therefore half right; say "when configured", and give `gh auth login` as the
+  other half. Clones performed during setup authenticated either way.
 
 Leading and trailing whitespace is trimmed. The field is optional, and a pack without one
 simply shows nothing.
@@ -872,7 +875,8 @@ pack:
 
     GitHub
       gh auth login           then: gh auth setup-git
-      Your shell has no $GITHUB_TOKEN, even though the clone during setup used one.
+      Only needed when the operator configured no token — with one, $GITHUB_TOKEN is
+      already in your shell and gh works as it is.
 
     Rust
       cargo build             the crates in your lockfile are already fetched
@@ -1028,8 +1032,13 @@ nothing.
 - Every script exits `0`, both runs.
 - Every verification command still passes after the second run.
 - Files that scripts append to are **byte-identical before and after** the second run. CI
-  snapshots `/home/rocky/.bashrc`, `/root/.bashrc` and `/etc/apt/sources.list.d/` and requires
-  them unchanged. This is the check that catches the duplicated-`PATH`-line bug.
+  snapshots `/home/rocky/.bashrc`, `/root/.bashrc`, `/etc/bash.bashrc`, `/etc/apt/sources.list.d/`
+  and the shell-environment step's own two files and requires them unchanged. This is the check
+  that catches the duplicated-`PATH`-line bug.
+- After the second run, a login shell for `rocky`, an `ssh box 'command'`-shaped shell and an
+  `sh` that sourced `/etc/profile` (the desktop session's path) each print a pack input and an
+  Environment value the harness fed through `secrets.env`, and not `$RDP_PASSWORD` (issue #244).
+  For a `requiresRdp` pack, `/etc/xrdp/startwm.sh` must still source `/etc/profile`.
 - No step takes materially longer on the second run than a no-op should. A second run that
   re-downloads and re-compiles everything is a warning sign even when it exits `0`.
 
@@ -1053,8 +1062,8 @@ unguarded `>>`, and the "what you may not assume" list. It is the same code that
 repository's own `packs/`, so a finding here is a finding a maintainer would have raised.
 
 **`pack check`** is the smoke harness described above: same container, same two runs, same
-journal discard, same three files compared byte for byte. Add `--keep` to leave the container up
-when something fails.
+journal discard, same files compared byte for byte, same shell checks. Add `--keep` to leave the
+container up when something fails.
 
 **Neither is a security check.** An `installScript` is arbitrary shell that runs as root on
 somebody's box, and no amount of pattern matching over it can decide whether it is benign.
@@ -1234,14 +1243,25 @@ hardcode what they carry.
 | `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
 | `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
 | `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
-| `$GITHUB_TOKEN` | every step, **when configured** | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
-| `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. |
-| your pack's own `inputs` | every step, **when the user supplied one** | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
-| the user's own **Environment** | every step, **when the user set one** | `KEY=value` the person creating the server chose for themselves, whatever your pack declares (issue #197). Their namespace, not yours and not Rocky Surf's. |
+| `$GITHUB_TOKEN` | every step, **when configured**; and `rocky`'s shell afterwards | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
+| `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. Setup only — it is not in the shell afterwards. |
+| your pack's own `inputs` | every step, **when the user supplied one**; and `rocky`'s shell afterwards | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
+| the user's own **Environment** | every step, **when the user set one**; and `rocky`'s shell afterwards | `KEY=value` the person creating the server chose for themselves, whatever your pack declares (issue #197). Their namespace, not yours and not Rocky Surf's. |
 
 The user's own startup script (issue #184) gets exactly this environment too, including the
 `GIT_CONFIG_*` trio, your pack's inputs and their own Environment, and runs after every step of
 yours. You cannot see it and must not plan around it.
+
+**"And `rocky`'s shell afterwards"** (issue #244): once setup is done, the three rows marked
+that way are exported into every shell `rocky` gets — an SSH login, `ssh box 'command'`, tmux,
+and the desktop session of a `requiresRdp` pack — from `~/.config/rockysurf/environment`
+(`0600`), sourced by `/etc/profile.d/rockysurf-environment.sh` and by a block at the top of
+`/etc/bash.bashrc`. Two things follow for a pack author. A tool that reads your input at run
+time needs nothing written into `~/.bashrc` by your setup script; and a desktop pack that
+replaces `/etc/xrdp/startwm.sh` must keep sourcing `/etc/profile`, as the stock one does, or
+the session's applications see none of it (the smoke harness checks). The `GIT_CONFIG_*` trio
+and `$RDP_PASSWORD` are setup plumbing and stay out. The full contract is
+[`bootstrap-contract.md` § The shell environment](bootstrap-contract.md#the-shell-environment).
 
 ### The two secrets, and how to use them safely
 

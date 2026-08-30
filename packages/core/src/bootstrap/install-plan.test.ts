@@ -109,6 +109,30 @@ describe('what lands on the row', () => {
   })
 })
 
+describe("the shell-environment step's names (issue #244)", () => {
+  it('takes the plain halves off the row and the secret halves from the caller — names only', () => {
+    const row = server({
+      packId: 'ai-coding-agents',
+      packInputs: { HEADLONG_MODEL: 'large' },
+      environment: { MY_ENDPOINT: 'https://api.example.com' },
+    })
+    const plan = snapshotInstallPlan(db, row, {
+      mode: 'push',
+      secretEnvironmentNames: { packInputs: ['HEADLONG_API_KEY'], environment: ['MY_TOKEN'] },
+    })
+    const step = plan.steps.find((s) => s.id === 'shell-environment')!
+    expect(step.run).toContain("names=('HEADLONG_MODEL' 'HEADLONG_API_KEY' 'MY_ENDPOINT' 'MY_TOKEN' 'GITHUB_TOKEN')")
+    // The plan is loggable: the value the row carries in the clear is still not in it.
+    expect(step.run).not.toContain('https://api.example.com')
+    expect(step.run).not.toContain('large')
+  })
+
+  it('renders the step with only GITHUB_TOKEN for a server that supplied nothing', () => {
+    const plan = snapshotInstallPlan(db, server({ packId: 'ai-coding-agents' }), { mode: 'push' })
+    expect(plan.steps.find((s) => s.id === 'shell-environment')?.run).toContain("names=('GITHUB_TOKEN')")
+  })
+})
+
 describe('the supplied-key removal step (ADR-0008, issue #92)', () => {
   const USER_KEY = 'ssh-ed25519 AAAAuser me@laptop'
   const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'

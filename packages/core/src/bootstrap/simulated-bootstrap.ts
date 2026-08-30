@@ -202,6 +202,8 @@ function describe(step: InstallStep): string {
     // sentence of its own because it is the one step a trial user recognises as theirs.
     case 'user-script':
       return 'running your script (not really — nothing on this box is real)'
+    case 'shell-environment':
+      return 'writing your environment into the login shell'
     default:
       return `${step.id}`
   }

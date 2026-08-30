@@ -16,8 +16,14 @@ import {
   GIT_CREDENTIAL_HELPER,
   NO_MATCHING_TOKEN_PREFIX,
   SETUP_GIT_AUTH_PREAMBLE,
+  SHELL_ENVIRONMENT_BASHRC_MARKERS,
+  SHELL_ENVIRONMENT_FILE,
+  SHELL_ENVIRONMENT_PLATFORM_NAMES,
+  SHELL_ENVIRONMENT_PROFILE_HOOK,
+  SHELL_ENVIRONMENT_RENDER_FN,
   repoDirName,
   resolveInstallPlan,
+  shellEnvironmentNames,
   type ResolveInstallPlanInput,
 } from './resolver.js'
 
@@ -80,8 +86,9 @@ describe('phase ordering', () => {
       'repo:thing', // 3 clones
       'tool-setup:claude-code', // 4 setup, after clones so it can read $REPOS
       'user-script', // 5 the user's own, after everything the pack does (issue #184)
-      'branding', // 6
-      'rdp', // 7 only because requiresRdp
+      'shell-environment', // 6 what the creator supplied, into rocky's shell (issue #244)
+      'branding', // 7
+      'rdp', // 8 only because requiresRdp
     ])
   })
 
@@ -93,6 +100,7 @@ describe('phase ordering', () => {
       'tool:apple',
       'tool:mango',
       'tool:zebra',
+      'shell-environment',
       'branding',
     ])
   })
@@ -102,6 +110,7 @@ describe('phase ordering', () => {
     expect(ids(base({ pack: { id: 'p', tools: ['aaa', 'zzz'], requiresRdp: false }, tools }))).toEqual([
       'tool:zzz',
       'tool:aaa',
+      'shell-environment',
       'branding',
     ])
   })
@@ -110,6 +119,7 @@ describe('phase ordering', () => {
     const tools = [tool({ id: 'on' }), tool({ id: 'off', enabled: false })]
     expect(ids(base({ pack: { id: 'p', tools: ['on', 'off'], requiresRdp: false }, tools }))).toEqual([
       'tool:on',
+      'shell-environment',
       'branding',
     ])
   })
@@ -117,14 +127,16 @@ describe('phase ordering', () => {
   it('ignores a pack reference to a tool that does not exist', () => {
     expect(ids(base({ pack: { id: 'p', tools: ['claude-code', 'ghost'], requiresRdp: false } }))).toEqual([
       'tool:claude-code',
+      'shell-environment',
       'branding',
     ])
   })
 
   it('omits rdp unless the pack asks for it, and branding when told to', () => {
-    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code'])
+    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code', 'shell-environment'])
     expect(ids(base({ pack: { id: 'p', tools: ['claude-code'], requiresRdp: true }, branding: false }))).toEqual([
       'tool:claude-code',
+      'shell-environment',
       'rdp',
     ])
   })
@@ -139,11 +151,12 @@ describe('phase ordering', () => {
       'tool:a',
       'tool-setup:b',
       'tool-setup:a',
+      'shell-environment',
     ])
   })
 })
 
-describe('phase 8: retiring the managed key (ADR-0008, issue #92)', () => {
+describe('phase 9: retiring the managed key (ADR-0008, issue #92)', () => {
   const USER_KEY = 'ssh-ed25519 AAAAuser me@laptop'
   const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'
 
@@ -157,7 +170,7 @@ describe('phase 8: retiring the managed key (ADR-0008, issue #92)', () => {
           managedPublicKey: MANAGED_KEY,
         }),
       ),
-    ).toEqual(['tool:claude-code', 'rdp', 'supplied-key-only'])
+    ).toEqual(['tool:claude-code', 'shell-environment', 'rdp', 'supplied-key-only'])
   })
 
   it('is absent with no supplied key, and absent with a supplied key but no managed key', () => {
@@ -209,7 +222,7 @@ describe("phase 5: the user's own script (ADR-0011, issue #184)", () => {
     base({ branding: false, userScript: { script: 'echo mine\n', runAs: 'rocky' }, ...over })
 
   it('renders no step at all when the user supplied none', () => {
-    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code'])
+    expect(ids(base({ branding: false }))).toEqual(['tool:claude-code', 'shell-environment'])
     expect(ids(base({ branding: false }))).not.toContain('user-script')
   })
 
@@ -230,6 +243,7 @@ describe("phase 5: the user's own script (ADR-0011, issue #184)", () => {
       'repo:thing',
       'tool-setup:claude-code',
       'user-script',
+      'shell-environment',
       'branding',
       'rdp',
       'supplied-key-only',
@@ -278,6 +292,114 @@ describe("phase 5: the user's own script (ADR-0011, issue #184)", () => {
     const input = withScript({ repositories: ['https://github.com/example/thing.git'] })
     expect(() => installPlanSchema.parse(resolveInstallPlan(input))).not.toThrow()
     expect(serializeInstallPlan(resolveInstallPlan(input))).toBe(serializeInstallPlan(resolveInstallPlan(input)))
+  })
+})
+
+describe("phase 6: the creator's environment in rocky's shell (issue #244)", () => {
+  const supplied = { packInputs: ['HEADLONG_API_KEY', 'HEADLONG_MODEL'], environment: ['MY_ENDPOINT', 'MY_TOKEN'] }
+  const step = (over: Partial<ResolveInstallPlanInput> = {}) =>
+    resolveInstallPlan(base({ shellEnvironment: supplied, ...over })).steps.find((s) => s.id === 'shell-environment')!
+
+  it('is always rendered, as root, required, reporting ready — after the user script, before branding', () => {
+    // Always: GITHUB_TOKEN is a candidate on every box, and presence is decided on the box.
+    expect(ids(base({ branding: false }))).toContain('shell-environment')
+    const s = step()
+    expect(s.runAs).toBe('root')
+    expect(s.optional).toBeUndefined()
+    expect(s.reports).toBe('ready')
+    expect(stepPhase(s.id)).toBe('finishing')
+    const order = ids(base({ userScript: { script: 'echo mine\n', runAs: 'rocky' } }))
+    expect(order.indexOf('shell-environment')).toBe(order.indexOf('user-script') + 1)
+    expect(order.indexOf('shell-environment')).toBe(order.indexOf('branding') - 1)
+  })
+
+  it("carries the NAMES — the pack's inputs, then the Environment, then GITHUB_TOKEN — and nothing else of theirs", () => {
+    expect(shellEnvironmentNames(supplied)).toEqual([
+      'HEADLONG_API_KEY',
+      'HEADLONG_MODEL',
+      'MY_ENDPOINT',
+      'MY_TOKEN',
+      'GITHUB_TOKEN',
+    ])
+    expect(step().run).toContain("names=('HEADLONG_API_KEY' 'HEADLONG_MODEL' 'MY_ENDPOINT' 'MY_TOKEN' 'GITHUB_TOKEN')")
+    // Rocky Surf's own mechanics stay out of the shell: the desktop password and the scoped
+    // token set are read by nothing after setup, and are not the user's variables.
+    expect(step().run).not.toContain('RDP_PASSWORD')
+    expect(step().run).not.toContain('ROCKYSURF_GITHUB_TOKEN')
+    expect(SHELL_ENVIRONMENT_PLATFORM_NAMES).toEqual(['GITHUB_TOKEN'])
+  })
+
+  it('renders with only the platform names when nothing was supplied, and deduplicates deterministically', () => {
+    expect(shellEnvironmentNames(undefined)).toEqual(['GITHUB_TOKEN'])
+    expect(step({ shellEnvironment: undefined }).run).toContain("names=('GITHUB_TOKEN')")
+    expect(shellEnvironmentNames({ packInputs: ['A', 'GITHUB_TOKEN'], environment: ['A', 'B'] })).toEqual(['A', 'GITHUB_TOKEN', 'B'])
+    const a = serializeInstallPlan(resolveInstallPlan(base({ shellEnvironment: supplied })))
+    const b = serializeInstallPlan(resolveInstallPlan(base({ shellEnvironment: supplied })))
+    expect(a).toBe(b)
+  })
+
+  it('writes the values file 0600 for rocky by whole-file replace, under umask 077, from the environment', () => {
+    const run = step().run
+    expect(run).toContain('umask 077')
+    expect(run).toContain(`file="$home/${SHELL_ENVIRONMENT_FILE}"`)
+    expect(run).toContain('install -d -m 0700 -o rocky -g rocky "$(dirname "$file")"')
+    expect(run).toContain('chown rocky:rocky "$file.tmp"')
+    expect(run).toContain('chmod 0600 "$file.tmp"')
+    expect(run).toContain('mv -f "$file.tmp" "$file"')
+    // The values are read off the step's own (inherited) environment — never argv, never the plan.
+    expect(run).toContain('render_shell_environment "${names[@]}"')
+    expect(run).toContain('${!name+x}')
+  })
+
+  it('installs a profile.d hook and a marker block at the top of /etc/bash.bashrc, both value-free', () => {
+    const run = step().run
+    expect(run).toContain(`mv -f ${SHELL_ENVIRONMENT_PROFILE_HOOK}.tmp ${SHELL_ENVIRONMENT_PROFILE_HOOK}`)
+    expect(run).toContain(SHELL_ENVIRONMENT_BASHRC_MARKERS.start)
+    expect(run).toContain(SHELL_ENVIRONMENT_BASHRC_MARKERS.end)
+    // The previous block is stripped before the new one is prepended, so a re-run converges.
+    expect(run).toContain(`sed '/^${SHELL_ENVIRONMENT_BASHRC_MARKERS.start}$/,/^${SHELL_ENVIRONMENT_BASHRC_MARKERS.end}$/d' /etc/bash.bashrc`)
+    expect(run).toContain('mv -f /etc/bash.bashrc.tmp /etc/bash.bashrc')
+    // Both hooks source the per-user file only when it is readable: inert for root and for
+    // anyone without one, and the hook itself carries no value.
+    expect(run).toContain(`if [ -r "\${HOME:-}/${SHELL_ENVIRONMENT_FILE}" ]; then . "\${HOME:-}/${SHELL_ENVIRONMENT_FILE}"; fi`)
+  })
+
+  /**
+   * The renderer under a REAL bash, and its output under a real `sh`: the quoting is the one
+   * part of this step where reading the script proves nothing. The values are the awkward
+   * ones — quotes, `$(…)`, backticks, a backslash — and the file has to read back verbatim in
+   * both shells, because xrdp's session script is `sh`.
+   */
+  const render = (env: Record<string, string>, names: string[]) =>
+    spawnSync('bash', ['-c', `${SHELL_ENVIRONMENT_RENDER_FN}\nrender_shell_environment "$@"`, '_', ...names], {
+      encoding: 'utf8',
+      env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', ...env },
+    })
+
+  it('renders every SET name as a quoted export that bash and sh both read back verbatim', () => {
+    const values = {
+      HEADLONG_API_KEY: "it's $(not run) `nor this` \"quoted\" \\ done",
+      MY_ENDPOINT: 'https://api.example.com/v1?x=1&y=2',
+      MY_EMPTY: '',
+    }
+    const out = render(values, ['HEADLONG_API_KEY', 'MY_ENDPOINT', 'MY_EMPTY', 'MY_UNSET', 'GITHUB_TOKEN'])
+    expect(out.status).toBe(0)
+    const lines = out.stdout.trimEnd().split('\n')
+    expect(lines.map((l) => l.split('=')[0])).toEqual(['export HEADLONG_API_KEY', 'export MY_ENDPOINT', 'export MY_EMPTY'])
+    // Empty is KEPT (ADR-0014 §7: `FOO=` can only mean "set, empty"); unset is OMITTED.
+    expect(lines[2]).toBe("export MY_EMPTY=''")
+    expect(out.stdout).not.toContain('MY_UNSET')
+    expect(out.stdout).not.toContain('GITHUB_TOKEN')
+
+    for (const shell of ['bash', 'sh']) {
+      const back = spawnSync(
+        shell,
+        ['-c', 'eval "$1"; printf "%s\\n%s\\n%s\\n" "$HEADLONG_API_KEY" "$MY_ENDPOINT" "[$MY_EMPTY]"', '_', out.stdout],
+        { encoding: 'utf8', env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin' } },
+      )
+      expect(back.status, `${shell}: ${back.stderr}`).toBe(0)
+      expect(back.stdout).toBe(`${values.HEADLONG_API_KEY}\n${values.MY_ENDPOINT}\n[]\n`)
+    }
   })
 })
 

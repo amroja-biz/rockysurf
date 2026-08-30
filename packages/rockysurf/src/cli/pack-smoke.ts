@@ -7,6 +7,7 @@ import {
   lintPacksDir,
   loadPacksFromDir,
   resolveInstallPlan,
+  SHELL_ENVIRONMENT_FILE,
   type LoadedPack,
   type LoadedTool,
   type ToolRow,
@@ -65,6 +66,18 @@ import {
 const IMAGE = 'ubuntu:24.04'
 /** Only used by the `rdp` step, which the plan includes for any pack with `requiresRdp`. */
 const RDP_PASSWORD = 'pack-smoke-not-a-real-password'
+/**
+ * One pack input and one Environment line, fed through the real delivery path — `secrets.env`
+ * on the box, their NAMES in the plan — so the harness can prove they reach `rocky`'s shell
+ * after setup (issue #244). Stand-ins rather than the pack's own declared inputs, because a
+ * value the harness invents for a real input (an API key, say) would change what the pack's
+ * scripts do, and this test is about delivery, not about the pack. The values carry the
+ * characters the quoting has to survive.
+ */
+const SHELL_ENVIRONMENT_PROBE = {
+  packInput: { name: 'PACK_SMOKE_INPUT', value: "from the pack's inputs: $(not run) `nor this`" },
+  environment: { name: 'PACK_SMOKE_ENVIRONMENT', value: 'from the Environment field, with "quotes" and \\ a backslash' },
+} as const
 /**
  * `env` arguments that strip what a transient root systemd unit never has. Exported so a test
  * can assert the harness keeps launching the agent this way — see `runAgent` below.
@@ -127,6 +140,9 @@ function docker(argv: string[], { allowFailure = false }: { allowFailure?: boole
 /** Run a command in the container as root; returns { status, stdout }. */
 const exec = (name: string, script: string) => docker(['exec', name, 'bash', '-lc', script], { allowFailure: true })
 
+/** Single-quote for the shell — the same total escape core's `shellQuote` applies to `secrets.env`. */
+const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`
+
 /**
  * The privilege drop the spec asks for, and the reason `sudo` is otherwise absent. See the
  * header. `-H`'s job is `HOME`, which several pack scripts write into, so the shim sets it
@@ -147,18 +163,41 @@ exit 127
 `
 
 /**
- * The three things the spec requires to be byte-identical across the second run, hashed inside
- * the container. `sources.list.d` is hashed per file with names included, so a pack that ADDS
- * a source list on the second run is caught as surely as one that appends to an existing one.
+ * The files the spec requires to be byte-identical across the second run, hashed inside the
+ * container. `sources.list.d` is hashed per file with names included, so a pack that ADDS a
+ * source list on the second run is caught as surely as one that appends to an existing one.
+ * The last three are the shell-environment step's own (issue #244): the values file and its
+ * two hooks are regenerated whole on every run, and this is where that is proven.
  */
 const SNAPSHOT = `
-  for f in /home/rocky/.bashrc /root/.bashrc; do
+  for f in /home/rocky/.bashrc /root/.bashrc /etc/bash.bashrc /etc/profile.d/rockysurf-environment.sh /home/rocky/${SHELL_ENVIRONMENT_FILE}; do
     if [ -f "$f" ]; then sha256sum "$f"; else echo "absent  $f"; fi
   done
   if [ -d /etc/apt/sources.list.d ]; then
     find /etc/apt/sources.list.d -type f | sort | xargs -r sha256sum
   fi
 `
+
+/**
+ * Every way a person reaches the box, reproduced inside the container as `rocky` (issue #244):
+ *
+ *   - `login`: an interactive SSH login and a tmux pane — bash reads `/etc/profile`;
+ *   - `sshcmd`: `ssh box 'command'` — bash started by sshd with a command reads
+ *     `/etc/bash.bashrc` and `~/.bashrc` and NO profile. Debian's bash decides "started by
+ *     sshd" from `SSH_CLIENT` in the environment, and only for a top-level shell, so `SHLVL`
+ *     is unset the way it is under sshd; with it inherited from `docker exec`'s shell, the
+ *     bashrc path is skipped and this check would pass for the wrong reason;
+ *   - `desktop`: the xrdp session — `startwm.sh` is `sh`, and sources `/etc/profile`.
+ *
+ * Each prints the two probe names and, as a negative, the desktop password's — which is Rocky
+ * Surf's own and must NOT be in the shell.
+ */
+const SHELL_PROBE = `printenv ${SHELL_ENVIRONMENT_PROBE.packInput.name}; printenv ${SHELL_ENVIRONMENT_PROBE.environment.name}; printenv RDP_PASSWORD || true`
+const SHELL_WAYS_IN: Record<string, string> = {
+  login: `runuser -u rocky -- env -u SHLVL bash -lc '${SHELL_PROBE}'`,
+  sshcmd: `runuser -u rocky -- env -u SHLVL SSH_CLIENT='203.0.113.1 51000 22' bash -c '${SHELL_PROBE}'`,
+  desktop: `runuser -u rocky -- env -u SHLVL sh -c '. /etc/profile; ${SHELL_PROBE}'`,
+}
 
 /* ---------------------------------------------------------------------- loading packs */
 
@@ -261,10 +300,24 @@ export function runPackCheck(options: PackCheckOptions): PackCheckReport {
       // not a property of the pack, and a clone step would put this test on the network for a
       // reason that has nothing to do with the pack's scripts.
       repositories: [],
+      // The two probe NAMES, exactly as `snapshotInstallPlan` would hand them over (#244).
+      shellEnvironment: {
+        packInputs: [SHELL_ENVIRONMENT_PROBE.packInput.name],
+        environment: [SHELL_ENVIRONMENT_PROBE.environment.name],
+      },
     })
     writeFileSync(join(work, 'plan.json'), JSON.stringify(plan, null, 2))
     writeFileSync(join(work, 'sudo'), SUDO_SHIM)
-    writeFileSync(join(work, 'secrets.env'), `RDP_PASSWORD=${RDP_PASSWORD}\n`)
+    // Single-quoted, the way `renderSecretsEnv` writes the real file (issue #189).
+    writeFileSync(
+      join(work, 'secrets.env'),
+      [
+        `RDP_PASSWORD=${quote(RDP_PASSWORD)}`,
+        `${SHELL_ENVIRONMENT_PROBE.packInput.name}=${quote(SHELL_ENVIRONMENT_PROBE.packInput.value)}`,
+        `${SHELL_ENVIRONMENT_PROBE.environment.name}=${quote(SHELL_ENVIRONMENT_PROBE.environment.value)}`,
+        '',
+      ].join('\n'),
+    )
     log(`    plan: ${plan.steps.length} step(s)`)
 
     try {
@@ -403,12 +456,39 @@ export function runPackCheck(options: PackCheckOptions): PackCheckReport {
       /* --- the idempotency evidence ----------------------------------------------------- */
       const after = snapshot()
       if (before === after) {
-        record(true, 'run 2 changed nothing: .bashrc x2 and sources.list.d byte-identical')
+        record(true, 'run 2 changed nothing: .bashrc x2, sources.list.d and the shell environment byte-identical')
       } else {
         const b = before.split('\n')
         const a = after.split('\n')
         const diff = [...new Set([...b.filter((l) => !a.includes(l)), ...a.filter((l) => !b.includes(l))])]
-        record(false, 'run 2 changed nothing: .bashrc x2 and sources.list.d byte-identical', diff.join(' | '))
+        record(false, 'run 2 changed nothing: .bashrc x2, sources.list.d and the shell environment byte-identical', diff.join(' | '))
+      }
+
+      /* --- the shell environment, every way in (issue #244) ----------------------------- */
+      // After the second run, so what is checked is the regenerated file and not the first
+      // write of it. Each way in must print the pack input, then the Environment value, then
+      // nothing for RDP_PASSWORD — the platform's own name, which stays out of the shell.
+      const expected = `${SHELL_ENVIRONMENT_PROBE.packInput.value}\n${SHELL_ENVIRONMENT_PROBE.environment.value}\n`
+      for (const [way, command] of Object.entries(SHELL_WAYS_IN)) {
+        const out = exec(name, command)
+        const got = out.stdout ?? ''
+        record(
+          out.status === 0 && got === expected,
+          `rocky's shell carries the pack input and the Environment value, not RDP_PASSWORD (${way})`,
+          out.status === 0 && got === expected ? '' : `got ${JSON.stringify(got)} ${(out.stderr ?? '').trim()}`,
+        )
+      }
+      const mode = exec(name, `stat -c '%U %a' /home/rocky/${SHELL_ENVIRONMENT_FILE}`)
+      record(
+        mode.status === 0 && mode.stdout.trim() === 'rocky 600',
+        'the values file is owned by rocky, mode 0600',
+        mode.stdout.trim() || (mode.stderr ?? '').trim(),
+      )
+      if (pack.requiresRdp) {
+        // The desktop pack's own session script has to read `/etc/profile`, as the stock xrdp
+        // one does, or the GUI session — unlike a terminal inside it — sees none of this.
+        const wm = exec(name, "grep -q '/etc/profile' /etc/xrdp/startwm.sh")
+        record(wm.status === 0, "the pack's /etc/xrdp/startwm.sh sources /etc/profile, so the desktop session gets the environment")
       }
 
       // Not a failure — the spec calls it a warning sign. A second run that re-downloads and

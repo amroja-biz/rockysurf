@@ -28,8 +28,8 @@ export type StepRunAs = (typeof STEP_RUN_AS)[number]
  */
 export const STEP_ID_PREFIXES = ['tool:', 'tool-setup:', 'repo:'] as const
 /**
- * `user-script`: ADR-0011 / issue #184, phase 5. `supplied-key-only`: ADR-0008 / issue #92,
- * phase 8 of `docs/bootstrap-contract.md`.
+ * `user-script`: ADR-0011 / issue #184, phase 5. `shell-environment`: issue #244, phase 6.
+ * `supplied-key-only`: ADR-0008 / issue #92, phase 9 of `docs/bootstrap-contract.md`.
  *
  * Adding an id here does NOT bump `PLAN_VERSION`. What version 1 freezes is the wire FORMAT —
  * the fields of a step and of a plan — and no field changed: `user-script` is one more value in
@@ -39,7 +39,7 @@ export const STEP_ID_PREFIXES = ['tool:', 'tool-setup:', 'repo:'] as const
  * freeze exists to protect; a new FIELD would not have that property, and would bump the
  * version.
  */
-export const SINGLETON_STEP_IDS = ['branding', 'rdp', 'user-script', 'supplied-key-only'] as const
+export const SINGLETON_STEP_IDS = ['branding', 'rdp', 'user-script', 'shell-environment', 'supplied-key-only'] as const
 
 const stepId = z.string().min(1).refine(
   (id) => STEP_ID_PREFIXES.some((p) => id.startsWith(p) && id.length > p.length) || SINGLETON_STEP_IDS.includes(id as never),

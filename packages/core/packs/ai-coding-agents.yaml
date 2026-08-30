@@ -40,14 +40,16 @@ pack:
       claude setup-token      mints a long-lived token instead, for a subscription plan
       API billing instead of a subscription? Put your key in the shell and keep it:
         echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+      Next time, put ANTHROPIC_API_KEY on a `secret:` line of the create form's Environment
+      field and it is already in your shell when you land here.
 
     GitHub
       gh auth login           then: gh auth setup-git
 
-      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
-      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
-      were cloned with it — but it is not exported into an interactive session, so `gh`
-      and your own pushes need this login.
+      If the operator set `github.pat` in rockysurf.config.yaml, that token is in your
+      shell as $GITHUB_TOKEN — the same one that cloned your repositories — so `gh` works
+      as it is; run `gh auth setup-git` once and your own pushes do too. With no token
+      configured, `gh auth login` is the way in.
 
     Also installed
       bd            Beads task tracker — run `bd init` in a repository to start

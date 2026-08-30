@@ -797,15 +797,18 @@ field. A pack that asks for nothing shows no such section, which is every pack R
 today.
 
 What you type is delivered to that pack's install scripts as **environment variables**, in the
-same `0600` file the GitHub token and desktop password arrive in. It is not exported into your
-shell once the box is up, and it is not a secret store you can read back.
+same `0600` file the GitHub token and desktop password arrive in — and, once the box is up, it
+is in your shell too: an SSH login, `ssh box 'command'`, tmux and the desktop session all see
+`$NAME` with the value you gave (issue #244; the how and where is under
+[Your own environment on a box](#your-own-environment-on-a-box)). It is not a secret store you
+can read back through the app.
 
 **Where the values live afterwards:**
 
 | | |
 |---|---|
 | **An ordinary value** | Stored on the server's row and shown on its page, so "what was this box built with" has an answer after the create screen is gone. |
-| **A value the pack marked secret** | Stored encrypted, beside the desktop password, and returned by **no** route — not the server page, not the API, not the list. Nothing can show it back to you, so keep your own copy. |
+| **A value the pack marked secret** | Stored encrypted, beside the desktop password, and returned by **no** route — not the server page, not the API, not the list. Rocky Surf will not show it back to you, so keep your own copy. (The box has it: it is in `rocky`'s shell and in `~/.config/rockysurf/environment` there. What refuses to hand it back is the control plane, not the machine you put it on.) |
 | **Either** | Never written into the install plan, which is stored in the clear and quoted in failure reports. |
 
 **A required setting with nothing in it refuses the create**, before a machine is launched. That
@@ -851,8 +854,26 @@ startup script — which is why the startup script's hint tells you to put a tok
 `$MY_API_TOKEN` there, rather than typing it into the script itself. The script is stored and
 pushed in plain text; this is not.
 
+**And it is in your shell on the box, by default.** Every line, and every setting the pack asked
+for, is exported into each shell `rocky` gets: an interactive SSH login, `ssh box 'command'`, a
+tmux session, and the remote-desktop session when the pack has one — with the values setup saw.
+Type `secret:ANTHROPIC_API_KEY=…` here, SSH in, and the harness that reads that variable finds
+it; nothing to export first. `$GITHUB_TOKEN` is there too when the operator configured one, so
+`gh` works as it is. The desktop password and Rocky Surf's own plumbing are not.
+
+Where it lives: `~/.config/rockysurf/environment`, owned by `rocky`, mode `0600`, written once
+at the end of setup as `export KEY='value'` lines and sourced by two files Rocky Surf installs —
+`/etc/profile.d/rockysurf-environment.sh`, and a marked block at the top of `/etc/bash.bashrc`
+(above Ubuntu's "if not running interactively" line, which is what makes `ssh box 'command'`
+work). Your own `~/.bashrc` runs after both, so an `export` there wins, and you can replace your
+dotfiles wholesale without losing anything. A `secret:` value is therefore on disk in your home
+directory in the clear: this is your box, the same value was already handed to every install
+step, and `rocky` has `sudo` regardless — but it is worth knowing before you back the home
+directory up somewhere else.
+
 **A line starting with `secret:` is stored encrypted** and returned by no route: not the server
-page, not the API, not the list. Nothing can show it back to you, so keep your own copy. A line
+page, not the API, not the list. Rocky Surf will not show it back to you, so keep your own copy —
+the box will, in the file above, to anyone who can open a shell on it. A line
 without the marker is stored in the clear and shown on the server's page, so you can answer "what
 was this box built with" months later.
 
@@ -863,7 +884,7 @@ A few rules, and why:
 | **Names** | `UPPER_SNAKE_CASE`. Names Rocky Surf itself exports are refused — `HOME`, `PATH`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `REPOS`, anything starting with `ROCKYSURF_`, and the four `GIT_*` names the clone step writes. Everything else git reads is yours. |
 | **A name the pack already asks for** | Refused, naming the key. Both fields would write one variable and only one value could reach the box, so the create is refused rather than one of your answers being dropped silently. |
 | **Values** | One line, at most 4 KiB each. Spaces, `$`, backticks and quotes are all safe — values are quoted on the way to the box, never interpreted. |
-| **Afterwards** | There is no way to change any of it on a running box. The environment is written once, when the box is built. |
+| **Afterwards** | There is no way to change any of it through Rocky Surf on a running box. The environment is written once, when the box is built; on the box itself, `~/.config/rockysurf/environment` is a file you own, and `~/.bashrc` overrides it. |
 
 From the CLI, one flag per line, or a file in the same format the form's box takes:
 
