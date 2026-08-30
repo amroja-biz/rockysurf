@@ -55,6 +55,14 @@ grace went unexercised), and the size catalogue's `available` flag turns out to 
 Azure's two gates — see `rockysurf-xmk0` and
 [`azure.md`](azure.md#core-quota-is-a-separate-gate-from-sku-availability).
 
+**And that run is still the only evidence in this column**, which is what separates `azure` from
+`aws`, `gcp` and `hetzner`: their values are re-observed every morning by the nightly real-cloud
+workflow, and Azure's are not. The Azure leg exists (gh issue #170) and runs the same lifecycle
+under the same published roles, but it **skips with a notice** until the repository owner wires
+the CI-only subscription and the five repository variables it names — see
+[`azure.md`](azure.md#the-nightly-real-cloud-run-maintainers). Read this column's values as
+measured on one dated run until then.
+
 **`gcp`.** Built without credentials, then **run against real Compute Engine on 2026-08-14**
 (`rockysurf-ev41.8`). That run measured the create/terminate lifecycle on both architectures
 (`e2-small` and `e2-micro` amd64, `t2a-standard-1` arm64), host-key injection, push bootstrap

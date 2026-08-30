@@ -13,6 +13,7 @@ your own subscription — and nothing beyond that.
 - [Who can reach SSH](#who-can-reach-ssh)
 - [What terminate actually deletes](#what-terminate-actually-deletes)
 - [Priced regions](#priced-regions)
+- [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [What is deliberately absent](#what-is-deliberately-absent)
 
 ---
@@ -291,6 +292,15 @@ unavoidable rather than a convenience.
 > two neighbours. A credential without it is not broken: the size list falls back to SKU
 > availability alone and the log names the missing action once.
 >
+> **That proof is dated, and the fix for that is built but not yet switched on.** The nightly
+> real-cloud workflow now carries an Azure leg (issue #170) that runs this whole lifecycle under a
+> principal holding exactly these two roles, every morning — including `locations/usages/read`,
+> which the leg would exercise under a restricted principal for the first time. It **skips with a
+> notice** until the repository owner creates the CI-only subscription, the two app registrations
+> and the five repository variables it names; see
+> [The nightly real-cloud run](#the-nightly-real-cloud-run-maintainers). Until then this block
+> means what it says: proven once, by hand, on 2026-08-26.
+>
 > **The AWS equivalent found a real bug the first time it was run**, which is why this block used
 > to warn that Azure was likely to have one too. Azure did — but not in the action list. The
 > template itself had never compiled: `deploy/azure/role.bicep` declared the resource-group-scoped
@@ -562,6 +572,128 @@ issue reported. The generator now also refuses to publish a document its own rea
 reject, so the next family Azure announces without billing for turns the `price-feed` run red —
 which publishes nothing and keeps the last good document being served — instead of silently
 unpricing the cloud.
+
+---
+
+## The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository, not for self-hosters. Nothing here changes
+what you deploy.
+
+[`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml)
+creates and destroys real machines every morning on Hetzner, AWS and GCP, and
+[gh issue #170](https://github.com/amroja-biz/rockysurf/issues/170) adds the Azure leg: both
+architectures, sequentially, each through the full create → bootstrap → SSH → stop → start →
+terminate → zero-orphan path, **under the exact two roles published above**. That is the whole
+point of wiring it this way. The role on this page was proven **once, by hand**, on 2026-08-26;
+add an ARM call to `@rockysurf/provider-azure` and forget to add its action here, and without the
+leg nothing turns red until a self-hoster's next launch fails.
+
+**Until the repository variables exist the leg skips with a notice**, not a failure — a
+perpetually red scheduled workflow trains everyone to ignore it, and the one morning it is red for
+a real reason nobody looks. So the paragraphs below describe a leg that is *in the repository* and
+is *not yet running*; the status block under [The role](#the-role) says what is proven today.
+
+### Use a dedicated, CI-only subscription and resource group
+
+This is the one rule that matters, and it is the same rule the [GCP
+page](gcp.md#the-nightly-real-cloud-run-maintainers) states for its project. The sweep that runs
+after each leg is deliberately narrow — it deletes only what the run itself recorded and merely
+*reports* everything else — but that narrowness is the second line of defence. The first is that
+nothing anybody cares about is in the group at all. On 2026-08-12 the Hetzner leg destroyed the
+owner's own live server, launched from their laptop against the same project 37 seconds earlier,
+and reported it as a leak it had helpfully cleaned up.
+
+### No secret exists anywhere on this path
+
+GitHub mints a short-lived OIDC token for the run; a **federated credential** on the app
+registration is what makes Entra accept it. There is no Azure secret in the repository, nothing to
+rotate, and nothing to leak — the same posture as the AWS and GCP legs, reached through the
+credential source described under [Credentials](#credentials) above.
+
+### Wiring it, once
+
+Every step is an `az` one-liner and all of them need Owner (or User Access Administrator) on the
+subscription, so there is no script for it here.
+
+1. **The CI-only group.** `az group create --name rocky-surf-ci --location eastus`, in a
+   subscription used only by this workflow.
+2. **Two app registrations**, each with a service principal — one for the identity under test, one
+   for the sweep. `az ad app create --display-name rockysurf-nightly-provider`, then
+   `az ad sp create --id <appId>`; repeat for `rockysurf-nightly-sweep`.
+3. **A federated credential on each**, so GitHub's token is accepted:
+
+   ```bash
+   az ad app federated-credential create --id <appId> --parameters '{
+     "name": "rockysurf-nightly",
+     "issuer": "https://token.actions.githubusercontent.com",
+     "subject": "repo:amroja-biz/rockysurf:ref:refs/heads/main",
+     "audiences": ["api://AzureADTokenExchange"]
+   }'
+   ```
+
+4. **The published roles, unmodified**, for the provider principal — that is the point of the leg:
+
+   ```bash
+   az deployment sub create --location eastus      --template-file deploy/azure/role.bicep      --parameters resourceGroupName=rocky-surf-ci                   principalId=$(az ad sp show --id <provider appId> --query id -o tsv)
+   ```
+
+   The **sweep** principal gets a different, CI-only grant: read the group, and delete virtual
+   machines, disks, network interfaces and public IP addresses in it. Nothing else — no create of
+   any kind, and **no delete on the virtual network or the network security group**, which outlive
+   every server and whose deletion would detach the network from, or close port 22 on, every
+   running box at once.
+5. **Core quota.** Request it for `standardBlsv2Family` and `standardBpsv2Family` in the region.
+   A fresh subscription commonly has zero — see [Core quota is a separate
+   gate](#core-quota-is-a-separate-gate-from-sku-availability) — and a zero-quota family fails the
+   size catalogue's own `available` check before anything is created. Cheap, but red.
+6. **Five repository variables**, none of which is a credential:
+
+   | Variable | What it is |
+   |---|---|
+   | `AZURE_CI_SUBSCRIPTION` | the CI-only subscription id |
+   | `AZURE_CI_RESOURCE_GROUP` | the CI-only resource group — the scope the operational role is granted at |
+   | `AZURE_TENANT` | the Entra tenant both app registrations live in |
+   | `AZURE_PROVIDER_CLIENT_ID` | the app registration carrying the published roles — the identity under test |
+   | `AZURE_NIGHTLY_CLIENT_ID` | the CI-only sweep app registration |
+   | `AZURE_CI_LOCATION` | optional; defaults to `eastus` |
+
+Then trigger it once by hand — `gh workflow run nightly-real-cloud.yml` — rather than waiting for
+07:00 UTC to find out.
+
+### Why there are two app registrations
+
+The lifecycle runs as the published one; the sweep runs as the CI-only one. Two independent
+reasons, both learned on the AWS leg:
+
+- **The sweep deletes what the published role deliberately cannot.** Rocky Surf deletes a virtual
+  machine and lets `deleteOption` cascade to the disk, the NIC and the address; it never deletes
+  those three directly, so the published role does not grant it. A cleanup after a cascade that
+  half-happened has to.
+- **The sweep has to work when the identity under test is what broke.** A cleanup wired through
+  the credentials being tested goes blind at exactly the moment it matters.
+
+There is a third reason specific to Azure, and the workflow depends on the fix. The sweep logs
+`az` in as the CI-only identity **on the same runner** as the lifecycle, so
+[`scripts/e2e/lifecycle.mjs`](../../scripts/e2e/lifecycle.mjs) writes `allowAzureCli: false` into
+the config it generates: without it the credential chain could fall through to
+`az account get-access-token` and quietly run the lifecycle as the *sweep* account. Every check
+would pass, and the run would prove nothing whatsoever about the published role.
+
+### What the leg covers, and what it does not
+
+`Standard_B2ls_v2` (amd64) and `Standard_B2ps_v2` (arm64) — the two sizes the 2026-08-26 hand run
+used, so a red morning is a regression against a known-good pair rather than a new unknown. The
+cheaper 1 GiB B-series entries (`Standard_B2ats_v2`, `Standard_B2pts_v2`) are deliberately not
+used: that is under half the memory of the smallest box any other leg runs, and not a machine the
+pack has ever been installed on.
+
+It exercises one region, one resource group and the sizes above. It does not prove each granted
+action is individually *necessary*, and it does not touch branches the lifecycle never takes.
+
+**About two cents a night**, on the same measured basis as the numbers in
+[gcp.md](gcp.md#what-the-nightly-costs--measured-2026-08-26): two B-series VMs for five to ten
+minutes each, billed per minute.
 
 ---
 

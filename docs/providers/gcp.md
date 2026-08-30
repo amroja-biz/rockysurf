@@ -600,6 +600,13 @@ the one run so far; the amd64 box's ~12 minutes was mostly bootstrap (its `ready
 against the arm64 box's 205 s) and will move as more nights accumulate. Adding the leg took the
 nightly from about 3 cents to about 4 — it did not change the headline.
 
+**The Azure leg is not in these numbers** and cannot be until it runs: it exists (gh issue #170)
+but skips with a notice until the repository owner wires it — see
+[`azure.md`](azure.md#the-nightly-real-cloud-run-maintainers). Estimated at roughly 1–2 cents a
+night on the same basis (two B-series VMs, five to ten minutes each, billed per minute), which
+would take the nightly from about 4 cents to about 5. Estimated, not measured; re-measure it here
+the first morning it is green.
+
 **How to re-measure:** pull the last few runs' step timings with
 `gh run list --workflow=nightly-real-cloud.yml` and `gh run view <id> --json jobs`, multiply each
 box's lifetime by its rate from the price feed (or Hetzner's API / a tracker, per above), and

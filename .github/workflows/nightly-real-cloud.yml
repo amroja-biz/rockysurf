@@ -40,6 +40,27 @@ name: Nightly real-cloud lifecycle
 #   vars.GCP_CI_ZONE                 optional; defaults to us-central1-a, one of the eight zones
 #                                    with T2A (arm64) stock.
 #
+#   vars.AZURE_CI_SUBSCRIPTION       (gh issue #170) an Azure subscription used ONLY by this
+#                                    workflow, for the reason given for the GCP project above.
+#   vars.AZURE_CI_RESOURCE_GROUP     the ONE resource group in it that this workflow owns. Rocky
+#                                    Surf never creates a resource group — a role cannot be
+#                                    scoped to one that does not exist — so the owner creates it,
+#                                    and the published operational role is granted at exactly it.
+#   vars.AZURE_TENANT                the Entra tenant id both app registrations live in.
+#   vars.AZURE_PROVIDER_CLIENT_ID    the application (client) id of the app registration carrying
+#                                    the PUBLISHED roles from deploy/azure/role.bicep — i.e. the
+#                                    identity under test, exactly as a self-hoster's.
+#   vars.AZURE_NIGHTLY_CLIENT_ID     the CI-only app registration the orphan sweep runs as.
+#                                    Deliberately a DIFFERENT identity; see below.
+#   vars.AZURE_CI_LOCATION           optional; defaults to eastus.
+#
+#   There is no AZURE SECRET either, and it is the same mechanism GCP uses reached by Azure's own
+#   name for it: a FEDERATED CREDENTIAL on each app registration, trusting GitHub's OIDC issuer
+#   for this repository. The provider learned to use one in gh issue #170 — AZURE_CLIENT_ID,
+#   AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE, the three variables Azure's own SDKs read —
+#   so the run mints GitHub's token, writes it to a file, and @rockysurf/provider-azure exchanges
+#   it at Entra itself. Five repository VARIABLES, and none of them is a credential.
+#
 #   There is no GCP SECRET, and that is the point: `deploy/gcp/nightly-ci.sh` creates a workload
 #   identity pool that trusts this repository's own OIDC token, so nothing long-lived exists to
 #   leak or rotate. Four repository VARIABLES, and none of them is a credential.
@@ -108,6 +129,57 @@ name: Nightly real-cloud lifecycle
 #
 # It prints the four `gh variable set` commands at the end. It creates NOTHING with a long-lived
 # key: no service-account key file is generated anywhere in this path.
+#
+# ─── AND THE SAME IDEA ON AZURE, WHICH NEEDED A PROVIDER CHANGE FIRST (gh issue #170) ────────
+#
+# Azure has the same arrangement — Entra calls it a federated credential — but until #170 this
+# project's provider could not use it: `packages/provider-azure/src/credentials.ts` knew a client
+# secret, a managed identity and the `az` CLI, and none of the three can accept a token GitHub
+# minted. The alternative was a long-lived client secret in GitHub secrets, which is the Hetzner
+# model the AWS and GCP legs exist to avoid. So the provider gained a fourth source instead, and
+# this leg holds no secret for the same reason the other two do not.
+#
+# The identity under test is the app registration carrying the PUBLISHED roles from
+# deploy/azure/role.bicep, deployed unmodified — so every ARM call the lifecycle makes runs under
+# exactly the permissions docs/providers/azure.md tells a self-hoster are enough, and a provider
+# call that role does not cover fails here the first morning after it lands. That matters
+# concretely right now: `Microsoft.Compute/locations/usages/read` (gh issue #116) was added after
+# the 2026-08-26 hand run and has never been exercised under a restricted principal.
+#
+# The sweep identity is SEPARATE, for the reason the AWS and GCP legs learned: a cleanup wired
+# through the credentials being tested goes blind at exactly the moment it matters. On Azure it
+# also has to be able to DELETE resources the published role deliberately cannot — the sweep
+# deletes a leaked disk or NIC directly, where the provider only ever deletes the VM and lets
+# `deleteOption` cascade.
+#
+# ONE AZURE-SPECIFIC TRAP, and the workflow depends on the fix: the sweep step logs `az` in as
+# the CI-only identity on the same runner as the lifecycle. `scripts/e2e/lifecycle.mjs` therefore
+# writes `allowAzureCli: false` into the Azure config it generates, so the credential chain cannot
+# fall through to `az account get-access-token` and quietly run the lifecycle as the SWEEP
+# account — every check would pass and the run would prove nothing about the published role.
+#
+# To wire it in the CI subscription — the owner does this once, and none of it is scripted here
+# because every step is an `az` one-liner requiring Owner on the subscription:
+#
+#   1. `az group create` the CI-only resource group.
+#   2. `az ad app create` two app registrations (one "provider", one "nightly-sweep") and
+#      `az ad sp create` a service principal for each.
+#   3. `az ad app federated-credential create` on each, with
+#      issuer=https://token.actions.githubusercontent.com,
+#      subject=repo:amroja-biz/rockysurf:ref:refs/heads/main and
+#      audiences=["api://AzureADTokenExchange"].
+#   4. Deploy deploy/azure/role.bicep UNMODIFIED for the provider principal — that is the point.
+#      Grant the sweep principal a role that can read the group and delete VMs, disks, NICs and
+#      public IPs in it, and nothing else: no create of any kind, and no delete on the vnet or the
+#      NSG, which outlive every server.
+#   5. Request core quota for the `standardBlsv2Family` and `standardBpsv2Family` families in the
+#      region. A fresh subscription commonly has zero, and a zero-quota family fails the size
+#      catalogue's own `available` check before anything is created — cheap, but red.
+#   6. `gh variable set` the five variables above.
+#
+# THE COST of this leg, on the same basis as the numbers in docs/providers/gcp.md: two B-series
+# VMs for roughly five to ten minutes each, billed per minute — about one to two cents a night on
+# top of the existing three and a half.
 
 on:
   schedule:
@@ -137,6 +209,7 @@ jobs:
       hetzner: ${{ steps.probe.outputs.hetzner }}
       aws: ${{ steps.probe.outputs.aws }}
       gcp: ${{ steps.probe.outputs.gcp }}
+      azure: ${{ steps.probe.outputs.azure }}
     steps:
       - id: probe
         env:
@@ -150,6 +223,13 @@ jobs:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_PROVIDER_SERVICE_ACCOUNT: ${{ vars.GCP_PROVIDER_SERVICE_ACCOUNT }}
           GCP_NIGHTLY_SERVICE_ACCOUNT: ${{ vars.GCP_NIGHTLY_SERVICE_ACCOUNT }}
+          # Azure's wiring is five VARIABLES and no secret either, for the same reason and by the
+          # same mechanism — a federated credential on an app registration (gh issue #170).
+          AZURE_CI_SUBSCRIPTION: ${{ vars.AZURE_CI_SUBSCRIPTION }}
+          AZURE_CI_RESOURCE_GROUP: ${{ vars.AZURE_CI_RESOURCE_GROUP }}
+          AZURE_TENANT: ${{ vars.AZURE_TENANT }}
+          AZURE_PROVIDER_CLIENT_ID: ${{ vars.AZURE_PROVIDER_CLIENT_ID }}
+          AZURE_NIGHTLY_CLIENT_ID: ${{ vars.AZURE_NIGHTLY_CLIENT_ID }}
         run: |
           set -euo pipefail
           note() { echo "$1" >> "$GITHUB_STEP_SUMMARY"; echo "::notice::$1"; }
@@ -180,6 +260,21 @@ jobs:
           else
             echo 'gcp=no' >> "$GITHUB_OUTPUT"
             note "SKIPPED GCP: repository variable(s) not set:$missing. Run deploy/gcp/nightly-ci.sh against a CI-ONLY project — it prints the exact gh commands. See this workflow header."
+          fi
+
+          # ALL FIVE OR NONE, for the reason spelled out on GCP directly above and one more that
+          # is specific to Azure: without AZURE_NIGHTLY_CLIENT_ID there is no second identity, and
+          # a sweep wired through the identity under test goes blind at exactly the moment that
+          # identity is what broke.
+          missing=''
+          for name in AZURE_CI_SUBSCRIPTION AZURE_CI_RESOURCE_GROUP AZURE_TENANT AZURE_PROVIDER_CLIENT_ID AZURE_NIGHTLY_CLIENT_ID; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -z "$missing" ]; then
+            echo 'azure=yes' >> "$GITHUB_OUTPUT"
+          else
+            echo 'azure=no' >> "$GITHUB_OUTPUT"
+            note "SKIPPED Azure: repository variable(s) not set:$missing. See this workflow header for the app registrations, the federated credentials and the CI-only resource group they name — none of them is a credential."
           fi
 
           # Not a skip condition — the AWS run is still worth having without it. But it is worth
@@ -714,3 +809,233 @@ jobs:
         with:
           name: gcp-lifecycle-log-${{ matrix.arch }}
           path: gcp-${{ matrix.arch }}.log
+
+  azure:
+    name: Azure (${{ matrix.offering }}, ${{ matrix.arch }})
+    needs: preflight
+    # Five repository variables and no secret, so this could have been a job-level `if:` on
+    # `vars.*` directly — it goes through the preflight for the reason the GCP leg does: a leg
+    # that skips silently is a leg nobody notices is not running.
+    if: needs.preflight.outputs.azure == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The run-ids file is declared per-step here too — see the Hetzner job's comment for why
+    # job-level `env` cannot do it (rockysurf-8mu5). One file per matrix leg, since each is its
+    # own runner.
+    strategy:
+      # Sequential, like AWS and GCP and for the same two reasons: both legs share ONE virtual
+      # network and ONE network security group in the resource group, and the arm64 result is the
+      # more interesting of the two — running them in order means an Ampere failure is not buried
+      # under the amd64 job's noise.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          # BOTH architectures, because arch-correct image-SKU selection (`server` against
+          # `server-arm64`) is only proven by running both. These are the two sizes the 2026-08-26
+          # hand run (rockysurf-ihtq.8) proved the published role against, so a red morning is a
+          # regression rather than a new unknown; see the RUNS table in scripts/e2e/lifecycle.mjs
+          # for why the cheaper 1 GiB B-series entries are not used.
+          - offering: Standard_B2ps_v2
+            arch: arm64
+          - offering: Standard_B2ls_v2
+            arch: amd64
+    permissions:
+      # OIDC: GitHub mints a short-lived token and Entra exchanges it. There is no Azure secret in
+      # this repository and no client secret anywhere on this path, which is the point.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The script drives the built binary, not the sources: it is the shipped article under
+      # test, so it has to be built first.
+      - run: pnpm -r build
+
+      # THE ORPHAN SWEEP CANNOT RUN UNDER THE ROLE BEING TESTED — the same finding as the AWS and
+      # GCP legs, reached from the same direction. The published role can DELETE a virtual machine
+      # and lets `deleteOption` cascade to the disk, the NIC and the address; it has no business
+      # deleting those three directly, which is exactly what a sweep cleaning up after a cascade
+      # that half-happened must do. And a sweep wired through the identity under test goes blind
+      # precisely when that identity is what failed.
+      #
+      # So the CI-only identity is authenticated FIRST and only into the `az` CLI. It does not
+      # touch AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_FEDERATED_TOKEN_FILE, which the next step
+      # writes and which are the only thing @rockysurf/provider-azure reads — the two identities
+      # never meet. STEP ORDER IS STILL THE MECHANISM: this must come first so that nothing it
+      # exports could shadow the identity under test.
+      #
+      # `az` is preinstalled on the runner image and `azure/login` drives it; there is no
+      # setup-az to pin, which is the one place this leg is less defended than the GCP one.
+      - name: Authenticate the CI-only sweep identity, into the az CLI only
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_NIGHTLY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT }}
+          subscription-id: ${{ vars.AZURE_CI_SUBSCRIPTION }}
+
+      # From here on the run holds EXACTLY the permissions deploy/azure/role.bicep grants — the
+      # ones docs/providers/azure.md tells self-hosters are enough.
+      #
+      # This is the ordinary workload-identity contract and not a CI-specific code path: the three
+      # variables are the ones Azure's own SDKs, AKS's webhook and `azure/login` all use, and the
+      # provider reads them wherever it finds them (gh issue #170). The file holds GitHub's own
+      # OIDC token, which is not key material — it is a five-minute assertion naming this
+      # repository, and Entra only accepts it because a federated credential on the app
+      # registration says to.
+      #
+      # `::add-mask::` is registered BEFORE the token can reach any other command, and the file is
+      # written with printf under `umask 077` rather than echoed — the same handling the Hetzner
+      # token gets two jobs above.
+      - name: Mint GitHub's OIDC token for the identity under test
+        env:
+          TENANT: ${{ vars.AZURE_TENANT }}
+          CLIENT_ID: ${{ vars.AZURE_PROVIDER_CLIENT_ID }}
+          TOKEN_FILE: ${{ runner.temp }}/azure-federated-token
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_ID_TOKEN_REQUEST_URL:?no OIDC endpoint — this job needs permissions: id-token: write}"
+          # api://AzureADTokenExchange is the audience Entra requires of a federated credential,
+          # and the one `azure/login` requests by default.
+          token=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api%3A%2F%2FAzureADTokenExchange" | jq -re '.value')
+          echo "::add-mask::$token"
+          umask 077
+          printf '%s' "$token" > "$TOKEN_FILE"
+          {
+            echo "AZURE_TENANT_ID=${TENANT}"
+            echo "AZURE_CLIENT_ID=${CLIENT_ID}"
+            echo "AZURE_FEDERATED_TOKEN_FILE=${TOKEN_FILE}"
+          } >> "$GITHUB_ENV"
+
+      # The Azure counterpart of the AWS leg's `sts get-caller-identity` assertion and the GCP
+      # leg's credentials-file check, making the same claim: the identity in force is the app
+      # registration the published roles were granted to, so a wider principal — Contributor on
+      # the subscription, or the sweep identity — cannot be quietly substituted and leave the
+      # nightly passing while proving nothing about what is published.
+      #
+      # It compares variables rather than calling Azure, because there is no free, permissionless
+      # "who am I" here: `GetCallerIdentity` has no ARM equivalent, and the published role grants
+      # nothing on Microsoft.Authorization or on Graph, so the principal cannot read its own role
+      # assignments back. What that leaves is settling which app registration the provider will
+      # authenticate as, which is the substitution being guarded against — plus the one mistake
+      # that would silently defeat the whole design, the two identities being the same one.
+      - name: Confirm the identity under test is the published app registration
+        env:
+          EXPECTED: ${{ vars.AZURE_PROVIDER_CLIENT_ID }}
+          SWEEP: ${{ vars.AZURE_NIGHTLY_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          echo "running as app registration: ${AZURE_CLIENT_ID}"
+          if [ "${AZURE_CLIENT_ID}" != "${EXPECTED}" ]; then
+            echo "::error::the nightly would authenticate as ${AZURE_CLIENT_ID}, not vars.AZURE_PROVIDER_CLIENT_ID."
+            exit 1
+          fi
+          if [ "${AZURE_CLIENT_ID}" = "${SWEEP}" ]; then
+            echo "::error::vars.AZURE_PROVIDER_CLIENT_ID and vars.AZURE_NIGHTLY_CLIENT_ID name the same app registration."
+            echo "::error::The sweep must be a DIFFERENT identity: an orphan the credentials under test cannot see, or cannot delete, is an orphan the audit calls clean."
+            exit 1
+          fi
+          [ -s "${AZURE_FEDERATED_TOKEN_FILE}" ] || { echo '::error::no federated token was written'; exit 1; }
+          echo 'identity is the published app registration, and is not the sweep identity'
+
+      # `set -o pipefail` IS THE STEP, NOT DECORATION (rockysurf-rkh3) — see the Hetzner leg.
+      # Without it `tee` decides the exit status and a `RESULT: FAIL` is a green step.
+      - name: Lifecycle
+        env:
+          ROCKYSURF_E2E_AZURE_SUBSCRIPTION: ${{ vars.AZURE_CI_SUBSCRIPTION }}
+          ROCKYSURF_E2E_AZURE_RESOURCE_GROUP: ${{ vars.AZURE_CI_RESOURCE_GROUP }}
+          ROCKYSURF_E2E_AZURE_LOCATION: ${{ vars.AZURE_CI_LOCATION || 'eastus' }}
+          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
+        run: |
+          set -o pipefail
+          node scripts/e2e/lifecycle.mjs azure ${{ matrix.offering }} | tee azure-${{ matrix.arch }}.log
+
+      # MANDATORY SWEEP, and the SAME SCOPING RULE as the other three legs — read the long comment
+      # on the Hetzner sweep before touching this. `managed-by=rockysurf` is an ownership claim
+      # shared by every Rocky Surf pointed at this subscription, not a marker for this run.
+      # DELETE only what $ROCKYSURF_E2E_RUN_IDS_FILE names. REPORT everything else, touch none of
+      # it. It runs as the CI-only identity, named by nothing more than `az` already being logged
+      # in as it — the lifecycle never touched that login.
+      #
+      # THE VNET AND THE NSG ARE NOT IN THE TYPE LIST, and that is the belt to the role's braces:
+      # they are shared, they outlive every server, and deleting either detaches the network from
+      # or closes port 22 on every running box in the group at once.
+      #
+      # A DISK IS ATTRIBUTED BY NAME WHEN IT HAS NO TAG. Azure does not copy a VM's tags onto the
+      # OS disk it creates from an image, and a disk whose VM is gone has lost the `managedBy`
+      # that would otherwise attribute it — so the one orphan class that bills silently here is
+      # also the one with no tag to select on. Every resource the provider creates is named
+      # `<server-id>` or `<server-id>-<suffix>`, which closes that exactly and cannot collide with
+      # another run's id.
+      #
+      # ONE PASS PER TYPE, RE-LISTING EACH TIME, in cascade order: deleting the VM reaps the other
+      # three through `deleteOption`, so re-listing means the passes after it chase nothing.
+      - name: Terminate sweep
+        if: always()
+        env:
+          SUBSCRIPTION: ${{ vars.AZURE_CI_SUBSCRIPTION }}
+          GROUP: ${{ vars.AZURE_CI_RESOURCE_GROUP }}
+          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
+        run: |
+          set -euo pipefail
+
+          # Written by the lifecycle script at create time. Absent or empty means it never got far
+          # enough to make anything — in which case this step deletes nothing at all, and that
+          # case is spelled out rather than left to a shell quoting accident.
+          mine=''
+          if [ -s "${ROCKYSURF_E2E_RUN_IDS_FILE:-/nonexistent}" ]; then
+            mine=$(tr '\n' ',' < "$ROCKYSURF_E2E_RUN_IDS_FILE" | sed 's/,$//')
+          fi
+          echo "servers this run created: ${mine:-none}"
+
+          leaked=''
+          for type in Microsoft.Compute/virtualMachines Microsoft.Network/networkInterfaces \
+                      Microsoft.Network/publicIPAddresses Microsoft.Compute/disks; do
+            # Read-only, and group-wide on purpose: what else is in this group is worth saying out
+            # loud, and is never this step's to delete.
+            rows=$(az resource list --subscription "$SUBSCRIPTION" --resource-group "$GROUP" --output json |
+              jq -r --arg t "$type" '.[] | select(.type == $t) | "\(.name)\t\(.id)\t\(.tags["server-id"] // "")"')
+
+            while IFS=$'\t' read -r name id owner; do
+              [ -n "$name" ] || continue
+
+              # The tag first, then the name — and the name only for a resource this run's server
+              # id actually prefixes, which is why an untagged stray of somebody else's stays
+              # unattributed rather than becoming ours by accident.
+              if [ -z "$owner" ] && [ -n "$mine" ]; then
+                case ",$mine," in
+                  *",$name,"*) owner="$name" ;;
+                  *",${name%-*},"*) owner="${name%-*}" ;;
+                esac
+              fi
+
+              if [ -n "$owner" ] && [ -n "$mine" ] && printf '%s' ",$mine," | grep -qF ",$owner,"; then
+                echo "::warning::sweeping $type/$name — this run created it and did not clean it up"
+                case "$type" in
+                  */virtualMachines) az vm delete --ids "$id" --yes ;;
+                  */networkInterfaces) az network nic delete --ids "$id" ;;
+                  */publicIPAddresses) az network public-ip delete --ids "$id" ;;
+                  */disks) az disk delete --ids "$id" --yes ;;
+                esac
+                leaked="$leaked $type/$name"
+              else
+                echo "::notice::$type/$name (server-id=${owner:-unattributed}) was not created by this run; left alone"
+              fi
+            done <<< "$rows"
+          done
+
+          # STILL RED AFTER CLEANING UP. The sweep existing is not permission for the run to leak:
+          # it cleans so the next run starts from zero, and fails so somebody finds out.
+          [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: azure-lifecycle-log-${{ matrix.arch }}
+          path: azure-${{ matrix.arch }}.log
