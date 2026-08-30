@@ -34,6 +34,7 @@ import {
   type SizeResolution,
 } from '../lib/requirements'
 import { parseEnvironment, SECRET_LINE_PREFIX } from '../lib/environment'
+import { repoDocUrl } from '../lib/links'
 import { useAuth } from '../contexts/AuthContext'
 import { AppShell } from '../components/AppShell'
 import { PackIcon } from '../components/PackIcon'
@@ -1631,7 +1632,11 @@ export function CreateServerPage() {
               <li>Public URLs need no credentials.</li>
               <li>
                 A private repository needs <code>github.pat</code> set in{' '}
-                <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+                <code>rockysurf.config.yaml</code> — see{' '}
+                <a href={repoDocUrl('docs/self-hosting.md')} target="_blank" rel="noreferrer">
+                  <code>docs/self-hosting.md</code>
+                </a>
+                .
               </li>
               <li>Every line below says which credential it will actually open with, as you type.</li>
             </ul>
@@ -1689,12 +1694,24 @@ export function CreateServerPage() {
               this replaces carried five facts, and the one a person must read before typing a
               token into a box on a web page — that an unmarked line is kept in the clear — was
               the fourth of them. */}
+          {/* THE SHELL HALF IS ISSUE #244, and it is one line because it is one fact: a value set
+              here used to reach the setup steps and stop there, so the honest sentence was "every
+              step of this box's setup can read it". It is now also exported into the login shell,
+              which is what a person expects of something called Environment — and the copy says
+              both halves rather than leaving the second to be discovered over SSH.
+
+              It is also why the caveat below names ROCKY SURF as the thing that will not show a
+              secret back, rather than saying it "cannot be read back". Once #244 exports these
+              into the login shell, a secret IS legible to anyone who can open a shell on the box
+              — what no route returns it to is the control plane. The unqualified sentence would
+              have been a promise this product cannot keep. */}
           <p className="field-help">
-            One <code>KEY=value</code> per line — your own values for this box, readable by every step of its setup.
+            One <code>KEY=value</code> per line — your own values for this box, available to its setup and in your
+            shell when you SSH in.
           </p>
           <p className="field-caveat">
             Stored and shown in the clear unless the line starts with <code>{SECRET_LINE_PREFIX}</code>, which
-            stores it encrypted — keep your own copy, because it cannot be read back.
+            stores it encrypted — keep your own copy, because Rocky Surf will not show it back to you.
           </p>
           <details className="field-details">
             <summary role="button">What the names and values may be</summary>
@@ -1750,7 +1767,11 @@ export function CreateServerPage() {
               <li>If it fails the server still comes up, and the whole log is kept on it as a warning.</li>
               <li>At most 16 KiB, and 30 minutes to run. It runs once, during setup, and never again.</li>
               <li>
-                The full contract is in <code>docs/self-hosting.md</code>.
+                The full contract is in{' '}
+                <a href={repoDocUrl('docs/self-hosting.md')} target="_blank" rel="noreferrer">
+                  <code>docs/self-hosting.md</code>
+                </a>
+                .
               </li>
             </ul>
           </details>

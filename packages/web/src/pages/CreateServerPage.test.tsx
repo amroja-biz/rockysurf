@@ -1957,6 +1957,27 @@ describe('an environment the creator types (issue #197)', () => {
     })
   })
 
+  /**
+   * The values reach the login shell as well as the setup steps (issue #244), and the field that
+   * asks for them says so (issue #245). One line, because it is one fact.
+   */
+  it('says the values are available to setup and in your shell', async () => {
+    renderPage()
+    await screen.findByLabelText(/^environment/i)
+    expect(screen.getByText(/available to its setup and in your shell when you SSH in/i)).toBeTruthy()
+  })
+
+  /** A path styled as a path, and now reachable (issue #245). */
+  it('links docs/self-hosting.md rather than only styling it', async () => {
+    renderPage()
+    await screen.findByLabelText(/startup script/i)
+    const links = screen.getAllByRole('link', { name: /docs\/self-hosting\.md/i })
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) {
+      expect(link.getAttribute('href')).toBe('https://github.com/amroja-biz/rockysurf/blob/main/docs/self-hosting.md')
+    }
+  })
+
   /** The same three-part pattern as the startup script above (issue #245). */
   it('puts the in-the-clear caveat on its own visible line, not inside the disclosure', async () => {
     renderPage()
