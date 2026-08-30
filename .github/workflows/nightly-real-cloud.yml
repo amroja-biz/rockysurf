@@ -14,6 +14,10 @@ name: Nightly real-cloud lifecycle
 # ─── WHAT THE REPOSITORY OWNER MUST SET before this does anything (rockysurf-ftl9.5) ─────────
 #
 #   secrets.HETZNER_TOKEN            a Hetzner Cloud API token with read/write on one project.
+#                                    One command sets this: ./deploy/hetzner/setup-nightly.sh —
+#                                    see docs/providers/hetzner.md under "The nightly real-cloud
+#                                    run (maintainers)". ./deploy/hetzner/teardown-nightly.sh
+#                                    undoes it.
 #   secrets.AWS_NIGHTLY_ROLE_ARN     the role GitHub's OIDC provider may assume in the CI
 #                                    account. Needs sts:AssumeRole on the provider role below,
 #                                    and nothing else.

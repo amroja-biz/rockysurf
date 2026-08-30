@@ -12,6 +12,7 @@ Hetzner project — and nothing beyond that.
 - [What it costs](#what-it-costs)
 - [Testing it](#testing-it)
 - [What is deliberately absent](#what-is-deliberately-absent)
+- [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [Status: measured, and re-measured nightly](#status-measured-and-re-measured-nightly)
 
 ---
@@ -228,6 +229,46 @@ its own disk.
 change what an operator is billed. Your work belongs in git.
 
 **No spot equivalent**, because Hetzner has none.
+
+## The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository, not for self-hosters. Nothing here
+changes what you deploy.
+
+[`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml) runs
+a full lifecycle against real Hetzner Cloud every morning — see [Status](#status-measured-and-re-measured-nightly)
+below for what it proves. Until `secrets.HETZNER_TOKEN` is set, the leg skips with a notice rather
+than failing, so a scheduled run staying green never hides a broken leg.
+
+**Hetzner is the one leg with a secret, and setting it up is one command.** AWS, Azure and GCP all
+reach the nightly through short-lived tokens GitHub mints and the cloud is told to trust, so none
+of them holds a long-lived credential. Hetzner's Cloud API has no such mechanism — see
+[There is no least-privilege token](#there-is-no-least-privilege-token-and-that-is-worth-knowing)
+above — so a Read & Write API token, from a project holding nothing but this nightly's own boxes,
+is the only way in.
+
+```bash
+gh auth login     # if you are not already signed in
+
+./deploy/hetzner/setup-nightly.sh --dry-run     # optional: shows every step, changes nothing
+./deploy/hetzner/setup-nightly.sh
+```
+
+It asks for the token once (input is hidden, never printed or logged), checks it against the
+Hetzner API with one read-only call, and pipes it straight into `gh secret set` — never as a
+command-line argument, which on a shared machine can leak into another user's process list. If
+the secret is already set, it offers to keep it rather than making you type a new one. This is
+the only setting the leg needs: unlike Azure and GCP, there are no repository variables to wire.
+
+To undo it:
+
+```bash
+./deploy/hetzner/teardown-nightly.sh
+```
+
+Teardown removes the repository secret, after confirming, and then says what it cannot do: it
+cannot revoke the token itself. Delete that by hand under **Security** in the Hetzner project it
+came from.
 
 ## Status: measured, and re-measured nightly
 
