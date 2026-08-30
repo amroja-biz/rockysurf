@@ -1668,6 +1668,28 @@ span.cost-figure {
   font-weight: 500;
 }
 
+/*
+ * Sticky to the scroll container's right edge (issue #260).
+ *
+ * The Select button is the one control this whole table exists to offer, and the scroller
+ * above (`.machine-picker-table-wrap`, `overflow-x: auto`) hides it exactly like every other
+ * column once the eight-column table is wider than the form — which it usually is, since the
+ * scroller was built for that (issue #113). Nothing signals there is more to scroll to, so a
+ * table that looks complete at its current scroll position (rows, prices, no visible way to
+ * pick one) reads as broken rather than as scrollable. Pinning this cell removes the need to
+ * discover the scroll at all: the control that matters is always on screen.
+ *
+ * Needs its own background — `position: sticky` does not clip what is behind it, so without an
+ * opaque one the columns still scrolling past would show through this one as they went. Lower
+ * specificity than `tr.selected td` above on purpose, so a selected row's highlight still wins
+ * here too.
+ */
+.machine-picker-actions {
+  position: sticky;
+  right: 0;
+  background: var(--rs-bg);
+}
+
 /* ── Modals ────────────────────────────────────────────────────────────────────────────
    Ported unchanged; `.modal-wide` is the port's name for what legacy spelled
    `.admin-form-modal` / `.install-preview-modal`. */
