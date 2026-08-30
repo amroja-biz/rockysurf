@@ -153,8 +153,7 @@ body[data-rs-skin='etched'] {
 
 [data-rs-skin='etched'] h1 { font-size: 1.9rem; letter-spacing: 0.01em; }
 [data-rs-skin='etched'] h2,
-[data-rs-skin='etched'] .shop-section-head h2,
-[data-rs-skin='etched'] .provider-group-heading {
+[data-rs-skin='etched'] .shop-section-head h2 {
   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.14em;
   color: var(--rs-beam); font-weight: 700;
 }
@@ -389,8 +388,7 @@ body[data-rs-skin='etched'] {
 /* Plate: its border and ground are inline; the hover from App.css still turns the rule gold. */
 [data-rs-skin='etched'] .plate.server-card:hover { border-color: var(--rs-beam) !important; }
 
-/* Swell under a cut label: the wave is the rule under the heading. */
-[data-rs-skin='etched'] .provider-group-heading + .swell { margin: -0.25rem 0 0.75rem; }
+/* Swell under a cut label: the wave is the rule under the tab strip. */
 [data-rs-skin='etched'] .provider-tabs + .swell { margin: -0.25rem 0 0.75rem; }
 
 /* The cloud tabs wear the cut-label face the provider heading wore, the selected one in the

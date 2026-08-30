@@ -837,33 +837,6 @@ button.destructive:hover:not(:disabled),
 /* ── Server cards ──────────────────────────────────────────────────────────────────────
    Ported from the legacy grid and card, which the port kept by name. */
 
-/* One heading per cloud, above that cloud's grid (issue #121). The dashboard listed every
-   box in a single grid and never said which provider any of them was on; the heading answers
-   that once for a group rather than putting a badge on every card, and it uses the section
-   vocabulary the rest of the app already has — a quiet rule under a heading — rather than
-   introducing tabs or colour-coding. */
-.provider-group + .provider-group {
-  margin-top: 1.75rem;
-}
-
-.provider-group-heading {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--rs-border-subtle);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--rs-heading);
-}
-
-.provider-group-count {
-  color: var(--rs-muted);
-  font-size: 0.8125rem;
-  font-weight: 400;
-}
-
 /* The clouds as tabs: the `.tablist`/`.tab` pair Settings and the packs page use, in the
    subheading's own size and weight, with the count beside the name saying the one thing worth
    knowing at a glance — green, something is running; yellow, boxes but none up; plain, none. */
