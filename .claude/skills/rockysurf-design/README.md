@@ -1,6 +1,6 @@
 <!--
   PACKAGED FOR A REPOSITORY. This is the Rocky Surf design system exported as an Agent Skill.
-  Two differences from the design-system project it came from:
+  Differences from the design-system project it came from:
 
   1. Every .jsx, .js and .html file carries a .txt suffix, so no build compiles them and no
      tooling treats them as pages. Strip the suffix to run or open one.
@@ -12,6 +12,11 @@
      packages/web on 2026-08-27 — the three layers, colour, type and the caps rule, light and
      edges, the header, buttons, the Beacon, notices, controls, voice, and a coverage table of
      which parts are live. Self-contained (no external assets); strip the suffix to open it.
+
+  4. One deviation from verbatim: components/etched/Tally.jsx.txt carries the
+     four-strokes-plus-cross fix (repo commit 040ae6d, matching the shipped etched.tsx fix
+     e85a6c8). The design-system project must pick this up before its next export — see
+     github.md, "Diverged upstream since this sync".
 
   Everything else — the guide below, the tokens, the CSS, the assets, the component contracts,
   the handoff — is verbatim.

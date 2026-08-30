@@ -45,6 +45,17 @@ upstream file, rather than this project's own `_ds/` copy alone.
   `.tab-marker`, `.wizard > header`.
 - Recreate settings, costs, admin tools and the wizard as screens.
 
+## Diverged upstream since this sync (2026-08-28)
+
+The vendored copy is no longer verbatim in one place. `components/etched/Tally.jsx.txt` was
+edited in the repo (commit `040ae6d`, owner-instructed) to carry the same fix the shipped
+`packages/web/src/components/etched.tsx` got in `e85a6c8`: a full group draws **four strokes
+plus the diagonal cross**, not five strokes plus the cross — the vertical-stroke loop is now
+`Array.from({ length: n === 5 ? 4 : n }, …)`. Drawing five verticals showed six marks per group.
+
+Carry this fix into the design-system project's Tally **before the next export**. An export cut
+from a Tally without it will silently revert `040ae6d` when vendored back into the repo.
+
 ## Screen map
 
 | Screen | Built from |
