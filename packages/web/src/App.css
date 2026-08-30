@@ -1394,6 +1394,22 @@ tbody tr:hover td {
   background: var(--rs-surface);
 }
 
+/* Money, wherever the costs page says it (#225). A figure exists to be compared with the one
+   above it, which needs the digits to line up: mono and tabular, right-aligned in a column, the
+   same treatment `.server-meta dd` already gives every number on a server card. The header
+   follows its column's alignment but stays in the body font — it is a label, not a number. */
+th.cost-figure,
+td.cost-figure {
+  text-align: right;
+}
+
+td.cost-figure,
+strong.cost-figure,
+span.cost-figure {
+  font-family: var(--rs-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .tool-name {
   color: var(--rs-heading);
   font-weight: 600;
