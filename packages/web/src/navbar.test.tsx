@@ -183,6 +183,34 @@ describe('the navbar is on every authenticated page', () => {
       expect(screen.getByRole('link', { name }).getAttribute('href')).toBe(href)
     }
   })
+
+  /**
+   * The design system's AppShell.jsx.txt sets aria-current='page' on the matching link; the
+   * port had nothing (#221). `/packs/:packId` and `/servers/:serverId` have no link of their
+   * own, so the section link claims the whole prefix — but `/servers/new` is its own link and
+   * must not fall under `/`'s prefix match.
+   */
+  it.each([
+    ['/', 'Servers'],
+    ['/servers/new', 'New'],
+    ['/servers/srv-abc', 'Servers'],
+    ['/packs', 'Surge Packs'],
+    ['/packs/some-pack', 'Surge Packs'],
+    ['/admin/tools', 'Tools'],
+  ] as const)('marks %s current on the %s link, and only that one (#221)', async (path, current) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <DashboardPage />
+      </MemoryRouter>,
+    )
+    await settle()
+
+    for (const name of ['Servers', 'New', 'Costs', 'Tools', 'Surge Packs', 'Settings', 'Help']) {
+      const attr = screen.getByRole('link', { name }).getAttribute('aria-current')
+      if (name === current) expect(attr).toBe('page')
+      else expect(attr).toBeNull()
+    }
+  })
 })
 
 describe('the list above covers what App.tsx actually routes to', () => {

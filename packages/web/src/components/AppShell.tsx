@@ -1,9 +1,25 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { useAuth } from '../contexts/AuthContext'
 import { useEvents } from '../contexts/EventsContext'
 import { GITHUB_URL } from '../lib/links'
 import { EtchedDefs } from './etched'
+
+/**
+ * Whether a nav link's `href` counts as "the current page" for `pathname`. `/servers/new` is
+ * its own link, so it is excluded from `/`'s otherwise-prefix match on `/servers/:id` (the
+ * detail page); `/packs/:packId` has no link of its own, so `/packs` claims that whole prefix
+ * (#221).
+ */
+function isCurrentNavLink(href: string, pathname: string): boolean {
+  if (href === '/') {
+    return pathname === '/' || (pathname.startsWith('/servers/') && pathname !== '/servers/new')
+  }
+  if (href === '/packs') {
+    return pathname === href || pathname.startsWith('/packs/')
+  }
+  return pathname === href
+}
 
 /**
  * The chrome every signed-in page sits inside: navigation, who you are, and whether the live
@@ -35,6 +51,7 @@ export function AppShell({
 }) {
   const { user, logout } = useAuth()
   const { connectionStatus } = useEvents()
+  const { pathname } = useLocation()
 
   return (
     <div className="app-shell">
@@ -50,17 +67,31 @@ export function AppShell({
           <Link to="/home" className="app-brand">
             <img src="/images/brand.png" alt="Rocky Surf" height={44} width={98} />
           </Link>
-          <Link to="/">Servers</Link>
-          <Link to="/servers/new">New</Link>
+          <Link to="/" aria-current={isCurrentNavLink('/', pathname) ? 'page' : undefined}>
+            Servers
+          </Link>
+          <Link to="/servers/new" aria-current={isCurrentNavLink('/servers/new', pathname) ? 'page' : undefined}>
+            New
+          </Link>
           {/* Costs had no link here at all, so the page existed and could only be reached by
               typing the URL — the other half of a page that was outside the shell. */}
-          <Link to="/costs">Costs</Link>
-          <Link to="/admin/tools">Tools</Link>
+          <Link to="/costs" aria-current={isCurrentNavLink('/costs', pathname) ? 'page' : undefined}>
+            Costs
+          </Link>
+          <Link to="/admin/tools" aria-current={isCurrentNavLink('/admin/tools', pathname) ? 'page' : undefined}>
+            Tools
+          </Link>
           {/* One link where there used to be two (rockysurf-4d8h, issue #51): the consolidated
               page at /packs is reachable by every signed-in user, not only admins. */}
-          <Link to="/packs">Surge Packs</Link>
-          <Link to="/settings">Settings</Link>
-          <Link to="/help">Help</Link>
+          <Link to="/packs" aria-current={isCurrentNavLink('/packs', pathname) ? 'page' : undefined}>
+            Surge Packs
+          </Link>
+          <Link to="/settings" aria-current={isCurrentNavLink('/settings', pathname) ? 'page' : undefined}>
+            Settings
+          </Link>
+          <Link to="/help" aria-current={isCurrentNavLink('/help', pathname) ? 'page' : undefined}>
+            Help
+          </Link>
         </nav>
         <div className="app-header-right">
           <a

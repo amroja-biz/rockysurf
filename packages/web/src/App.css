@@ -277,6 +277,14 @@ hr {
   text-decoration: none;
 }
 
+/* The current section (#221): the design system's AppShell.jsx.txt sets aria-current='page'
+   on the matching link. Same raised background as hover, so the marker reads as "this is the
+   one already open" rather than a second hover state. */
+.app-header nav a[aria-current='page'] {
+  color: var(--rs-heading);
+  background: var(--rs-raised);
+}
+
 .app-header-right {
   display: flex;
   align-items: center;

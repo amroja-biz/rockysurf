@@ -18,6 +18,9 @@ const search = vi.hoisted(() => ({ value: '' }))
 vi.mock('react-router', () => ({
   useNavigate: () => vi.fn(),
   useSearchParams: () => [new URLSearchParams(search.value), vi.fn()],
+  // AppShell reads this to mark the current nav link (#221); this page only ever renders at
+  // /servers/new.
+  useLocation: () => ({ pathname: '/servers/new' }),
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
 }))
 // The feed's subscription is exercised in the events tests; here it only has to exist, and
