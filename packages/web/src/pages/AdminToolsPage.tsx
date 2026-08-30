@@ -123,7 +123,7 @@ export function AdminToolsPage() {
                       data-testid={`file-backed-${tool.toolId}`}
                       title="Edit the YAML file; the boot sync rewrites this row from disk"
                     >
-                      file: {tool.sourceFile}
+                      file: <code>{tool.sourceFile}</code>
                     </span>
                   ) : (
                     <span>database</span>
@@ -132,7 +132,7 @@ export function AdminToolsPage() {
                 <td>
                   {isFileBacked(tool) ? (
                     <small data-testid={`readonly-hint-${tool.toolId}`}>
-                      Read-only — edit {tool.sourceFile} and restart
+                      Read-only — edit <code>{tool.sourceFile}</code> and restart
                     </small>
                   ) : (
                     <>
