@@ -535,6 +535,39 @@ export function SettingsPage() {
   const draw = (pattern: string) => drawn.add(pattern)
 
   /**
+   * One `<form>` per masked credential box, so Chrome stops reading this page as several forms
+   * crammed into one — and so it is right about what it is reading.
+   *
+   * WHAT CHROME SAYS, MEASURED rather than guessed (headless Chrome 152, DevTools issues and the
+   * password-manager's own console recommendations, over the markup this page actually renders):
+   *
+   *  - two or more `type=password` boxes owned by one form → "Multiple forms should be contained
+   *    in their own form elements; break up complex forms into ones that represent a single
+   *    action". That is the warning in the report, and it is the ONLY one this page draws.
+   *  - `autocomplete="new-password"` on those boxes does not remove it — and on a lone box it
+   *    trades it for "Password forms should have (optionally hidden) username fields", because
+   *    the hint promotes the box to a password form Chrome then wants a username for. A hidden
+   *    username input silences that in turn and adds a DevTools issue of its own
+   *    (`FormEmptyIdAndNameAttributesForInputError`), so the pair is worse than either half.
+   *  - one password box per form owner, `autocomplete="off"` kept: silent, no console
+   *    recommendation and no DevTools issue.
+   *
+   * SO THE FIX IS THE ONE CHROME ASKS FOR, WITHOUT MOVING ANYTHING. The `form` attribute names a
+   * box's form owner by id, which need not be an ancestor — so each token box is owned by its own
+   * empty form rendered beside the config form, while the DOM, the layout, the ONE FORM / ONE
+   * SAVE BUTTON design and the ten mounted panels are exactly as they were. It also states
+   * something already true: a token box is NOT part of the bulk save (`isTokenKey` keeps it out
+   * of `formEdits`), it is saved by its own card's button, and until now the only thing Enter in
+   * one of those boxes could do was submit the config form it never belonged to.
+   *
+   * A PLAIN ARRAY MUTATED DURING RENDER, on the ledger above's precedent and with the same
+   * lifetime: the boxes are BUILT before the owners are rendered — they are called, not mounted —
+   * and the array is thrown away with the render that filled it.
+   */
+  const passwordFormOwners: string[] = []
+  const passwordFormOwner = (key: string) => `password-form-${key}`
+
+  /**
    * The server's warnings, by the same dotted key the errors use (rockysurf-1z5q).
    *
    * They render like an error and mean something different: the save WENT THROUGH, and the file
@@ -779,6 +812,11 @@ export function SettingsPage() {
     const literal = acceptsLiteral(specPath)
     draw(specPath)
 
+    // Masked boxes get a form owner of their own (see `passwordFormOwners`). Only masked ones:
+    // an env-var-name box is plain text, holds no key material, and is part of the bulk save.
+    const owner = literal ? passwordFormOwner(key) : undefined
+    if (owner) passwordFormOwners.push(owner)
+
     const typed = edit && !cleared ? String(edit.value ?? '') : undefined
     const fromFile =
       !cleared && typed === undefined && !literal && state.state === 'reference'
@@ -798,7 +836,12 @@ export function SettingsPage() {
         id={key}
         type={literal ? 'password' : 'text'}
         spellCheck={false}
+        // `off` and not `new-password`: this is a personal access token for a forge, not a
+        // password for this site, and the hint that would invite a browser to remember it is
+        // also the hint that makes Chrome ask for a username field to file it under. Measured
+        // both ways — see the note on `passwordFormOwners`.
         autoComplete="off"
+        {...(owner ? { form: owner } : {})}
         disabled={cleared}
         value={shown}
         aria-describedby={helpId(specPath, key)}
@@ -1228,6 +1271,13 @@ export function SettingsPage() {
       envVarReference(draft.pat) === null
         ? ENV_VAR_ONLY
         : null
+    // The draft's box is masked for the same reason a saved card's is, so it takes a form owner
+    // on the same terms — recorded here because this box is built by hand rather than by
+    // `secretInput`.
+    const draftIsMasked = acceptsLiteral('github.tokens.*.pat')
+    const draftOwner = draftIsMasked ? passwordFormOwner('github.tokens.new.pat') : undefined
+    if (draftOwner) passwordFormOwners.push(draftOwner)
+
     const box = (field: 'scope' | 'host', label: string, placeholder: string, specPath: string) => {
       const id = `github.tokens.new.${field === 'scope' ? 'repo' : 'host'}`
       return (
@@ -1258,9 +1308,13 @@ export function SettingsPage() {
           {helpFor('github.tokens.*.pat', 'github.tokens.new.pat')}
           <input
             id="github.tokens.new.pat"
-            type={acceptsLiteral('github.tokens.*.pat') ? 'password' : 'text'}
+            type={draftIsMasked ? 'password' : 'text'}
             spellCheck={false}
+            // The same two rules the saved cards' boxes follow: `off` rather than a hint that
+            // invites a browser to file a forge token as a password for this site, and a form
+            // owner of its own while the box is masked (see `passwordFormOwners`).
             autoComplete="off"
+            {...(draftOwner ? { form: draftOwner } : {})}
             value={draft.pat}
             placeholder="github_pat_…"
             aria-describedby={helpId('github.tokens.*.pat', 'github.tokens.new.pat')}
@@ -1880,6 +1934,26 @@ export function SettingsPage() {
           </p>
         </footer>
       </form>
+
+      {/*
+        THE FORM OWNERS FOR THE MASKED BOXES ABOVE — see the note on `passwordFormOwners`.
+
+        Rendered here, AFTER the config form and never inside it: a form inside a form is not a
+        thing HTML has, and the whole point is that these own the token boxes instead of the
+        config form owning them. Empty, and they stay empty — the box is where it always was and
+        is associated with its owner by id, which is what the `form` attribute is for.
+
+        Nothing submits: a token card saves through its own button, so Enter in one of these boxes
+        now does nothing at all rather than submitting the config form it never belonged to.
+
+        `.password-form-owner` and not the `hidden` attribute: this stylesheet sets
+        `form { display: flex }`, an author rule that outranks the user agent's `[hidden]`, so a
+        hidden form would still be laid out — as a flex item, collecting the panel's 1.25rem gap
+        apiece.
+      */}
+      {passwordFormOwners.map((id) => (
+        <form key={id} id={id} className="password-form-owner" onSubmit={(e) => e.preventDefault()} />
+      ))}
 
       {pendingRemoval && (
         <ConfirmModal

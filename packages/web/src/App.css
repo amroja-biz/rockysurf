@@ -469,6 +469,18 @@ form {
   gap: 1.25rem;
 }
 
+/*
+ * A form that exists only to OWN a field, never to be seen (Settings' masked token boxes).
+ *
+ * `display: contents` rather than `display: none`, and rather than the `hidden` attribute: the
+ * element generates no box either way, but `hidden` is a user-agent rule that the `form` rule
+ * above outranks — a hidden form would still be laid out, and an empty flex item still collects
+ * its parent's gap. Nothing is inside these, so there is nothing for `contents` to hoist.
+ */
+.password-form-owner {
+  display: contents;
+}
+
 fieldset {
   border: none;
   display: flex;

@@ -362,6 +362,64 @@ async function onlySave(): Promise<(typeof saves)[number]> {
 
 /* --------------------------------------------------------------------------- the read */
 
+/**
+ * WHAT OWNS THE MASKED BOXES (issue #212, second half).
+ *
+ * Chrome reads a form holding two or more `type=password` boxes as several forms crammed into
+ * one and says so in DevTools — measured against this page's own markup in headless Chrome,
+ * along with the two alternatives that do not work: `autocomplete="new-password"` leaves the
+ * warning in place, and a hidden username field trades it for a DevTools issue of its own.
+ *
+ * One form owner per masked box is what silences it, and it also describes what was already
+ * true: a token box is not part of the bulk save. So what is asserted here is ownership, which
+ * is the whole of the fix — the config form must own no masked box, every masked box must be
+ * owned by a form that is not the config form, and the plain-text boxes must not have moved.
+ */
+describe('what owns the masked credential boxes', () => {
+  /** The one form the Save button at the foot of the page submits. */
+  const configForm = () => document.querySelector('.settings-layout')!.closest('form') as HTMLFormElement
+
+  const masked = (form: HTMLFormElement) =>
+    [...form.elements].filter((el) => (el as HTMLInputElement).type === 'password')
+
+  it('gives every masked token box a form of its own, outside the config form', async () => {
+    served.values.github = {
+      pat: { secret: true, state: 'set' },
+      tokens: [{ repo: 'acme/widgets', pat: { secret: true, state: 'set' } }],
+    }
+    renderPage()
+    await loaded()
+    addToken()
+
+    // Three masked boxes on this page — the instance-wide token, the scoped entry, the draft.
+    const boxes = ['github.pat', 'github.tokens.0.pat', 'github.tokens.new.pat'].map(control)
+    for (const box of boxes) {
+      expect(box.type).toBe('password')
+      const owner = document.getElementById(box.getAttribute('form') ?? '')
+      expect(owner?.tagName).toBe('FORM')
+      // Beside the config form, never inside it: a form inside a form is not a thing HTML has.
+      expect(owner).not.toBe(configForm())
+      expect(configForm().contains(owner)).toBe(false)
+      expect(box.form).toBe(owner)
+    }
+    // Each box has its OWN owner: two in one form is the condition Chrome complains about.
+    expect(new Set(boxes.map((b) => b.getAttribute('form'))).size).toBe(3)
+    expect(masked(configForm())).toEqual([])
+  })
+
+  it('leaves the plain-text boxes in the config form, which is what saves them', async () => {
+    renderPage()
+    await loaded()
+
+    // An env-var-name box holds no key material, is not masked, and IS part of the bulk save —
+    // moving it out of the form would be a change to how the page saves, not to a warning.
+    const box = control('providers.hetzner.token')
+    expect(box.type).toBe('text')
+    expect(box.getAttribute('form')).toBeNull()
+    expect(box.form).toBe(configForm())
+  })
+})
+
 describe('what the page shows', () => {
   it('shows a ${VAR} reference as the reference in the boxes that take one', async () => {
     served.values.providers = {
