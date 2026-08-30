@@ -82,12 +82,28 @@ function WarningCard({ warning }: { warning: StepReport }) {
 
 export function BootstrapReport({ report }: { report: Report }) {
   if (!report.failure && report.warnings.length === 0) return null
+  // The whole-setup install log (#168). Every step's output runs through the agent's own log,
+  // and core preserves its last ~200 lines with the report — push mode reads them over SSH
+  // before the box is released, callback mode's terminal failure POST carries them. The failed
+  // step's own log above can be a single line (`bash: line 32: HOME: unbound variable` was the
+  // whole of one); this is what the install was doing when it broke.
+  const agentLogTail = report.agentLogTail?.trim() ? report.agentLogTail : undefined
+  const agentLogLines = agentLogTail ? agentLogTail.trim().split('\n').length : 0
   return (
     <div className="bootstrap-report">
       {report.failure && <FailureCard failure={report.failure} />}
       {report.warnings.map((warning) => (
         <WarningCard key={warning.stepId} warning={warning} />
       ))}
+      {agentLogTail && (
+        <details className="log agent-log" data-testid="agent-log">
+          <summary>
+            Install log for the whole setup (last {agentLogLines} {agentLogLines === 1 ? 'line' : 'lines'})
+          </summary>
+          {/* aria-live off for the same reason as the step logs above. */}
+          <pre>{agentLogTail}</pre>
+        </details>
+      )}
     </div>
   )
 }

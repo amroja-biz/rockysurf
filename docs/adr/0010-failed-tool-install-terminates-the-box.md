@@ -62,6 +62,15 @@ and `provider.terminate()` on a BYO host is bookkeeping, so the rule is safe on 
    served by `present()` as `bootstrapReport`, and is rendered by the web `BootstrapReport` component
    on the creation screen and the detail page. `errorMessage` becomes the summary paragraph.
 
+   **Amended 2026-08-30 (#168):** the agent log's last lines (~200 — the whole install's
+   narrative, since every step's output runs through `agent.log`) were stored on the report but
+   never rendered, so a failed step whose own complete log was one line
+   (`bash: line 32: HOME: unbound variable`) showed the user exactly one line. The web
+   `BootstrapReport` component now renders them beneath the step cards as the whole-setup
+   install log, and callback mode's terminal failure POST carries them as `agentLog` (bounded
+   by the agent at 200 lines and 64 KiB) — once the machine is released, that POST is the only
+   copy core will ever get.
+
 4. **Repository clones are optional plan steps.** The resolver marks `repo:*` steps `optional`, the
    agent journals a failed step's own log tail (`steps[].logTail`), and a box whose plan completed
    with failed optional steps is promoted to `running` with those steps recorded as `warnings` on

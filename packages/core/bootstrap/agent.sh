@@ -154,14 +154,26 @@ report_progress() {
   local notice
   notice=$(jq -r '.notice // ""' <<<"$STATE")
 
+  # On the TERMINAL failure report, the last lines of the agent's own log ride along too
+  # (issue #168). agent.log carries the whole install's narrative — every step's output, the
+  # retries, the step that broke and everything before it — and for a failed tool install core
+  # is about to release the machine (ADR-0010), so in callback mode this POST is the only
+  # chance to preserve it. Bounded in lines AND bytes: a report core's body cap refuses is a
+  # failure core never records.
+  local agent_tail=''
+  if [ "$status" = failed ] && [ -f "$LOG_FILE" ]; then
+    agent_tail=$(tail -n 200 "$LOG_FILE" | tail -c 65536)
+  fi
+
   # Body on stdin, never in argv: a `-d` with the token in it is readable through `ps` by
   # every user on the box, including the unprivileged steps this agent is about to run.
   if ! jq -nc --arg s "$label" --arg sid "$step" --arg st "$status" --arg t "$CALLBACK_TOKEN" --arg r "$runid" \
-    --arg ss "$stepstatus" --arg lt "$tail_txt" --arg n "$notice" \
+    --arg ss "$stepstatus" --arg lt "$tail_txt" --arg n "$notice" --arg al "$agent_tail" \
     '{step:$s, stepId:$sid, status:$st, token:$t, runId:$r}
      + (if $ss != "" then {stepStatus:$ss} else {} end)
      + (if $lt != "" then {logTail:$lt} else {} end)
-     + (if $n != "" then {notice:$n} else {} end)' |
+     + (if $n != "" then {notice:$n} else {} end)
+     + (if $al != "" then {agentLog:$al} else {} end)' |
     curl -fsS --max-time 15 --retry 3 --retry-delay 2 --retry-connrefused \
       -H 'Content-Type: application/json' --data @- "$CALLBACK_URL" >/dev/null; then
     # Progress is telemetry, not control flow. A box that cannot reach core still finishes

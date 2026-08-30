@@ -2212,6 +2212,12 @@ p.hint {
   margin-top: 0.6rem;
 }
 
+/* The whole-setup install log (#168) sits under the cards, not inside one: it belongs to the
+   bootstrap, not to any single step. The flex gap above already spaces it. */
+.bootstrap-report .agent-log {
+  margin-top: 0;
+}
+
 .bootstrap-warnings-note {
   margin: 0.25rem 0 0.75rem;
   font-size: 0.875rem;

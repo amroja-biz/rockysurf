@@ -255,6 +255,35 @@ describe('POST /internal/servers/:id/status', () => {
     expect(report.failure?.logComplete).toBe(false)
   })
 
+  it('preserves the last lines of the whole install log when the agent sends them (#168)', async () => {
+    // Once the machine is released (ADR-0010) this POST is the only copy of agent.log core
+    // will ever see — and the failed step's own tail can be a single line.
+    const agentLog = [
+      '[10:00:00] === rockysurf bootstrap agent (arch=amd64, user=root, plan=/var/lib/rockysurf/plan.json) ===',
+      '[10:00:01] ==> tool:git (as root, arch=amd64)',
+      '[10:00:09] --- tool:git: done (reports=installing_tools)',
+      '[10:00:10] ==> tool:node (as root, arch=amd64)',
+      '[10:00:30] --- tool:node: FAILED (rc=1)',
+    ].join('\n')
+    const res = await post(`/internal/servers/${server.id}/status`, {
+      step: 'installing_tools',
+      stepId: 'tool:node',
+      status: 'failed',
+      stepStatus: 'failed',
+      logTail: 'bash: line 32: HOME: unbound variable',
+      agentLog,
+      token: callbackToken,
+      runId: RUN_ID,
+    })
+    expect(res.status).toBe(200)
+
+    const report = getBootstrapReport<BootstrapReport>(getServer(opened.db, server.id)!)!
+    expect(report.agentLogTail).toBe(agentLog)
+    // The agent log is also the only place the exit code lives; the report reads it out of the
+    // `FAILED (rc=N)` line the same way push mode's does.
+    expect(report.failure?.exitCode).toBe(1)
+  })
+
   it('records a failed optional step as a warning and lets the plan go on', async () => {
     const res = await post(`/internal/servers/${server.id}/status`, {
       step: 'cloning_repos',

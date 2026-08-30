@@ -78,6 +78,14 @@ const statusBody = z.strictObject({
   stepStatus: z.enum(['pending', 'running', 'done', 'failed']).optional(),
   /** The failed step's log tail, from the agent's journal. Bounded by the agent at 60 lines. */
   logTail: z.string().max(64 * 1024).optional(),
+  /**
+   * The agent's own log, last lines, on a TERMINAL `failed` report only (#168). This is the
+   * whole install's narrative — every step's output runs through `agent.log` — and once a
+   * failed tool install's machine is released (ADR-0010) this POST is the only copy callback
+   * mode ever gets. Bounded by the agent at 200 lines and 64 KiB; the cap here matches, because
+   * a report refused whole is a failure core never records.
+   */
+  agentLog: z.string().max(64 * 1024).optional(),
   publicIp: z.string().min(1).optional(),
   /** Why the current step is waiting, in one line (#129). Shown under the active step. */
   // Room for the retry notice (#205): a tool name, a mirror URL that can run to 120
@@ -153,8 +161,14 @@ export function createInternalRoutes(deps: InternalRoutesDeps): Hono {
           failure: explainStep({
             stepId: body.stepId,
             captured: { log: body.logTail ?? '', complete: false },
+            // The agent log also carries the step's `FAILED (rc=N)` line — the only place the
+            // exit code lives — so the report gains it the same way push mode's does.
+            ...(body.agentLog ? { agentLog: body.agentLog } : {}),
             labels: labelSourcesFor(db, updated),
           }),
+          // Preserved with the server record (#168): the last ~200 lines of the whole install
+          // log, not just the one failed step's tail.
+          ...(body.agentLog ? { agentLogTail: body.agentLog } : {}),
         },
       )
       return success(c, { accepted: true, step: body.step, status: failed.status })

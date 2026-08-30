@@ -478,6 +478,13 @@ Normative points specific to callback:
   `status`) and, when that step failed, its `logTail` (ADR-0010). Core builds the failure report
   from these; without them a callback-mode failure has no evidence and a failed optional step is
   invisible.
+- A terminal `failed` report SHOULD also carry `agentLog`: the agent log's last ~200 lines,
+  bounded to 64 KiB (#168). Every step's output runs through `agent.log`, so this is the whole
+  install's narrative — what ran, what it printed, what broke — where the failed step's own
+  `logTail` can be a single line. For a failed tool install the machine is about to be released
+  (ADR-0010) and this report is the only copy core will ever get; core preserves it on the
+  server row (`bootstrapReport.agentLogTail`), where the server page shows it as the
+  whole-setup install log.
 - Reports SHOULD carry `notice` whenever the journal does (#129, #205): the one line the
   timeline shows under the active step while it waits, or while it has written nothing for a
   minute or more. A report without one clears it.
@@ -647,7 +654,7 @@ These are requirements, not recommendations. Each was learned from something tha
 
 | Situation | Agent | Core |
 |---|---|---|
-| Required step fails | records `failed`, attaches `logTail` (plan-level and on the step), stops the plan, exits 1 | reads the step's whole log off the box (push) or takes the agent's tail (callback), builds the `BootstrapReport`, fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
+| Required step fails | records `failed`, attaches `logTail` (plan-level and on the step) and, in callback mode, the agent log's last ~200 lines (`agentLog`, #168), stops the plan, exits 1 | reads the step's whole log and the agent log's last ~200 lines off the box (push) or takes the agent's tails (callback), builds the `BootstrapReport` — the whole install log preserved on the row as `agentLogTail` (#168) — fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
 | Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
 | Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **the apt retry standard, ADR-0012**: the step gets a second and last attempt — **two attempts per step, no more, and every step has its own budget**. Before the retry the agent rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one — that swap happens **at most once per bootstrap**, since afterwards there is nothing left to swap — refreshes the lists, and re-runs the step and its check. When the sources already name the global mirror there is nothing to swap: the failure is then an archive index out of step with its pool (a `404` on one named `.deb`, #129, #188) or the global mirror itself sick, and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower per apt step that flaked on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead. On the second failure the report names the URL(s) apt could not fetch, says the mirror is at fault rather than the pack, and tells the user to test the URL and create the server again once it serves (`bootstrap/failure-report.ts`) |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
