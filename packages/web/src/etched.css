@@ -130,6 +130,11 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] kbd,
 [data-rs-skin='etched'] samp { border-radius: 0; }
 
+/* The checkbox App.css draws (issue #215) squares off with everything else. The radio does
+   NOT: round is what tells a one-of-these apart from an any-of-these, and an engraved plate
+   has corners, not a rule against circles. */
+[data-rs-skin='etched'] input[type='checkbox'] { border-radius: 0; }
+
 [data-rs-skin='etched'] .pack-icon,
 [data-rs-skin='etched'] .pack-monogram { box-shadow: inset 0 0 0 1px var(--rs-ink-hair); }
 

@@ -513,10 +513,69 @@ textarea {
   font-size: 0.8125rem;
 }
 
+/* `accent-color` recolours the CHECKED fill and nothing else, so every unchecked box — the
+   five provider "Enabled" toggles, the spend cap, the MCP scopes — stayed the browser's own
+   light chrome: a white box on a dark page, the anti-pattern the Name field above was fixed
+   for (issue #215). Drawn here instead, out of the same ground, hairline and radius every
+   other field wears, so an empty control reads as an empty control rather than as a hole. */
 input[type='checkbox'],
 input[type='radio'] {
-  width: auto;
-  accent-color: var(--rs-green);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  /* Beside a label that wraps, the box must not be squeezed by the text or stretched by it. */
+  flex: none;
+  margin: 0;
+  background-color: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: 3px;
+  cursor: pointer;
+  /* The tick is a background image rather than a `::before`: an `<input>` is replaced content
+     and its pseudo-elements are not dependable across engines. */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0.75rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* A radio is round in every system there is; squaring it would make it a checkbox that
+   behaves differently, which is the one thing the shape is there to prevent. */
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+/* Green: the checked box is the user having chosen something, which is the same meaning
+   `accent-color` was asking the browser for. */
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  background-color: var(--rs-green);
+  border-color: var(--rs-green);
+}
+
+/* The tick is cut out of the fill, so its colour is the page's own dark rather than a token —
+   a data URI cannot read a custom property, and both skins' grounds are near-black. */
+input[type='checkbox']:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%230d1117' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5 6.5 11.5 12.5 5'/%3E%3C/svg%3E");
+}
+
+/* The dot, as a ring of ground bitten out from the edge — one declaration, no second box. */
+input[type='radio']:checked {
+  box-shadow: inset 0 0 0 3px var(--rs-bg);
+}
+
+/* Never removed, only moved outward: the box is small, and a border-colour change alone is
+   not enough to find it with the keyboard. */
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--rs-link);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Legacy `.file-input`: the control itself cannot be restyled, but its button can, and left
