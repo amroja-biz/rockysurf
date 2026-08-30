@@ -4,14 +4,17 @@ import { useSearchParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
+import { MachineTypePicker } from '../components/MachineTypePicker'
 import { Tabs } from '../components/Tabs'
 import {
   ApiError,
   disconnectGithub,
   getGithubConnection,
   getSettings,
+  listProviders,
   saveSettings,
   type GithubConnection,
+  type ProviderInfo,
   type SecretView,
   type SettingsChange,
   type SettingsField,
@@ -101,6 +104,29 @@ import {
  *     to it, and a save the server rejects switches to the tab holding the first bad field.
  * ──────────────────────────────────────────────────────────────────────────────────────
  *
+ * ── THE SAVED TYPES ARE CHOSEN FROM THE CATALOGUE, NOT TYPED (issue #212) ─────────────
+ * `preferences.tiers.<cloud>.<size>` used to be a free-text box: a cloud's own machine-type
+ * vocabulary, typed from memory, in the one place on this installation where a typo is
+ * REMEMBERED rather than corrected on the next screen. Each of those boxes now carries the same
+ * filterable catalogue the New Server page offers — the same component (`MachineTypePicker`),
+ * over the same `/providers` rows, with the same "Available only" filter and the same per-row
+ * refusals — and selecting a row fills the box.
+ *
+ * THREE THINGS IT DOES NOT CHANGE, each of them load-bearing:
+ *
+ *  - **The box stays.** Blank means "the cheapest type that meets the floor", which has to
+ *    remain typable and clearable; a catalogue is not always there to pick from (a cloud that is
+ *    switched off in this very file has no provider loaded, and `/providers` is advisory here);
+ *    and a saved type is the operator's answer, not a second guess at it, so a type this
+ *    installation cannot currently offer is still a legitimate thing to have written down.
+ *  - **Nothing is hard-coded per cloud.** The picker is offered to any field whose path has the
+ *    SHAPE `preferences.tiers.<id>.<size>` when a provider with that id is loaded, so a cloud
+ *    added to core's table (`settings/fields.ts`) gets one with no edit here — the property
+ *    issue #124 built and rule 1 above protects.
+ *  - **One form, one Save button.** Selecting a row records a pending edit like any keystroke;
+ *    it saves with everything else, and the tab wears the same unsaved dot.
+ * ──────────────────────────────────────────────────────────────────────────────────────
+ *
  * ── WHY THE CONTROLS ARE FUNCTIONS AND NOT COMPONENTS ─────────────────────────────────
  * `textField(...)` is called; it is not `<TextField/>`. A component DECLARED inside this
  * function is a new component type on every render, so React unmounts and remounts its subtree
@@ -135,6 +161,19 @@ function sectionOf(path: string, ids: readonly string[]): string | undefined {
     if (best === undefined || id.length > best.length) best = id
   }
   return best
+}
+
+/**
+ * `preferences.tiers.aws.small` → `aws`, and anything else → undefined (issue #212).
+ *
+ * THE SHAPE, NOT A LIST OF CLOUDS. Core generates these fields from one table, so a cloud added
+ * there appears here with no edit to this file (issue #124) — a hand-written case per cloud would
+ * give that property straight back. What the id has to match is a provider this installation
+ * actually loaded, which is a fact about the running process rather than anything written here.
+ */
+function tierCloudOf(path: string): string | undefined {
+  const parts = path.split('.')
+  return parts.length === 4 && parts[0] === 'preferences' && parts[1] === 'tiers' ? parts[2] : undefined
 }
 
 /**
@@ -247,6 +286,19 @@ export function SettingsPage() {
     confirm?: () => void | Promise<void>
   } | null>(null)
   const [connection, setConnection] = useState<GithubConnection | null>(null)
+  /**
+   * The loaded clouds and what each of them sells, for the saved-type pickers (issue #212).
+   *
+   * ADVISORY, like the GitHub connection above and for the same reason: this page's job is
+   * editing the configuration file, and it can still do that with no catalogue at all — the
+   * saved-type boxes simply stay the free-text boxes they have always been. So a failure here
+   * leaves the list empty and nothing else on the page notices.
+   *
+   * It is the SAME `/providers` response the New Server page reads, allowlist and all, rather
+   * than a settings-only endpoint: a type this picker offers has to be a type that page would
+   * resolve to, and two sources for one catalogue is how they come to disagree.
+   */
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [draft, setDraft] = useState<TokenDraft | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
   /**
@@ -292,10 +344,20 @@ export function SettingsPage() {
     }
   }, [])
 
+  /** The catalogues, read once. A cloud that cannot be reached simply offers no list (#212). */
+  const loadProviders = useCallback(async () => {
+    try {
+      setProviders(await listProviders())
+    } catch {
+      setProviders([])
+    }
+  }, [])
+
   useEffect(() => {
     void load()
     void loadConnection()
-  }, [load, loadConnection])
+    void loadProviders()
+  }, [load, loadConnection, loadProviders])
 
   const specs = useMemo(() => {
     const map = new Map<string, SettingsField>()
@@ -550,34 +612,112 @@ export function SettingsPage() {
     )
   }
 
-  function textField(path: (string | number)[], label: string, type: 'text' | 'number' = 'text'): ReactNode {
-    const key = keyOf(path)
-    const edit = edits[key]
+  /** What a text box for this path is showing right now: the pending edit, else the file. */
+  function shownText(path: (string | number)[]): string {
+    const edit = edits[keyOf(path)]
     const current = valueAt(values, path)
+    if (edit) return edit.unset ? '' : String(edit.value ?? '')
+    return current === undefined || current === null ? '' : String(current)
+  }
+
+  /**
+   * `extra` is drawn under the box, inside the same form group.
+   *
+   * The one caller that passes anything is the saved-type field (issue #212), whose catalogue
+   * picker belongs to its box rather than beside it: the two controls edit the same setting, and
+   * the label, the help, the warning and the save error above and below them are that setting's.
+   */
+  function textField(
+    path: (string | number)[],
+    label: string,
+    type: 'text' | 'number' = 'text',
+    extra?: ReactNode,
+  ): ReactNode {
+    const key = keyOf(path)
     const fallback = valueAt(defaults, path)
-    const shown = edit ? (edit.unset ? '' : String(edit.value ?? '')) : current === undefined || current === null ? '' : String(current)
+    const shown = shownText(path)
 
     return wrap(
       path,
       label,
-      <input
-        id={key}
-        type={type}
-        value={shown}
-        aria-describedby={helpId(patternOf(path), key)}
-        placeholder={fallback === undefined ? '' : `default: ${String(fallback)}`}
-        onChange={(e) => {
-          const raw = e.target.value
-          // An emptied box says nothing about the field, which is how the file gets back to the
-          // default rather than to an empty string.
-          if (raw === '') return setEdit(path, { path, unset: true })
-          const asNumber = Number(raw)
-          setEdit(path, {
-            path,
-            value: type === 'number' && Number.isFinite(asNumber) ? asNumber : raw,
-          })
-        }}
-      />,
+      <>
+        <input
+          id={key}
+          type={type}
+          value={shown}
+          aria-describedby={helpId(patternOf(path), key)}
+          placeholder={fallback === undefined ? '' : `default: ${String(fallback)}`}
+          onChange={(e) => {
+            const raw = e.target.value
+            // An emptied box says nothing about the field, which is how the file gets back to the
+            // default rather than to an empty string.
+            if (raw === '') return setEdit(path, { path, unset: true })
+            const asNumber = Number(raw)
+            setEdit(path, {
+              path,
+              value: type === 'number' && Number.isFinite(asNumber) ? asNumber : raw,
+            })
+          }}
+        />
+        {extra}
+      </>,
+    )
+  }
+
+  /**
+   * A saved type for one (cloud, size), with that cloud's own catalogue under it (issue #212).
+   *
+   * THE BOX IS STILL THERE and still does everything it did — it is the picker that is new, and
+   * it writes into the same pending edit a keystroke would. Emptying the box, or selecting the
+   * already-selected row, unsets the field: blank is the default (the cheapest type that meets
+   * the size's floor) and it has to stay reachable in one move.
+   *
+   * NO CATALOGUE, NO PICKER — and no apology for one either. A cloud switched off in this very
+   * file loads no provider, `/providers` is advisory here, and either way the answer is the box
+   * this field has always had, which can still hold a type this installation cannot offer today.
+   * That is deliberate: a saved type is the operator's answer, not a second guess at it, and core
+   * already says which and why when it has to fall back.
+   */
+  function tierField(path: (string | number)[], label: string, cloud: string): ReactNode {
+    const catalogue = providers.find((p) => p.id === cloud)
+    const offerings = catalogue?.offerings ?? []
+    if (!catalogue || offerings.length === 0) return textField(path, label)
+
+    const saved = shownText(path)
+    const known = offerings.some((o) => o.id === saved)
+    return textField(
+      path,
+      label,
+      'text',
+      <>
+        <MachineTypePicker
+          instanceId={keyOf(path)}
+          offerings={offerings}
+          selectedId={saved === '' ? null : saved}
+          onSelect={(offering) => setEdit(path, { path, value: offering.id })}
+          onClear={() => setEdit(path, { path, unset: true })}
+          // The saved type is never hidden by "Available only": it is the row this operator came
+          // to look at, and its own unavailable reason is why they came.
+          preferredIds={new Set(saved === '' ? [] : [saved])}
+          summary={`Choose from ${catalogue.displayName}`}
+          hint={
+            'The catalogue the New Server page resolves against, narrowed by this installation’s own ' +
+            'allowlist. Selecting a type fills the box above; selecting it again empties the box, which ' +
+            'is the default — the cheapest type that meets this size’s floor.'
+          }
+        />
+        {/* Not an error, and not a refusal: the file may name a type from another region, one
+            outside `providers.<cloud>.sizes`, or one no longer sold. Core falls back to the
+            floor and says so on the New Server page (issue #124); this is where somebody
+            wondering why the list shows no selection finds that out. */}
+        {saved !== '' && !known && (
+          <p className="hint" data-tier-unlisted={keyOf(path)}>
+            {catalogue.displayName} is not currently offering {saved} to this installation, so it is
+            not in the list above. It is kept as written — a server asking for this size falls back
+            to the cheapest type that meets the floor until it can be bought again.
+          </p>
+        )}
+      </>,
     )
   }
 
@@ -801,6 +941,12 @@ export function SettingsPage() {
     const path = spec.path.split('.')
     const label = humanize(path[path.length - 1] ?? spec.path)
     if (!spec.writable) return readOnlyField(path, label)
+    // A saved type is a string field with a catalogue behind it (issue #212). Recognised by the
+    // SHAPE of its path rather than named cloud by cloud, so this stays a rule about a kind of
+    // setting — which is what a fallback renderer is — instead of becoming the hand-written
+    // block per cloud that issue #124 exists to avoid.
+    const cloud = spec.kind === 'string' ? tierCloudOf(spec.path) : undefined
+    if (cloud !== undefined) return tierField(path, label, cloud)
     switch (spec.kind) {
       case 'boolean':
         return boolField(path, label)

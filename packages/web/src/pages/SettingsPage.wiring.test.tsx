@@ -204,6 +204,14 @@ let nextSaveFailure: { status: number; body: unknown } | null
 /** What the next GET answers with, when the read itself is meant to fail. */
 let getFailure: { status: number; body: unknown } | null
 let served: SettingsView
+/**
+ * What `/api/v1/providers` answers with — the catalogues behind the saved-type pickers (#212).
+ *
+ * Empty by default, which is the state every other test in this file runs in and the state a
+ * real installation is in whenever the clouds cannot be read: the saved-type boxes are then the
+ * free-text boxes they have always been, and nothing else on the page changes.
+ */
+let catalogues: unknown[]
 
 beforeEach(async () => {
   saves = []
@@ -212,6 +220,7 @@ beforeEach(async () => {
   served = structuredClone(VIEW)
   githubConnection = { ...CONNECTION_DISCONNECTED }
   githubDisconnects = 0
+  catalogues = []
   setAuthToken('test-token')
 
   stub = await startStubServer((req, res) => {
@@ -227,6 +236,12 @@ beforeEach(async () => {
       }
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(githubConnection))
+      return
+    }
+
+    if (url.pathname === '/api/v1/providers') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(catalogues))
       return
     }
 
@@ -1642,6 +1657,167 @@ describe('finding your way around the page', () => {
     expect((await onlySave()).changes).toEqual([
       { path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.medium' },
     ])
+  })
+
+  /* ------------------------------------------- the saved types are picked, not typed (#212) */
+
+  /**
+   * THE CATALOGUE UNDER EACH SAVED-TYPE BOX (issue #212).
+   *
+   * These boxes were free text over a vocabulary nobody remembers — `Standard_B2ps_v2` typed by
+   * hand into the one place a typo is kept rather than corrected on the next screen. What is
+   * asserted here is the wiring, not the table: the table is `MachineTypePicker`, tested against
+   * the New Server page, and the claims that belong to THIS page are that a picked row lands in
+   * the box, that the save names the path the configuration file has, that picking the saved row
+   * again gets back to blank (the default) in one move, and that a cloud with no catalogue keeps
+   * the box it has always had.
+   */
+  /** The sections and fields core generates for `preferences.tiers`, for the tests below. */
+  function servePreferences(clouds: readonly string[] = ['aws']): void {
+    served.sections.push({
+      id: 'preferences',
+      title: 'Preferences',
+      help: 'Your own answers, remembered, and re-read while Rocky Surf is running.',
+    })
+    for (const cloud of clouds) {
+      served.sections.push({
+        id: `preferences.tiers.${cloud}`,
+        title: cloud.toUpperCase(),
+        help: `Which machine type each size means on ${cloud}, blank for the cheapest that fits.`,
+      })
+      for (const size of ['small', 'medium', 'large']) {
+        served.fields.push({
+          path: `preferences.tiers.${cloud}.${size}`,
+          kind: 'string',
+          writable: true,
+          help: `The type to use whenever you ask ${cloud} for a ${size} box. Leave it blank for the default.`,
+        })
+      }
+    }
+  }
+
+  /** One row of a cloud's catalogue, as `/providers` puts it on the wire. */
+  const offering = (id: string, available = true) => ({
+    id,
+    cpu: 2,
+    memoryGb: 4,
+    arch: 'arm64',
+    hourly: null,
+    available,
+    region: 'us-east-1',
+  })
+
+  /** One cloud, as `/providers` puts it on the wire. */
+  const catalogue = (id: string, displayName: string, ids: readonly string[]) => ({
+    id,
+    displayName,
+    capabilities: {
+      stop: true,
+      ipStableAcrossStop: false,
+      canInjectHostKeys: false,
+      userDataMaxBytes: 16384,
+      generatesUserData: true,
+    },
+    offerings: ids.map((each) => offering(each)),
+  })
+
+  const fieldGroup = (path: string) => document.querySelector(`[data-field="${path}"]`) as HTMLElement
+
+  /** Open the catalogue under one saved-type box, once it has arrived. */
+  async function openCatalogue(path: string): Promise<HTMLElement> {
+    const group = await waitFor(() => {
+      const found = fieldGroup(path)
+      expect(found.querySelector('details')).toBeTruthy()
+      return found
+    })
+    fireEvent.click(within(group).getByRole('button', { name: /^Choose from/ }))
+    // A `<details>` fires its `toggle` event as a queued task rather than during the click, so
+    // the rows are one turn of the loop away from the click that asked for them.
+    await waitFor(() => expect(within(group).queryByRole('table')).toBeTruthy())
+    return group
+  }
+
+  /** Click Select (or Selected) on one row of an open catalogue. */
+  const pick = (group: HTMLElement, id: string) =>
+    fireEvent.click(within(within(group).getByRole('row', { name: new RegExp(id) })).getByRole('button'))
+
+  it('offers the cloud’s own catalogue under a saved-type box, and saves what was picked', async () => {
+    servePreferences()
+    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+
+    renderPage()
+    await loaded()
+    open('Preferences')
+    const group = await openCatalogue('preferences.tiers.aws.small')
+
+    pick(group, 't4g.large')
+
+    // The box IS the field: a picked row fills it, and the one Save button at the foot of the
+    // page sends it like any other pending edit.
+    expect(control('preferences.tiers.aws.small').value).toBe('t4g.large')
+    save()
+    expect((await onlySave()).changes).toEqual([
+      { path: ['preferences', 'tiers', 'aws', 'small'], value: 't4g.large' },
+    ])
+  })
+
+  it('gets back to blank — the cheapest that meets the floor — in one move', async () => {
+    servePreferences()
+    served.values.preferences = { tiers: { aws: { small: 't4g.large' } } }
+    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+
+    renderPage()
+    await loaded()
+    open('Preferences')
+    const group = await openCatalogue('preferences.tiers.aws.small')
+
+    // The saved row reads as the selected one; clicking it again is how the preference is
+    // dropped. Blank means the default, so the change on the wire is an `unset` rather than an
+    // empty string — which is what would make the file hold "" as a machine type.
+    pick(group, 't4g.large')
+
+    expect(control('preferences.tiers.aws.small').value).toBe('')
+    save()
+    expect((await onlySave()).changes).toEqual([{ path: ['preferences', 'tiers', 'aws', 'small'], unset: true }])
+  })
+
+  it('keeps the free-text box for a cloud this installation has no catalogue for', async () => {
+    servePreferences(['aws', 'gcp'])
+    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small'])]
+
+    renderPage()
+    await loaded()
+    open('Preferences')
+    await openCatalogue('preferences.tiers.aws.small')
+
+    // GCP is in the file's inventory and not in this installation's providers — switched off,
+    // or unreadable. The box still works, because a saved type is the operator's answer and a
+    // missing catalogue is not a reason to stop them writing one down.
+    expect(fieldGroup('preferences.tiers.gcp.small').querySelector('details')).toBeNull()
+    fireEvent.change(control('preferences.tiers.gcp.small'), { target: { value: 'c4a-standard-4' } })
+    save()
+    expect((await onlySave()).changes).toEqual([
+      { path: ['preferences', 'tiers', 'gcp', 'small'], value: 'c4a-standard-4' },
+    ])
+  })
+
+  it('says so when the saved type is not in the catalogue, rather than showing nothing selected', async () => {
+    servePreferences()
+    served.values.preferences = { tiers: { aws: { small: 'm7i.metal-48xl' } } }
+    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+
+    renderPage()
+    await loaded()
+    open('Preferences')
+
+    const group = await waitFor(() => {
+      const found = fieldGroup('preferences.tiers.aws.small')
+      expect(found.querySelector('[data-tier-unlisted]')).toBeTruthy()
+      return found
+    })
+    // Kept as written, and said in words: not an error, and not a silent empty list.
+    expect(control('preferences.tiers.aws.small').value).toBe('m7i.metal-48xl')
+    expect(group.textContent).toContain('is not currently offering m7i.metal-48xl')
   })
 
   /** A deep link straight to the Preferences tab — the link the New Server page points at. */
