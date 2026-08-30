@@ -2456,6 +2456,36 @@ p.hint {
   max-width: 62ch;
 }
 
+/* A footgun named next to its control, on its own line (issue #245). The create form used to
+   bury "stored and sent to the box in plain text" as sentence four of a paragraph of five, which
+   is where a person typing a token into a web page will not read it. Yellow, the colour of a
+   caution that is not yet a failure: nothing has gone wrong and nothing will be refused — the
+   same reading `.settings-warning` already carries beside a field. */
+.field-caveat {
+  color: var(--rs-yellow);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 62ch;
+}
+
+/* The semantics of a field, one click away (issue #245): a section leads with `.field-help`'s one
+   line of purpose, and everything a reference needs — when it runs, what it gets, what the limits
+   are — sits behind this. Deliberately the same `<details>` the machine-type picker already uses,
+   so a form has ONE kind of "more about this", not two. */
+.field-details > ul {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  max-width: 62ch;
+  margin: 0.375rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.field-details > ul > li + li {
+  margin-top: 0.25rem;
+}
+
 .settings-section-header {
   display: flex;
   flex-direction: column;

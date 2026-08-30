@@ -1601,18 +1601,35 @@ export function CreateServerPage() {
           <label className="form-label" htmlFor="repositories">
             Repositories
           </label>
-          {/* The private-repo sentence is here because the form is where the mistake is made:
-              a private URL is accepted, provisioning starts, and the clone fails minutes
-              later on the box with nothing on this page having hinted why (rockysurf-f1z1).
-              It names `github.pat` in the config file, which is the one place that populates
-              the token — not an environment variable core reads, because it reads none
-              (rockysurf-yzae wired the config key through; the box end was already done). */}
-          <p className="hint">
-            One git URL per line, or none at all. They are cloned onto the box during setup.
-            {requiresRepos && ' This pack expects at least one.'} Public URLs need no credentials;
-            private repositories need <code>github.pat</code> set in{' '}
-            <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+          {/* ONE LINE OF PURPOSE (issue #245). What the field is for, and nothing else; the
+              credential rules that used to follow it are in the disclosure below. */}
+          <p className="field-help">
+            One git URL per line. They are cloned onto the box during setup.
+            {requiresRepos && ' This pack expects at least one.'}
           </p>
+          {/* The private-repo rules are still ON THIS PAGE, because the form is where the
+              mistake is made: a private URL is accepted, provisioning starts, and the clone
+              fails minutes later on the box with nothing here having hinted why
+              (rockysurf-f1z1). Behind a disclosure rather than in the lead, because the live
+              resolution list under the textarea answers the question per URL as it is typed
+              (rockysurf-18lq) — it names the token, or refuses and links to Settings — so this
+              is the reference, not the warning.
+
+              It names `github.pat` in the config file, which is the one place that populates the
+              token — not an environment variable core reads, because it reads none
+              (rockysurf-yzae wired the config key through; the box end was already done). */}
+          <details className="field-details">
+            <summary role="button">How they are cloned, and what a private one needs</summary>
+            <ul>
+              <li>Cloned over HTTPS during setup, into the box&apos;s home directory.</li>
+              <li>Public URLs need no credentials.</li>
+              <li>
+                A private repository needs <code>github.pat</code> set in{' '}
+                <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+              </li>
+              <li>Every line below says which credential it will actually open with, as you type.</li>
+            </ul>
+          </details>
           {/* Above the field rather than beside it, because the order is the workflow: pick what
               is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
           <RepositoryPicker scopes={scopes} present={repositories} onInsert={insertRepository} />
@@ -1662,14 +1679,29 @@ export function CreateServerPage() {
           <label className="form-label" htmlFor="environment">
             Environment <span className="hint">optional</span>
           </label>
-          {/* Where it goes, who can read it, and how to mark a line secret — the three things a
-              person needs before typing a token into a box on a web page. */}
-          <p className="hint">
-            One <code>KEY=value</code> per line. Every step of this box&apos;s setup, and your startup script above,
-            can read <code>$KEY</code>. Start a line with <code>{SECRET_LINE_PREFIX}</code> to have the value stored
-            encrypted and shown back by nothing — keep your own copy. Lines without it are stored in the clear and
-            shown on the server&apos;s page. Values are single-line and go nowhere near the install plan.
+          {/* ONE LINE OF PURPOSE, THEN THE CAVEAT ON ITS OWN LINE (issue #245). The paragraph
+              this replaces carried five facts, and the one a person must read before typing a
+              token into a box on a web page — that an unmarked line is kept in the clear — was
+              the fourth of them. */}
+          <p className="field-help">
+            One <code>KEY=value</code> per line — your own values for this box, readable by every step of its setup.
           </p>
+          <p className="field-caveat">
+            Stored and shown in the clear unless the line starts with <code>{SECRET_LINE_PREFIX}</code>, which
+            stores it encrypted — keep your own copy, because it cannot be read back.
+          </p>
+          <details className="field-details">
+            <summary role="button">What the names and values may be</summary>
+            <ul>
+              <li>
+                Names are <code>UPPER_SNAKE_CASE</code>. The names Rocky Surf exports itself are refused, and so
+                is one the selected pack already asks for.
+              </li>
+              <li>Values are a single line each, and are never written into the install plan.</li>
+              <li>Plain lines are shown on the server&apos;s page afterwards, so you can read back what a box was built with.</li>
+              <li>There is no way to change any of this on a running box.</li>
+            </ul>
+          </details>
           <textarea
             id="environment"
             rows={4}
@@ -1687,16 +1719,35 @@ export function CreateServerPage() {
           <label className="form-label" htmlFor="userScript">
             Startup script <span className="hint">optional</span>
           </label>
-          {/* The contract, where the decision is made — the same reason the private-repo
-              sentence sits under Repositories. Four facts a person needs before they type: when
-              it runs, what it can see, what happens if it fails, and that this is not a secret
-              store. */}
-          <p className="hint">
-            Run once on this box, after the pack&apos;s tools are installed and your repositories are cloned. It gets{' '}
-            <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does. If it fails the
-            server still comes up and the whole log is kept as a warning. It is stored and sent to the box in plain
-            text, so put passwords and tokens in Environment above and read <code>$KEY</code> here.
+          {/* The contract stays ON THIS PAGE — this is where the decision is made, and the same
+              reason the private-repo rules sit under Repositories — but it is five facts, and a
+              paragraph of five buries the one that matters most. So: one line of purpose, the
+              plain-text caveat on its own line, and the semantics behind the disclosure
+              (issue #245). */}
+          <p className="field-help">A shell script this box runs once, near the end of setup.</p>
+          <p className="field-caveat">
+            Stored and sent to the box in plain text. Put passwords and tokens in Environment above and read{' '}
+            <code>$KEY</code> here instead.
           </p>
+          <details className="field-details">
+            <summary role="button">When it runs, what it gets, and what happens if it fails</summary>
+            <ul>
+              <li>Runs after the pack&apos;s tools are installed and your repositories are cloned.</li>
+              <li>
+                Gets <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does, plus
+                anything you set in Environment above.
+              </li>
+              <li>
+                Run with <code>bash</code>, and nothing is added to it — write <code>set -euo pipefail</code>{' '}
+                yourself if you want it.
+              </li>
+              <li>If it fails the server still comes up, and the whole log is kept on it as a warning.</li>
+              <li>At most 16 KiB, and 30 minutes to run. It runs once, during setup, and never again.</li>
+              <li>
+                The full contract is in <code>docs/self-hosting.md</code>.
+              </li>
+            </ul>
+          </details>
           <textarea
             id="userScript"
             rows={6}

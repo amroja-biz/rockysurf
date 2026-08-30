@@ -397,6 +397,25 @@ describe('pack metadata drives the conditional fields', () => {
       expect(vi.mocked(api.createServer).mock.calls[0]?.[0].userScriptRunAs).toBe('root')
     })
 
+    /**
+     * The copy pattern the form now uses everywhere (issue #245): one line of purpose under the
+     * label, the security caveat as its own VISIBLE line, and the semantics behind a closed
+     * disclosure. Asserted structurally rather than word for word — what matters is that the
+     * caveat is not inside the `<details>`, which is where the audit found it buried.
+     */
+    it('shows the plain-text caveat outside the disclosure, and the contract inside it', async () => {
+      renderPage()
+      await screen.findByLabelText(/startup script/i)
+
+      const caveat = screen.getByText(/stored and sent to the box in plain text/i)
+      expect(caveat.closest('details')).toBeNull()
+
+      const disclosure = screen.getByText(/when it runs, what it gets/i).closest('details')
+      expect(disclosure).toBeTruthy()
+      expect((disclosure as HTMLDetailsElement).open).toBe(false)
+      expect(disclosure!.textContent).toMatch(/the server still comes up/i)
+    })
+
     it('sends nothing at all when the field is empty or only whitespace', async () => {
       const user = userEvent.setup()
       renderPage()
@@ -1926,6 +1945,16 @@ describe('an environment the creator types (issue #197)', () => {
       MY_ENDPOINT: { value: 'https://mine.test' },
       MY_FLAG: { value: '1' },
     })
+  })
+
+  /** The same three-part pattern as the startup script above (issue #245). */
+  it('puts the in-the-clear caveat on its own visible line, not inside the disclosure', async () => {
+    renderPage()
+    await screen.findByLabelText(/^environment/i)
+
+    const caveat = screen.getByText(/stored and shown in the clear/i)
+    expect(caveat.closest('details')).toBeNull()
+    expect(screen.getByText(/what the names and values may be/i).closest('details')).toBeTruthy()
   })
 
   it('marks a secret: line as secret and leaves the rest plain', async () => {
