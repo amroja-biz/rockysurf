@@ -13,6 +13,7 @@ your own subscription — and nothing beyond that.
 - [Who can reach SSH](#who-can-reach-ssh)
 - [What terminate actually deletes](#what-terminate-actually-deletes)
 - [Priced regions](#priced-regions)
+- [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [What is deliberately absent](#what-is-deliberately-absent)
 
 ---
@@ -145,16 +146,20 @@ Two practical consequences:
 ## Credentials
 
 **There is nowhere in `rockysurf.config.yaml` to put an Azure secret**, and Rocky Surf will not
-read one from a file. Three sources are tried in order:
+read one from a file. Four sources are tried in order:
 
 ```bash
-# 1. a service principal — the same variables DefaultAzureCredential reads
+# 1. workload identity federation — a token minted by an issuer your tenant trusts, exchanged
+#    for an Azure token. No secret exists anywhere on this path. (gh issue #170)
+export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_FEDERATED_TOKEN_FILE=/path/to/token
+
+# 2. a service principal — the same variables DefaultAzureCredential reads
 export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_CLIENT_SECRET=...
 
-# 2. a managed identity, if you run Rocky Surf on an Azure VM — no secret at all, and the best
+# 3. a managed identity, if you run Rocky Surf on an Azure VM — no secret at all, and the best
 #    posture available. Nothing to export.
 
-# 3. the Azure CLI, for trying it out without creating a service principal first
+# 4. the Azure CLI, for trying it out without creating a service principal first
 az login
 ```
 
@@ -162,7 +167,7 @@ When nothing works, the error names **every** source it tried and why each one d
 An operator who misspelled `AZURE_CLIENT_SECRET` should not be told "the Azure CLI is not
 installed".
 
-Turn off the third source on a server:
+Turn off the fourth source on a server:
 
 ```yaml
 providers:
@@ -174,11 +179,43 @@ A control plane that can shell out to whatever `az` resolves to on `PATH` has a 
 boundary than one that cannot. It is on by default because the alternative is making a stranger
 create a service principal before they can create one box.
 
-**This is not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
-imply parity. Workload identity federation, Visual Studio / VS Code credentials, Azure PowerShell
-and Azure Developer CLI credentials are absent. Rocky Surf talks to Azure with plain `fetch`
-against the ARM REST API rather than through `@azure/identity` and `@azure/arm-*`, because those
-five packages and their trees would land in the install closure of every `npx rockysurf` — see
+### Workload identity federation, which is the one with no secret
+
+If you run Rocky Surf **inside GitHub Actions, on AKS, or anywhere else that can present a token
+Entra has been told to trust**, you never have to create — or rotate, or store — a client secret.
+Add a *federated credential* to the app registration naming the issuer and subject, set the three
+variables above, and that is the whole configuration:
+
+```bash
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "rockysurf-ci",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<owner>/<repo>:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+`AZURE_FEDERATED_TOKEN_FILE` names a file holding that token; Rocky Surf reads it — **on every
+acquisition, because the thing that writes it rotates it** — and exchanges it at the same Entra
+endpoint the client-secret path uses, sending it as a `client_assertion` with
+`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`. Nothing here
+signs, parses or validates a JWT: the assertion is written by the platform and posted verbatim.
+Those three variable names are the ones Azure's own SDKs, AKS's workload-identity webhook and the
+`azure/login` action all use, so an installation already set up for other Azure tooling needs
+nothing new.
+
+**Federation is tried first**, ahead of a client secret in the same environment. A deployment
+that has configured the source with nothing to leak or rotate should get it, and a stale
+`AZURE_CLIENT_SECRET` left in the environment beside it must not silently win.
+
+The nightly real-cloud run uses exactly this path — see
+[The nightly real-cloud run](#the-nightly-real-cloud-run-maintainers) below.
+
+**This is still not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
+imply parity. Visual Studio / VS Code credentials, Azure PowerShell and Azure Developer CLI
+credentials are absent. Rocky Surf talks to Azure with plain `fetch` against the ARM REST API
+rather than through `@azure/identity` and `@azure/arm-*`, because those five packages and their
+trees would land in the install closure of every `npx rockysurf` — see
 [`packages/provider-azure/README.md`](../../packages/provider-azure/README.md).
 
 ---
@@ -254,6 +291,15 @@ unavoidable rather than a convenience.
 > been exercised under a restricted principal. It is read-only and subscription-scoped like its
 > two neighbours. A credential without it is not broken: the size list falls back to SKU
 > availability alone and the log names the missing action once.
+>
+> **That proof is dated, and the fix for that is built but not yet switched on.** The nightly
+> real-cloud workflow now carries an Azure leg (issue #170) that runs this whole lifecycle under a
+> principal holding exactly these two roles, every morning — including `locations/usages/read`,
+> which the leg would exercise under a restricted principal for the first time. It **skips with a
+> notice** until the repository owner creates the CI-only subscription, the two app registrations
+> and the five repository variables it names; see
+> [The nightly real-cloud run](#the-nightly-real-cloud-run-maintainers). Until then this block
+> means what it says: proven once, by hand, on 2026-08-26.
 >
 > **The AWS equivalent found a real bug the first time it was run**, which is why this block used
 > to warn that Azure was likely to have one too. Azure did — but not in the action list. The
@@ -526,6 +572,155 @@ issue reported. The generator now also refuses to publish a document its own rea
 reject, so the next family Azure announces without billing for turns the `price-feed` run red —
 which publishes nothing and keeps the last good document being served — instead of silently
 unpricing the cloud.
+
+---
+
+## The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository, not for self-hosters. Nothing here changes
+what you deploy.
+
+[`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml)
+creates and destroys real machines every morning on Hetzner, AWS and GCP, and
+[gh issue #170](https://github.com/amroja-biz/rockysurf/issues/170) adds the Azure leg: both
+architectures, sequentially, each through the full create → bootstrap → SSH → stop → start →
+terminate → zero-orphan path, **under the exact two roles published above**. That is the whole
+point of wiring it this way. The role on this page was proven **once, by hand**, on 2026-08-26;
+add an ARM call to `@rockysurf/provider-azure` and forget to add its action here, and without the
+leg nothing turns red until a self-hoster's next launch fails.
+
+**Until the repository variables exist the leg skips with a notice**, not a failure — a
+perpetually red scheduled workflow trains everyone to ignore it, and the one morning it is red for
+a real reason nobody looks. So the paragraphs below describe a leg that is *in the repository* and
+is *not yet running*; the status block under [The role](#the-role) says what is proven today.
+
+**Turning it on is one command.** Sign in with `az login` and `gh auth login`, then run
+[`./deploy/azure/setup-nightly.sh`](../../deploy/azure/setup-nightly.sh). It does everything
+below and asks you for nothing else. [`./deploy/azure/teardown-nightly.sh`](../../deploy/azure/teardown-nightly.sh)
+undoes it. The rest of this section is what those two scripts do, and why.
+
+### Use a dedicated, CI-only subscription and resource group
+
+This is the one rule that matters, and it is the same rule the [GCP
+page](gcp.md#the-nightly-real-cloud-run-maintainers) states for its project. The sweep that runs
+after each leg is deliberately narrow — it deletes only what the run itself recorded and merely
+*reports* everything else — but that narrowness is the second line of defence. The first is that
+nothing anybody cares about is in the group at all. On 2026-08-12 the Hetzner leg destroyed the
+owner's own live server, launched from their laptop against the same project 37 seconds earlier,
+and reported it as a leak it had helpfully cleaned up.
+
+### No secret exists anywhere on this path
+
+GitHub mints a short-lived OIDC token for the run; a **federated credential** on the app
+registration is what makes Entra accept it. There is no Azure secret in the repository, nothing to
+rotate, and nothing to leak — the same posture as the AWS and GCP legs, reached through the
+credential source described under [Credentials](#credentials) above.
+
+### Wiring it, once
+
+One command. You need to be signed in to Azure and to GitHub, and that is all it asks of you.
+
+```bash
+az login          # if you are not already signed in
+gh auth login     # if you are not already signed in
+
+./deploy/azure/setup-nightly.sh --dry-run     # optional: shows every step, changes nothing
+./deploy/azure/setup-nightly.sh
+```
+
+It offers to start a run at the end. To undo everything it made:
+
+```bash
+./deploy/azure/teardown-nightly.sh
+```
+
+**Run it as often as you like.** Every step checks before it creates, so a second run says what
+is already there and changes nothing else.
+
+**Nothing it makes costs money.** Identities, roles and an empty resource group are free. Only the
+nightly's own machines bill, at about two cents a night.
+
+**It creates no password, key or secret, and prints none.** There is nothing to rotate.
+
+#### What it does, in order
+
+You do not have to read this to run it. It is here so the permissions it grants are auditable
+without running anything.
+
+| Step | What it makes | Why |
+|---|---|---|
+| 1 | nothing | Checks you are signed in to both, and installs Bicep if the Azure CLI lacks it. |
+| 2 | nothing | Picks the subscription. Asks you only if you have more than one. |
+| 3 | nothing | Registers `Microsoft.Compute` and `Microsoft.Network` if this subscription never has. |
+| 4 | the CI resource group | `rocky-surf-ci` by default. Rocky Surf never creates a resource group itself — see [above](#getting-started). |
+| 5 | two app registrations and their service principals | One is the identity under test; one is the sweep. [Why two](#why-there-are-two-app-registrations). |
+| 6 | a federated credential on each | This is what lets GitHub sign in with no password. It names this repository and one branch, and accepts nothing else. |
+| 7 | the published roles | [`role.bicep`](../../deploy/azure/role.bicep), **unmodified** — the file a self-hoster deploys, which is the whole point of the leg. |
+| 8 | the sweep role | [`nightly-sweep-role.bicep`](../../deploy/azure/nightly-sweep-role.bicep): delete-only, one resource group, no create of any kind, no delete on the shared network. |
+| 9 | nothing | Reads your core quota and tells you what to click if it is zero. |
+| 10 | six repository variables | Names and ids. None of them is a credential. |
+| 11 | nothing | Offers to start a run. |
+
+The variables it sets:
+
+| Variable | What it is |
+|---|---|
+| `AZURE_CI_SUBSCRIPTION` | the CI-only subscription id |
+| `AZURE_CI_RESOURCE_GROUP` | the CI-only resource group — the scope the operational role is granted at |
+| `AZURE_TENANT` | the Entra tenant both app registrations live in |
+| `AZURE_PROVIDER_CLIENT_ID` | the app registration carrying the published roles — the identity under test |
+| `AZURE_NIGHTLY_CLIENT_ID` | the CI-only sweep app registration |
+| `AZURE_CI_LOCATION` | the region; `eastus` unless you pass `--location` |
+
+Defaults are overridable: `--group`, `--location`, `--repo`, `--branch`, `--subscription`.
+
+#### The one thing a script cannot do for you
+
+Azure decides how many vCPUs your subscription may run, per machine family, per region — and a new
+subscription is often allowed **zero**. No API can grant that to yourself, so step 9 reads it and
+tells you. If it says you are short:
+
+1. Open <https://portal.azure.com> and search for "Quotas".
+2. Choose "Compute".
+3. Set the region filter to your region.
+4. Find the family the script named.
+5. Tick it, choose "New Quota Request", ask for 2 or more vCPUs, and submit.
+
+It is usually approved in minutes. Run the setup script again afterwards to confirm.
+
+### Why there are two app registrations
+
+The lifecycle runs as the published one; the sweep runs as the CI-only one. Two independent
+reasons, both learned on the AWS leg:
+
+- **The sweep deletes what the published role deliberately cannot.** Rocky Surf deletes a virtual
+  machine and lets `deleteOption` cascade to the disk, the NIC and the address; it never deletes
+  those three directly, so the published role does not grant it. A cleanup after a cascade that
+  half-happened has to.
+- **The sweep has to work when the identity under test is what broke.** A cleanup wired through
+  the credentials being tested goes blind at exactly the moment it matters.
+
+There is a third reason specific to Azure, and the workflow depends on the fix. The sweep logs
+`az` in as the CI-only identity **on the same runner** as the lifecycle, so
+[`scripts/e2e/lifecycle.mjs`](../../scripts/e2e/lifecycle.mjs) writes `allowAzureCli: false` into
+the config it generates: without it the credential chain could fall through to
+`az account get-access-token` and quietly run the lifecycle as the *sweep* account. Every check
+would pass, and the run would prove nothing whatsoever about the published role.
+
+### What the leg covers, and what it does not
+
+`Standard_B2ls_v2` (amd64) and `Standard_B2ps_v2` (arm64) — the two sizes the 2026-08-26 hand run
+used, so a red morning is a regression against a known-good pair rather than a new unknown. The
+cheaper 1 GiB B-series entries (`Standard_B2ats_v2`, `Standard_B2pts_v2`) are deliberately not
+used: that is under half the memory of the smallest box any other leg runs, and not a machine the
+pack has ever been installed on.
+
+It exercises one region, one resource group and the sizes above. It does not prove each granted
+action is individually *necessary*, and it does not touch branches the lifecycle never takes.
+
+**About two cents a night**, on the same measured basis as the numbers in
+[gcp.md](gcp.md#what-the-nightly-costs--measured-2026-08-26): two B-series VMs for five to ten
+minutes each, billed per minute.
 
 ---
 

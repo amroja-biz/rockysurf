@@ -70,31 +70,40 @@ reach outside one group.
 ## Credentials
 
 **There is no field in the configuration above for an Azure secret, and this provider will not
-read one from a file.** Three sources are tried in order:
+read one from a file.** Four sources are tried in order:
 
 ```bash
-# 1. a service principal — the same variables DefaultAzureCredential reads
+# 1. workload identity federation — a token minted by an issuer Entra trusts, and no secret
+#    anywhere. In GitHub Actions or on AKS these three are already set for you.
+export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_FEDERATED_TOKEN_FILE=/path/to/token
+
+# 2. a service principal — the same variables DefaultAzureCredential reads
 export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_CLIENT_SECRET=...
 
-# 2. a managed identity, if you run Rocky Surf on an Azure VM. Nothing to export, and no secret
+# 3. a managed identity, if you run Rocky Surf on an Azure VM. Nothing to export, and no secret
 #    exists anywhere. This is the best posture available.
 
-# 3. the Azure CLI, so you can try this without creating a service principal first
+# 4. the Azure CLI, so you can try this without creating a service principal first
 az login
 ```
+
+Federation is first because it is the source with nothing to leak or rotate: a client secret left
+over in the same environment must not silently win over it. The exchange is one POST to the same
+Entra endpoint the secret path uses, sending the file's contents as a `client_assertion` — this
+package never signs, parses or validates a JWT.
 
 When none of them works, the error names **every** source it tried and why each one did not
 answer. Someone who misspelled `AZURE_CLIENT_SECRET` should not be told that the Azure CLI is not
 installed.
 
-Set `allowAzureCli: false` to drop the third source. Worth doing on a server: a control plane
+Set `allowAzureCli: false` to drop the fourth source. Worth doing on a server: a control plane
 that can shell out to whatever `az` resolves to on `PATH` has a wider trust boundary than one
 that cannot. It is on by default because the alternative is making a stranger create a service
 principal before they can create one box.
 
-**This is not the whole `DefaultAzureCredential` chain**, and it is better to say so than to imply
-parity. Workload identity federation, Visual Studio and VS Code credentials, Azure PowerShell and
-Azure Developer CLI credentials are absent. If you need one, that is an issue worth opening.
+**This is still not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
+imply parity. Visual Studio and VS Code credentials, Azure PowerShell and Azure Developer CLI
+credentials are absent. If you need one, that is an issue worth opening.
 
 ## What it needs in your account
 

@@ -4,7 +4,7 @@
  * The third cloud, and the first written from the FROZEN SDK rather than from the de-risking
  * spike — which makes it the freeze's first real test. It needed no amendment: ADR-0003's shape
  * absorbed a cloud whose instances are four resources rather than one, whose idempotency
- * primitive is a resource name rather than a token, and whose credentials come from three
+ * primitive is a resource name rather than a token, and whose credentials come from four
  * different places, without a new field.
  *
  * Two decisions this package exists to record, both argued where they are implemented:
@@ -50,6 +50,7 @@ export {
   CredentialChain,
   ENTRA_AUTHORITY,
   IMDS_TOKEN_URL,
+  JWT_BEARER_ASSERTION_TYPE,
   type AccessToken,
   type CredentialChainOptions,
   type CredentialSource,

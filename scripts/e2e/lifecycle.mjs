@@ -5,6 +5,8 @@
  *   node scripts/e2e/lifecycle.mjs hetzner
  *   node scripts/e2e/lifecycle.mjs aws
  *   node scripts/e2e/lifecycle.mjs gcp        (needs ROCKYSURF_E2E_GCP_PROJECT)
+ *   node scripts/e2e/lifecycle.mjs azure      (needs ROCKYSURF_E2E_AZURE_SUBSCRIPTION
+ *                                              and ROCKYSURF_E2E_AZURE_RESOURCE_GROUP)
  *
  * THIS SPENDS MONEY. It creates one real server per run and destroys it again, and the
  * teardown is in a `finally` so a failure anywhere still cleans up. Exits non-zero if anything
@@ -50,12 +52,22 @@ import {
  * therefore break the amd64 leg to fix the arm64 one. `t2a-standard-1` is also the type the
  * 2026-08-14 hand run used, so a failure here is a regression rather than an unknown.
  *
+ * AZURE'S PAIR IS THE HAND RUN'S PAIR, for that same reason (gh issue #170). `Standard_B2ls_v2`
+ * and `Standard_B2ps_v2` are what rockysurf-ihtq.8 proved the published role against on
+ * 2026-08-26, under a principal holding exactly the two roles docs/providers/azure.md publishes —
+ * so a red morning here is a regression against a known-good pair rather than a new unknown. The
+ * genuinely cheapest B-series entries, `Standard_B2ats_v2` and `Standard_B2pts_v2`, carry 1 GiB
+ * of memory against these two's 4 and 8; that is under half the smallest box any other leg in
+ * this table uses and not a machine the pack has ever been installed on. Saving a fraction of a
+ * cent a night by turning the nightly into a memory experiment is not the trade.
+ *
  * Cheapest type per cloud that runs the pack. Budget discipline is not optional here.
  */
 const RUNS = {
   hetzner: { cpx12: 'amd64' },
   aws: { 't4g.small': 'arm64', 't3.small': 'amd64' },
   gcp: { 't2a-standard-1': 'arm64', 'e2-small': 'amd64' },
+  azure: { Standard_B2ps_v2: 'arm64', Standard_B2ls_v2: 'amd64' },
 }
 
 const CLOUD = process.argv[2]
@@ -89,6 +101,21 @@ const AWS_REGION = process.env.AWS_REGION ?? 'us-east-1'
  */
 const GCP_PROJECT = process.env.ROCKYSURF_E2E_GCP_PROJECT ?? ''
 const GCP_ZONE = process.env.ROCKYSURF_E2E_GCP_ZONE || 'us-central1-a'
+
+/**
+ * The Azure subscription, resource group and region (gh issue #170).
+ *
+ * NO DEFAULTS for the first two, on the same rule GCP's project follows and for the same reason:
+ * a credential is valid for a subscription it does not name, so a guess creates billable machines
+ * in an account nobody chose. The resource group is additionally the SCOPE the published
+ * operational role is granted at — Rocky Surf never creates one — so inventing a name would
+ * produce an `AuthorizationFailed` that reads like a missing action rather than a missing group.
+ *
+ * In CI both are repository variables naming a group that exists only for this workflow.
+ */
+const AZURE_SUBSCRIPTION = process.env.ROCKYSURF_E2E_AZURE_SUBSCRIPTION ?? ''
+const AZURE_RESOURCE_GROUP = process.env.ROCKYSURF_E2E_AZURE_RESOURCE_GROUP ?? ''
+const AZURE_LOCATION = process.env.ROCKYSURF_E2E_AZURE_LOCATION || 'eastus'
 const PORT = 3200 + Math.floor(Math.random() * 300)
 const ADMIN_PASSWORD = 'e2e-admin-password'
 
@@ -152,6 +179,27 @@ async function writeConfig() {
       `    projectId: ${GCP_PROJECT}`,
       `    zone: ${GCP_ZONE}`,
       `    sshAllowedCidr: ${cidr}`,
+    )
+  } else if (CLOUD === 'azure') {
+    const cidr = `${await currentPublicIp()}/32`
+    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
+    // NO SECRET, ever — the Azure config schema has nowhere to put one. The credential comes
+    // from `CredentialChain`, which in CI is workload identity federation: the three standard
+    // AZURE_* variables and a file holding GitHub's own OIDC token (gh issue #170).
+    //
+    // `allowAzureCli: false` IS LOAD-BEARING HERE, NOT HARDENING THEATRE. The nightly's sweep
+    // step logs `az` in as the CI-ONLY identity on the same runner, so a chain permitted to fall
+    // through to `az account get-access-token` could quietly run the lifecycle as the sweep
+    // account — every check would pass and the run would prove nothing whatsoever about the role
+    // this project publishes. It is also what the 2026-08-26 hand run set, for the same reason.
+    lines.push(
+      `  azure:`,
+      `    enabled: true`,
+      `    subscriptionId: ${AZURE_SUBSCRIPTION}`,
+      `    resourceGroup: ${AZURE_RESOURCE_GROUP}`,
+      `    location: ${AZURE_LOCATION}`,
+      `    sshAllowedCidr: ${cidr}`,
+      `    allowAzureCli: false`,
     )
   } else {
     const cidr = `${await currentPublicIp()}/32`
@@ -282,6 +330,16 @@ async function main() {
     throw new Error(
       'ROCKYSURF_E2E_GCP_PROJECT is not set. It names the CI-only Google Cloud project this run ' +
         'creates machines in; there is deliberately no default and gcloud\'s ambient project is not consulted.',
+    )
+  }
+  // Same idea again for Azure, and it names BOTH variables rather than failing twice: the group
+  // is not a detail of the subscription here, it is the scope the published role is granted at.
+  if (CLOUD === 'azure' && (!AZURE_SUBSCRIPTION || !AZURE_RESOURCE_GROUP)) {
+    throw new Error(
+      'ROCKYSURF_E2E_AZURE_SUBSCRIPTION and ROCKYSURF_E2E_AZURE_RESOURCE_GROUP must both be set. ' +
+        'They name the CI-only subscription and the resource group this run creates machines in — ' +
+        'the group Rocky Surf does not create and the published operational role is scoped to. ' +
+        'There is deliberately no default and no ambient `az` context is consulted.',
     )
   }
 
@@ -490,6 +548,20 @@ async function main() {
   if (audit.foreign.length > 0) log(`  not this run's, left alone: ${audit.foreign.join(', ')}`)
   if (CLOUD === 'hetzner') {
     check(audit.mineSshKeys.length === 0, 'this run\'s ssh-key objects were reaped with its server', audit.mineSshKeys.join(', '))
+  } else if (CLOUD === 'azure') {
+    // TWO shared resources, not one, and both are asserted (gh issue #170). Azure's analogue of
+    // AWS's shared security group is a PAIR — the virtual network and the network security group
+    // — created on the first launch into an empty group and adopted forever after, reported
+    // `shared` so a reconciler never reaps them: deleting either detaches the network from, or
+    // closes port 22 on, every running box at once. A first run in a fresh resource group is also
+    // the only thing that exercises the create half of `virtualNetworks/write` and
+    // `networkSecurityGroups/write`, so this is the check that says those actions are really in
+    // the published role.
+    check(audit.shared.length >= 2, 'the shared vnet and NSG survive, as designed', audit.shared.join(', '))
+    // No separate disk assertion, and unlike GCP that is not because the disk is invisible here:
+    // `listManaged()` lists the whole resource group, disks included. It is because a disk that
+    // outlived its VM has lost the `managedBy` it was attributed through, so the name-prefix rule
+    // in auditManagedResources() is what keeps it in `mine` — see the comment there.
   } else if (CLOUD === 'gcp') {
     // The GCE analogue of AWS's shared security group: ONE firewall rule per project, matching
     // instances by network tag, reported `shared` so a reconciler never reaps it — deleting it
@@ -568,12 +640,17 @@ async function auditManagedResources(runServerId) {
     const leaked = managed.filter((r) => r.ownership === 'server-owned')
     // `undefined === undefined` would make every unattributed resource in the account this
     // run's, on the one path where this run demonstrably created nothing.
-    const mine = runServerId ? leaked.filter((r) => r.serverId === runServerId) : []
+    const mine = runServerId
+      ? leaked.filter((r) => r.serverId === runServerId || azureNameBelongsTo(runServerId, r))
+      : []
 
     result.shared = managed.filter((r) => r.ownership === 'shared').map((r) => `${r.kind}/${r.providerNativeId}`)
     result.mine = mine.map(describe)
     result.mineSshKeys = mine.filter((r) => r.kind === 'ssh-key').map(describe)
-    result.foreign = leaked.filter((r) => r.serverId !== runServerId).map(describe)
+    // The complement of `mine`, rather than a second predicate that could disagree with it: a
+    // resource attributed by name would otherwise be reported as this run's leak AND as somebody
+    // else's, in the same log.
+    result.foreign = leaked.filter((r) => !mine.includes(r)).map(describe)
 
     if (CLOUD === 'aws') result.volumes = await rawAwsVolumes(runServerId)
 
@@ -585,6 +662,29 @@ async function auditManagedResources(runServerId) {
     log(`  still present: ${[...result.mine, ...result.volumes].join(', ')}`)
     await sleep(POLL_MS)
   }
+}
+
+/**
+ * AZURE ONLY: attribution by resource NAME, for the one orphan a tag cannot name (gh issue #170).
+ *
+ * Azure does not copy a VM's tags onto the OS disk it creates from an image, so the provider
+ * attributes a disk through `managedBy` — the resource id of the VM it is attached to. That works
+ * right up until the moment it matters: once the VM is deleted, a disk the `deleteOption` cascade
+ * failed to reap has no tag AND no `managedBy`, so `listManaged()` reports it as an owned
+ * resource nobody can attribute, and this audit would file it under "not this run's, left alone"
+ * — a billable leak, reported as somebody else's business, on the one cloud where terminate is a
+ * cascade rather than a call per resource.
+ *
+ * The names close that gap exactly, because the provider derives every one of them from the
+ * server id: the VM is `<serverId>`, and its three companions are `<serverId>-nic`,
+ * `<serverId>-ip` and `<serverId>-osdisk`. So a name that is the server id or the server id plus
+ * a `-suffix` is this run's, and nothing else can collide with it — a second run's server id is a
+ * different random id, not a suffix of this one.
+ */
+function azureNameBelongsTo(runServerId, resource) {
+  if (CLOUD !== 'azure') return false
+  const name = String(resource.providerNativeId).split('/').pop() ?? ''
+  return name === runServerId || name.startsWith(`${runServerId}-`)
 }
 
 async function buildProviderDirectly() {
@@ -604,6 +704,24 @@ async function buildProviderDirectly() {
         // run itself used. A CIDR is required by the schema, deliberately, so nobody creates a
         // server without deciding who may reach it; this one authorizes nothing.
         sshAllowedCidr: '127.0.0.1/32',
+      }),
+    )
+  }
+  if (CLOUD === 'azure') {
+    const { azureProviderFactory } = await import(`${REPO}/packages/provider-azure/dist/index.js`)
+    return azureProviderFactory.createProvider(
+      azureProviderFactory.configSchema.parse({
+        subscriptionId: AZURE_SUBSCRIPTION,
+        resourceGroup: AZURE_RESOURCE_GROUP,
+        location: AZURE_LOCATION,
+        // The audit only reads, through the same federated credential the run itself used. A
+        // CIDR is required by the schema, deliberately, so nobody creates a server without
+        // deciding who may reach it; this one authorizes nothing.
+        sshAllowedCidr: '127.0.0.1/32',
+        // The same reason the config file above sets it: `az` on this runner is logged in as the
+        // CI-only sweep identity, and an audit that silently ran as that identity would be an
+        // audit of a different principal than the one under test.
+        allowAzureCli: false,
       }),
     )
   }
