@@ -1530,7 +1530,11 @@ export function CreateServerPage() {
               </li>
               <li>Values are a single line each, and are never written into the install plan.</li>
               <li>Plain lines are shown on the server&apos;s page afterwards, so you can read back what a box was built with.</li>
-              <li>There is no way to change any of this on a running box.</li>
+              <li>
+                Rocky Surf writes these once, when the box is built — they cannot be edited here
+                afterwards. On the box itself they are yours to change: they live in{' '}
+                <code>~/.config/rockysurf/environment</code>.
+              </li>
             </ul>
           </details>
           <textarea
