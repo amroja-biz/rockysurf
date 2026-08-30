@@ -145,16 +145,20 @@ Two practical consequences:
 ## Credentials
 
 **There is nowhere in `rockysurf.config.yaml` to put an Azure secret**, and Rocky Surf will not
-read one from a file. Three sources are tried in order:
+read one from a file. Four sources are tried in order:
 
 ```bash
-# 1. a service principal — the same variables DefaultAzureCredential reads
+# 1. workload identity federation — a token minted by an issuer your tenant trusts, exchanged
+#    for an Azure token. No secret exists anywhere on this path. (gh issue #170)
+export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_FEDERATED_TOKEN_FILE=/path/to/token
+
+# 2. a service principal — the same variables DefaultAzureCredential reads
 export AZURE_TENANT_ID=... AZURE_CLIENT_ID=... AZURE_CLIENT_SECRET=...
 
-# 2. a managed identity, if you run Rocky Surf on an Azure VM — no secret at all, and the best
+# 3. a managed identity, if you run Rocky Surf on an Azure VM — no secret at all, and the best
 #    posture available. Nothing to export.
 
-# 3. the Azure CLI, for trying it out without creating a service principal first
+# 4. the Azure CLI, for trying it out without creating a service principal first
 az login
 ```
 
@@ -162,7 +166,7 @@ When nothing works, the error names **every** source it tried and why each one d
 An operator who misspelled `AZURE_CLIENT_SECRET` should not be told "the Azure CLI is not
 installed".
 
-Turn off the third source on a server:
+Turn off the fourth source on a server:
 
 ```yaml
 providers:
@@ -174,11 +178,43 @@ A control plane that can shell out to whatever `az` resolves to on `PATH` has a 
 boundary than one that cannot. It is on by default because the alternative is making a stranger
 create a service principal before they can create one box.
 
-**This is not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
-imply parity. Workload identity federation, Visual Studio / VS Code credentials, Azure PowerShell
-and Azure Developer CLI credentials are absent. Rocky Surf talks to Azure with plain `fetch`
-against the ARM REST API rather than through `@azure/identity` and `@azure/arm-*`, because those
-five packages and their trees would land in the install closure of every `npx rockysurf` — see
+### Workload identity federation, which is the one with no secret
+
+If you run Rocky Surf **inside GitHub Actions, on AKS, or anywhere else that can present a token
+Entra has been told to trust**, you never have to create — or rotate, or store — a client secret.
+Add a *federated credential* to the app registration naming the issuer and subject, set the three
+variables above, and that is the whole configuration:
+
+```bash
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "rockysurf-ci",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<owner>/<repo>:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+`AZURE_FEDERATED_TOKEN_FILE` names a file holding that token; Rocky Surf reads it — **on every
+acquisition, because the thing that writes it rotates it** — and exchanges it at the same Entra
+endpoint the client-secret path uses, sending it as a `client_assertion` with
+`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`. Nothing here
+signs, parses or validates a JWT: the assertion is written by the platform and posted verbatim.
+Those three variable names are the ones Azure's own SDKs, AKS's workload-identity webhook and the
+`azure/login` action all use, so an installation already set up for other Azure tooling needs
+nothing new.
+
+**Federation is tried first**, ahead of a client secret in the same environment. A deployment
+that has configured the source with nothing to leak or rotate should get it, and a stale
+`AZURE_CLIENT_SECRET` left in the environment beside it must not silently win.
+
+The nightly real-cloud run uses exactly this path — see
+[The nightly real-cloud run](#the-nightly-real-cloud-run-maintainers) below.
+
+**This is still not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
+imply parity. Visual Studio / VS Code credentials, Azure PowerShell and Azure Developer CLI
+credentials are absent. Rocky Surf talks to Azure with plain `fetch` against the ARM REST API
+rather than through `@azure/identity` and `@azure/arm-*`, because those five packages and their
+trees would land in the install closure of every `npx rockysurf` — see
 [`packages/provider-azure/README.md`](../../packages/provider-azure/README.md).
 
 ---

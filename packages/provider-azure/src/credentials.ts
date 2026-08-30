@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
 import { ProviderError } from '@rockysurf/provider-sdk'
 
 /**
@@ -12,19 +13,32 @@ import { ProviderError } from '@rockysurf/provider-sdk'
  * HTTP request or one CLI call.
  *
  * WHAT WE GIVE UP, stated plainly so nobody discovers it in production: this is NOT the full
- * `DefaultAzureCredential` chain. Workload identity federation, Visual Studio / VS Code
- * credentials, Azure PowerShell and Azure Developer CLI credentials are all absent. If you need
- * one of them, the honest fix is an issue, not a quiet `az` shim.
+ * `DefaultAzureCredential` chain. Visual Studio / VS Code credentials, Azure PowerShell and Azure
+ * Developer CLI credentials are all absent. If you need one of them, the honest fix is an issue,
+ * not a quiet `az` shim.
  *
  * Sources, tried in order:
  *
- *  1. **Service principal from the environment** — the same `AZURE_TENANT_ID` /
+ *  1. **Workload identity federation** — `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` /
+ *     `AZURE_FEDERATED_TOKEN_FILE`, the same three variables `WorkloadIdentityCredential`,
+ *     AKS's mutating webhook and the `azure/login` action all use (gh issue #170). The file
+ *     holds a token some OTHER issuer already minted — GitHub Actions' OIDC token, or the
+ *     projected service-account token on an AKS pod — and it is exchanged at the same Entra
+ *     endpoint the client-secret path uses, as a `client_assertion`. NO SECRET EXISTS ANYWHERE
+ *     on this path, which is why it is tried first: an installation that has one configured
+ *     chose the posture with nothing to leak or rotate, and a stale `AZURE_CLIENT_SECRET` left
+ *     in the environment beside it must not silently win.
+ *
+ *     Note what this is NOT: an RS256 assertion signed here from a private key. That flow is the
+ *     one `docs/writing-a-provider.md` says to buy rather than write, and this is not it — the
+ *     assertion is read from a file, unparsed, and posted as a form field.
+ *  2. **Service principal from the environment** — the same `AZURE_TENANT_ID` /
  *     `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` variables `DefaultAzureCredential` reads, so an
  *     installation already configured for other Azure tooling needs nothing new. This is the
  *     production path.
- *  2. **Managed identity via IMDS** — for a control plane running on an Azure VM, where there is
+ *  3. **Managed identity via IMDS** — for a control plane running on an Azure VM, where there is
  *     no secret at all. This is the best posture available and the one the docs recommend.
- *  3. **The Azure CLI** — `az account get-access-token`. Last, and present because without it a
+ *  4. **The Azure CLI** — `az account get-access-token`. Last, and present because without it a
  *     self-hoster evaluating Rocky Surf must create a service principal before they can create
  *     one server, which is a bad first five minutes. Disable it with `allowAzureCli: false`.
  *
@@ -54,8 +68,17 @@ export interface AccessToken {
   expiresAt: number
 }
 
+/**
+ * The OAuth 2.0 assertion type for a JWT the CALLER did not sign — RFC 7523's client
+ * authentication, and the exact string Entra requires. It is a URN, not a URL; nothing resolves.
+ */
+export const JWT_BEARER_ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+
 /** Where a token came from, for the boot log and for `validateCredentials()`'s error message. */
-export type CredentialSource = 'env' | 'imds' | 'azure-cli'
+export type CredentialSource = 'federated' | 'env' | 'imds' | 'azure-cli'
+
+/** The chain, in the order it is walked. One place, so the loop and the docs cannot disagree. */
+const SOURCES: readonly CredentialSource[] = ['federated', 'env', 'imds', 'azure-cli']
 
 export interface CredentialChainOptions {
   /** Overrides `process.env`; injected by tests. */
@@ -73,11 +96,15 @@ export interface CredentialChainOptions {
    * `az` resolves to on `PATH` has a wider trust boundary than one that cannot.
    */
   allowAzureCli?: boolean
+  /** Injected by tests, so no test reads a real file. */
+  readFileImpl?: (path: string) => Promise<string>
   /** Injected by tests, so no test spawns a process. */
   execImpl?: (command: string, args: string[]) => Promise<string>
   /** Injected by tests. Real clocks make expiry assertions flaky. */
   now?: () => number
 }
+
+const defaultReadFile = (path: string): Promise<string> => readFile(path, 'utf8')
 
 const defaultExec = (command: string, args: string[]): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -99,6 +126,7 @@ export class CredentialChain {
   private readonly authorityUrl: string
   private readonly imdsUrl: string
   private readonly allowAzureCli: boolean
+  private readonly readTokenFile: (path: string) => Promise<string>
   private readonly exec: (command: string, args: string[]) => Promise<string>
   private readonly now: () => number
 
@@ -113,6 +141,7 @@ export class CredentialChain {
     this.authorityUrl = options.authorityUrl ?? ENTRA_AUTHORITY
     this.imdsUrl = options.imdsUrl ?? IMDS_TOKEN_URL
     this.allowAzureCli = options.allowAzureCli ?? true
+    this.readTokenFile = options.readFileImpl ?? defaultReadFile
     this.exec = options.execImpl ?? defaultExec
     this.now = options.now ?? Date.now
   }
@@ -147,15 +176,10 @@ export class CredentialChain {
   private async acquire(): Promise<AccessToken> {
     const attempts: string[] = []
 
-    for (const source of ['env', 'imds', 'azure-cli'] as const) {
-      if (source === 'azure-cli' && !this.allowAzureCli) {
-        attempts.push('azure-cli: disabled by configuration (allowAzureCli: false)')
-        continue
-      }
-
-      const applicable = source === 'env' ? this.servicePrincipal() !== undefined : true
-      if (!applicable) {
-        attempts.push('env: AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET are not all set')
+    for (const source of SOURCES) {
+      const skip = this.whyNotApplicable(source)
+      if (skip) {
+        attempts.push(`${source}: ${skip}`)
         continue
       }
 
@@ -173,16 +197,39 @@ export class CredentialChain {
       'auth',
       'no Azure credential could be acquired. Tried, in order:\n  ' +
         attempts.join('\n  ') +
-        '\nSet AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, run on a VM with a ' +
-        'managed identity, or run `az login`. Rocky Surf never reads a client secret from its ' +
-        'config file.',
+        '\nSet AZURE_TENANT_ID, AZURE_CLIENT_ID and either AZURE_FEDERATED_TOKEN_FILE (workload ' +
+        'identity federation — no secret) or AZURE_CLIENT_SECRET, run on a VM with a managed ' +
+        'identity, or run `az login`. Rocky Surf never reads a client secret from its config file.',
     )
   }
 
+  /** Why a source cannot answer at all, or undefined when it is worth trying. */
+  private whyNotApplicable(source: CredentialSource): string | undefined {
+    if (source === 'federated' && this.federatedIdentity() === undefined) {
+      return 'AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_FEDERATED_TOKEN_FILE are not all set'
+    }
+    if (source === 'env' && this.servicePrincipal() === undefined) {
+      return 'AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET are not all set'
+    }
+    if (source === 'azure-cli' && !this.allowAzureCli) {
+      return 'disabled by configuration (allowAzureCli: false)'
+    }
+    return undefined
+  }
+
   private fromSource(source: CredentialSource): Promise<AccessToken> {
+    if (source === 'federated') return this.fromFederatedToken()
     if (source === 'env') return this.fromServicePrincipal()
     if (source === 'imds') return this.fromImds()
     return this.fromAzureCli()
+  }
+
+  private federatedIdentity(): { tenantId: string; clientId: string; tokenFile: string } | undefined {
+    const tenantId = this.env['AZURE_TENANT_ID']?.trim()
+    const clientId = this.env['AZURE_CLIENT_ID']?.trim()
+    const tokenFile = this.env['AZURE_FEDERATED_TOKEN_FILE']?.trim()
+    if (!tenantId || !clientId || !tokenFile) return undefined
+    return { tenantId, clientId, tokenFile }
   }
 
   private servicePrincipal(): { tenantId: string; clientId: string; clientSecret: string } | undefined {
@@ -194,19 +241,75 @@ export class CredentialChain {
   }
 
   /**
-   * OAuth 2.0 client credentials against Entra ID's v2 endpoint.
+   * OAuth 2.0 client credentials against Entra ID's v2 endpoint, authenticated with a secret.
    *
-   * `URLSearchParams` does the form encoding, which matters: the docs require the client secret
-   * to be URL-encoded, and secrets routinely contain characters that are not safe raw.
+   * The secret is the only difference from the federated path below; the request they both make
+   * is {@link clientCredentialsGrant}.
    */
   private async fromServicePrincipal(): Promise<AccessToken> {
     const principal = this.servicePrincipal()
     if (!principal) throw new Error('AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET are not all set')
 
-    const url = `${this.authorityUrl}/${encodeURIComponent(principal.tenantId)}/oauth2/v2.0/token`
-    const body = new URLSearchParams({
+    return this.clientCredentialsGrant(principal.tenantId, 'the service principal', {
       client_id: principal.clientId,
       client_secret: principal.clientSecret,
+    })
+  }
+
+  /**
+   * Workload identity federation: exchange a token SOMEBODY ELSE minted for an ARM token.
+   *
+   * The file named by `AZURE_FEDERATED_TOKEN_FILE` holds a JWT whose issuer Entra has been told
+   * to trust for this app registration — GitHub Actions' OIDC token in CI, the projected
+   * service-account token on an AKS pod. The exchange is the SAME endpoint and the same
+   * `client_credentials` grant as the client-secret path, with `client_assertion` and
+   * `client_assertion_type` in place of `client_secret`. That is the entire mechanism, and it is
+   * why this costs one branch rather than a dependency: nothing here signs, parses or validates
+   * a JWT. See gh issue #170.
+   *
+   * READ ON EVERY ACQUISITION, never cached separately. The assertion is short-lived by design
+   * and its writer rotates the file — AKS's kubelet re-projects it hourly — so a copy held in
+   * memory would be a copy that expires. The ARM token this returns is what gets cached, on the
+   * same terms as every other source.
+   */
+  private async fromFederatedToken(): Promise<AccessToken> {
+    const identity = this.federatedIdentity()
+    if (!identity) throw new Error('AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_FEDERATED_TOKEN_FILE are not all set')
+
+    let assertion: string
+    try {
+      assertion = (await this.readTokenFile(identity.tokenFile)).trim()
+    } catch (cause) {
+      throw new Error(
+        `AZURE_FEDERATED_TOKEN_FILE (${identity.tokenFile}) could not be read: ${firstLine(String(cause))}`,
+      )
+    }
+    // An empty file is a token that has not been written yet, which is worth saying rather than
+    // posting and having Entra answer with a generic AADSTS about a malformed assertion.
+    if (!assertion) throw new Error(`AZURE_FEDERATED_TOKEN_FILE (${identity.tokenFile}) is empty`)
+
+    return this.clientCredentialsGrant(identity.tenantId, 'the federated token', {
+      client_id: identity.clientId,
+      client_assertion_type: JWT_BEARER_ASSERTION_TYPE,
+      client_assertion: assertion,
+    })
+  }
+
+  /**
+   * The one POST both credential paths make, differing only in how the client authenticates.
+   *
+   * `URLSearchParams` does the form encoding, which matters for both: the docs require the
+   * client secret to be URL-encoded and secrets routinely contain characters that are not safe
+   * raw, and a JWT assertion carries `.`-separated base64url that must not be mangled either.
+   */
+  private async clientCredentialsGrant(
+    tenantId: string,
+    subject: string,
+    credential: Record<string, string>,
+  ): Promise<AccessToken> {
+    const url = `${this.authorityUrl}/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`
+    const body = new URLSearchParams({
+      ...credential,
       scope: ARM_SCOPE,
       grant_type: 'client_credentials',
     })
@@ -229,7 +332,7 @@ export class CredentialChain {
     if (!response.ok || !parsed?.access_token) {
       // The description carries the AADSTS code, which is the only part an operator can act on.
       const detail = parsed?.error_description ?? parsed?.error ?? `HTTP ${response.status}`
-      throw new Error(`Entra ID rejected the service principal: ${firstLine(detail)}`)
+      throw new Error(`Entra ID rejected ${subject}: ${firstLine(detail)}`)
     }
 
     return { token: parsed.access_token, expiresAt: this.expiryFrom(parsed.expires_in) }
