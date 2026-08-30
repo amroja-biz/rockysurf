@@ -87,21 +87,24 @@ name: Nightly real-cloud lifecycle
 # that point runs under exactly the permissions a self-hoster gets. A provider call the document
 # does not cover then fails the nightly the first time it runs.
 #
-# To wire it in the CI account — two stacks, in this order:
+# To wire it in the CI account — ONE COMMAND, run once, and the only thing it asks of you is that
+# you are already signed in with the `aws` CLI and `gh auth login`:
 #
-#   aws cloudformation deploy --template-file deploy/aws/nightly-ci.yaml \
-#     --stack-name rocky-surf-nightly-ci --capabilities CAPABILITY_NAMED_IAM
+#   ./deploy/aws/setup-nightly.sh --dry-run     # changes nothing; prints every command first
+#   ./deploy/aws/setup-nightly.sh
 #
-#   aws cloudformation deploy --template-file deploy/aws/iam-role.yaml \
-#     --stack-name rocky-surf-nightly-provider --capabilities CAPABILITY_NAMED_IAM \
-#     --parameter-overrides TrustedPrincipalArn=<the first stack's NightlyRoleArn> ProviderRegion=us-east-1
+# It makes the GitHub OIDC identity provider if the account has none, deploys deploy/aws/nightly-ci.yaml
+# for the entry role, deploys deploy/aws/iam-role.yaml UNMODIFIED for the role under test with the
+# entry role as its trusted principal, checks the region has a default VPC and enough on-demand
+# vCPUs for two small boxes, and sets the secret and the variable below. Every step checks before
+# it creates, so running it twice is safe. `./deploy/aws/teardown-nightly.sh` undoes all of it.
 #
-# then set secrets.AWS_NIGHTLY_ROLE_ARN to the first stack's NightlyRoleArn output and
-# vars.AWS_PROVIDER_ROLE_ARN to the second's RoleArn. The provider template is deployed UNMODIFIED
-# and keeps trusting an IAM principal rather than a federated one, which is the whole point: what
-# runs here is the shipped artifact, not a CI-flavoured variant of it. deploy/aws/nightly-ci.yaml
-# is the CI-side half that is NOT shipped, and it exists so a fork can reproduce this without
-# reverse-engineering it from these comments.
+# What it sets: secrets.AWS_NIGHTLY_ROLE_ARN to the CI stack's NightlyRoleArn output, and
+# vars.AWS_PROVIDER_ROLE_ARN to the provider stack's RoleArn. The provider template is deployed
+# UNMODIFIED and keeps trusting an IAM principal rather than a federated one, which is the whole
+# point: what runs here is the shipped artifact, not a CI-flavoured variant of it.
+# deploy/aws/nightly-ci.yaml is the CI-side half that is NOT shipped, and it exists so a fork can
+# reproduce this without reverse-engineering it from these comments.
 #
 # ONE CONSEQUENCE OF THAT SPLIT: the entry role can do essentially nothing on its own — assume the
 # provider role, and read volumes for the orphan audit. So while the preflight below treats
@@ -242,7 +245,7 @@ jobs:
             echo 'aws=yes' >> "$GITHUB_OUTPUT"
           else
             echo 'aws=no' >> "$GITHUB_OUTPUT"
-            note 'SKIPPED AWS: repository secret AWS_NIGHTLY_ROLE_ARN is not set. Create a role trusting the GitHub OIDC provider for this repository.'
+            note 'SKIPPED AWS: repository secret AWS_NIGHTLY_ROLE_ARN is not set. Run ./deploy/aws/setup-nightly.sh against a CI-ONLY account — it makes both roles and sets this itself. See this workflow header.'
           fi
 
           # ALL FOUR OR NONE. A half-wired GCP leg is worse than none: authenticating as the
@@ -278,7 +281,7 @@ jobs:
           # saying out loud every single morning, because the failure it warns about is silent
           # by construction: the run passes, and the policy this project publishes is unproven.
           if [ -z "${AWS_PROVIDER_ROLE_ARN:-}" ]; then
-            note 'AWS ran WITHOUT the published policy (rockysurf-evo1): repository variable AWS_PROVIDER_ROLE_ARN is not set, so deploy/aws/iam-role.yaml is not being continuously verified. See this workflow header for the one command that fixes it.'
+            note 'AWS ran WITHOUT the published policy (rockysurf-evo1): repository variable AWS_PROVIDER_ROLE_ARN is not set, so deploy/aws/iam-role.yaml is not being continuously verified. ./deploy/aws/setup-nightly.sh is the one command that fixes it.'
           fi
 
   # THE price-drift JOB THAT USED TO LIVE HERE IS GONE, AND NOTHING REPLACED IT — on purpose

@@ -9,6 +9,7 @@ your own account — and nothing beyond that.
 - [What each statement is for](#what-each-statement-is-for)
 - [Who can reach SSH](#who-can-reach-ssh)
 - [Testing the policy](#testing-the-policy)
+- [The nightly real-cloud run (maintainers)](#the-nightly-real-cloud-run-maintainers)
 - [What is deliberately absent](#what-is-deliberately-absent)
 - [The machine catalogue and priced regions](#the-machine-catalogue-and-priced-regions)
 
@@ -443,6 +444,118 @@ refused (the provider never calls it), and `ec2:CreateTags` on an existing resou
 refused (the `ec2:CreateAction` condition is supposed to confine tagging to creation). A
 condition that matches nothing and a condition that is absent look identical from a passing
 run — only a call that is supposed to fail tells them apart.
+
+---
+
+## The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository, not for self-hosters. Nothing here changes
+what you deploy.
+
+[`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml)
+creates and destroys two real EC2 boxes every morning — both architectures, sequentially, each
+through the full create → bootstrap → SSH → stop → start → terminate → zero-orphan path — **under
+the exact policy published above** (`rockysurf-evo1`). That is the whole point of wiring it this
+way: the policy on this page was proved *once, by hand*, and a policy proved once is a policy that
+*was* true once. Add an EC2 call to `@rockysurf/provider-aws` and forget to add its action here,
+and without the leg nothing turns red until a self-hoster's next launch fails.
+
+**Turning it on is one command.** Sign in with the `aws` CLI and `gh auth login`, then run
+[`./deploy/aws/setup-nightly.sh`](../../deploy/aws/setup-nightly.sh). It does everything below and
+asks you for nothing else. [`./deploy/aws/teardown-nightly.sh`](../../deploy/aws/teardown-nightly.sh)
+undoes it. The rest of this section is what those two scripts do, and why.
+
+### Use a dedicated, CI-only account
+
+This is the one rule that matters, and it is the same rule the [GCP
+page](gcp.md#the-nightly-real-cloud-run-maintainers) states for its project and the [Azure
+page](azure.md#the-nightly-real-cloud-run-maintainers) for its subscription. The sweep that runs
+after each leg is deliberately narrow — it terminates only the instance ids the run itself
+recorded, and merely *reports* everything else tagged `managed-by=rockysurf` — but that narrowness
+is the second line of defence. The first is that nothing anybody cares about is in the account at
+all. On 2026-08-12 the Hetzner leg destroyed the owner's own live server, launched from their
+laptop against the same project 37 seconds earlier, and reported it as a leak it had helpfully
+cleaned up. A self-hoster's production box and this nightly can share one AWS account far more
+easily than one Hetzner project.
+
+### No access key exists anywhere on this path
+
+GitHub mints a short-lived OIDC token for the run, and an IAM identity provider in the account is
+what makes AWS accept it. There is no AWS access key in this repository, nothing to rotate, and
+nothing to leak.
+
+### Wiring it, once
+
+```bash
+aws sso login --profile my-ci-account   # or however you sign in
+gh auth login                           # if you are not already signed in
+
+./deploy/aws/setup-nightly.sh --dry-run     # optional: shows every step, changes nothing
+./deploy/aws/setup-nightly.sh
+```
+
+It offers to start a run at the end. To undo everything it made:
+
+```bash
+./deploy/aws/teardown-nightly.sh
+```
+
+**Run it as often as you like.** Every step checks before it creates, so a second run says what is
+already there and changes nothing else — a CloudFormation deployment with nothing to change works
+out an empty change set, deletes it, and touches no resource.
+
+**Nothing it makes costs money.** Two IAM roles and a sign-in provider are free. Only the nightly's
+own machines bill, at under half a cent a night — see [what the nightly
+costs](gcp.md#what-the-nightly-costs--measured-2026-08-26), which is where the measured numbers
+live.
+
+**It creates no access key, and prints none.** There is nothing to rotate.
+
+#### What it does, in order
+
+You do not have to read this to run it. It is here so the permissions it grants are auditable
+without running anything.
+
+| Step | What it makes | Why |
+|---|---|---|
+| 1 | nothing | Checks you are signed in to AWS and to GitHub, and works out which repository this is. |
+| 2 | nothing | Names the account it is about to change, and says to use one that holds nothing else. |
+| 3 | nothing | Looks for the GitHub sign-in provider. There can be only one per account, and every workflow that signs in this way shares it. |
+| 4 | the CI entry role, and that sign-in provider if the account had none | [`nightly-ci.yaml`](../../deploy/aws/nightly-ci.yaml): may assume the role below, may see and terminate leftovers, and nothing else. Its trust names this repository and no other. |
+| 5 | the role under test | [`iam-role.yaml`](../../deploy/aws/iam-role.yaml), **unmodified** — the file a self-hoster deploys, which is the whole point of the leg. |
+| 6 | nothing | Reads the second role's trust policy back and confirms the first one is named in it. |
+| 7 | nothing | Checks the region has a default VPC (Rocky Surf never creates networking) and enough on-demand vCPUs for two small boxes. |
+| 8 | one repository secret and one variable | Both are role names. Neither grants anything by itself. |
+| 9 | nothing | Offers to start a run. |
+
+The settings it saves:
+
+| Name | What it is |
+|---|---|
+| `AWS_NIGHTLY_ROLE_ARN` (secret) | the CI entry role GitHub signs in as. It is a secret because that is where the workflow reads it from; an ARN is a name, not a credential. |
+| `AWS_PROVIDER_ROLE_ARN` (variable) | the role carrying the published policy — the identity under test |
+
+`AWS_PROVIDER_ROLE_NAME` is left unset unless you rename the role with `--role-name`: the workflow
+already expects `rocky-surf-provider`, and writing the default would change your repository for
+nothing.
+
+Defaults are overridable: `--repo`, `--branch`, `--region`, `--stack-region`, `--role-name`.
+
+#### Two hops, not one, and why the sweep uses the first
+
+The run signs in as the entry role and then *becomes* the role under test, so every EC2 call the
+lifecycle makes runs under exactly the permissions this page publishes. The zero-orphan audit and
+the terminate sweep stay on the **first** role, because `ec2:DescribeVolumes` is a call the
+provider never makes and this page therefore never grants — an orphan the credentials under test
+cannot see would be an orphan the audit reports as clean, and a sweep wired through the identity
+being tested goes blind at exactly the moment that identity is what broke (`rockysurf-ufwn`).
+
+#### The one thing a script cannot do for you
+
+AWS decides how many on-demand vCPUs your account may run, per region, and a brand-new account is
+sometimes allowed very few. No API grants that to yourself, so step 7 reads the quota and says in
+plain words what to click if it is short. The same step checks for a default VPC, which *can* be
+made back with the one command the script prints.
 
 ---
 
