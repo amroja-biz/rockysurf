@@ -98,11 +98,36 @@ interface SettingsView {
   /** True when the file's values differ from the ones this process booted with. */
   drifted: boolean
   restartHint: string
+  /** The same sentence, split so a client can set its commands in monospace (#232). */
+  restartHintSegments: readonly HintSegment[]
 }
 
-export const RESTART_HINT =
-  'Rocky Surf reads this file once, at startup. Changes apply after a restart: stop the process ' +
-  'with Ctrl-C and run ./start.sh again.'
+/**
+ * A run of the restart hint. `code` marks a literal the operator types or copies — a key press
+ * or a command — which the product's type rule says is monospace wherever it appears.
+ */
+export interface HintSegment {
+  text: string
+  code?: boolean
+}
+
+/**
+ * The restart instruction, in segments rather than one string (#232).
+ *
+ * Core keeps the words AND says which of them are commands, because the alternative is a client
+ * scanning the prose for `./start.sh` to decide what to mark up — which makes core's copy an
+ * accidental API, and breaks the moment the sentence is reworded. `RESTART_HINT` is still the
+ * whole sentence, joined here so the two cannot drift apart.
+ */
+export const RESTART_HINT_SEGMENTS: readonly HintSegment[] = [
+  { text: 'Rocky Surf reads this file once, at startup. Changes apply after a restart: stop the process with ' },
+  { text: 'Ctrl-C', code: true },
+  { text: ' and run ' },
+  { text: './start.sh', code: true },
+  { text: ' again.' },
+]
+
+export const RESTART_HINT = RESTART_HINT_SEGMENTS.map((segment) => segment.text).join('')
 
 interface ReadFile {
   text: string
@@ -153,6 +178,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
       ...(checked.warnings.length > 0 ? { warnings: checked.warnings } : {}),
       drifted: fingerprint(tree) !== bootFingerprint,
       restartHint: RESTART_HINT,
+      restartHintSegments: RESTART_HINT_SEGMENTS,
     }
   }
 

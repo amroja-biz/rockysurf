@@ -760,9 +760,21 @@ describe('restart honesty', () => {
 
   it('says what a save requires, in the response', async () => {
     const res = await save({ mtimeMs: mtime(), changes: [{ path: ['limits', 'maxServers'], value: 4 }] })
-    const body = (await res.json()) as { saved: boolean; restartHint: string }
+    const body = (await res.json()) as {
+      saved: boolean
+      restartHint: string
+      restartHintSegments: { text: string; code?: boolean }[]
+    }
     expect(body.saved).toBe(true)
     expect(body.restartHint).toContain('./start.sh')
+    // The same sentence in runs (#232), with the two things the operator types marked as
+    // commands so a client can set them in monospace without parsing the prose. Joining the
+    // runs must give the string back, or the two halves of this answer disagree.
+    expect(body.restartHintSegments.map((segment) => segment.text).join('')).toBe(body.restartHint)
+    expect(body.restartHintSegments.filter((segment) => segment.code).map((segment) => segment.text)).toEqual([
+      'Ctrl-C',
+      './start.sh',
+    ])
   })
 })
 

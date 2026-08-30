@@ -198,6 +198,24 @@ interface ListField {
   example?: string
 }
 
+/**
+ * Core's restart instruction, with the runs it flagged as commands set in <code> (#232).
+ *
+ * `Ctrl-C` and `./start.sh` are things the operator types at a terminal, and the type rule is
+ * that those are monospace wherever they appear. The page does not decide WHICH runs those are:
+ * core marks them, because a client picking `./start.sh` out of core's prose by hand would turn
+ * a sentence into an interface. The whole sentence still reads the same.
+ */
+function RestartHint({ segments }: { segments: SettingsView['restartHintSegments'] }) {
+  return (
+    <>
+      {segments.map((segment) =>
+        segment.code ? <code key={segment.text}>{segment.text}</code> : <span key={segment.text}>{segment.text}</span>,
+      )}
+    </>
+  )
+}
+
 /** A blank entry being filled in before it is added — held here, never written half-formed. */
 interface TokenDraft {
   scope: string
@@ -1625,7 +1643,7 @@ export function SettingsPage() {
       {view.drifted && (
         <p className="warning" role="status">
           This file has changed since Rocky Surf started, so the running process is still using the
-          old settings. {view.restartHint}
+          old settings. <RestartHint segments={view.restartHintSegments} />
         </p>
       )}
 
@@ -1711,7 +1729,9 @@ export function SettingsPage() {
           <button type="button" className="btn-secondary" disabled={!anyDirty || saving} onClick={() => setEdits({})}>
             Discard changes
           </button>
-          <p className="hint">{view.restartHint}</p>
+          <p className="hint">
+            <RestartHint segments={view.restartHintSegments} />
+          </p>
         </footer>
       </form>
 

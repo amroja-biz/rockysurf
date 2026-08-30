@@ -1647,6 +1647,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     lists: [],
     drifted: false,
     restartHint: 'Changes apply after a restart.',
+    restartHintSegments: [{ text: 'Changes apply after a restart.' }],
   })
 
   it('resolves small to the saved type instead of the cheapest that fits', async () => {
