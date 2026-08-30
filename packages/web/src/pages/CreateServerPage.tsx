@@ -828,8 +828,20 @@ export function CreateServerPage() {
    *
    * A secret input is never seeded — the pack schema refuses a default on one — so a password
    * field always starts empty.
+   *
+   * DONE DURING RENDER, NOT IN AN EFFECT (issue #209). An effect runs only after the fields it
+   * is seeding have been committed, so there was one render in which every field the pack asks
+   * for was on screen and EMPTY, with its default arriving a beat later. That flash is a bug on
+   * its own, and it is also the flake: a keystroke landing in that window went into an empty
+   * box, and the effect then put the default back in front of it — typing `0` over a field
+   * that declares `1` left `10` on the wire. React's documented way of adjusting state when the
+   * thing it is derived from changes is to set it during render and let the component re-run
+   * before anything reaches the DOM, which is what this does. The guard is the identity of
+   * `packInputs`, which changes only when the pack does.
    */
-  useEffect(() => {
+  const [seededFor, setSeededFor] = useState<SurgePack['inputs']>(undefined)
+  if (seededFor !== packInputs) {
+    setSeededFor(packInputs)
     setPackInputValues((previous) => {
       const next: Record<string, string> = {}
       for (const input of packInputs) {
@@ -837,9 +849,14 @@ export function CreateServerPage() {
         const value = kept !== undefined && kept !== '' ? kept : (input.default ?? '')
         if (value !== '') next[input.name] = value
       }
-      return next
+      // Same answers as before means the same object, so a pack change that asks nothing new
+      // does not cost a second render pass.
+      const names = Object.keys(next)
+      const unchanged =
+        names.length === Object.keys(previous).length && names.every((n) => previous[n] === next[n])
+      return unchanged ? previous : next
     })
-  }, [packInputs])
+  }
 
   const repositories = useMemo(
     () =>
