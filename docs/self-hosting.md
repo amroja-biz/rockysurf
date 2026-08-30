@@ -839,7 +839,7 @@ the `inputs` section of [`writing-a-pack.md`](writing-a-pack.md#inputs--what-you
 
 ## Your own environment on a box
 
-A pack asks for what *it* needs. **Environment**, the field below the startup script on the create
+A pack asks for what *it* needs. **Environment**, the field above the startup script on the create
 form, is for what *you* need — a token your startup script reads, an endpoint for something you
 install by hand, a `GIT_AUTHOR_NAME` for the box. One `KEY=value` per line:
 

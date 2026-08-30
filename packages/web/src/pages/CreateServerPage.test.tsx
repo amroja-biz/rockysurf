@@ -305,6 +305,13 @@ describe('pricing every size option, not only the selected one', () => {
   })
 })
 
+/** The `<label>` for the repositories textarea — where required-ness is stated (issue #245). */
+function repositoriesLabel(): HTMLLabelElement {
+  const label = document.querySelector<HTMLLabelElement>('label[for="repositories"]')
+  if (!label) throw new Error('no label for the repositories field')
+  return label
+}
+
 describe('pack metadata drives the conditional fields', () => {
   it('hides RDP when the pack does not ask for it', async () => {
     renderPage()
@@ -323,14 +330,17 @@ describe('pack metadata drives the conditional fields', () => {
     await findResolved(/small-arm/)
 
     expect(screen.getByLabelText(/repositories/i)).toBeTruthy()
-    expect(screen.queryByText(/this pack expects at least one/i)).toBeNull()
+    // Required-ness is read off the LABEL now (issue #245), not out of sentence three of the
+    // paragraph under it, so that is where it is asserted.
+    expect(repositoriesLabel().textContent).toMatch(/optional/i)
+    expect(repositoriesLabel().textContent).not.toMatch(/required/i)
   })
 
-  it('says the pack expects a repository when it declares requiresRepos', async () => {
+  it('marks the repositories label required when the pack declares requiresRepos', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
     renderPage()
     expect(await screen.findByLabelText(/repositories/i)).toBeTruthy()
-    expect(screen.getByText(/this pack expects at least one/i)).toBeTruthy()
+    expect(repositoriesLabel().textContent).toMatch(/required/i)
   })
 
   it('sends repositories typed for a pack that does not require them (issue #178)', async () => {
@@ -395,6 +405,25 @@ describe('pack metadata drives the conditional fields', () => {
 
       await waitFor(() => expect(api.createServer).toHaveBeenCalled())
       expect(vi.mocked(api.createServer).mock.calls[0]?.[0].userScriptRunAs).toBe('root')
+    })
+
+    /**
+     * The copy pattern the form now uses everywhere (issue #245): one line of purpose under the
+     * label, the security caveat as its own VISIBLE line, and the semantics behind a closed
+     * disclosure. Asserted structurally rather than word for word — what matters is that the
+     * caveat is not inside the `<details>`, which is where the audit found it buried.
+     */
+    it('shows the plain-text caveat outside the disclosure, and the contract inside it', async () => {
+      renderPage()
+      await screen.findByLabelText(/startup script/i)
+
+      const caveat = screen.getByText(/stored and sent to the box in plain text/i)
+      expect(caveat.closest('details')).toBeNull()
+
+      const disclosure = screen.getByText(/when it runs, what it gets/i).closest('details')
+      expect(disclosure).toBeTruthy()
+      expect((disclosure as HTMLDetailsElement).open).toBe(false)
+      expect(disclosure!.textContent).toMatch(/the server still comes up/i)
     })
 
     it('sends nothing at all when the field is empty or only whitespace', async () => {
@@ -1961,6 +1990,37 @@ describe('an environment the creator types (issue #197)', () => {
     })
   })
 
+  /**
+   * The values reach the login shell as well as the setup steps (issue #244), and the field that
+   * asks for them says so (issue #245). One line, because it is one fact.
+   */
+  it('says the values are available to setup and in your shell', async () => {
+    renderPage()
+    await screen.findByLabelText(/^environment/i)
+    expect(screen.getByText(/available to its setup and in your shell when you SSH in/i)).toBeTruthy()
+  })
+
+  /** A path styled as a path, and now reachable (issue #245). */
+  it('links docs/self-hosting.md rather than only styling it', async () => {
+    renderPage()
+    await screen.findByLabelText(/startup script/i)
+    const links = screen.getAllByRole('link', { name: /docs\/self-hosting\.md/i })
+    expect(links.length).toBeGreaterThan(0)
+    for (const link of links) {
+      expect(link.getAttribute('href')).toBe('https://github.com/amroja-biz/rockysurf/blob/main/docs/self-hosting.md')
+    }
+  })
+
+  /** The same three-part pattern as the startup script above (issue #245). */
+  it('puts the in-the-clear caveat on its own visible line, not inside the disclosure', async () => {
+    renderPage()
+    await screen.findByLabelText(/^environment/i)
+
+    const caveat = screen.getByText(/stored and shown in the clear/i)
+    expect(caveat.closest('details')).toBeNull()
+    expect(screen.getByText(/what the names and values may be/i).closest('details')).toBeTruthy()
+  })
+
   it('marks a secret: line as secret and leaves the rest plain', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -1985,10 +2045,13 @@ describe('an environment the creator types (issue #197)', () => {
   })
 
   it('tells the startup script where to put a token instead of forbidding one', async () => {
-    // The hint changed with this issue: the field used to say "put no passwords or tokens in
-    // it", which was true and left the user nowhere to go.
+    // The hint changed with issue #197: the field used to say "put no passwords or tokens in
+    // it", which was true and left the user nowhere to go. It says ABOVE rather than below
+    // since issue #245 put Environment ahead of the script that reads it — the direction is
+    // asserted deliberately, because a form that points forward at a field the reader has not
+    // reached is the thing that reordering removed.
     renderPage()
     await screen.findByLabelText(/startup script/i)
-    expect(screen.getByText(/put passwords and tokens in Environment below/i)).toBeTruthy()
+    expect(screen.getByText(/put passwords and tokens in Environment above/i)).toBeTruthy()
   })
 })
