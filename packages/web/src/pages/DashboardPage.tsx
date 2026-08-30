@@ -554,6 +554,7 @@ function ServerCard({
         )}
         {showStart && (
           <button
+            className="primary"
             disabled={busy}
             onClick={() => void run('start', () => startServer(server.serverId), `${server.name} is starting`)}
           >
