@@ -1207,7 +1207,6 @@ export function PacksPage(): React.JSX.Element {
         aria-labelledby="packs-tab-official"
         hidden={activeTab !== 'official'}
       >
-        <h2>Official</h2>
         {official.length === 0 ? (
           <Shore>No packs from this Rocky Surf release are enabled.</Shore>
         ) : (
@@ -1226,9 +1225,9 @@ export function PacksPage(): React.JSX.Element {
         aria-labelledby="packs-tab-community"
         hidden={activeTab !== 'community'}
       >
-        <div className="shop-section-head">
-          <h2>Community</h2>
-          {isAdmin && (
+        {/* No heading here (issue #233): the tab already says "Community". */}
+        {isAdmin && (
+          <div className="shop-section-head">
             <button
               type="button"
               className="button secondary"
@@ -1237,8 +1236,8 @@ export function PacksPage(): React.JSX.Element {
             >
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Verbatim, issue #204 — replaces the raw registry URL that used to sit on each
             shelf below. One fixed sentence naming where the catalogue comes from, rather than
@@ -1307,8 +1306,6 @@ export function PacksPage(): React.JSX.Element {
         aria-labelledby="packs-tab-personal"
         hidden={activeTab !== 'personal'}
       >
-        <h2>Personal</h2>
-
         {isAdmin && (
           <>
             {notice && <p data-testid="notice">{notice}</p>}

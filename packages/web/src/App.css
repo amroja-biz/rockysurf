@@ -2674,8 +2674,12 @@ main.help section > pre {
   margin-bottom: 0.75rem;
 }
 
-.shop-section-head h2 {
-  margin: 0;
+/* Issue #233 dropped the "Community" h2 the tab already says, leaving this head with only the
+   admin-only Refresh button — pushed to the same right edge a heading used to space it against,
+   rather than reworking `justify-content` and disturbing `ShelfSection`'s own h3 use of this
+   class (App.css / PacksPage.tsx:546). */
+.shop-section-head .button {
+  margin-left: auto;
 }
 
 .pack-grid {

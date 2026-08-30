@@ -159,8 +159,7 @@ body[data-rs-skin='etched'] {
    unreadable, and it turns sshAllowedCidr into SSHALLOWEDCIDR. */
 
 [data-rs-skin='etched'] h1 { font-size: 1.9rem; letter-spacing: 0.01em; }
-[data-rs-skin='etched'] h2,
-[data-rs-skin='etched'] .shop-section-head h2 {
+[data-rs-skin='etched'] h2 {
   font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.14em;
   color: var(--rs-beam); font-weight: 700;
 }
