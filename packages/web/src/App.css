@@ -2674,8 +2674,12 @@ main.help section > pre {
   margin-bottom: 0.75rem;
 }
 
-.shop-section-head h2 {
-  margin: 0;
+/* Issue #233 dropped the "Community" h2 the tab already says, leaving this head with only the
+   admin-only Refresh button — pushed to the same right edge a heading used to space it against,
+   rather than reworking `justify-content` and disturbing `ShelfSection`'s own h3 use of this
+   class (App.css / PacksPage.tsx:546). */
+.shop-section-head .button {
+  margin-left: auto;
 }
 
 .pack-grid {
@@ -2714,6 +2718,12 @@ main.help section > pre {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+/* Cancel (issue #224): a plain secondary button below the chooser, not a grid item beside the
+   option cards — a dismissal must not carry the choices' weight. */
+.pack-create-cancel {
   margin-bottom: 1rem;
 }
 
@@ -2781,6 +2791,14 @@ main.help section > pre {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  transition: border-color 0.15s ease;
+}
+
+/* The card is the link (issue #223) — the same border-goes-blue feedback `.server-card:hover`
+   already gives, rather than the stray underline `a:hover` alone leaves on just the name. */
+.pack-card:hover {
+  border-color: var(--rs-link);
+  text-decoration: none;
 }
 
 .pack-card-head {
