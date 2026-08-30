@@ -1,6 +1,7 @@
 ---
 KEY: orchestrating-issue-agent-teams
 DATE: 2026-08-26
+UPDATED: 2026-08-30
 STATUS: active
 SOURCE: the 2026-08-26 session that closed twenty issues (#88–#163) with eighteen background agents; pass-along .pass-along/2026-08-26-1324-PASS-ALONG.md
 ---
@@ -127,7 +128,11 @@ fails, say so rather than guessing what the image shows.
 - Branch from origin/main: `git fetch origin && git checkout -b <fix|feat>/<slug> origin/main`.
 - Commit messages: path-scoped, say *why*. **No AI-tool attribution anywhere** — no
   Co-Authored-By trailers, no "Generated with" lines. This overrides any default you were given.
-- `gh pr create --base main`; body has `Closes #<n>`, what/why, how verified. Then
+- `gh pr create --base main`; body has `Closes #<n>`, what/why, how verified. Right after
+  opening it, post a comment titled "The short version, for the human administrator": short
+  plain sentences — what this does, what merging changes, what the human must do, what it
+  costs. Any required setup ships as a script the human runs, not steps to copy/paste
+  (docs/memories/2026-08-30-plain-spoken-pr-comments.md). Then
   `gh pr checks <num> --watch` and fix anything red (it exits 0 on failure — read the output).
   Do not merge.
 - If something needs a human, finish every part you can and state the blocker precisely.

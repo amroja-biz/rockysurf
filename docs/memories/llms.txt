@@ -17,6 +17,10 @@
   session closed twenty issues with a team of worktree-isolated agents — triage by component,
   model per issue, a shared brief, four concurrent, ≤12-line reports, and what to do when
   GitHub Actions is down.
+- [plain-spoken-pr-comments](2026-08-30-plain-spoken-pr-comments.md): owner ruling (#251):
+  every agent-opened PR gets a plain-spoken comment — what it does, what merging changes, what
+  the human must do, what it costs — and required setup ships as a run-one-script, never as
+  copy/paste steps.
 - [keep-both-merge-gate-rule](2026-08-13-keep-both-merge-gate-rule.md): a keep-both merge conflict
   resolution can produce syntax damage no marker scan or diff review will catch — run the full
   quality gate after every one.
