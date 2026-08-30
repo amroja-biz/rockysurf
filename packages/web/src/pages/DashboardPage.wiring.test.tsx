@@ -464,6 +464,60 @@ describe('a failed row whose machine is still running', () => {
 })
 
 /**
+ * WHICH STATUSES THE STILL-BILLING NOTICE IS FOR (issue #218).
+ *
+ * Core sends the `billing` block for any row the provider says is metering whose status does
+ * not already say so — which includes a box that is coming up on purpose, because an instance
+ * meters from the moment it is asked for. Rendering on `billing` alone put "This machine is
+ * still running, and still billing. Terminate it to stop the charge, or leave it up and SSH in
+ * to diagnose what went wrong" on a first launch, while "Launching server" was still on screen.
+ * Nothing had failed and there was nothing to diagnose; the notice was telling a new user to
+ * destroy a healthy machine.
+ */
+describe('the still-billing notice and the row status', () => {
+  /** A box mid-launch: provisioning, and metering, exactly as core reports it. */
+  const PROVISIONING_AND_BILLING = {
+    ...RUNNING,
+    status: 'provisioning',
+    provisioningStep: 'launch',
+    startedAt: undefined,
+    totalUptimeSeconds: 0,
+    estimatedTotalCost: 0,
+    billing: { live: true, providerState: 'pending', since: '2026-08-12T00:00:00.000Z' },
+  }
+
+  it('says nothing on a box that is still provisioning, on either page', async () => {
+    rows = [PROVISIONING_AND_BILLING]
+    const { container, unmount } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    expect(cardFor(container, 'dev-box').querySelector('.still-billing-notice')).toBeNull()
+    unmount()
+
+    const detail = renderDetail(SERVER_ID)
+    await waitFor(() => expect(detail.container.querySelector('.server-summary')).toBeTruthy())
+    expect(detail.container.querySelector('.still-billing-notice')).toBeNull()
+  })
+
+  it('says it on a failed box whose machine core still holds, on either page', async () => {
+    // The other half, pinned beside it: the gate must not have taken the notice away from the
+    // one row it was written for.
+    rows = [FAILED_BUT_BILLING]
+    const { container, unmount } = renderPage()
+
+    await waitFor(() => expect(cardFor(container, 'dev-box')).toBeTruthy())
+    const notice = cardFor(container, 'dev-box').querySelector('.still-billing-notice')
+    expect(notice).toBeTruthy()
+    expect(notice!.textContent).toContain('still running, and still billing')
+    unmount()
+
+    const detail = renderDetail(SERVER_ID)
+    await waitFor(() => expect(detail.container.querySelector('.server-summary')).toBeTruthy())
+    expect(detail.container.querySelector('.still-billing-notice')).toBeTruthy()
+  })
+})
+
+/**
  * A FAILED ROW WHOSE MACHINE CORE ALREADY RELEASED (ADR-0010, issue #154).
  *
  * The report: a box whose tool install failed offered **Dismiss** on the detail page and
