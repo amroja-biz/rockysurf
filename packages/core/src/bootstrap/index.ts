@@ -24,6 +24,10 @@ export {
 export {
   repoDirName,
   resolveInstallPlan,
+  SHELL_ENVIRONMENT_FILE,
+  SHELL_ENVIRONMENT_PLATFORM_NAMES,
+  SHELL_ENVIRONMENT_PROFILE_HOOK,
+  shellEnvironmentNames,
   type ResolvablePack,
   type ResolveInstallPlanInput,
 } from './resolver.js'

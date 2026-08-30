@@ -58,10 +58,10 @@ pack:
     GitHub
       gh auth login           then: gh auth setup-git
 
-      Your shell has no $GITHUB_TOKEN. If the operator set `github.pat` in
-      rockysurf.config.yaml, that token was handed to the bootstrap and your repositories
-      were cloned with it — but it is not exported into an interactive session, so `gh`
-      and your own pushes need this login.
+      If the operator set `github.pat` in rockysurf.config.yaml, that token is in your
+      shell as $GITHUB_TOKEN — the same one that cloned your repositories — so `gh` works
+      as it is; run `gh auth setup-git` once and your own pushes do too. With no token
+      configured, `gh auth login` is the way in.
 
 tools:
   # There is no `gas-town-toolchain` here any more. This pack used to install Ubuntu's Go

@@ -6,7 +6,7 @@ import { shellQuote } from './shell.js'
 /**
  * Rendering an InstallPlan from pack data.
  *
- * The eight-phase order is `docs/bootstrap-contract.md` § Step ordering, and it is not a
+ * The nine-phase order is `docs/bootstrap-contract.md` § Step ordering, and it is not a
  * preference: setup scripts run after clones because a setup script may read `$REPOS`, the
  * user's own script runs after all of those because it is written against the finished box,
  * and branding runs after that because it describes a box that already exists.
@@ -45,11 +45,21 @@ export interface ResolveInstallPlanInput {
    * is handed and validates nothing, the same as it does for a tool's `installScript`.
    */
   userScript?: { script: string; runAs: StepRunAs }
+  /**
+   * The NAMES of the pack's inputs and of the creator's Environment lines — both halves of
+   * each, plain and secret — so phase 6 can put exactly those into `rocky`'s shell on the box
+   * (issue #244). Names only, never values: the values travel in `secrets.env` and the step
+   * reads them off the environment the agent already exports, so the plan stays loggable.
+   * `GITHUB_TOKEN` is added by the resolver itself; see `SHELL_ENVIRONMENT_PLATFORM_NAMES`.
+   * Absent or empty still renders the step, with just the platform names, because whether a
+   * name is present on the box is decided there, not here.
+   */
+  shellEnvironment?: { packInputs: string[]; environment: string[] }
   /** Off only for tests and for a box the operator wants left alone. */
   branding?: boolean
   /**
    * The key the user pasted at create time, normalized (ADR-0008, issue #92). Required
-   * together with `managedPublicKey` to render phase 8 — see `suppliedKeyOnlyScript`. Absent
+   * together with `managedPublicKey` to render phase 9 — see `suppliedKeyOnlyScript`. Absent
    * for every server with no supplied key, which never gets this step.
    */
   userSuppliedPublicKey?: string
@@ -176,7 +186,25 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 6: branding --- */
+  /* --- phase 6: the shell environment (issue #244) --- */
+  // AFTER the user's script, because this reports `ready` and the user's script must not (see
+  // above); before branding, so a plan that is only ever partly finished has done the useful
+  // half first. Always rendered: `GITHUB_TOKEN` is a candidate name on every box, and whether
+  // any candidate is actually present is decided on the box, where the values are.
+  steps.push({
+    id: 'shell-environment',
+    reports: REPORTS.finishing,
+    // Root, and not only because `/etc/profile.d` needs it: a `rocky` step is handed its
+    // environment through `sudo … env KEY=value`, and this step's whole subject is values that
+    // must not go through argv. A root step inherits the agent's environment instead.
+    runAs: 'root',
+    run: shellEnvironmentScript(shellEnvironmentNames(input.shellEnvironment)),
+    // REQUIRED, like `rdp`: the owner's ruling (#244) is that a box whose shell lacks what setup
+    // saw is a bug, so a step that could not write it must not leave a `running` box behind.
+    timeoutSeconds: 60,
+  })
+
+  /* --- phase 7: branding --- */
   if (input.branding !== false) {
     steps.push({
       id: 'branding',
@@ -189,7 +217,7 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 7: remote desktop password --- */
+  /* --- phase 8: remote desktop password --- */
   if (input.pack.requiresRdp) {
     steps.push({
       id: 'rdp',
@@ -200,7 +228,7 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
     })
   }
 
-  /* --- phase 8: retire core's own key once the user supplied one (ADR-0008, issue #92) --- */
+  /* --- phase 9: retire core's own key once the user supplied one (ADR-0008, issue #92) --- */
   // LAST, after every step that needs SSH — which in push mode is all of them, over the one
   // connection this whole drive holds open. Removing the authorized_keys LINE mid-session does
   // not close that already-authenticated SESSION (sshd only re-checks the file on a NEW
@@ -461,6 +489,148 @@ function cloneScript(url: string): string {
     '  esac',
     'fi',
     'exit "$rc"',
+    '',
+  ].join('\n')
+}
+
+/**
+ * THE SHELL ENVIRONMENT (issue #244, the owner's ruling): every Environment line and every
+ * pack input the creator gave is in `rocky`'s environment for every way a person reaches the
+ * box — an interactive SSH login, `ssh box 'command'`, a tmux session started from either, and
+ * the remote-desktop session when the pack has one. Same values setup saw.
+ *
+ * Rocky Surf's own names stay out, with one exception. `RDP_PASSWORD` and the
+ * `ROCKYSURF_GITHUB_TOKEN_*` / `GIT_CONFIG_*` credential-helper plumbing are platform mechanics,
+ * not the user's variables, and nothing on the box reads them after setup. `GITHUB_TOKEN` goes
+ * IN: it is the one name the docs promise `gh` reads with no wiring, the packs install `gh` for
+ * exactly that, and a box whose creator connected GitHub and whose `gh` then answers "not logged
+ * in" has hit the bug the ruling describes. Git is unaffected either way — the clone step's
+ * helper is per-invocation and dies with the step — but `gh auth setup-git` now works with no
+ * login first. The exposure is nil: `rocky` holds `sudo` and could read `secrets.env` anyway.
+ */
+export const SHELL_ENVIRONMENT_PLATFORM_NAMES: readonly string[] = ['GITHUB_TOKEN']
+
+/** Where the values live on the box, relative to `rocky`'s home. Owner `rocky`, mode `0600`. */
+export const SHELL_ENVIRONMENT_FILE = '.config/rockysurf/environment'
+
+/** The hook every login shell reads — `/etc/profile` sources `*.sh` here, for `sh` and bash. */
+export const SHELL_ENVIRONMENT_PROFILE_HOOK = '/etc/profile.d/rockysurf-environment.sh'
+
+/**
+ * The hook a shell that reads no profile gets: `ssh box 'command'`. Debian's bash, started by
+ * sshd with a command, reads `/etc/bash.bashrc` and then `~/.bashrc` — and Ubuntu's stock
+ * copies of both return on the first line for a non-interactive shell, so the block goes at
+ * the TOP of `/etc/bash.bashrc`, above that guard, between these two marker lines. The system
+ * file rather than `~/.bashrc` so the user's own dotfiles are theirs to replace.
+ */
+export const SHELL_ENVIRONMENT_BASHRC_MARKERS = {
+  start: '# >>> rockysurf environment >>>',
+  end: '# <<< rockysurf environment <<<',
+} as const
+
+/**
+ * The names phase 6 puts in the shell, in a fixed order so the plan renders identically twice:
+ * the pack's inputs, then the creator's Environment, then the platform's — deduplicated, since
+ * the create route already refuses a collision and this only has to be deterministic.
+ */
+export function shellEnvironmentNames(supplied: ResolveInstallPlanInput['shellEnvironment']): string[] {
+  return [...new Set([...(supplied?.packInputs ?? []), ...(supplied?.environment ?? []), ...SHELL_ENVIRONMENT_PLATFORM_NAMES])]
+}
+
+/**
+ * The shell function that renders the environment file, exported so a test can run it under a
+ * real bash and source what it prints — the quoting is the part worth proving rather than
+ * reading. `render_shell_environment NAME…` prints one `export NAME='value'` line per name that
+ * is SET in the calling environment; an unset name is omitted (a key with no secret behind it,
+ * an optional input nobody answered) and an empty one is kept, because `FOO=` typed into the
+ * form can only mean "set `FOO`, empty" (ADR-0014 §7). Single quotes with `'\''` for a quote
+ * is the POSIX form, so `sh` (which xrdp's session script is) reads the file exactly as bash
+ * does; `printf %q` was rejected because it emits `$'…'` for anything non-ASCII under the C
+ * locale the agent runs in, and dash cannot read that. The replacement text is held in a
+ * variable rather than written inline in the `${…//…/…}`, because bash 3.2 and bash 5 disagree
+ * about backslashes in an inline replacement and the test below runs under whichever the
+ * developer's machine has; the box's 5.2 and a laptop's 3.2 both read `$q` the same way.
+ */
+export const SHELL_ENVIRONMENT_RENDER_FN = [
+  'render_shell_environment() {',
+  `  local name value q="'\\\\''"`,
+  '  for name in "$@"; do',
+  '    [ -n "${!name+x}" ] || continue',
+  '    value=${!name}',
+  `    printf "export %s='%s'\\n" "$name" "\${value//\\'/$q}"`,
+  '  done',
+  '}',
+].join('\n')
+
+/**
+ * Phase 6. Writes ONE file with the values and TWO hooks with none, all regenerated whole on
+ * every run so a resumed or re-pushed box converges rather than accumulating lines.
+ *
+ * The file: `~rocky/.config/rockysurf/environment`, owner `rocky`, `0600`, `export` lines. The
+ * values come off this step's own environment — a root step inherits the agent's, which
+ * `set -a; . secrets.env` populated — so they never enter the plan and never touch argv. The
+ * NAMES are in the plan, as a bash array literal, which is the plan saying exactly what will be
+ * in the shell without saying what it is.
+ *
+ * The hooks (`SHELL_ENVIRONMENT_PROFILE_HOOK`, `SHELL_ENVIRONMENT_BASHRC_MARKERS`) between them
+ * cover the four ways in: `/etc/profile` for an interactive login, tmux (its panes are login
+ * shells) and the desktop session (xrdp's `startwm.sh` sources `/etc/profile` under `sh`);
+ * `/etc/bash.bashrc` for `ssh box 'command'` and for a terminal opened inside the desktop.
+ * Both read the same file and source it only if it is readable, so the hooks are inert for
+ * root and for any account that has no file — which is how a value stays `rocky`'s alone
+ * without the hook itself carrying anything. A login shell reads both; sourcing twice is
+ * harmless. The user's own dotfiles run after either hook, so their `export` wins.
+ *
+ * `umask 077` first: nothing here is ever readable by anyone else, even between two lines.
+ */
+export function shellEnvironmentScript(names: string[]): string {
+  const { start, end } = SHELL_ENVIRONMENT_BASHRC_MARKERS
+  const hookBody = [
+    '# Rocky Surf: the pack\'s inputs and this box\'s Environment, for every shell rocky gets.',
+    `# The values live in ~/${SHELL_ENVIRONMENT_FILE} (mode 0600); this file holds none.`,
+    `if [ -r "\${HOME:-}/${SHELL_ENVIRONMENT_FILE}" ]; then . "\${HOME:-}/${SHELL_ENVIRONMENT_FILE}"; fi`,
+  ]
+  return [
+    'set -euo pipefail',
+    'umask 077',
+    `names=(${names.map(shellQuote).join(' ')})`,
+    'home=$(getent passwd rocky | cut -d: -f6)',
+    '[ -n "$home" ] || home=/home/rocky',
+    `file="$home/${SHELL_ENVIRONMENT_FILE}"`,
+    // `~/.config` is left with whatever mode it has if it exists — it is the user's — and
+    // created the conventional way if not; the directory under it is ours and is always 0700.
+    '[ -d "$home/.config" ] || install -d -m 0755 -o rocky -g rocky "$home/.config"',
+    'install -d -m 0700 -o rocky -g rocky "$(dirname "$file")"',
+    SHELL_ENVIRONMENT_RENDER_FN,
+    // Whole-file write through a temp file in the same directory, so a shell that starts while
+    // this runs reads the old file or the new one, never half of one.
+    '{',
+    "  echo '# Written by Rocky Surf when this box was set up: the pack'\\''s inputs and the'",
+    "  echo '# Environment from the create form, so every shell here sees what setup saw.'",
+    "  echo '# Regenerated whole on a re-run; put your own changes in ~/.bashrc, which runs later.'",
+    '  render_shell_environment "${names[@]}"',
+    '} > "$file.tmp"',
+    'chown rocky:rocky "$file.tmp"',
+    'chmod 0600 "$file.tmp"',
+    'mv -f "$file.tmp" "$file"',
+    // Hook 1: every login shell, bash or sh.
+    `cat > ${SHELL_ENVIRONMENT_PROFILE_HOOK}.tmp <<'ROCKYSURF_HOOK'`,
+    ...hookBody,
+    'ROCKYSURF_HOOK',
+    `chmod 0644 ${SHELL_ENVIRONMENT_PROFILE_HOOK}.tmp`,
+    `mv -f ${SHELL_ENVIRONMENT_PROFILE_HOOK}.tmp ${SHELL_ENVIRONMENT_PROFILE_HOOK}`,
+    // Hook 2: the block at the top of /etc/bash.bashrc, above Ubuntu's interactive guard. Any
+    // previous block is dropped first, so a second run writes the same bytes as the first.
+    '{',
+    `  printf '%s\\n' ${shellQuote(start)}`,
+    ...hookBody.map((line) => `  printf '%s\\n' ${shellQuote(line)}`),
+    `  printf '%s\\n' ${shellQuote(end)}`,
+    '  if [ -f /etc/bash.bashrc ]; then',
+    `    sed ${shellQuote(`/^${start}$/,/^${end}$/d`)} /etc/bash.bashrc`,
+    '  fi',
+    '} > /etc/bash.bashrc.tmp',
+    'chmod 0644 /etc/bash.bashrc.tmp',
+    'mv -f /etc/bash.bashrc.tmp /etc/bash.bashrc',
     '',
   ].join('\n')
 }

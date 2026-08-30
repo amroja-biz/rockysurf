@@ -24,6 +24,7 @@ says so explicitly.
 - [Push mode](#push-mode)
 - [Callback mode](#callback-mode)
 - [The systemd unit contract](#the-systemd-unit-contract)
+- [The shell environment](#the-shell-environment)
 - [Security invariants](#security-invariants)
 - [Failure semantics](#failure-semantics)
 - [Conformance checklist](#conformance-checklist)
@@ -90,7 +91,7 @@ Field rules:
 - `id` MUST be unique within the plan and stable across re-renders of the same logical plan.
   It is the key the journal resumes on, so an id that changes between renders silently re-runs
   work. Use the namespaced forms below. Adding a **singleton id** — `branding`, `rdp`,
-  `user-script`, `supplied-key-only` — does not bump `version`: what version 1 freezes is the
+  `user-script`, `shell-environment`, `supplied-key-only` — does not bump `version`: what version 1 freezes is the
   set of FIELDS, and an agent that has never heard of an id still executes the step correctly
   through `run`/`runAs`/`optional`/`timeoutSeconds`.
 - `reports` is core's vocabulary, not the agent's, and it is **lossy on purpose** — several
@@ -115,10 +116,11 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 2 | Pack tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base tools before agents; that is a consequence of the numbers, not a second rule |
 | 3 | Repository clones | `repo:<basename>` | One step per repository the user chose |
 | 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS`. The step body opens with a preamble that exports `$REPOS`, sets `GIT_TERMINAL_PROMPT=0`, and — under the clone step's own guard, when the box carries any token — wires the clone step's credential helper into git's `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` environment, so a git run by the script or by any program it starts authenticates the way the clone did (issue #142: `gt rig add` re-clones the repository itself and had no credentials). The environment dies with the step; nothing is written to any git config |
-| 5 | The user's own script | `user-script` | Only when the row carries one ([ADR-0011](adr/0011-user-script-at-create-time.md), issue #184). AFTER every step the pack contributes, because that is the box the user wrote it against; BEFORE phases 6-8, which are core's own finishing steps and all report `ready` — a report arriving after one of those is dropped in callback mode, where `ready` promotes the row out of `provisioning`. The body opens with the same preamble as phase 4 and is otherwise the user's text verbatim: no `set -euo pipefail` is imposed, so the step's exit status is the script's own. **OPTIONAL**: a failed user script is a warning on a running box, not a failed bootstrap — see [Failure semantics](#failure-semantics) |
-| 6 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
-| 7 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
-| 8 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
+| 5 | The user's own script | `user-script` | Only when the row carries one ([ADR-0011](adr/0011-user-script-at-create-time.md), issue #184). AFTER every step the pack contributes, because that is the box the user wrote it against; BEFORE phases 6-9, which are core's own finishing steps and all report `ready` — a report arriving after one of those is dropped in callback mode, where `ready` promotes the row out of `provisioning`. The body opens with the same preamble as phase 4 and is otherwise the user's text verbatim: no `set -euo pipefail` is imposed, so the step's exit status is the script's own. **OPTIONAL**: a failed user script is a warning on a running box, not a failed bootstrap — see [Failure semantics](#failure-semantics) |
+| 6 | The shell environment | `shell-environment` | Always (issue #244, the owner's ruling: what setup saw, `rocky`'s shell sees). A root step whose body carries the NAMES of the pack's inputs and the creator's Environment lines — both halves of each — plus `GITHUB_TOKEN`, as a bash array literal, and no value: it reads the values off the environment the agent already exports and writes them, `export KEY='value'` per name that is set, to `~rocky/.config/rockysurf/environment` (owner `rocky`, `0600`, whole-file replace through a temp file in the same directory). Then two value-free hooks: `/etc/profile.d/rockysurf-environment.sh`, and a marker-delimited block at the TOP of `/etc/bash.bashrc`, each sourcing that file when it is readable. See [The shell environment](#the-shell-environment) for why those two. Regenerated whole on every run, so a resumed or re-pushed box converges. REQUIRED: a box whose shell lacks what setup saw is the bug the ruling names, not a warning |
+| 7 | Branding | `branding` | The `/etc/motd` welcome banner and `/etc/rockysurf/server-info`; also quiets Ubuntu's stock MOTD scripts. Optional, and omitted entirely when the caller sets `branding: false` |
+| 8 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
+| 9 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
 
 **Ties MUST be broken deterministically.** Two tools with equal `installOrder` are ordered by
 `toolId` ascending. A *rendered plan* cannot be non-deterministic: two renders of the same pack
@@ -540,6 +542,59 @@ spike (ADR-0002 Decision 8, amendment `E7`).
 
 ---
 
+## The shell environment
+
+Added for issue #244, the owner's ruling: **if a person would expect an environment variable
+to be on the box, it is on the box — by default, with nothing to opt into.** Before this,
+every Environment line and every pack input reached each setup step and nothing else;
+`ssh rocky@box` had none of them, and the form copy that said "every step of this box's setup
+can read `$KEY`" was true in exactly the way the ruling forbids.
+
+**What MUST hold after phase 6 has run.** The creator's Environment lines and the pack's
+inputs — plain and secret halves alike — are in `rocky`'s environment, with the values setup
+saw, for every way a person reaches the box:
+
+| way in | what bash reads | covered by |
+|---|---|---|
+| an interactive SSH login | `/etc/profile` → `/etc/profile.d/*.sh` (and `/etc/bash.bashrc`, `~/.profile`, `~/.bashrc`) | the profile.d hook |
+| `ssh box 'command'` | `/etc/bash.bashrc` then `~/.bashrc` — **no profile**. Debian's bash does this when started by sshd with a command, and Ubuntu's stock copies of both files `return` on their first line for a non-interactive shell | the block at the top of `/etc/bash.bashrc`, above that guard |
+| a tmux session started from either | a login shell per pane, so `/etc/profile`; the server also inherits the client's environment | the profile.d hook |
+| the remote-desktop session, for a `requiresRdp` pack | `/etc/xrdp/startwm.sh`, which is `sh` and sources `/etc/profile` — the stock one does, and a pack that replaces it MUST keep that line. A terminal opened inside the session is an interactive non-login bash and reads `/etc/bash.bashrc` besides | the profile.d hook (and the block, for the terminal) |
+
+Both hooks are one line of logic — source `~/.config/rockysurf/environment` if it is readable —
+and carry no value, so they are inert for root and for any account without the file. They are
+system files rather than the user's dotfiles on purpose: the user may replace `~/.bashrc`
+wholesale and lose nothing, and their own dotfiles run **after** either hook, so an `export`
+of theirs wins. A login shell runs both hooks and sources the file twice; that is harmless and
+cheaper than a sentinel that tmux would inherit. The file is `export KEY='value'` lines in the
+POSIX single-quote form, because `sh` reads it too.
+
+Mechanisms considered and not used, so nobody re-derives them: `~/.bashrc` alone misses the
+desktop session and is the user's to edit; `/etc/profile.d` alone misses `ssh box 'command'`;
+`/etc/environment` through `pam_env` is world-readable, parses values its own way, and is not in
+`xrdp-sesman`'s PAM stack on Ubuntu; sshd's `PermitUserEnvironment` covers only SSH and needs an
+sshd reload mid-bootstrap; `BASH_ENV` has to be set by something first.
+
+**What stays out.** `RDP_PASSWORD`, `ROCKYSURF_GITHUB_TOKEN_*` and the `GIT_CONFIG_*` /
+`GIT_TERMINAL_PROMPT` credential-helper plumbing are platform mechanics with no reader after
+setup. `GITHUB_TOKEN` goes IN, as a decision rather than an accident: it is the one name the
+pack contract promises `gh` reads with no wiring, every shipped pack installs `gh` on that
+promise, and a box whose creator connected GitHub and whose `gh` then answers "not logged in"
+is the bug the ruling describes. Git is unchanged either way — the clone step's credential
+helper is per-invocation and dies with the step — but `gh auth setup-git` now works with no
+login first. The names that go in are decided by core at plan time from provenance
+(`shellEnvironmentNames` in `bootstrap/resolver.ts`), never by the box filtering `secrets.env`
+by what is "not ours": an allowlist fails safe when a platform name is added later.
+
+**Where the values live afterwards, and why that is acceptable.** `~rocky/.config/rockysurf/environment`,
+owner `rocky`, mode `0600`, the tightest mode a file the shell has to read can carry. This is
+one person's box, the same values were already handed to every install step, and `rocky` holds
+`sudo` and could read `secrets.env` regardless — so the file adds no exposure, and it adds no
+copy with its own lifetime either: there is no re-push that could make it stale (ADR-0014,
+"deliberately unresolved").
+
+---
+
 ## Security invariants
 
 These are requirements, not recommendations. Each was learned from something that went wrong.
@@ -577,6 +632,12 @@ These are requirements, not recommendations. Each was learned from something tha
    discover it (amendment `E4`).
 7. **The box MUST hold no cloud credentials and MUST NOT depend on the instance metadata
    service.** Nothing on the box is cloud-specific by design.
+8. **The shell-environment step MUST carry names and never values, and MUST run as root**
+   (issue #244). The plan is `0644` and quoted in failure reports, so a value in its body has
+   leaked; and an unprivileged step receives its environment through `sudo … env KEY=value`,
+   which is argv. A root step inherits the agent's environment instead, which is the only
+   delivery that satisfies invariant 2 for this step. The file it writes is created `0600`
+   under `umask 077` and owned by `rocky`; the two hooks it installs contain no value.
 
 ---
 
@@ -647,6 +708,10 @@ An implementation conforms when all of the following hold.
       before declaring the agent gone.
 - [ ] `secrets.env` is `0600` at creation; control-plane credentials live in a separate file that
       is never exported to steps; no secret ever reaches argv.
+- [ ] After bootstrap, `rocky`'s shell carries every pack input and Environment line setup saw —
+      for an interactive login, `ssh box 'command'`, tmux and the desktop session — and not
+      `RDP_PASSWORD`; the values file is `rocky`-owned `0600` and byte-identical across a second
+      run (issue #244; the pack smoke harness checks all of it).
 - [ ] User-data over the size threshold is `gz+b64`, and the renderer refuses a document that
       exceeds the provider's ceiling.
 - [ ] Callback: the plan is fetched only when absent, 4xx is never replayed, and every use of the
@@ -708,9 +773,12 @@ Rules that follow, and the reason each exists:
   coming from a form field rather than from a shape core controlled. A newline quoting cannot
   fix, because the second line would read as a second name, so it is refused at the create route
   instead. Reading is unchanged: the name is everything before the first `=`.
-- **Nothing supplied at create time is in the plan.** `plan.json` is written `0644` and is quoted
-  in failure reports; these values travel only in this `0600` file. `PLAN_VERSION` is unaffected —
-  no step, field or id changed.
+- **No VALUE supplied at create time is in the plan.** `plan.json` is written `0644` and is quoted
+  in failure reports; the values travel only in this `0600` file. The NAMES of the last two rows
+  are in it since issue #244 — the `shell-environment` step lists which of this file's names it
+  puts in `rocky`'s shell (see [The shell environment](#the-shell-environment)) — and a name is
+  not a secret. `PLAN_VERSION` is unaffected — no field changed, and a singleton id is not a
+  version.
 - **A key with no secret is OMITTED, never emitted empty.** `RDP_PASSWORD=` would satisfy the
   resolver's `-z` guard and then set an empty desktop password; absent makes that step fail with
   the message it already carries.

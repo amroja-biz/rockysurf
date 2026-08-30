@@ -63,9 +63,9 @@ pack:
     GitHub
       gh auth login           then: gh auth setup-git
 
-      Your shell has no $GITHUB_TOKEN, and this pack clones no repositories. If the
-      operator set `github.pat` in rockysurf.config.yaml it goes to the bootstrap only,
-      never into an interactive session.
+      This pack clones no repositories, but if the operator set `github.pat` in
+      rockysurf.config.yaml that token is in your shell as $GITHUB_TOKEN, so `gh` works
+      as it is. With no token configured, `gh auth login` is the way in.
 
     Also installed
       bd, tmux, Playwright with Chromium, and Firefox in the desktop.
@@ -114,7 +114,12 @@ tools:
       done
       chown rocky:rocky /home/rocky/.xsession
 
+      # `/etc/profile` first, as the stock xrdp startwm.sh does: it is how the desktop session
+      # gets what every login shell gets — the environment Rocky Surf writes for rocky, the
+      # pack's inputs among it (issue #244). A terminal inside the session would see it either
+      # way; the applications launched from the panel only see it if the session did.
       want_wm='#!/bin/sh
+      if [ -r /etc/profile ]; then . /etc/profile; fi
       xfce4-session'
       if [ "$(cat /etc/xrdp/startwm.sh 2>/dev/null)" != "$want_wm" ]; then
         printf '%s\n' "$want_wm" > /etc/xrdp/startwm.sh

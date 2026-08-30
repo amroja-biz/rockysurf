@@ -197,3 +197,50 @@ Every precedence rule loses a value the user typed, silently.
   made this necessary and which receives these values like any other step.
 - [ADR-0002](0002-push-bootstrap-default-callback-fallback.md) — the `secrets.env` channel and
   the frozen plan version this decision does not move.
+
+## Amendment — 2026-08-30: the values are in `rocky`'s shell, not only in setup (issue #244)
+
+**Owner ruling.** If a user would expect an environment variable to be on the box, it is on the
+box — by default, with nothing to opt into. A person who typed an API key into this field,
+SSHed in and found the harness could not see it had hit a bug, not a documentation gap.
+
+**What changes.** §3's delivery table gains a row and §3's "on the box" column is no longer the
+whole story. After every step the pack contributes and after the user's own script, a
+`shell-environment` step (phase 6 of the bootstrap contract) writes every Environment line —
+plain and `secret:` alike — and every pack input from [ADR-0013](0013-packs-declare-their-inputs.md)
+to `~rocky/.config/rockysurf/environment`, owner `rocky`, mode `0600`, and installs two
+value-free hooks (`/etc/profile.d/rockysurf-environment.sh`; a marker block at the top of
+`/etc/bash.bashrc`) so that an interactive SSH login, `ssh box 'command'`, a tmux session and
+the remote-desktop session all source it. `GITHUB_TOKEN` is included; `RDP_PASSWORD` and the
+credential-helper plumbing are not. The full mechanism and the alternatives rejected are in
+[`bootstrap-contract.md` § The shell environment](../bootstrap-contract.md#the-shell-environment).
+
+| | plain line | `secret:` line |
+|---|---|---|
+| on the box, after setup | `~rocky/.config/rockysurf/environment`, `0600`, sourced by every shell `rocky` gets | same |
+
+**What does not change.** Custody at rest and over the API are exactly §3's: a `secret:` value
+is still returned by no route, and neither half is in the plan snapshot. What the plan gains is
+the NAMES — the `shell-environment` step's body lists which names it will export, because the
+step reads the values off the environment the agent already holds rather than off the plan.
+`PLAN_VERSION` is unmoved for §3's reason: no field changed. §5's collision rule is what makes
+the name list a plain list — the pack's names and the user's cannot overlap. §7 holds on the
+box too: an empty Environment value is exported empty, an unanswered optional input is absent.
+
+**Why a file in the home directory is acceptable.** This is one person's box; the same values
+were already handed to every install step; and `rocky` holds `sudo`, so `secrets.env` was
+already readable to anyone who could read this file. The mode is the tightest a file a shell
+must read can have. There is still no editing after create — the ADR's "deliberately
+unresolved" entry stands — so the file cannot go stale against a value core holds.
+
+**§11's sentence needs one word changed, everywhere it is repeated.** "A secret is shown by
+nothing" was true while the values stopped at setup; it is not true of a box that now carries
+them in a file its owner can `cat`. What is still true — and is the useful half — is that
+**Rocky Surf** will not show it back: no route, no page, no list. Every place that phrased the
+refusal as a property of the world rather than of the control plane is corrected to say so
+(`self-hosting.md`, twice; the create form's own caveat, in #245). The remedy for a lost secret
+is unchanged only for someone who no longer has the box.
+
+**Consequences for the form.** The startup-script hint (§8) is now understated rather than wrong:
+a value put here reaches the script AND the shell. The form's Environment copy is rewritten in
+the form-restructure issue; this amendment owns core, the agent and the documents.

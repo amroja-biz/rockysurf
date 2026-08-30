@@ -254,6 +254,7 @@ export function createApp(deps: AppDeps): CreatedApp {
           mode,
           ...(config.server.publicUrl ? { publicUrl: config.server.publicUrl } : {}),
           ...(options?.managedPublicKey ? { managedPublicKey: options.managedPublicKey } : {}),
+          ...(options?.secretEnvironmentNames ? { secretEnvironmentNames: options.secretEnvironmentNames } : {}),
         }),
     })
 

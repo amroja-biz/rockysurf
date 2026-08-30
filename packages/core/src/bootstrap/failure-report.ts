@@ -105,6 +105,7 @@ export function stepLabel(stepId: string, sources: LabelSources = {}): string {
   if (phase === 'repo') return sources.repoUrl?.(stepId.slice('repo:'.length)) ?? stepId.slice('repo:'.length)
   if (stepId === 'branding') return 'login banner'
   if (stepId === 'rdp') return 'remote desktop password'
+  if (stepId === 'shell-environment') return 'shell environment'
   // Named in the SECOND PERSON on purpose (issue #184): every other label in this list is
   // something Rocky Surf chose to run, and the whole point of the warning this ends up on is
   // that this one is not — the fix is in the reader's own text, not in a pack.

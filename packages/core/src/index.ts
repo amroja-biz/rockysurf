@@ -190,6 +190,8 @@ export {
  */
 export {
   resolveInstallPlan,
+  SHELL_ENVIRONMENT_FILE,
+  SHELL_ENVIRONMENT_PROFILE_HOOK,
   type ResolvablePack,
   type ResolveInstallPlanInput,
 } from './bootstrap/resolver.js'

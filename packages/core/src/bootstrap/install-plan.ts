@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { Db } from '../db/client.js'
 import { getPack, listTools } from '../db/repositories/packs.js'
-import { getServerRepositories, getServerTools, setInstallPlan } from '../db/repositories/servers.js'
+import {
+  getServerEnvironment,
+  getServerPackInputs,
+  getServerRepositories,
+  getServerTools,
+  setInstallPlan,
+} from '../db/repositories/servers.js'
 import type { BootstrapMode, ServerRow } from '../db/schema.js'
 import type { InstallPlan } from './plan.js'
 import { resolveInstallPlan, type ResolvablePack } from './resolver.js'
@@ -36,6 +42,15 @@ export interface SnapshotInstallPlanOptions {
    * — safe, not silent: the box simply keeps both keys, same as before this feature existed.
    */
   managedPublicKey?: string
+  /**
+   * The NAMES of the secret halves of the pack's inputs and of the creator's Environment
+   * (issue #244). The plain halves are columns on the row and are read from it below; the
+   * secret halves live in the encrypted store, which this function does not open — reading
+   * values back to take their keys would be a plaintext accessor for nothing — so the create
+   * path, which has the request in hand, passes the names through. Names are not secret.
+   * Absent means no secret halves, which is every server created without any.
+   */
+  secretEnvironmentNames?: { packInputs: string[]; environment: string[] }
 }
 
 /**
@@ -78,6 +93,12 @@ export function snapshotInstallPlan(db: Db, row: ServerRow, options: SnapshotIns
     // re-render months later still renders the script the server was created with rather than
     // needing the create request to be replayed.
     ...(row.userScript ? { userScript: { script: row.userScript, runAs: row.userScriptRunAs ?? 'rocky' } } : {}),
+    // The names that go into rocky's shell (issue #244): the plain halves off the row, the
+    // secret halves from the caller. Names only — the values never enter the plan.
+    shellEnvironment: {
+      packInputs: [...Object.keys(getServerPackInputs(row)), ...(options.secretEnvironmentNames?.packInputs ?? [])],
+      environment: [...Object.keys(getServerEnvironment(row)), ...(options.secretEnvironmentNames?.environment ?? [])],
+    },
     ...(options.branding === false ? { branding: false } : {}),
     ...(row.userSuppliedPublicKey && options.managedPublicKey
       ? { userSuppliedPublicKey: row.userSuppliedPublicKey, managedPublicKey: options.managedPublicKey }

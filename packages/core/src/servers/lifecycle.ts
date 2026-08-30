@@ -372,7 +372,19 @@ export interface LifecycleDeps {
    * Called AFTER `provisionKeys` now (ADR-0008, issue #92), so `managedPublicKey` can carry
    * core's own just-minted public key line for a supplied-key row's final step.
    */
-  snapshotInstallPlan?: (row: ServerRow, mode: BootstrapMode, options?: { managedPublicKey?: string }) => void
+  snapshotInstallPlan?: (
+    row: ServerRow,
+    mode: BootstrapMode,
+    options?: {
+      managedPublicKey?: string
+      /**
+       * The names of the secret halves of the pack's inputs and the creator's Environment
+       * (issue #244), so the plan can name what goes into `rocky`'s shell. The row carries
+       * only the plain halves; this is the one place that still has the request in hand.
+       */
+      secretEnvironmentNames?: { packInputs: string[]; environment: string[] }
+    },
+  ) => void
 }
 
 /**
@@ -829,7 +841,16 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       // between here and STEP 1 reads `row.installPlan`, so moving this past STEP 2 changes
       // nothing else about create ordering (ADR-0001's "row before provider" is unaffected —
       // both of these still run well before STEP 3's provider call).
-      deps.snapshotInstallPlan?.(row, bootstrapMode, { managedPublicKey: keys.sshPublicKeys[0] })
+      deps.snapshotInstallPlan?.(row, bootstrapMode, {
+        managedPublicKey: keys.sshPublicKeys[0],
+        // NAMES of the secret halves, never the values (issue #244). The plain halves are on
+        // the row; the secret halves go into the store a few lines down, and the plan needs
+        // to know which names exist so the box can put them in rocky's shell.
+        secretEnvironmentNames: {
+          packInputs: Object.keys(input.packInputs?.secrets ?? {}),
+          environment: Object.keys(input.environment?.secrets ?? {}),
+        },
+      })
       await emitServerStatus(row)
 
       // The desktop password belongs to the same step for the same reason: it is server-scoped
