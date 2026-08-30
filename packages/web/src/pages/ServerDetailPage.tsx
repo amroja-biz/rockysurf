@@ -152,7 +152,11 @@ export function ServerDetailPage() {
   if (error || !server) {
     return (
       <AppShell title="Server">
-        <p role="alert">{error ?? 'Not found'}</p>
+        {/* Red, not body colour: this is a refusal, and the page has nothing else on it —
+            in `--rs-text` the sentence read as ordinary prose about a server (issue #216). */}
+        <p role="alert" className="error">
+          {error ?? 'Not found'}
+        </p>
         <Link to="/">Back to your servers</Link>
       </AppShell>
     )
@@ -412,7 +416,13 @@ export function ServerDetailPage() {
         {server.bootstrapReport && (server.bootstrapReport.failure || server.bootstrapReport.warnings.length > 0) ? (
           <BootstrapReport report={server.bootstrapReport} />
         ) : (
-          server.errorMessage && <p role="alert">{server.errorMessage}</p>
+          server.errorMessage && (
+            /* The same red the `BootstrapReport` beside it wears: a reason a box failed is a
+               failure, whichever of the two shapes it arrives in (issue #216). */
+            <p role="alert" className="error">
+              {server.errorMessage}
+            </p>
+          )
         )}
         {/* After the reason, because "diagnose" only means something once you can read what
             broke — and before the action buttons, which is where "terminate" lives. */}

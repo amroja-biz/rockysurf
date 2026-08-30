@@ -513,10 +513,69 @@ textarea {
   font-size: 0.8125rem;
 }
 
+/* `accent-color` recolours the CHECKED fill and nothing else, so every unchecked box — the
+   five provider "Enabled" toggles, the spend cap, the MCP scopes — stayed the browser's own
+   light chrome: a white box on a dark page, the anti-pattern the Name field above was fixed
+   for (issue #215). Drawn here instead, out of the same ground, hairline and radius every
+   other field wears, so an empty control reads as an empty control rather than as a hole. */
 input[type='checkbox'],
 input[type='radio'] {
-  width: auto;
-  accent-color: var(--rs-green);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  /* Beside a label that wraps, the box must not be squeezed by the text or stretched by it. */
+  flex: none;
+  margin: 0;
+  background-color: var(--rs-bg);
+  border: 1px solid var(--rs-border);
+  border-radius: 3px;
+  cursor: pointer;
+  /* The tick is a background image rather than a `::before`: an `<input>` is replaced content
+     and its pseudo-elements are not dependable across engines. */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0.75rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+/* A radio is round in every system there is; squaring it would make it a checkbox that
+   behaves differently, which is the one thing the shape is there to prevent. */
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+/* Green: the checked box is the user having chosen something, which is the same meaning
+   `accent-color` was asking the browser for. */
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  background-color: var(--rs-green);
+  border-color: var(--rs-green);
+}
+
+/* The tick is cut out of the fill, so its colour is the page's own dark rather than a token —
+   a data URI cannot read a custom property, and both skins' grounds are near-black. */
+input[type='checkbox']:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%230d1117' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3.5 8.5 6.5 11.5 12.5 5'/%3E%3C/svg%3E");
+}
+
+/* The dot, as a ring of ground bitten out from the edge — one declaration, no second box. */
+input[type='radio']:checked {
+  box-shadow: inset 0 0 0 3px var(--rs-bg);
+}
+
+/* Never removed, only moved outward: the box is small, and a border-colour change alone is
+   not enough to find it with the keyboard. */
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--rs-link);
+  outline-offset: 2px;
+}
+
+input[type='checkbox']:disabled,
+input[type='radio']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Legacy `.file-input`: the control itself cannot be restyled, but its button can, and left
@@ -777,33 +836,6 @@ button.destructive:hover:not(:disabled),
 
 /* ── Server cards ──────────────────────────────────────────────────────────────────────
    Ported from the legacy grid and card, which the port kept by name. */
-
-/* One heading per cloud, above that cloud's grid (issue #121). The dashboard listed every
-   box in a single grid and never said which provider any of them was on; the heading answers
-   that once for a group rather than putting a badge on every card, and it uses the section
-   vocabulary the rest of the app already has — a quiet rule under a heading — rather than
-   introducing tabs or colour-coding. */
-.provider-group + .provider-group {
-  margin-top: 1.75rem;
-}
-
-.provider-group-heading {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0 0 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--rs-border-subtle);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--rs-heading);
-}
-
-.provider-group-count {
-  color: var(--rs-muted);
-  font-size: 0.8125rem;
-  font-weight: 400;
-}
 
 /* The clouds as tabs: the `.tablist`/`.tab` pair Settings and the packs page use, in the
    subheading's own size and weight, with the count beside the name saying the one thing worth
@@ -2360,6 +2392,19 @@ p.hint {
 
   .server-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* Below 768px everything collapses to one column, and these three notices were the
+     exception: a flex row with `space-between` and a non-shrinking actions group kept
+     Dismiss / Don't show again at full size on the right while the sentence beside them was
+     squeezed into a ~90px column, one or two words a line, fifteen lines deep (issue #217).
+     The actions go under the text, at their own width — not stretched, because the IP
+     alert's action is a single `×`. */
+  .stale-servers-notice,
+  .backup-reminder,
+  .ip-change-alert {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
