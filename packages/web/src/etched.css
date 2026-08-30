@@ -133,6 +133,17 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .pack-icon,
 [data-rs-skin='etched'] .pack-monogram { box-shadow: inset 0 0 0 1px var(--rs-ink-hair); }
 
+/* The architecture chip kept the base skin's blue wash (`App.css .arch-badge`), which left the
+   create form with the one blue-filled element under a skin whose whole point is that the beam
+   replaces blue (#227). Cut rather than filled, like `.badge` and `.status-badge` below:
+   nothing here is filled except the one thing currently true, and an architecture is a fact
+   about the machine, not a state it is in. `--rs-link` already resolves to the beam, so the
+   border follows the text it is drawn around. */
+[data-rs-skin='etched'] .arch-badge {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+
 /* The pack card's popup (#192) hangs over the grid, so it needs an edge the cards in it do
    not have: the beam at its rule, and enough shadow under it to sit above the row below. The
    base system has no shadows; this skin's controls already broke that for the same reason. */
