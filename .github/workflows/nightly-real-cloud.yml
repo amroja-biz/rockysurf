@@ -52,7 +52,7 @@ name: Nightly real-cloud lifecycle
 #                                    identity under test, exactly as a self-hoster's.
 #   vars.AZURE_NIGHTLY_CLIENT_ID     the CI-only app registration the orphan sweep runs as.
 #                                    Deliberately a DIFFERENT identity; see below.
-#   vars.AZURE_CI_LOCATION           optional; defaults to eastus.
+#   vars.AZURE_CI_LOCATION           optional; defaults to westus3.
 #
 #   There is no AZURE SECRET either, and it is the same mechanism GCP uses reached by Azure's own
 #   name for it: a FEDERATED CREDENTIAL on each app registration, trusting GitHub's OIDC issuer
@@ -825,13 +825,14 @@ jobs:
       matrix:
         include:
           # BOTH architectures, because arch-correct image-SKU selection (`server` against
-          # `server-arm64`) is only proven by running both. These are the two sizes the 2026-08-26
-          # hand run (rockysurf-ihtq.8) proved the published role against, so a red morning is a
-          # regression rather than a new unknown; see the RUNS table in scripts/e2e/lifecycle.mjs
-          # for why the cheaper 1 GiB B-series entries are not used.
-          - offering: Standard_B2ps_v2
+          # `server-arm64`) is only proven by running both. Not the hand run's B-v2 pair: every
+          # B-v2 family ships with zero vCPU quota and the CI subscription's SKU lists restrict
+          # those sizes outright (verified 2026-08-30) — the leg could never start on them. The
+          # Dv6 pair needs no quota request at all (Dlsv6/Dplsv6 default to 10 vCPUs, both sizes
+          # unrestricted in westus3); see the RUNS table in scripts/e2e/lifecycle.mjs.
+          - offering: Standard_D2pls_v6
             arch: arm64
-          - offering: Standard_B2ls_v2
+          - offering: Standard_D2ls_v6
             arch: amd64
     permissions:
       # OIDC: GitHub mints a short-lived token and Entra exchanges it. There is no Azure secret in
@@ -943,7 +944,7 @@ jobs:
         env:
           ROCKYSURF_E2E_AZURE_SUBSCRIPTION: ${{ vars.AZURE_CI_SUBSCRIPTION }}
           ROCKYSURF_E2E_AZURE_RESOURCE_GROUP: ${{ vars.AZURE_CI_RESOURCE_GROUP }}
-          ROCKYSURF_E2E_AZURE_LOCATION: ${{ vars.AZURE_CI_LOCATION || 'eastus' }}
+          ROCKYSURF_E2E_AZURE_LOCATION: ${{ vars.AZURE_CI_LOCATION || 'westus3' }}
           ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
         run: |
           set -o pipefail

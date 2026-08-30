@@ -670,7 +670,7 @@ The variables it sets:
 | `AZURE_TENANT` | the Entra tenant both app registrations live in |
 | `AZURE_PROVIDER_CLIENT_ID` | the app registration carrying the published roles — the identity under test |
 | `AZURE_NIGHTLY_CLIENT_ID` | the CI-only sweep app registration |
-| `AZURE_CI_LOCATION` | the region; `eastus` unless you pass `--location` |
+| `AZURE_CI_LOCATION` | the region; `westus3` unless you pass `--location` |
 
 Defaults are overridable: `--group`, `--location`, `--repo`, `--branch`, `--subscription`.
 
@@ -709,11 +709,12 @@ would pass, and the run would prove nothing whatsoever about the published role.
 
 ### What the leg covers, and what it does not
 
-`Standard_B2ls_v2` (amd64) and `Standard_B2ps_v2` (arm64) — the two sizes the 2026-08-26 hand run
-used, so a red morning is a regression against a known-good pair rather than a new unknown. The
-cheaper 1 GiB B-series entries (`Standard_B2ats_v2`, `Standard_B2pts_v2`) are deliberately not
-used: that is under half the memory of the smallest box any other leg runs, and not a machine the
-pack has ever been installed on.
+`Standard_D2ls_v6` (amd64) and `Standard_D2pls_v6` (arm64), in `westus3`. Not the hand run's
+B-v2 pair: every B-series v2 family ships with zero vCPU quota on a fresh subscription, and the
+CI subscription's SKU lists restrict those sizes outright, so a leg built on them could never
+start. The Dv6 families (`StandardDlsv6Family`, `StandardDplsv6Family`) default to 10 vCPUs —
+no quota request needed — and both sizes are unrestricted in `westus3` and `centralus` (verified
+2026-08-30). Both carry 4 GiB, the same memory floor as the smallest box any other leg runs.
 
 It exercises one region, one resource group and the sizes above. It does not prove each granted
 action is individually *necessary*, and it does not touch branches the lifecycle never takes.

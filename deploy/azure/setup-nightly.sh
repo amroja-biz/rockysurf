@@ -32,7 +32,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 GROUP='rocky-surf-ci'
-LOCATION='eastus'
+LOCATION='westus3'
 PROVIDER_APP='rockysurf-nightly-provider'
 SWEEP_APP='rockysurf-nightly-sweep'
 CREDENTIAL_NAME='rockysurf-nightly'
@@ -51,7 +51,7 @@ Set up the nightly Azure run. You only need to be signed in to Azure and GitHub.
 Options:
   --subscription <id>   Which Azure subscription to use. Asks you if you have more than one.
   --group <name>        The resource group to make. Default: rocky-surf-ci
-  --location <region>   The Azure region to use. Default: eastus
+  --location <region>   The Azure region to use. Default: westus3
   --repo <owner/name>   The GitHub repository. Default: the one this folder came from.
   --branch <name>       The branch the nightly runs on. Default: main
   --dry-run             Show what would happen and change nothing.
@@ -307,7 +307,7 @@ usage_rows=$(az vm list-usage --location "$LOCATION" --query "[].[name.value,cur
 if [ -z "$usage_rows" ]; then
   note 'I could not read your quota. Skipping this check; the nightly will tell you if it is short.'
 else
-  for family in standardBlsv2Family standardBpsv2Family; do
+  for family in StandardDlsv6Family StandardDplsv6Family; do
     limit=$(printf '%s\n' "$usage_rows" | awk -v f="$family" 'tolower($1) == tolower(f) { print $3 }' | head -n 1)
     case "$limit" in
       ''|*[!0-9]*) limit='' ;;
