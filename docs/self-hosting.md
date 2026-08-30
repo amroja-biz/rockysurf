@@ -219,9 +219,15 @@ preferences:
       small: cpx21
 ```
 
-Set them on the **Preferences** tab of the Settings page, or — usually easier — on the New
-Server page itself: pick a machine type by hand and it offers to use that one every time you
-ask this cloud for a small, a medium or a large. Both write the same lines into the same file.
+Set them on the **Preferences** tab of the Settings page — every box there opens the same
+searchable catalogue the New Server page offers, so a type is picked from what the cloud
+actually sells rather than typed from memory — or on the New Server page itself: pick a machine
+type by hand and it offers to use that one every time you ask this cloud for a small, a medium
+or a large. Both write the same lines into the same file.
+
+A cloud that is switched off in this file has no catalogue to offer, so its boxes stay plain
+text; so does a type Rocky Surf could not read the catalogue for. Leaving a box empty is always
+available and always means the same thing: the cheapest type that meets the size's floor.
 
 Three things worth knowing about them:
 
