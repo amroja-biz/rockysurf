@@ -258,6 +258,58 @@ body[data-rs-skin='etched'] {
 }
 [data-rs-skin='etched'] .dismiss-button { text-transform: none; letter-spacing: 0; font-size: 1.25rem; }
 
+/* ── Tabs ──────────────────────────────────────────────────────────────────────────────
+   A TAB IS NOT A BUTTON, and the bare `button` selector above cannot tell them apart
+   (issue #214). Every tab in the app is a `<button class="tab" role="tab">` — Surge Packs,
+   the settings nav, the create form's pack shelves, the dashboard's clouds — so all four
+   controls were wearing the dimensional box AND the selected underline: two decorations
+   competing for the same state. `components/forms/Tabs.prompt.md`: "Never box the active
+   tab." Undo the box here; the underline is what says which shelf you are on.
+
+   Colour is restated too, because `button`'s `--rs-heading` beat `.tab`'s `--rs-muted` and
+   left every tab lit. The caps stay — a cut label is this skin's voice for a control's name. */
+[data-rs-skin='etched'] .tab,
+[data-rs-skin='etched'] [role='tab'] {
+  background: none;
+  background-image: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  box-shadow: none;
+  border-radius: 0;
+  color: var(--rs-muted);
+}
+[data-rs-skin='etched'] .tab:hover:not(:disabled),
+[data-rs-skin='etched'] [role='tab']:hover:not(:disabled) {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--rs-heading);
+}
+/* The press state belongs to a button that does something; a tab only moves the view. */
+[data-rs-skin='etched'] .tab:active:not(:disabled),
+[data-rs-skin='etched'] [role='tab']:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+/* The one thing left: the beam under the tab you are on. Restated because the reset above
+   sits at the same specificity as App.css's `.tab.selected` and in a later file. */
+[data-rs-skin='etched'] .tab.selected,
+[data-rs-skin='etched'] [role='tab'][aria-selected='true'] {
+  color: var(--rs-beam);
+  border-bottom-color: var(--rs-beam);
+}
+/* Above 60rem the settings nav rotates that underline into a marker down the side of the
+   list (App.css's `min-width: 60rem` block). The reset zeroed the border it rides on, so
+   the same rotation is restated inside the same query. */
+@media (min-width: 60rem) {
+  [data-rs-skin='etched'] .settings-nav .tab {
+    border-bottom: none;
+    border-right: 2px solid transparent;
+  }
+  [data-rs-skin='etched'] .settings-nav .tab.selected {
+    border-right-color: var(--rs-beam);
+  }
+}
+
 /* Where the skin still falls back to a pill, it is cut rather than filled. Swap in <Lamp>
    for the real thing — this is what StatusBadge looks like until you do. */
 [data-rs-skin='etched'] .status-badge {
