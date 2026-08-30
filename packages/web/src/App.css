@@ -253,6 +253,16 @@ hr {
   .app-header::before {
     display: none;
   }
+
+  /* The mark's screen+mask (#243-248) is built to disappear into the band above, not into a
+     flat ground — without the band behind it (the rule just above), the crop's own dark
+     raster reads as a pasted rectangle (#228). Show the plate as what it is instead. */
+  .app-brand img {
+    mix-blend-mode: normal;
+    filter: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
 }
 
 .app-header nav {
