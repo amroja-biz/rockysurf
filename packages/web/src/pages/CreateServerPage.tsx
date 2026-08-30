@@ -467,7 +467,7 @@ function MachineTypePicker({
                   const selected = offering.id === selectedId
                   return (
                     <tr key={offering.id} className={selected ? 'selected' : ''}>
-                      <td>{offering.id}</td>
+                      <td><code>{offering.id}</code></td>
                       <td>{offering.cpu}</td>
                       <td>{offering.memoryGb} GB</td>
                       <td>{offering.diskGb ? `${offering.diskGb} GB` : '—'}</td>
@@ -1355,12 +1355,19 @@ export function CreateServerPage() {
             Reads `resolved` rather than `resolution.ok` directly (rockysurf-kh3u), because it is
             now the answer to either question: which offering the size resolved to, or which one
             the machine-type picker named outright. */}
-        <section className="resolved-offering" aria-live="polite">
+        <section className="resolved-offering" aria-live="polite" data-testid="resolved-offering">
           {resolved ? (
             <>
-              <h2>
-                {resolved.id} <span className="arch-badge">{archLabel(resolved.arch)}</span>
-              </h2>
+              {/* The heading labels the box; it does not carry the id (#226). Under the etched
+                  skin an h2 is cut in letterspaced caps, and caps label a field — they cannot
+                  hold an identifier the user has to read character by character and may type
+                  into a provider console. So the id keeps its own <code>, as it does on the
+                  server card and in the machine-type table. */}
+              <h2>Machine</h2>
+              <p className="resolved-offering-id">
+                <code data-testid="resolved-offering-id">{resolved.id}</code>{' '}
+                <span className="arch-badge">{archLabel(resolved.arch)}</span>
+              </p>
               <p>
                 {resolved.cpu} vCPU · {resolved.memoryGb} GB RAM
                 {resolved.diskGb ? ` · ${resolved.diskGb} GB disk` : ''} · {resolved.region}

@@ -656,6 +656,18 @@ input[type='file']::file-selector-button:hover {
   padding: 1rem 1.25rem;
 }
 
+/* The box's label sits directly on the id it names, so the heading gives up the gap the page's
+   other section headings take (#226). */
+.resolved-offering > h2 {
+  margin: 0 0 0.25rem;
+}
+
+.resolved-offering-id {
+  margin: 0 0 0.5rem;
+  color: var(--rs-heading);
+  font-size: 1rem;
+}
+
 .arch-badge {
   font-size: 0.75rem;
   font-weight: 500;
