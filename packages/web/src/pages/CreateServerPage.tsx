@@ -1704,33 +1704,50 @@ export function CreateServerPage() {
             onChange={(e) => setUserScript(e.target.value)}
             placeholder={'set -euo pipefail\nmkdir -p "$HOME/.config"\n'}
           />
-          {/* The freedom EC2 does not give: user data there is always root. Nested inside the
-              field rather than beside it, because the choice is meaningless without a script. */}
-          <fieldset>
-            <legend>Run it as</legend>
-            <label className={`radio-option ${userScriptRunAs === 'rocky' ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="userScriptRunAs"
-                checked={userScriptRunAs === 'rocky'}
-                onChange={() => setUserScriptRunAs('rocky')}
-              />
-              <span>rocky</span>
-              {/* Deliberately does not contain the word the other option is named for: both
-                  spans are part of each radio's accessible name, so a "…when you need root"
-                  here would make `getByRole('radio', { name: /root/i })` ambiguous. */}
-              <span className="size-detail">the account you SSH in as — call sudo inside the script for anything privileged</span>
-            </label>
-            <label className={`radio-option ${userScriptRunAs === 'root' ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="userScriptRunAs"
-                checked={userScriptRunAs === 'root'}
-                onChange={() => setUserScriptRunAs('root')}
-              />
-              <span>root</span>
-              <span className="size-detail">what EC2 user data does; anything it writes is owned by root</span>
-            </label>
+          {/*
+            WHO RUNS IT IS A PROPERTY OF THE SCRIPT, NOT A SECTION BESIDE IT (issue #245).
+
+            This was a peer section — its own caps heading and two full-width radio cards, so a
+            choice that does nothing without a script carried more weight on the page than the
+            script it modifies, and carried it whether or not anything had been typed. It is now
+            one small row under the textarea: the legend, then two compact options.
+
+            The account names are `<code>` because they are what the user types — `sudo -u rocky`,
+            `ssh rocky@…` — and the whole page monospaces those.
+          */}
+          {/* `script-run-as`, not `run-as`: that class is already the install preview's "as rocky"
+              tail, and it carries a `margin-left: auto` that shoved this fieldset off the form's
+              left edge. */}
+          <fieldset className="script-run-as">
+            <legend>Run as</legend>
+            <div className="script-run-as-options">
+              <label className={`script-run-as-option ${userScriptRunAs === 'rocky' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="userScriptRunAs"
+                  checked={userScriptRunAs === 'rocky'}
+                  onChange={() => setUserScriptRunAs('rocky')}
+                />
+                <code>rocky</code>
+                {/* Deliberately does not contain the word the other option is named for: both
+                    children are part of each radio's accessible name, so a "…when you need root"
+                    here would make `getByRole('radio', { name: /root/i })` ambiguous. */}
+                <span className="size-detail">the account you SSH in as</span>
+              </label>
+              <label className={`script-run-as-option ${userScriptRunAs === 'root' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="userScriptRunAs"
+                  checked={userScriptRunAs === 'root'}
+                  onChange={() => setUserScriptRunAs('root')}
+                />
+                <code>root</code>
+                {/* Was "what EC2 user data does" — AWS's name for its own feature, on a form that
+                    also creates Azure, GCP and Hetzner boxes. What the choice actually costs the
+                    user is the same on every cloud, so it is said in those terms instead. */}
+                <span className="size-detail">full privileges; anything it creates is owned by root</span>
+              </label>
+            </div>
           </fieldset>
         </div>
 

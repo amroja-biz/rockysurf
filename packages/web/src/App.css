@@ -656,6 +656,59 @@ input[type='file']::file-selector-button:hover {
   font-size: 0.75rem;
 }
 
+/* "Run as", under the create form's startup script (issue #245). The same radio card one weight
+   down: it is a property of the field above it, not one of the page's sections, so it gets a row
+   of two compact options rather than two full-width cards. Selection is still carried by the
+   border, because that is how every other choice on this page reads.
+
+   `script-run-as`, NOT `run-as`: `.run-as` is already the install preview's "as rocky" tail
+   (`InstallPreview.tsx`), and it carries `margin-left: auto` — which on a flex item suppresses
+   the stretch, so this fieldset came out content-width and shoved against the right edge of the
+   form. Caught in the browser, not by a test.
+
+   The options are wrapped in their own row instead of the fieldset being the flex row: a
+   `<legend>` is not a flex item in any engine, so a `flex-direction: row` fieldset lays its
+   options out around a legend that is still rendered above them. `padding: 0` because a
+   `<fieldset>` carries an inline padding from the user agent that no other rule here resets. */
+.script-run-as {
+  gap: 0.375rem;
+  padding: 0;
+}
+
+.script-run-as legend {
+  margin-bottom: 0;
+}
+
+.script-run-as-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.script-run-as-option {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.script-run-as-option:hover {
+  border-color: var(--rs-muted);
+}
+
+.script-run-as-option.selected {
+  border-color: var(--rs-link);
+}
+
+.script-run-as-option input {
+  margin: 0;
+}
+
 /* "Use this type every time" (issue #124). A dashed edge rather than the solid one the radio
    cards carry: it sits directly under the machine-type picker and is an aside about the choice
    just made, not a fourth thing to choose between. */
