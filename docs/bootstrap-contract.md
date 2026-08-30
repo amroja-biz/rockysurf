@@ -591,7 +591,9 @@ owner `rocky`, mode `0600`, the tightest mode a file the shell has to read can c
 one person's box, the same values were already handed to every install step, and `rocky` holds
 `sudo` and could read `secrets.env` regardless — so the file adds no exposure, and it adds no
 copy with its own lifetime either: there is no re-push that could make it stale (ADR-0014,
-"deliberately unresolved").
+"deliberately unresolved"). The decision that plaintext at rest is what a box holds — and the
+four alternatives weighed against it — is
+[ADR-0016](adr/0016-secrets-on-the-box-are-plaintext-at-rest.md).
 
 ---
 
