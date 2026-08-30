@@ -158,24 +158,17 @@ name: Nightly real-cloud lifecycle
 # fall through to `az account get-access-token` and quietly run the lifecycle as the SWEEP
 # account — every check would pass and the run would prove nothing about the published role.
 #
-# To wire it in the CI subscription — the owner does this once, and none of it is scripted here
-# because every step is an `az` one-liner requiring Owner on the subscription:
+# To wire it in the CI subscription — ONE COMMAND, run once, and the only thing it asks of you is
+# that you are already signed in with `az login` and `gh auth login`:
 #
-#   1. `az group create` the CI-only resource group.
-#   2. `az ad app create` two app registrations (one "provider", one "nightly-sweep") and
-#      `az ad sp create` a service principal for each.
-#   3. `az ad app federated-credential create` on each, with
-#      issuer=https://token.actions.githubusercontent.com,
-#      subject=repo:amroja-biz/rockysurf:ref:refs/heads/main and
-#      audiences=["api://AzureADTokenExchange"].
-#   4. Deploy deploy/azure/role.bicep UNMODIFIED for the provider principal — that is the point.
-#      Grant the sweep principal a role that can read the group and delete VMs, disks, NICs and
-#      public IPs in it, and nothing else: no create of any kind, and no delete on the vnet or the
-#      NSG, which outlive every server.
-#   5. Request core quota for the `standardBlsv2Family` and `standardBpsv2Family` families in the
-#      region. A fresh subscription commonly has zero, and a zero-quota family fails the size
-#      catalogue's own `available` check before anything is created — cheap, but red.
-#   6. `gh variable set` the five variables above.
+#   ./deploy/azure/setup-nightly.sh --dry-run     # changes nothing; prints every command first
+#   ./deploy/azure/setup-nightly.sh
+#
+# It makes the resource group, both app registrations and their service principals, a federated
+# credential on each, deploys deploy/azure/role.bicep UNMODIFIED for the provider principal and
+# deploy/azure/nightly-sweep-role.bicep for the sweep one, reads the core quota and says in plain
+# words what to click if it is zero, and sets the five variables. Every step checks before it
+# creates, so running it twice is safe. `./deploy/azure/teardown-nightly.sh` undoes all of it.
 #
 # THE COST of this leg, on the same basis as the numbers in docs/providers/gcp.md: two B-series
 # VMs for roughly five to ten minutes each, billed per minute — about one to two cents a night on

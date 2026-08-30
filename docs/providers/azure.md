@@ -594,6 +594,11 @@ perpetually red scheduled workflow trains everyone to ignore it, and the one mor
 a real reason nobody looks. So the paragraphs below describe a leg that is *in the repository* and
 is *not yet running*; the status block under [The role](#the-role) says what is proven today.
 
+**Turning it on is one command.** Sign in with `az login` and `gh auth login`, then run
+[`./deploy/azure/setup-nightly.sh`](../../deploy/azure/setup-nightly.sh). It does everything
+below and asks you for nothing else. [`./deploy/azure/teardown-nightly.sh`](../../deploy/azure/teardown-nightly.sh)
+undoes it. The rest of this section is what those two scripts do, and why.
+
 ### Use a dedicated, CI-only subscription and resource group
 
 This is the one rule that matters, and it is the same rule the [GCP
@@ -613,53 +618,75 @@ credential source described under [Credentials](#credentials) above.
 
 ### Wiring it, once
 
-Every step is an `az` one-liner and all of them need Owner (or User Access Administrator) on the
-subscription, so there is no script for it here.
+One command. You need to be signed in to Azure and to GitHub, and that is all it asks of you.
 
-1. **The CI-only group.** `az group create --name rocky-surf-ci --location eastus`, in a
-   subscription used only by this workflow.
-2. **Two app registrations**, each with a service principal — one for the identity under test, one
-   for the sweep. `az ad app create --display-name rockysurf-nightly-provider`, then
-   `az ad sp create --id <appId>`; repeat for `rockysurf-nightly-sweep`.
-3. **A federated credential on each**, so GitHub's token is accepted:
+```bash
+az login          # if you are not already signed in
+gh auth login     # if you are not already signed in
 
-   ```bash
-   az ad app federated-credential create --id <appId> --parameters '{
-     "name": "rockysurf-nightly",
-     "issuer": "https://token.actions.githubusercontent.com",
-     "subject": "repo:amroja-biz/rockysurf:ref:refs/heads/main",
-     "audiences": ["api://AzureADTokenExchange"]
-   }'
-   ```
+./deploy/azure/setup-nightly.sh --dry-run     # optional: shows every step, changes nothing
+./deploy/azure/setup-nightly.sh
+```
 
-4. **The published roles, unmodified**, for the provider principal — that is the point of the leg:
+It offers to start a run at the end. To undo everything it made:
 
-   ```bash
-   az deployment sub create --location eastus      --template-file deploy/azure/role.bicep      --parameters resourceGroupName=rocky-surf-ci                   principalId=$(az ad sp show --id <provider appId> --query id -o tsv)
-   ```
+```bash
+./deploy/azure/teardown-nightly.sh
+```
 
-   The **sweep** principal gets a different, CI-only grant: read the group, and delete virtual
-   machines, disks, network interfaces and public IP addresses in it. Nothing else — no create of
-   any kind, and **no delete on the virtual network or the network security group**, which outlive
-   every server and whose deletion would detach the network from, or close port 22 on, every
-   running box at once.
-5. **Core quota.** Request it for `standardBlsv2Family` and `standardBpsv2Family` in the region.
-   A fresh subscription commonly has zero — see [Core quota is a separate
-   gate](#core-quota-is-a-separate-gate-from-sku-availability) — and a zero-quota family fails the
-   size catalogue's own `available` check before anything is created. Cheap, but red.
-6. **Five repository variables**, none of which is a credential:
+**Run it as often as you like.** Every step checks before it creates, so a second run says what
+is already there and changes nothing else.
 
-   | Variable | What it is |
-   |---|---|
-   | `AZURE_CI_SUBSCRIPTION` | the CI-only subscription id |
-   | `AZURE_CI_RESOURCE_GROUP` | the CI-only resource group — the scope the operational role is granted at |
-   | `AZURE_TENANT` | the Entra tenant both app registrations live in |
-   | `AZURE_PROVIDER_CLIENT_ID` | the app registration carrying the published roles — the identity under test |
-   | `AZURE_NIGHTLY_CLIENT_ID` | the CI-only sweep app registration |
-   | `AZURE_CI_LOCATION` | optional; defaults to `eastus` |
+**Nothing it makes costs money.** Identities, roles and an empty resource group are free. Only the
+nightly's own machines bill, at about two cents a night.
 
-Then trigger it once by hand — `gh workflow run nightly-real-cloud.yml` — rather than waiting for
-07:00 UTC to find out.
+**It creates no password, key or secret, and prints none.** There is nothing to rotate.
+
+#### What it does, in order
+
+You do not have to read this to run it. It is here so the permissions it grants are auditable
+without running anything.
+
+| Step | What it makes | Why |
+|---|---|---|
+| 1 | nothing | Checks you are signed in to both, and installs Bicep if the Azure CLI lacks it. |
+| 2 | nothing | Picks the subscription. Asks you only if you have more than one. |
+| 3 | nothing | Registers `Microsoft.Compute` and `Microsoft.Network` if this subscription never has. |
+| 4 | the CI resource group | `rocky-surf-ci` by default. Rocky Surf never creates a resource group itself — see [above](#getting-started). |
+| 5 | two app registrations and their service principals | One is the identity under test; one is the sweep. [Why two](#why-there-are-two-app-registrations). |
+| 6 | a federated credential on each | This is what lets GitHub sign in with no password. It names this repository and one branch, and accepts nothing else. |
+| 7 | the published roles | [`role.bicep`](../../deploy/azure/role.bicep), **unmodified** — the file a self-hoster deploys, which is the whole point of the leg. |
+| 8 | the sweep role | [`nightly-sweep-role.bicep`](../../deploy/azure/nightly-sweep-role.bicep): delete-only, one resource group, no create of any kind, no delete on the shared network. |
+| 9 | nothing | Reads your core quota and tells you what to click if it is zero. |
+| 10 | six repository variables | Names and ids. None of them is a credential. |
+| 11 | nothing | Offers to start a run. |
+
+The variables it sets:
+
+| Variable | What it is |
+|---|---|
+| `AZURE_CI_SUBSCRIPTION` | the CI-only subscription id |
+| `AZURE_CI_RESOURCE_GROUP` | the CI-only resource group — the scope the operational role is granted at |
+| `AZURE_TENANT` | the Entra tenant both app registrations live in |
+| `AZURE_PROVIDER_CLIENT_ID` | the app registration carrying the published roles — the identity under test |
+| `AZURE_NIGHTLY_CLIENT_ID` | the CI-only sweep app registration |
+| `AZURE_CI_LOCATION` | the region; `eastus` unless you pass `--location` |
+
+Defaults are overridable: `--group`, `--location`, `--repo`, `--branch`, `--subscription`.
+
+#### The one thing a script cannot do for you
+
+Azure decides how many vCPUs your subscription may run, per machine family, per region — and a new
+subscription is often allowed **zero**. No API can grant that to yourself, so step 9 reads it and
+tells you. If it says you are short:
+
+1. Open <https://portal.azure.com> and search for "Quotas".
+2. Choose "Compute".
+3. Set the region filter to your region.
+4. Find the family the script named.
+5. Tick it, choose "New Quota Request", ask for 2 or more vCPUs, and submit.
+
+It is usually approved in minutes. Run the setup script again afterwards to confirm.
 
 ### Why there are two app registrations
 
