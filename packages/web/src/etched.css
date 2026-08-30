@@ -395,6 +395,10 @@ body[data-rs-skin='etched'] {
 /* Plate: its border and ground are inline; the hover from App.css still turns the rule gold. */
 [data-rs-skin='etched'] .plate.server-card:hover { border-color: var(--rs-beam) !important; }
 
+/* The pack card's hover (issue #223) reads as the beam here, same as every other bordered
+   card's hover under this skin. */
+[data-rs-skin='etched'] .pack-card:hover { border-color: var(--rs-beam); }
+
 /* Swell under a cut label: the wave is the rule under the tab strip. */
 [data-rs-skin='etched'] .provider-tabs + .swell { margin: -0.25rem 0 0.75rem; }
 

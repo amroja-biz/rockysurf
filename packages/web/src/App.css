@@ -2781,6 +2781,14 @@ main.help section > pre {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  transition: border-color 0.15s ease;
+}
+
+/* The card is the link (issue #223) — the same border-goes-blue feedback `.server-card:hover`
+   already gives, rather than the stray underline `a:hover` alone leaves on just the name. */
+.pack-card:hover {
+  border-color: var(--rs-link);
+  text-decoration: none;
 }
 
 .pack-card-head {
