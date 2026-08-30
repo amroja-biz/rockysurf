@@ -243,20 +243,33 @@ step 6 'Letting GitHub sign in as those identities, without a password.'
 note "Azure will accept a token GitHub makes for $REPO on the $BRANCH branch, and nothing else."
 
 SUBJECT="repo:${REPO}:ref:refs/heads/${BRANCH}"
+# GitHub is moving from `repo:owner/name:...` to an immutable-id form,
+# `repo:owner@1234/name@5678:...`, and a token may carry either — the first real run was refused
+# with AADSTS700213 because only the classic form was trusted. Entra matches a federated
+# credential's subject EXACTLY (no wildcards), so each app registration gets one credential per
+# form: "${CREDENTIAL_NAME}" for the classic name and "${CREDENTIAL_NAME}-id" for the id form.
+IMMUTABLE_SUBJECT=''
+fed_owner_id=$(gh api "repos/${REPO}" --jq '.owner.id' 2>/dev/null || true)
+fed_repo_id=$(gh api "repos/${REPO}" --jq '.id' 2>/dev/null || true)
+if [ -n "$fed_owner_id" ] && [ -n "$fed_repo_id" ]; then
+  IMMUTABLE_SUBJECT="repo:${REPO%%/*}@${fed_owner_id}/${REPO##*/}@${fed_repo_id}:ref:refs/heads/${BRANCH}"
+fi
 
 ensure_federated_credential() {
   fed_app_id=$1
   fed_label=$2
+  fed_name=$3
+  fed_subject=$4
   existing=$(az ad app federated-credential list --id "$fed_app_id" \
-    --query "[?name=='${CREDENTIAL_NAME}'].subject" -o tsv 2>/dev/null || true)
-  if [ "$existing" = "$SUBJECT" ]; then
-    have "GitHub sign-in for $fed_label"
+    --query "[?name=='${fed_name}'].subject" -o tsv 2>/dev/null || true)
+  if [ "$existing" = "$fed_subject" ]; then
+    have "GitHub sign-in ($fed_name) for $fed_label"
     return 0
   fi
   if [ -n "$existing" ]; then
     # The repository or branch changed since the last run. Replace it rather than adding a second.
-    note "Updating the GitHub sign-in for $fed_label, which pointed somewhere else."
-    run az ad app federated-credential delete --id "$fed_app_id" --federated-credential-id "$CREDENTIAL_NAME" --yes
+    note "Updating the GitHub sign-in ($fed_name) for $fed_label, which pointed somewhere else."
+    run az ad app federated-credential delete --id "$fed_app_id" --federated-credential-id "$fed_name" --yes
   fi
   run az ad app federated-credential create --id "$fed_app_id" --parameters "$(printf '{
     "name": "%s",
@@ -264,12 +277,18 @@ ensure_federated_credential() {
     "subject": "%s",
     "description": "Rocky Surf nightly real-cloud run",
     "audiences": ["api://AzureADTokenExchange"]
-  }' "$CREDENTIAL_NAME" "$SUBJECT")" --output none
-  made "GitHub sign-in for $fed_label"
+  }' "$fed_name" "$fed_subject")" --output none
+  made "GitHub sign-in ($fed_name) for $fed_label"
 }
 
-ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP"
-ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP"
+ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP" "$CREDENTIAL_NAME" "$SUBJECT"
+ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP" "$CREDENTIAL_NAME" "$SUBJECT"
+if [ -n "$IMMUTABLE_SUBJECT" ]; then
+  ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
+  ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
+else
+  note "GitHub did not tell me this repository's ids, so only the classic sign-in name is trusted."
+fi
 
 # ---------------------------------------------------------------------------------------------
 step 7 'Giving the tested identity exactly the permissions we publish.'
