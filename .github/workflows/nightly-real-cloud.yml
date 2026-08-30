@@ -65,9 +65,9 @@ name: Nightly real-cloud lifecycle
 #   so the run mints GitHub's token, writes it to a file, and @rockysurf/provider-azure exchanges
 #   it at Entra itself. Five repository VARIABLES, and none of them is a credential.
 #
-#   There is no GCP SECRET, and that is the point: `deploy/gcp/nightly-ci.sh` creates a workload
-#   identity pool that trusts this repository's own OIDC token, so nothing long-lived exists to
-#   leak or rotate. Four repository VARIABLES, and none of them is a credential.
+#   There is no GCP SECRET, and that is the point: `deploy/gcp/setup-nightly.sh` creates a
+#   workload identity pool that trusts this repository's own OIDC token, so nothing long-lived
+#   exists to leak or rotate. Four repository VARIABLES, and none of them is a credential.
 #
 # Until they exist, each job skips with a notice instead of failing red every morning: a
 # perpetually red scheduled workflow trains everyone to ignore it, and the one morning it is red
@@ -130,12 +130,20 @@ name: Nightly real-cloud lifecycle
 # workflow authenticates TWICE: once as the CI-only sweep account (captured, not exported), then
 # as the published one (exported, and what Application Default Credentials resolves to).
 #
-# To wire it in the CI project — one script, and it is idempotent:
+# To wire it in the CI project — ONE COMMAND, run once, and the only thing it asks of you is that
+# you are already signed in with `gcloud auth login` and `gh auth login`:
 #
-#   ./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id>
+#   ./deploy/gcp/setup-nightly.sh --dry-run     # changes nothing; prints every command first
+#   ./deploy/gcp/setup-nightly.sh
 #
-# It prints the four `gh variable set` commands at the end. It creates NOTHING with a long-lived
-# key: no service-account key file is generated anywhere in this path.
+# It picks the CI-only project (asking, or reusing the one already saved in GitHub), turns on the
+# four APIs, deploys the PUBLISHED role by calling the shipped `deploy/gcp/setup.sh` unmodified,
+# makes the CI-only sweep account from `deploy/gcp/nightly-sweep-role.yaml`, creates the pool and
+# the OIDC provider constrained to this repository and this one workflow file, grants both
+# accounts to the repository's federated identity, checks the zone actually sells the two machine
+# types, and sets the four variables. Every step checks before it creates, so running it twice
+# writes nothing at all. `./deploy/gcp/teardown-nightly.sh` undoes all of it. It creates NOTHING
+# with a long-lived key: no service-account key file is generated anywhere in this path.
 #
 # ─── AND THE SAME IDEA ON AZURE, WHICH NEEDED A PROVIDER CHANGE FIRST (gh issue #170) ────────
 #
@@ -259,7 +267,7 @@ jobs:
             echo 'gcp=yes' >> "$GITHUB_OUTPUT"
           else
             echo 'gcp=no' >> "$GITHUB_OUTPUT"
-            note "SKIPPED GCP: repository variable(s) not set:$missing. Run deploy/gcp/nightly-ci.sh against a CI-ONLY project — it prints the exact gh commands. See this workflow header."
+            note "SKIPPED GCP: repository variable(s) not set:$missing. Run ./deploy/gcp/setup-nightly.sh against a CI-ONLY project — it sets them itself, and needs nothing but gcloud auth login and gh auth login. See this workflow header."
           fi
 
           # ALL FIVE OR NONE, for the reason spelled out on GCP directly above and one more that
