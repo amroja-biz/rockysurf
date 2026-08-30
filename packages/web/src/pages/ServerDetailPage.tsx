@@ -444,7 +444,11 @@ export function ServerDetailPage() {
             </button>
           )}
           {providerCanStop && server.status === 'stopped' && (
-            <button disabled={busy} onClick={() => void run('start', () => startServer(server.serverId), 'Starting')}>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void run('start', () => startServer(server.serverId), 'Starting')}
+            >
               {transition.pending === 'start' || pending === 'start' ? 'Starting…' : 'Start'}
             </button>
           )}
