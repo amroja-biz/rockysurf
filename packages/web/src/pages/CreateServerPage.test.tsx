@@ -305,6 +305,13 @@ describe('pricing every size option, not only the selected one', () => {
   })
 })
 
+/** The `<label>` for the repositories textarea — where required-ness is stated (issue #245). */
+function repositoriesLabel(): HTMLLabelElement {
+  const label = document.querySelector<HTMLLabelElement>('label[for="repositories"]')
+  if (!label) throw new Error('no label for the repositories field')
+  return label
+}
+
 describe('pack metadata drives the conditional fields', () => {
   it('hides RDP when the pack does not ask for it', async () => {
     renderPage()
@@ -323,14 +330,17 @@ describe('pack metadata drives the conditional fields', () => {
     await findResolved(/small-arm/)
 
     expect(screen.getByLabelText(/repositories/i)).toBeTruthy()
-    expect(screen.queryByText(/this pack expects at least one/i)).toBeNull()
+    // Required-ness is read off the LABEL now (issue #245), not out of sentence three of the
+    // paragraph under it, so that is where it is asserted.
+    expect(repositoriesLabel().textContent).toMatch(/optional/i)
+    expect(repositoriesLabel().textContent).not.toMatch(/required/i)
   })
 
-  it('says the pack expects a repository when it declares requiresRepos', async () => {
+  it('marks the repositories label required when the pack declares requiresRepos', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({ requiresRepos: true })])
     renderPage()
     expect(await screen.findByLabelText(/repositories/i)).toBeTruthy()
-    expect(screen.getByText(/this pack expects at least one/i)).toBeTruthy()
+    expect(repositoriesLabel().textContent).toMatch(/required/i)
   })
 
   it('sends repositories typed for a pack that does not require them (issue #178)', async () => {

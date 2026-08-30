@@ -1596,17 +1596,23 @@ export function CreateServerPage() {
         )}
 
         {/* Always present, whatever the pack declares (issue #178). The pack's flag only changes
-            the sentence under the label and whether an empty list is confirmed at submit. */}
+            the marker on the label and whether an empty list is confirmed at submit. */}
         <div className="form-group">
+          {/* REQUIRED-NESS ON THE LABEL, NOT IN PROSE (issue #245). The pack's expectation used
+              to be sentence three of the paragraph below, where the two fields on either side of
+              this one were saying "optional" in the one place a form is read for that. Same
+              markers, same position, same `.hint` span as a pack's own inputs already use.
+
+              "required" is the pack's word, not a refusal: an empty list still creates a server
+              (issue #90) — the submit asks once and takes yes for an answer. The label says what
+              the pack expects; the check at submit says what happens if you disagree. */}
           <label className="form-label" htmlFor="repositories">
-            Repositories
+            Repositories{' '}
+            {requiresRepos ? <span className="hint">required</span> : <span className="hint">optional</span>}
           </label>
           {/* ONE LINE OF PURPOSE (issue #245). What the field is for, and nothing else; the
               credential rules that used to follow it are in the disclosure below. */}
-          <p className="field-help">
-            One git URL per line. They are cloned onto the box during setup.
-            {requiresRepos && ' This pack expects at least one.'}
-          </p>
+          <p className="field-help">One git URL per line. They are cloned onto the box during setup.</p>
           {/* The private-repo rules are still ON THIS PAGE, because the form is where the
               mistake is made: a private URL is accepted, provisioning starts, and the clone
               fails minutes later on the box with nothing here having hinted why
