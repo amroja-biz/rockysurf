@@ -215,7 +215,9 @@ value-free hooks (`/etc/profile.d/rockysurf-environment.sh`; a marker block at t
 `/etc/bash.bashrc`) so that an interactive SSH login, `ssh box 'command'`, a tmux session and
 the remote-desktop session all source it. `GITHUB_TOKEN` is included; `RDP_PASSWORD` and the
 credential-helper plumbing are not. The full mechanism and the alternatives rejected are in
-[`bootstrap-contract.md` § The shell environment](../bootstrap-contract.md#the-shell-environment).
+[`bootstrap-contract.md` § The shell environment](../bootstrap-contract.md#the-shell-environment). The storage
+decision itself — plaintext at rest on the box, and the four alternatives weighed against it —
+is [ADR-0016](0016-secrets-on-the-box-are-plaintext-at-rest.md).
 
 | | plain line | `secret:` line |
 |---|---|---|
