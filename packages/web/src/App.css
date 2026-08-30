@@ -253,6 +253,16 @@ hr {
   .app-header::before {
     display: none;
   }
+
+  /* The mark's screen+mask (#243-248) is built to disappear into the band above, not into a
+     flat ground — without the band behind it (the rule just above), the crop's own dark
+     raster reads as a pasted rectangle (#228). Show the plate as what it is instead. */
+  .app-brand img {
+    mix-blend-mode: normal;
+    filter: none;
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
 }
 
 .app-header nav {
@@ -275,6 +285,14 @@ hr {
   color: var(--rs-text);
   background: var(--rs-raised);
   text-decoration: none;
+}
+
+/* The current section (#221): the design system's AppShell.jsx.txt sets aria-current='page'
+   on the matching link. Same raised background as hover, so the marker reads as "this is the
+   one already open" rather than a second hover state. */
+.app-header nav a[aria-current='page'] {
+  color: var(--rs-heading);
+  background: var(--rs-raised);
 }
 
 .app-header-right {

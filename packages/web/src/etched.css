@@ -94,6 +94,13 @@ body[data-rs-skin='etched'] {
   background-image: linear-gradient(100deg, rgba(252, 245, 232, 0.09) 0%, rgba(252, 245, 232, 0.02) 34%, rgba(252, 245, 232, 0) 62%);
 }
 
+/* Current section (#221): the beam is the one accent, so it marks the open link instead of
+   App.css's heading colour. */
+[data-rs-skin='etched'] .app-header nav a[aria-current='page'] {
+  color: var(--rs-beam);
+  background: var(--rs-raised);
+}
+
 /* Header cloud wash (design handoff: header-wash), skin-specific half. The base rule in
    App.css sets the band to 0.62 for the true --rs-surface ground (#161b22, the design
    mockups' target). Under this skin the ground is --rs-surface: #171420 PLUS this file's own
