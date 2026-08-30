@@ -1952,10 +1952,13 @@ describe('an environment the creator types (issue #197)', () => {
   })
 
   it('tells the startup script where to put a token instead of forbidding one', async () => {
-    // The hint changed with this issue: the field used to say "put no passwords or tokens in
-    // it", which was true and left the user nowhere to go.
+    // The hint changed with issue #197: the field used to say "put no passwords or tokens in
+    // it", which was true and left the user nowhere to go. It says ABOVE rather than below
+    // since issue #245 put Environment ahead of the script that reads it — the direction is
+    // asserted deliberately, because a form that points forward at a field the reader has not
+    // reached is the thing that reordering removed.
     renderPage()
     await screen.findByLabelText(/startup script/i)
-    expect(screen.getByText(/put passwords and tokens in Environment below/i)).toBeTruthy()
+    expect(screen.getByText(/put passwords and tokens in Environment above/i)).toBeTruthy()
   })
 })

@@ -83,6 +83,21 @@ import { Tabs } from '../components/Tabs'
  * at composition, leaving an installation that looks single-cloud with the explanation only in
  * the boot log. The reason travels here through `SetupState`, in the provider's own words.
  * ──────────────────────────────────────────────────────────────────────────────────────
+ *
+ * ── THE ORDER OF THE FORM (issue #245) ────────────────────────────────────────────────
+ * The lower half of this form runs in the order the box boots, and it is an order, not a list:
+ *
+ *   Surge Pack → <pack> settings → Repositories → Environment → Startup script → SSH access
+ *
+ * Two rules produce it. **A pack's own questions sit under the pack** — the settings section and
+ * the desktop password are asked by the thing chosen directly above them, so they are not
+ * separated from it by three fields nobody's pack asked for. And **an input precedes the code
+ * that reads it**: the startup script consumes the repositories and the environment, so it is
+ * asked for last. The tell that the old order was wrong was in the copy — the script's own hint
+ * had to say "put tokens in Environment BELOW", a forward reference to a field the reader had
+ * not reached. Anything moved into this half must keep both rules; nothing here may point
+ * forward at a field further down the page.
+ * ──────────────────────────────────────────────────────────────────────────────────────
  */
 /**
  * One repository's line in the live token display (rockysurf-18lq).
@@ -1507,145 +1522,6 @@ export function CreateServerPage() {
           )}
         </fieldset>
 
-        {/* Always present, whatever the pack declares (issue #178). The pack's flag only changes
-            the sentence under the label and whether an empty list is confirmed at submit. */}
-        <div className="form-group">
-          <label className="form-label" htmlFor="repositories">
-            Repositories
-          </label>
-          {/* The private-repo sentence is here because the form is where the mistake is made:
-              a private URL is accepted, provisioning starts, and the clone fails minutes
-              later on the box with nothing on this page having hinted why (rockysurf-f1z1).
-              It names `github.pat` in the config file, which is the one place that populates
-              the token — not an environment variable core reads, because it reads none
-              (rockysurf-yzae wired the config key through; the box end was already done). */}
-          <p className="hint">
-            One git URL per line, or none at all. They are cloned onto the box during setup.
-            {requiresRepos && ' This pack expects at least one.'} Public URLs need no credentials;
-            private repositories need <code>github.pat</code> set in{' '}
-            <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
-          </p>
-          {/* Above the field rather than beside it, because the order is the workflow: pick what
-              is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
-          <RepositoryPicker scopes={scopes} present={repositories} onInsert={insertRepository} />
-          <textarea
-            id="repositories"
-            rows={4}
-            value={repoInput}
-            onChange={(e) => setRepoInput(e.target.value)}
-            // HTTPS on both lines. The second used to read `git@github.com:you/other.git`,
-            // which is a form the box cannot use at all — it clones over HTTPS with a token
-            // and is never given an SSH key — so the placeholder was teaching the very
-            // mistake core now refuses (rockysurf-k6xp).
-            placeholder={'https://github.com/you/project.git\nhttps://github.com/you/other'}
-          />
-          {/* What each URL resolves to, as it is typed (rockysurf-18lq). `aria-live` because
-              the answers arrive after the typing stops and a screen reader would otherwise
-              never learn that the line it just dictated needs a token nobody has configured. */}
-          {repositories.length > 0 && (
-            <ul className="repo-resolutions" aria-live="polite" data-testid="repo-resolutions">
-              {repositories.map((url, index) => (
-                <li key={`${url}-${index}`}>
-                  <code>{url}</code> — <RepositoryTokenLine resolution={resolutions[url]} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* Core checked each of these before launching anything, and this is what it found.
-              Rendered against the line the user typed rather than as one banner, because the
-              only useful next action is editing a specific URL. */}
-          {repoErrors.length > 0 && (
-            <ul className="repo-errors" role="alert">
-              {repositories.map((url, index) =>
-                repoErrors[index] ? (
-                  <li key={`${url}-${index}`}>
-                    <code>{url}</code> — {repoErrors[index]}
-                  </li>
-                ) : null,
-              )}
-            </ul>
-          )}
-        </div>
-
-        {/* On the form for EVERY pack, like Repositories above (issue #184). A pack cannot grant
-            or withhold this: it is the user's own instructions to their own box, and core
-            renders the step for whatever arrives. Empty means no step at all. */}
-        <div className="form-group">
-          <label className="form-label" htmlFor="userScript">
-            Startup script <span className="hint">optional</span>
-          </label>
-          {/* The contract, where the decision is made — the same reason the private-repo
-              sentence sits under Repositories. Four facts a person needs before they type: when
-              it runs, what it can see, what happens if it fails, and that this is not a secret
-              store. */}
-          <p className="hint">
-            Run once on this box, after the pack&apos;s tools are installed and your repositories are cloned. It gets{' '}
-            <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does. If it fails the
-            server still comes up and the whole log is kept as a warning. It is stored and sent to the box in plain
-            text, so put passwords and tokens in Environment below and read <code>$KEY</code> here.
-          </p>
-          <textarea
-            id="userScript"
-            rows={6}
-            value={userScript}
-            onChange={(e) => setUserScript(e.target.value)}
-            placeholder={'set -euo pipefail\nmkdir -p "$HOME/.config"\n'}
-          />
-          {/* The freedom EC2 does not give: user data there is always root. Nested inside the
-              field rather than beside it, because the choice is meaningless without a script. */}
-          <fieldset>
-            <legend>Run it as</legend>
-            <label className={`radio-option ${userScriptRunAs === 'rocky' ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="userScriptRunAs"
-                checked={userScriptRunAs === 'rocky'}
-                onChange={() => setUserScriptRunAs('rocky')}
-              />
-              <span>rocky</span>
-              {/* Deliberately does not contain the word the other option is named for: both
-                  spans are part of each radio's accessible name, so a "…when you need root"
-                  here would make `getByRole('radio', { name: /root/i })` ambiguous. */}
-              <span className="size-detail">the account you SSH in as — call sudo inside the script for anything privileged</span>
-            </label>
-            <label className={`radio-option ${userScriptRunAs === 'root' ? 'selected' : ''}`}>
-              <input
-                type="radio"
-                name="userScriptRunAs"
-                checked={userScriptRunAs === 'root'}
-                onChange={() => setUserScriptRunAs('root')}
-              />
-              <span>root</span>
-              <span className="size-detail">what EC2 user data does; anything it writes is owned by root</span>
-            </label>
-          </fieldset>
-        </div>
-
-        {/* THE USER'S OWN ENVIRONMENT (issue #197, ADR-0014). On the form for every pack, like
-            the startup script above: a pack cannot grant or withhold a person's ability to hand
-            their own box a value. Empty means nothing is sent at all. */}
-        <div className="form-group">
-          <label className="form-label" htmlFor="environment">
-            Environment <span className="hint">optional</span>
-          </label>
-          {/* Where it goes, who can read it, and how to mark a line secret — the three things a
-              person needs before typing a token into a box on a web page. */}
-          <p className="hint">
-            One <code>KEY=value</code> per line. Every step of this box&apos;s setup, and your startup script above,
-            can read <code>$KEY</code>. Start a line with <code>{SECRET_LINE_PREFIX}</code> to have the value stored
-            encrypted and shown back by nothing — keep your own copy. Lines without it are stored in the clear and
-            shown on the server&apos;s page. Values are single-line and go nowhere near the install plan.
-          </p>
-          <textarea
-            id="environment"
-            rows={4}
-            value={environmentText}
-            onChange={(e) => setEnvironmentText(e.target.value)}
-            placeholder={'MY_ENDPOINT=https://api.example.com\nsecret:MY_API_TOKEN=…\n'}
-            spellCheck={false}
-          />
-        </div>
-
         {/* WHAT THE PACK ASKS FOR (issue #189, ADR-0013). Rendered from `pack.inputs` and from
             nothing else — no `packId` is compared anywhere in this file, which is the same rule
             that let `requiresRdp` replace the old `open-claw` hardcode. The section does not
@@ -1718,6 +1594,145 @@ export function CreateServerPage() {
             />
           </div>
         )}
+
+        {/* Always present, whatever the pack declares (issue #178). The pack's flag only changes
+            the sentence under the label and whether an empty list is confirmed at submit. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="repositories">
+            Repositories
+          </label>
+          {/* The private-repo sentence is here because the form is where the mistake is made:
+              a private URL is accepted, provisioning starts, and the clone fails minutes
+              later on the box with nothing on this page having hinted why (rockysurf-f1z1).
+              It names `github.pat` in the config file, which is the one place that populates
+              the token — not an environment variable core reads, because it reads none
+              (rockysurf-yzae wired the config key through; the box end was already done). */}
+          <p className="hint">
+            One git URL per line, or none at all. They are cloned onto the box during setup.
+            {requiresRepos && ' This pack expects at least one.'} Public URLs need no credentials;
+            private repositories need <code>github.pat</code> set in{' '}
+            <code>rockysurf.config.yaml</code> — see <code>docs/self-hosting.md</code>.
+          </p>
+          {/* Above the field rather than beside it, because the order is the workflow: pick what
+              is already configured, then type whatever else this box needs (rockysurf-mh8f). */}
+          <RepositoryPicker scopes={scopes} present={repositories} onInsert={insertRepository} />
+          <textarea
+            id="repositories"
+            rows={4}
+            value={repoInput}
+            onChange={(e) => setRepoInput(e.target.value)}
+            // HTTPS on both lines. The second used to read `git@github.com:you/other.git`,
+            // which is a form the box cannot use at all — it clones over HTTPS with a token
+            // and is never given an SSH key — so the placeholder was teaching the very
+            // mistake core now refuses (rockysurf-k6xp).
+            placeholder={'https://github.com/you/project.git\nhttps://github.com/you/other'}
+          />
+          {/* What each URL resolves to, as it is typed (rockysurf-18lq). `aria-live` because
+              the answers arrive after the typing stops and a screen reader would otherwise
+              never learn that the line it just dictated needs a token nobody has configured. */}
+          {repositories.length > 0 && (
+            <ul className="repo-resolutions" aria-live="polite" data-testid="repo-resolutions">
+              {repositories.map((url, index) => (
+                <li key={`${url}-${index}`}>
+                  <code>{url}</code> — <RepositoryTokenLine resolution={resolutions[url]} />
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Core checked each of these before launching anything, and this is what it found.
+              Rendered against the line the user typed rather than as one banner, because the
+              only useful next action is editing a specific URL. */}
+          {repoErrors.length > 0 && (
+            <ul className="repo-errors" role="alert">
+              {repositories.map((url, index) =>
+                repoErrors[index] ? (
+                  <li key={`${url}-${index}`}>
+                    <code>{url}</code> — {repoErrors[index]}
+                  </li>
+                ) : null,
+              )}
+            </ul>
+          )}
+        </div>
+
+        {/* THE USER'S OWN ENVIRONMENT (issue #197, ADR-0014). On the form for every pack, like
+            the startup script below: a pack cannot grant or withhold a person's ability to hand
+            their own box a value. Empty means nothing is sent at all. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="environment">
+            Environment <span className="hint">optional</span>
+          </label>
+          {/* Where it goes, who can read it, and how to mark a line secret — the three things a
+              person needs before typing a token into a box on a web page. */}
+          <p className="hint">
+            One <code>KEY=value</code> per line. Every step of this box&apos;s setup, and your startup script above,
+            can read <code>$KEY</code>. Start a line with <code>{SECRET_LINE_PREFIX}</code> to have the value stored
+            encrypted and shown back by nothing — keep your own copy. Lines without it are stored in the clear and
+            shown on the server&apos;s page. Values are single-line and go nowhere near the install plan.
+          </p>
+          <textarea
+            id="environment"
+            rows={4}
+            value={environmentText}
+            onChange={(e) => setEnvironmentText(e.target.value)}
+            placeholder={'MY_ENDPOINT=https://api.example.com\nsecret:MY_API_TOKEN=…\n'}
+            spellCheck={false}
+          />
+        </div>
+
+        {/* On the form for EVERY pack, like Repositories above (issue #184). A pack cannot grant
+            or withhold this: it is the user's own instructions to their own box, and core
+            renders the step for whatever arrives. Empty means no step at all. */}
+        <div className="form-group">
+          <label className="form-label" htmlFor="userScript">
+            Startup script <span className="hint">optional</span>
+          </label>
+          {/* The contract, where the decision is made — the same reason the private-repo
+              sentence sits under Repositories. Four facts a person needs before they type: when
+              it runs, what it can see, what happens if it fails, and that this is not a secret
+              store. */}
+          <p className="hint">
+            Run once on this box, after the pack&apos;s tools are installed and your repositories are cloned. It gets{' '}
+            <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does. If it fails the
+            server still comes up and the whole log is kept as a warning. It is stored and sent to the box in plain
+            text, so put passwords and tokens in Environment above and read <code>$KEY</code> here.
+          </p>
+          <textarea
+            id="userScript"
+            rows={6}
+            value={userScript}
+            onChange={(e) => setUserScript(e.target.value)}
+            placeholder={'set -euo pipefail\nmkdir -p "$HOME/.config"\n'}
+          />
+          {/* The freedom EC2 does not give: user data there is always root. Nested inside the
+              field rather than beside it, because the choice is meaningless without a script. */}
+          <fieldset>
+            <legend>Run it as</legend>
+            <label className={`radio-option ${userScriptRunAs === 'rocky' ? 'selected' : ''}`}>
+              <input
+                type="radio"
+                name="userScriptRunAs"
+                checked={userScriptRunAs === 'rocky'}
+                onChange={() => setUserScriptRunAs('rocky')}
+              />
+              <span>rocky</span>
+              {/* Deliberately does not contain the word the other option is named for: both
+                  spans are part of each radio's accessible name, so a "…when you need root"
+                  here would make `getByRole('radio', { name: /root/i })` ambiguous. */}
+              <span className="size-detail">the account you SSH in as — call sudo inside the script for anything privileged</span>
+            </label>
+            <label className={`radio-option ${userScriptRunAs === 'root' ? 'selected' : ''}`}>
+              <input
+                type="radio"
+                name="userScriptRunAs"
+                checked={userScriptRunAs === 'root'}
+                onChange={() => setUserScriptRunAs('root')}
+              />
+              <span>root</span>
+              <span className="size-detail">what EC2 user data does; anything it writes is owned by root</span>
+            </label>
+          </fieldset>
+        </div>
 
         <fieldset>
           <legend>SSH access</legend>

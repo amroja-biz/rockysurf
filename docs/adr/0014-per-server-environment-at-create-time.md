@@ -25,7 +25,9 @@ wants `GIT_AUTHOR_NAME` on their box — or a pack author who wants it — was r
 
 ## Decision
 
-**1. An `Environment` field on the create form, below the startup script, for every pack.**
+**1. An `Environment` field on the create form, next to the startup script, for every pack.**
+(It sat below the script until issue #245 put the form in the order the box boots; it is now
+directly above it, because the script is what reads these values.)
 `KEY=value` lines the user types. Like the startup script and the repositories field, no pack
 grants or withholds it: it is the user's own configuration of their own box.
 
