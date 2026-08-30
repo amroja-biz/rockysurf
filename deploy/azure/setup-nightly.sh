@@ -276,9 +276,13 @@ step 7 'Giving the tested identity exactly the permissions we publish.'
 note 'These are the same two roles a self-hoster deploys, from the same file, unchanged.'
 note 'This one takes a minute.'
 
+# The deployment NAME carries the location because Azure pins a subscription-scope deployment
+# name to the region its metadata was first created in — re-running with --location <elsewhere>
+# under the old name fails with InvalidDeploymentLocation. A per-location name deploys fresh;
+# stale metadata from an earlier region is inert and costs nothing.
 run az deployment sub create \
   --location "$LOCATION" \
-  --name "rockysurf-nightly-roles-${GROUP}" \
+  --name "rockysurf-nightly-roles-${GROUP}-${LOCATION}" \
   --template-file "${SCRIPT_DIR}/role.bicep" \
   --parameters "resourceGroupName=${GROUP}" "principalId=${PROVIDER_OBJECT_ID}" \
   --output none
@@ -290,7 +294,7 @@ note 'It cannot create anything, and it cannot touch the shared network.'
 
 run az deployment sub create \
   --location "$LOCATION" \
-  --name "rockysurf-nightly-sweep-${GROUP}" \
+  --name "rockysurf-nightly-sweep-${GROUP}-${LOCATION}" \
   --template-file "${SCRIPT_DIR}/nightly-sweep-role.bicep" \
   --parameters "resourceGroupName=${GROUP}" "principalId=${SWEEP_OBJECT_ID}" \
   --output none
