@@ -2717,6 +2717,12 @@ main.help section > pre {
   margin-bottom: 1rem;
 }
 
+/* Cancel (issue #224): a plain secondary button below the chooser, not a grid item beside the
+   option cards — a dismissal must not carry the choices' weight. */
+.pack-create-cancel {
+  margin-bottom: 1rem;
+}
+
 .pack-create-option {
   background: var(--rs-surface);
   border: 1px solid var(--rs-border);

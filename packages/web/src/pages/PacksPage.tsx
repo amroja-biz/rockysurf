@@ -1324,38 +1324,46 @@ export function PacksPage(): React.JSX.Element {
                 (`scratch`, below) was already inline before this issue, and a chooser that is
                 sometimes a modal and sometimes not would be two behaviours for one button. */}
             {createFlow === 'choose' && (
-              <div className="pack-create-chooser" data-testid="pack-create-chooser">
+              <>
+                <div className="pack-create-chooser" data-testid="pack-create-chooser">
+                  <button
+                    type="button"
+                    className="pack-create-option"
+                    data-testid="create-option-upload"
+                    onClick={() => setCreateFlow('upload')}
+                  >
+                    <strong>Upload a pack file</strong>
+                    <span className="hint">Bring a .yaml file from somewhere else.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pack-create-option"
+                    data-testid="create-option-existing"
+                    onClick={() => setCreateFlow('from-existing')}
+                  >
+                    <strong>Start from an existing pack</strong>
+                    <span className="hint">Copy an installed pack's file under a new id, and edit it.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pack-create-option"
+                    data-testid="create-option-scratch"
+                    onClick={() => setCreateFlow('scratch')}
+                  >
+                    <strong>Start from scratch</strong>
+                    <span className="hint">A blank pack, built from the tools already on this installation.</span>
+                  </button>
+                </div>
+                {/* Out of the grid (issue #224): Cancel is a dismissal, not a fourth way to
+                    create a pack, so it does not share the option cards' weight or width. */}
                 <button
                   type="button"
-                  className="pack-create-option"
-                  data-testid="create-option-upload"
-                  onClick={() => setCreateFlow('upload')}
+                  className="button secondary pack-create-cancel"
+                  onClick={() => setCreateFlow('closed')}
                 >
-                  <strong>Upload a pack file</strong>
-                  <span className="hint">Bring a .yaml file from somewhere else.</span>
-                </button>
-                <button
-                  type="button"
-                  className="pack-create-option"
-                  data-testid="create-option-existing"
-                  onClick={() => setCreateFlow('from-existing')}
-                >
-                  <strong>Start from an existing pack</strong>
-                  <span className="hint">Copy an installed pack's file under a new id, and edit it.</span>
-                </button>
-                <button
-                  type="button"
-                  className="pack-create-option"
-                  data-testid="create-option-scratch"
-                  onClick={() => setCreateFlow('scratch')}
-                >
-                  <strong>Start from scratch</strong>
-                  <span className="hint">A blank pack, built from the tools already on this installation.</span>
-                </button>
-                <button type="button" className="button secondary" onClick={() => setCreateFlow('closed')}>
                   Cancel
                 </button>
-              </div>
+              </>
             )}
 
             {createFlow === 'upload' && (
