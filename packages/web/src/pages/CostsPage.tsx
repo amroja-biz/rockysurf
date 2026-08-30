@@ -60,8 +60,8 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
         </span>
         <div>
           <p data-testid="cap-summary" style={{ margin: '0 0 0.5rem' }}>
-            <strong>{money(spent, cap.currency)}</strong> of {money(cap.amount, cap.currency)} this month
-            {' '}({pct}%)
+            <strong className="cost-figure">{money(spent, cap.currency)}</strong> of{' '}
+            <span className="cost-figure">{money(cap.amount, cap.currency)}</span> this month ({pct}%)
           </p>
           {/* A meter, not an input: the cap is configuration. A control here would imply core
               can raise its own ceiling. */}
@@ -94,12 +94,14 @@ function ServerRow({ server }: { server: ServerCost }) {
       <td>{server.provider}</td>
       <td>{server.status}</td>
       <td>{formatUptime(server.totalUptimeSeconds)}</td>
-      <td title={server.hourlyCost ? undefined : UNPRICED_HINT}>
+      {/* `cost-figure`: money is mono, tabular and right-aligned so a column of rates can be
+          read down rather than word by word (#225). */}
+      <td className="cost-figure" title={server.hourlyCost ? undefined : UNPRICED_HINT}>
         {server.hourlyCost ? `${money(server.hourlyCost.amount, server.hourlyCost.currency)}/h` : 'unpriced'}
       </td>
       {/* The dash and the number are different facts, so they carry different sentences — the
           same pairing the dashboard card and the detail page use (rockysurf-u6af). */}
-      <td title={server.currency ? ESTIMATE_HINT : UNPRICED_HINT}>
+      <td className="cost-figure" title={server.currency ? ESTIMATE_HINT : UNPRICED_HINT}>
         {server.currency ? money(server.estimatedTotalCost, server.currency) : '—'}
       </td>
     </tr>
@@ -157,10 +159,10 @@ export function CostsPage() {
         ) : (
           // One figure per currency, never a single total: a EUR project and a USD account
           // cannot be added without inventing an exchange rate.
-          <ul data-testid="mtd-by-currency">
+          <ul className="cost-totals" data-testid="mtd-by-currency">
             {currencies.map((currency) => (
               <li key={currency} title={ESTIMATE_HINT}>
-                <strong>{money(costs.monthToDate.byCurrency[currency]!, currency)}</strong>
+                <strong className="cost-figure">{money(costs.monthToDate.byCurrency[currency]!, currency)}</strong>
               </li>
             ))}
           </ul>
@@ -188,8 +190,8 @@ export function CostsPage() {
                 <th>Provider</th>
                 <th>Status</th>
                 <th>Uptime</th>
-                <th>Rate</th>
-                <th>Estimated cost</th>
+                <th className="cost-figure">Rate</th>
+                <th className="cost-figure">Estimated cost</th>
               </tr>
             </thead>
             <tbody>

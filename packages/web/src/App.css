@@ -733,6 +733,18 @@ input[type='file']::file-selector-button:hover {
   padding: 1rem 1.25rem;
 }
 
+/* The box's label sits directly on the id it names, so the heading gives up the gap the page's
+   other section headings take (#226). */
+.resolved-offering > h2 {
+  margin: 0 0 0.25rem;
+}
+
+.resolved-offering-id {
+  margin: 0 0 0.5rem;
+  color: var(--rs-heading);
+  font-size: 1rem;
+}
+
 .arch-badge {
   font-size: 0.75rem;
   font-weight: 500;
@@ -1430,6 +1442,31 @@ td {
 
 tbody tr:hover td {
   background: var(--rs-surface);
+}
+
+/* Money, wherever the costs page says it (#225). A figure exists to be compared with the one
+   above it, which needs the digits to line up: mono and tabular, right-aligned in a column, the
+   same treatment `.server-meta dd` already gives every number on a server card. The header
+   follows its column's alignment but stays in the body font — it is a label, not a number. */
+th.cost-figure,
+td.cost-figure {
+  text-align: right;
+}
+
+td.cost-figure,
+strong.cost-figure,
+span.cost-figure {
+  font-family: var(--rs-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The month-to-date total is a `<ul>` only because there is one figure per currency and they
+   must not be added together. It is a layout list, not prose, so it loses the disc and the
+   indent the way every other layout list in this stylesheet does (#231). */
+.cost-totals {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
 }
 
 .tool-name {

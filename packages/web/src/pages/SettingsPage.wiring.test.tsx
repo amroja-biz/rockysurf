@@ -167,6 +167,15 @@ const VIEW: SettingsView = {
   ],
   drifted: false,
   restartHint: 'Changes apply after a restart: stop the process with Ctrl-C and run ./start.sh again.',
+  // Split the way core splits it (#232): the two commands are their own runs, so the page can
+  // set them in <code> without reading core's prose.
+  restartHintSegments: [
+    { text: 'Changes apply after a restart: stop the process with ' },
+    { text: 'Ctrl-C', code: true },
+    { text: ' and run ' },
+    { text: './start.sh', code: true },
+    { text: ' again.' },
+  ],
 }
 
 /**
@@ -1358,6 +1367,18 @@ describe('restart honesty', () => {
     renderPage()
     await loaded()
     expect(document.querySelector('.settings-actions')!.textContent).toContain('./start.sh')
+  })
+
+  it('sets the commands the operator types in <code>, and still reads as one sentence (#232)', async () => {
+    served = { ...structuredClone(VIEW), drifted: true }
+    renderPage()
+    await loaded()
+
+    for (const host of [document.querySelector('.settings-actions')!, screen.getByRole('status')]) {
+      expect([...host.querySelectorAll('code')].map((el) => el.textContent)).toEqual(['Ctrl-C', './start.sh'])
+      // The markup is the only thing that changed: the hint still reads as core wrote it.
+      expect(host.textContent).toContain(VIEW.restartHint)
+    }
   })
 })
 

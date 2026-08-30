@@ -1028,6 +1028,12 @@ export interface SettingsView {
   /** True when the file's values differ from the ones this process booted with. */
   drifted: boolean
   restartHint: string
+  /**
+   * The same sentence in runs, with the ones the operator types or copies flagged (#232). Core
+   * decides which those are; the page only decides that a flagged run is <code>. Without this
+   * the page would have to hunt for `./start.sh` inside core's prose to mark it up.
+   */
+  restartHintSegments: { text: string; code?: boolean }[]
 }
 
 /**

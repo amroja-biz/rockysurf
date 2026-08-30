@@ -41,6 +41,19 @@ vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() 
 
 const price = (amount: number) => ({ amount, currency: 'USD', fetchedAt: '2026-08-11T00:00:00Z' })
 
+/**
+ * The resolved-machine box, waited on by the offering id it names. That id used to BE the box's
+ * heading, so these waits used to be heading queries; it is a <code> under a "Machine" label
+ * now (#226), because letterspaced caps label a field and must not carry an identifier.
+ *
+ * Selector-scoped rather than a bare text query: every id in the machine-type table is a <code>
+ * too, so an unscoped match would find the picker's row as well as the box.
+ */
+const findResolved = (id: RegExp) =>
+  screen.findByText(id, { selector: '.resolved-offering-id code' })
+const queryResolved = (id: RegExp) =>
+  screen.queryByText(id, { selector: '.resolved-offering-id code' })
+
 const FAKE_PROVIDER: api.ProviderInfo = {
   id: 'fake',
   displayName: 'Fake Cloud',
@@ -127,10 +140,10 @@ describe('resolving a size to a concrete offering before submit', () => {
     renderPage()
 
     // The cheapest offering meeting "small" — shown BEFORE anything is submitted.
-    const heading = await screen.findByRole('heading', { name: /small-arm/ })
+    const resolvedId = await findResolved(/small-arm/)
     // Scoped to the plan card: the same price now also labels the "small" radio above it
     // (rockysurf-b1gr), so an unscoped query would match two elements and throw.
-    const planCard = heading.closest('section')!
+    const planCard = resolvedId.closest('section')!
     expect(within(planCard).getByText(/\$0\.0168\/hr/)).toBeTruthy()
     // Prices ship bundled, so they carry the date they were read.
     expect(screen.getByText(/prices as of/i)).toBeTruthy()
@@ -138,32 +151,32 @@ describe('resolving a size to a concrete offering before submit', () => {
 
   it('labels the architecture, with arm64 first-class', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.getAllByText('ARM64').length).toBeGreaterThan(0)
   })
 
   it('re-resolves when the size changes', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     await user.click(screen.getByRole('radio', { name: /large/i }))
-    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+    expect(await findResolved(/big-arm/)).toBeTruthy()
   })
 
   it('re-resolves when the architecture changes', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     await user.click(screen.getByRole('radio', { name: /x86-64/i }))
-    expect(await screen.findByRole('heading', { name: /small-x86/ })).toBeTruthy()
+    expect(await findResolved(/small-x86/)).toBeTruthy()
   })
 
   it('submits the offering the user was shown, not whatever core would pick', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     await user.click(screen.getByRole('button', { name: /create server/i }))
 
@@ -208,7 +221,7 @@ describe('resolving a size to a concrete offering before submit', () => {
 
   it('does not show the unpriced notice while any offering carries a price', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.queryByTestId('prices-unavailable')).toBeNull()
   })
 })
@@ -225,7 +238,7 @@ describe('pricing every size option, not only the selected one', () => {
 
   it('names the machine each size would land on, with its hourly price', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     expect(labelFor('small')).toBe('small-arm · $0.0168/hr')
     // "medium" wants 4 GB and only the big type here has it: a coarse catalogue rounds up, and
@@ -244,7 +257,7 @@ describe('pricing every size option, not only the selected one', () => {
       },
     ])
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     expect(labelFor('large')).toBe('big-arm · price unknown')
     expect(screen.queryByTestId('prices-unavailable')).toBeNull()
@@ -284,7 +297,7 @@ describe('pricing every size option, not only the selected one', () => {
   it('resolves the labels at the chosen architecture, as the plan card does', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     await user.click(screen.getByRole('radio', { name: /x86-64/i }))
     await waitFor(() => expect(labelFor('small')).toBe('small-x86 · $0.0208/hr'))
@@ -295,7 +308,7 @@ describe('pricing every size option, not only the selected one', () => {
 describe('pack metadata drives the conditional fields', () => {
   it('hides RDP when the pack does not ask for it', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     expect(screen.queryByLabelText(/remote desktop password/i)).toBeNull()
   })
@@ -307,7 +320,7 @@ describe('pack metadata drives the conditional fields', () => {
    */
   it('shows the repository field even when the pack does not declare requiresRepos', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     expect(screen.getByLabelText(/repositories/i)).toBeTruthy()
     expect(screen.queryByText(/this pack expects at least one/i)).toBeNull()
@@ -352,7 +365,7 @@ describe('pack metadata drives the conditional fields', () => {
   describe('the startup script field', () => {
     it('is on the form for every pack, like Repositories', async () => {
       renderPage()
-      await screen.findByRole('heading', { name: /small-arm/ })
+      await findResolved(/small-arm/)
       expect(screen.getByLabelText(/startup script/i)).toBeTruthy()
       expect(screen.getByRole('radio', { name: /rocky/i })).toBeTruthy()
       expect(screen.getByRole('radio', { name: /root/i })).toBeTruthy()
@@ -574,7 +587,7 @@ describe('when a cloud provider refuses the create', () => {
     const user = userEvent.setup()
     vi.mocked(api.createServer).mockRejectedValueOnce(azureQuotaRefusal())
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     await user.click(screen.getByRole('button', { name: /create server/i }))
     return user
   }
@@ -864,7 +877,7 @@ describe('capability flags drive provider-specific controls', () => {
 
   it('says nothing about host keys when the provider can inject them', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.queryByText(/trusted on sight/i)).toBeNull()
   })
 
@@ -878,7 +891,7 @@ describe('capability flags drive provider-specific controls', () => {
 
   it('hides the provider picker when there is only one', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.queryByRole('radio', { name: 'Fake Cloud' })).toBeNull()
   })
 })
@@ -894,7 +907,7 @@ describe('capability flags drive provider-specific controls', () => {
 describe('the SSH key fieldset explains itself when a key is provided (issue #41)', () => {
   it('states that Rocky Surf also authorizes a key of its own once "Use my own public key" is picked', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     expect(screen.queryByText(/Rocky Surf also authorizes a key of its own/)).toBeNull()
 
@@ -904,7 +917,7 @@ describe('the SSH key fieldset explains itself when a key is provided (issue #41
 
   it('says nothing extra while "Generate a key for me" is selected', async () => {
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.queryByText(/Rocky Surf also authorizes a key of its own/)).toBeNull()
   })
 })
@@ -944,12 +957,12 @@ describe('choosing which cloud to create on', () => {
     renderPage()
 
     await user.click(await screen.findByRole('radio', { name: 'Fake Cloud' }))
-    expect(await screen.findByRole('heading', { name: /small-arm/ })).toBeTruthy()
+    expect(await findResolved(/small-arm/)).toBeTruthy()
 
     // The plan card is the provider's answer, so switching clouds must change it — a stale
     // card would quote one cloud's price for another cloud's machine.
     await user.click(screen.getByRole('radio', { name: 'Other Cloud' }))
-    expect(await screen.findByRole('heading', { name: /other-medium/ })).toBeTruthy()
+    expect(await findResolved(/other-medium/)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: /create server/i }))
     await waitFor(() => expect(api.createServer).toHaveBeenCalled())
@@ -993,14 +1006,14 @@ describe('choosing which cloud to create on', () => {
       ]),
     )
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
     expect(screen.queryByTestId('providers-unavailable')).toBeNull()
   })
 
   it('still creates when the setup endpoint fails — the diagnosis is advisory', async () => {
     vi.mocked(api.getSetupState).mockRejectedValue(new Error('setup unavailable'))
     renderPage()
-    expect(await screen.findByRole('heading', { name: /small-arm/ })).toBeTruthy()
+    expect(await findResolved(/small-arm/)).toBeTruthy()
   })
 })
 
@@ -1008,7 +1021,7 @@ describe('the live provisioning feed replaces the form after create', () => {
   it('shows the step list once the server exists', async () => {
     const user = userEvent.setup()
     renderPage()
-    await screen.findByRole('heading', { name: /small-arm/ })
+    await findResolved(/small-arm/)
 
     await user.click(screen.getByRole('button', { name: /create server/i }))
 
@@ -1404,7 +1417,7 @@ describe('the machine type picker', () => {
     vi.mocked(api.listProviders).mockResolvedValue([provider])
     renderPage()
     // The form is fully loaded once the submit button exists — generic across fixtures, unlike
-    // waiting for a specific offering's heading, which the render-cap fixture below has none of.
+    // waiting for a specific offering's id, which the render-cap fixture below has none of.
     await screen.findByRole('button', { name: /create server/i })
     await user.click(screen.getByRole('button', { name: /choose a specific machine type/i }))
     if (showUnavailable) await user.click(screen.getByRole('checkbox', { name: /available only/i }))
@@ -1516,7 +1529,7 @@ describe('the machine type picker', () => {
     const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
     await user.click(within(row).getByRole('button', { name: /^select$/i }))
 
-    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+    expect(await findResolved(/big-arm/)).toBeTruthy()
   })
 
   it('switching provider clears the machine-type pick', async () => {
@@ -1529,12 +1542,12 @@ describe('the machine type picker', () => {
 
     const row = screen.getByRole('cell', { name: 'big-arm' }).closest('tr')!
     await user.click(within(row).getByRole('button', { name: /^select$/i }))
-    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+    expect(await findResolved(/big-arm/)).toBeTruthy()
 
     await user.click(screen.getByRole('radio', { name: 'Other Cloud' }))
     // Back to the size-driven plan — a machine type named on the cloud just left behind
     // cannot still be what gets created.
-    expect(screen.queryByRole('heading', { name: /big-arm/ })).toBeNull()
+    expect(queryResolved(/big-arm/)).toBeNull()
   })
 
   it('caps rendered rows and says how many more a narrower search would show', async () => {
@@ -1637,6 +1650,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     lists: [],
     drifted: false,
     restartHint: 'Changes apply after a restart.',
+    restartHintSegments: [{ text: 'Changes apply after a restart.' }],
   })
 
   it('resolves small to the saved type instead of the cheapest that fits', async () => {
@@ -1644,7 +1658,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     renderPage()
 
     // `small-arm` is cheaper and meets the floor; `big-arm` is what this user asked for.
-    expect(await screen.findByRole('heading', { name: /big-arm/ })).toBeTruthy()
+    expect(await findResolved(/big-arm/)).toBeTruthy()
     expect(screen.getByTestId('size-resolves-small').textContent).toContain('big-arm')
     expect(screen.getByTestId('size-preferred-small').textContent).toMatch(/saved/i)
   })
@@ -1653,7 +1667,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     const user = userEvent.setup()
     vi.mocked(api.listProviders).mockResolvedValue([WITH_SAVED])
     renderPage()
-    await screen.findByRole('heading', { name: /big-arm/ })
+    await findResolved(/big-arm/)
 
     await user.click(screen.getByRole('button', { name: /create server/i }))
     await waitFor(() => expect(api.createServer).toHaveBeenCalled())
@@ -1663,7 +1677,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
   it('leaves a size with nothing saved exactly as it was', async () => {
     vi.mocked(api.listProviders).mockResolvedValue([WITH_SAVED])
     renderPage()
-    await screen.findByRole('heading', { name: /big-arm/ })
+    await findResolved(/big-arm/)
 
     // `large` has no saved type, so it still resolves the way it always did.
     expect(screen.getByTestId('size-resolves-large').textContent).toContain('big-arm')
@@ -1693,7 +1707,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     renderPage()
 
     // Not a refusal — the create still works, on the ordinary default.
-    expect(await screen.findByRole('heading', { name: /small-arm/ })).toBeTruthy()
+    expect(await findResolved(/small-arm/)).toBeTruthy()
     const note = screen.getByTestId('tier-preference-note').textContent ?? ''
     expect(note).toContain('quota-type')
     // The provider's own reason (#139), not a generic "sold out": the cure is a portal request.

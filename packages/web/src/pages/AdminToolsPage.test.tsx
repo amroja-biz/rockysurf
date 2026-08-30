@@ -125,7 +125,10 @@ describe('the tools table', () => {
     renderPage()
     // Same wording as the packs page, so "file-backed" reads identically on both surfaces.
     expect(await screen.findByTestId('file-backed-claude-code')).toBeDefined()
-    expect((await screen.findAllByText(/^file: ai-coding-agents\.yaml$/)).length).toBe(3)
+    // The filename is a <code> inside the cell now (#222), so the cell's own text nodes read
+    // "file: " on their own — assert on the cell rather than on a text match.
+    const sources = (await screen.findAllByTestId(/^file-backed-/)).map((el) => el.textContent)
+    expect(sources).toEqual(Array(3).fill('file: ai-coding-agents.yaml'))
     // `hand-rolled` and `switched-off` have no sourceFile.
     expect(await screen.findAllByText('database')).toHaveLength(2)
   })
