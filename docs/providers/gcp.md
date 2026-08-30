@@ -494,23 +494,51 @@ answer to the question `deploy/gcp/setup.sh`'s `--create-key` flag exists to avo
 
 ### Wiring it, once
 
-```bash
-# read it first — it changes nothing and prints every command
-./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id> --dry-run
+One command. You need to be signed in to Google Cloud and to GitHub, and that is all it asks of
+you.
 
-./deploy/gcp/nightly-ci.sh --project=<CI-ONLY project id>
+```bash
+gcloud auth login   # if you are not already signed in
+gh auth login       # if you are not already signed in
+
+./deploy/gcp/setup-nightly.sh --dry-run     # optional: shows every step, changes nothing
+./deploy/gcp/setup-nightly.sh
 ```
 
-The script calls the shipped [`deploy/gcp/setup.sh`](../../deploy/gcp/setup.sh) *unmodified* — so
-the role under test is the published one, deployed the published way — and then adds the three CI
-pieces: a workload identity pool and an OIDC provider constrained to this repository and this one
-workflow file, a CI-only sweep service account carrying
-[`deploy/gcp/nightly-sweep-role.yaml`](../../deploy/gcp/nightly-sweep-role.yaml), and
-`roles/iam.workloadIdentityUser` on both accounts. It is idempotent; run it again after editing
-either role file.
+It offers to start a run at the end. To undo everything it made:
 
-It finishes by printing the exact commands for four repository variables — none of which is a
-credential:
+```bash
+./deploy/gcp/teardown-nightly.sh
+```
+
+**Run it as often as you like.** Every step checks before it creates, so a second run says what is
+already there and writes nothing at all — including on a project that was wired up by hand before
+this script existed.
+
+**Nothing it makes costs money.** Roles, service accounts and an identity pool are free. Only the
+nightly's own machines bill, at about two cents a night.
+
+**It creates no key, password or secret, and prints none.** There is nothing to rotate.
+
+#### What it does, in order
+
+You do not have to read this to run it. It is here so the permissions it grants are auditable
+without running anything.
+
+| Step | What it makes | Why |
+|---|---|---|
+| 1 | nothing | Checks you are signed in to both. |
+| 2 | nothing, usually | Settles which project. The flag, else the one already saved in `GCP_CI_PROJECT`, else it asks — never the project `gcloud` happens to be pointed at. Offers to create one that does not exist, and says so if billing is off. |
+| 3 | four API enablements | `compute`, `iam`, `iamcredentials`, `sts`. A pool without `sts` fails at run time with an opaque 403 rather than at creation. |
+| 4 | the published role, its service account and the binding | By calling the shipped [`deploy/gcp/setup.sh`](../../deploy/gcp/setup.sh) **unmodified** — the file a self-hoster deploys, which is the whole point of the leg. Skipped entirely when the role in the project already carries exactly [`rockysurf-role.yaml`](../../deploy/gcp/rockysurf-role.yaml). |
+| 5 | the sweep role, its service account and the binding | [`nightly-sweep-role.yaml`](../../deploy/gcp/nightly-sweep-role.yaml): delete-only, one project, no create of any kind, nothing that can touch the shared SSH rule. |
+| 6 | the workload identity pool and its OIDC provider | This is what lets GitHub sign in with no key. The condition on it names this repository and this one workflow file, and accepts nothing else. |
+| 7 | `roles/iam.workloadIdentityUser` on both accounts | [Two grants, and not interchangeable](#why-there-are-two-service-accounts). |
+| 8 | nothing | Checks the zone actually sells `t2a-standard-1` and `e2-small`, and reads the region's CPU quota. |
+| 9 | four repository variables | Names and ids. None of them is a credential. |
+| 10 | nothing | Offers to start a run. |
+
+The variables it sets:
 
 | Variable | What it is |
 |---|---|
@@ -518,12 +546,26 @@ credential:
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | the pool provider's full resource name, which uses the project **number** |
 | `GCP_PROVIDER_SERVICE_ACCOUNT` | the account carrying the published role — the identity under test |
 | `GCP_NIGHTLY_SERVICE_ACCOUNT` | the CI-only sweep account |
-| `GCP_CI_ZONE` | optional; defaults to `us-central1-a` |
+| `GCP_CI_ZONE` | only written if you pass `--zone`; the workflow defaults to `us-central1-a` on its own |
+
+Defaults are overridable: `--project`, `--repo`, `--workflow`, `--zone`, `--pool`, `--provider`.
 
 Until all four are set the job **skips with a notice** rather than failing: a perpetually red
 scheduled workflow trains everyone to ignore it, and the one morning it is red for a real reason
 nobody looks. Then trigger it once by hand — `gh workflow run nightly-real-cloud.yml` — rather
 than waiting for 07:00 UTC to find out.
+
+#### The two things a script cannot do for you
+
+Both are read and reported at step 8, in plain words, rather than being discovered by a failed
+create at 07:00:
+
+- **Billing.** Compute Engine refuses to build anything in a project with no billing account
+  attached, and only you can attach one.
+- **Stock and quota.** `t2a-standard-1` (arm64) exists in only eight zones, and a fresh project's
+  CPU quota in a region can be too small for the two machines the nightly builds. Re-run with
+  `--zone` for the first; ask for quota at <https://console.cloud.google.com/iam-admin/quotas> for
+  the second, which is usually approved in minutes.
 
 ### Why there are two service accounts
 
