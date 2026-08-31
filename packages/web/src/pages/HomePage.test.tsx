@@ -1,18 +1,19 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
-import { GITHUB_URL } from '../lib/links'
+import { GITHUB_URL, SHOP_URL, repoDocUrl } from '../lib/links'
 import { HomePage } from './HomePage'
 
 /**
- * The home page (rockysurf-n0zr.2): the hero, the thesis, and the links that make it a front
- * door rather than a dead end. Content phrasing is free to change; what is pinned here is the
+ * The home page (issue #266): the hero, the thesis, and the links that make it a front door
+ * rather than a dead end. Content phrasing is free to change; what is pinned here is the
  * structure a reader relies on — one real heading, the hero pointing at a path the bundle
- * carries (bundle-assets.test.ts owns the other half of that claim), and the three ways out.
+ * carries (bundle-assets.test.ts owns the other half of that claim), the BYO trio, the two
+ * stories, and the three ways out.
  *
- * The page also carries the README verbatim, so the section spine is pinned too: an editor who
- * drops a section here has dropped it from one of the two copies that are meant to be the same
- * document, and that is the failure worth catching early.
+ * Issue #16 made this page a verbatim README. #266 split them: this is the pitch, the README
+ * is the operator document. The section spine is pinned so an editor who drops BYOC or the
+ * shop story has dropped what the issue asked the front door to say.
  */
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -39,13 +40,20 @@ describe('HomePage', () => {
     expect(hero.getAttribute('src')).toBe('/images/logo.png')
   })
 
-  it('has exactly one h1, and it is the tagline — not a blank shell heading', () => {
+  it('has exactly one h1, and it says what the product is — not a blank shell heading', () => {
     // AppShell suppresses its <h1> for an empty title; if that regresses, this page grows a
     // contentless heading above the hero and this count catches it.
     renderHome()
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]!.textContent).toMatch(/need their own space\?/i)
+    expect(headings[0]!.textContent).toMatch(/linux box for your coding agents/i)
+  })
+
+  it('calls itself an open-source personal tool, not a hosted service', () => {
+    renderHome()
+    const main = screen.getByRole('main')
+    expect(main.textContent).toMatch(/open-source personal productivity tool/i)
+    expect(main.textContent).toMatch(/nothing hosted/)
   })
 
   it('names the BYO trio by their lead-ins', () => {
@@ -59,32 +67,38 @@ describe('HomePage', () => {
     }
   })
 
-  it('carries the README spine, in order', () => {
+  it('carries the pitch spine, in order', () => {
     renderHome()
     const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(sections).toEqual([
       'Bring your own cloud, keys and repos',
-      'Rocky Surf Principles',
-      'Install',
       'Creating a server',
-      'Where your servers and settings are kept',
-      'Put a safety net under your cloud account',
-      'More',
-      'License',
+      'A pack of your own',
+      'Room to work',
     ])
   })
 
-  it('states all five principles', () => {
+  it('names the four clouds a create can use, a Surge Pack, and a GitHub repo', () => {
     renderHome()
-    for (const principle of [
-      /create and manage cloud servers for agentic coding/i,
-      /add a new cloud provider/i,
-      /create Surge Packs/i,
-      /extend via modular components/i,
-      /combine components without coding/i,
-    ]) {
-      expect(screen.getByText(principle)).toBeTruthy()
+    const create = screen.getByRole('heading', { name: 'Creating a server' }).closest('section')
+    expect(create).toBeTruthy()
+    const text = create!.textContent ?? ''
+    for (const cloud of ['AWS', 'GCP', 'Azure', 'Hetzner']) {
+      expect(text).toContain(cloud)
     }
+    expect(text).toMatch(/Surge Pack/)
+    expect(text).toMatch(/public or private/)
+    expect(text).toMatch(/Create, stop, start, and terminate/)
+  })
+
+  it('points at the pack skill and the shop', () => {
+    renderHome()
+    expect(
+      screen.getByRole('link', { name: 'create-surge-pack' }).getAttribute('href'),
+    ).toBe(repoDocUrl('.claude/skills/create-surge-pack/SKILL.md'))
+    expect(screen.getByRole('link', { name: 'Rocky Surf Shop' }).getAttribute('href')).toBe(
+      SHOP_URL,
+    )
   })
 
   it('links out: GitHub, Help, and creating a server', () => {
@@ -93,7 +107,9 @@ describe('HomePage', () => {
     renderHome()
     const main = within(screen.getByRole('main'))
     expect(main.getByRole('link', { name: 'GitHub' }).getAttribute('href')).toBe(GITHUB_URL)
-    expect(main.getByRole('link', { name: 'Help' }).getAttribute('href')).toBe('/help')
-    expect(main.getByRole('link', { name: 'Create a server' }).getAttribute('href')).toBe('/servers/new')
+    expect(main.getByRole('link', { name: /^Help$/ }).getAttribute('href')).toBe('/help')
+    expect(main.getByRole('link', { name: 'Create a server' }).getAttribute('href')).toBe(
+      '/servers/new',
+    )
   })
 })

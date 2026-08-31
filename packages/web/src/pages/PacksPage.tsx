@@ -31,6 +31,7 @@ import {
   type PackInput,
   type SurgePackTool,
 } from '../lib/api'
+import { SHOP_URL } from '../lib/links'
 
 /**
  * Surge Packs (rockysurf-4d8h, issue #51).
@@ -175,9 +176,6 @@ const PACKS_TABS: readonly { key: PacksTab; label: string; controls: string }[] 
   { key: 'personal', label: 'Personal', controls: 'packs-panel-personal' },
 ]
 const PACKS_TAB_KEYS = PACKS_TABS.map((t) => t.key)
-
-/** The Pack Shop this installation's own registry default points at (issue #204's caption). */
-const ROCKY_SURF_SHOP_URL = 'https://github.com/amroja-biz/rockysurf-shop'
 
 function originOf(pack: AdminSurgePack): string {
   if (pack.sourceFile) return `shipped with this release · ${pack.sourceFile}`
@@ -1244,7 +1242,7 @@ export function PacksPage(): React.JSX.Element {
             a URL that reads the same to everyone regardless of what it says. */}
         <p className="hint" data-testid="community-caption">
           Community packs from{' '}
-          <a href={ROCKY_SURF_SHOP_URL} target="_blank" rel="noreferrer">
+          <a href={SHOP_URL} target="_blank" rel="noreferrer">
             Rocky Surf Shop
           </a>
           .

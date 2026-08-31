@@ -2665,7 +2665,8 @@ p.hint {
 }
 
 /* Home: one narrow measure, generous line height, no cards. The illustration is the only
-   large element on the page — everything after it is quiet. */
+   large element on the page — everything after it is quiet. This is the pitch (issue #266),
+   not a second README; Help and the repository docs carry the operator detail. */
 main.home {
   max-width: 680px;
 }
@@ -2707,8 +2708,7 @@ main.home h1 {
   line-height: 1.6;
 }
 
-/* The page carries the README, so it is long: sections need air between them and the prose
-   needs the same line height the lede has. */
+/* Sections need air between them and the prose needs the same line height the lede has. */
 .home-section {
   margin-bottom: 2.5rem;
 }
