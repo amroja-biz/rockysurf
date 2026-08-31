@@ -16,7 +16,14 @@ import { createApp, type CreatedApp } from '../app.js'
 import { ensureLocalAdmin } from '../auth/admin.js'
 import { MemorySecretStore } from '../auth/secret-store.js'
 import { issueSession } from '../auth/sessions.js'
-import { ConfigError, configSchema, loadConfig, type Config } from '../config/index.js'
+import {
+  ConfigError,
+  configSchema,
+  createConfigStore,
+  loadConfig,
+  type Config,
+  type ConfigStore,
+} from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { applyChanges } from './document.js'
@@ -74,6 +81,14 @@ let created: CreatedApp
 let dir: string
 let configPath: string
 let token: string
+/**
+ * The live store the save route adopts through (issue #264).
+ *
+ * Built here rather than left out, because "the file was written" and "this process is now
+ * running on it" are two different claims and only one of them used to be testable. `boot()`
+ * builds exactly this; the tests below read `store.current()` to check the second half.
+ */
+let store: ConfigStore
 
 const config: Config = configSchema.parse({})
 
@@ -95,7 +110,8 @@ beforeEach(async () => {
   opened = openTestDatabase()
   secrets = new MemorySecretStore()
   await ensureLocalAdmin({ db: opened.db, secrets, password: PASSWORD })
-  created = createApp({ db: opened.db, config, secrets, configPath })
+  store = createConfigStore({ booted: config, configPath, env: { ...process.env } })
+  created = createApp({ db: opened.db, config, configStore: store, secrets, configPath })
 
   const res = await created.app.request('/api/v1/auth/login', {
     method: 'POST',
@@ -140,9 +156,11 @@ interface View {
   values: Record<string, any>
   defaults: Record<string, any>
   /** The inventory the editor renders from — help, warnings, reasons and the hidden flag. */
-  fields: { path: string; help: string; hidden?: true }[]
+  fields: { path: string; help: string; hidden?: true; appliesAt: 'save' | 'restart'; restartReason?: string }[]
   sections: { id: string; title: string; help: string }[]
   drifted: boolean
+  /** The restart-required settings the file has moved and this process has not (#264). */
+  pendingRestart: { path: string; reason: string }[]
   issues?: { path: string; message: string }[]
   warnings?: { path: string; message: string; variable: string }[]
 }
@@ -551,9 +569,18 @@ describe('saving a reference to a variable that is not set yet', () => {
     await addPrivateThing()
     const first = await readView()
     expect(first.warnings?.map((w) => w.variable)).toEqual(['PRIVATE_THING_PAT'])
-    expect(first.drifted).toBe(true)
     // And again, because a page reload is the ordinary thing that loses a notice.
     expect((await readView()).warnings?.[0]?.path).toBe('github.tokens.1.pat')
+    /**
+     * `drifted` is NOT what carries this any more (issue #264). It used to, because every save
+     * left the process behind the file; now a save is adopted, and `drifted` means the narrower
+     * thing it says it means — one of the five restart-required settings is waiting. This save
+     * touched a token, so nothing is waiting on a restart, and the warning above is the only
+     * notice — which is correct: exporting the variable is what has to happen, not a restart on
+     * its own.
+     */
+    expect(first.drifted).toBe(false)
+    expect(first.pendingRestart).toEqual([])
   })
 
   it('says nothing at all once the variable IS exported — the control', async () => {
@@ -748,9 +775,44 @@ describe('restart honesty', () => {
     expect((await readView()).drifted).toBe(false)
   })
 
-  it('reports drift after a save — the running process is still on the old values', async () => {
+  /**
+   * ISSUE #264 SPLIT THIS TEST IN TWO, and the pair is the whole behaviour change.
+   *
+   * Saving a limit used to raise the drift banner, because nothing re-read the file. It is now
+   * applied, so there is nothing to restart FOR and the banner stays down — while saving the
+   * port, which this process genuinely cannot adopt, raises it and names itself.
+   */
+  it('reports no drift after saving something that applies at once', async () => {
     await saveOk([{ path: ['limits', 'maxServers'], value: 4 }])
-    expect((await readView()).drifted).toBe(true)
+    const view = await readView()
+    expect(view.drifted).toBe(false)
+    expect(view.pendingRestart).toEqual([])
+  })
+
+  it('reports drift after saving one of the settings a restart is needed for', async () => {
+    await saveOk([{ path: ['server', 'port'], value: 3100 }])
+    const view = await readView()
+    expect(view.drifted).toBe(true)
+    expect(view.pendingRestart.map((entry) => entry.path)).toEqual(['server.port'])
+    // The reason travels with it: the page puts it on the control rather than inventing one.
+    expect(view.pendingRestart[0]?.reason).toContain('already bound')
+  })
+
+  it('says which of the paths in one save applied and which are waiting', async () => {
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [
+        { path: ['server', 'port'], value: 3200 },
+        { path: ['limits', 'maxServers'], value: 7 },
+      ],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      applied: string[]
+      restartRequired: { path: string; reason: string }[]
+    }
+    expect(body.applied).toEqual(['limits.maxServers'])
+    expect(body.restartRequired.map((entry) => entry.path)).toEqual(['server.port'])
   })
 
   it('does not call a comment-only hand edit a change of settings', async () => {
@@ -758,7 +820,59 @@ describe('restart honesty', () => {
     expect((await readView()).drifted).toBe(false)
   })
 
-  it('says what a save requires, in the response', async () => {
+  it('reports drift when a hand edit moves a restart-required setting, not just a save', async () => {
+    writeFileSync(configPath, CONFIG_WITH_COMMENTS.replace('port: 3000', 'port: 3300'))
+    expect((await readView()).pendingRestart.map((entry) => entry.path)).toEqual(['server.port'])
+  })
+
+  /**
+   * A value written into the file that MATCHES the default it was already relying on is not a
+   * change, and must not raise the banner. The comparison is over effective values for exactly
+   * this case.
+   */
+  it('does not call writing a setting at its existing value a pending restart', async () => {
+    await saveOk([{ path: ['server', 'port'], value: 3000 }])
+    expect((await readView()).drifted).toBe(false)
+  })
+
+  /**
+   * THE CLAIM THE WHOLE OF #264 RESTS ON: a save reaches the running process.
+   *
+   * Asserted against the store rather than against a downstream effect, because the store IS the
+   * mechanism — every consumer in `app.ts` reads through it, and a test that went looking for
+   * the change in one particular route would be testing that route's wiring instead of this.
+   */
+  it('puts a saved value into force before it answers', async () => {
+    expect(store.current().limits.maxServers).toBe(5)
+    await saveOk([{ path: ['limits', 'maxServers'], value: 9 }])
+    expect(store.current().limits.maxServers).toBe(9)
+  })
+
+  it('keeps this process on its own port, whatever the file says afterwards', async () => {
+    await saveOk([{ path: ['server', 'port'], value: 3400 }])
+    // `PINNED_PATHS`: the listener is bound, so the config in force must not claim otherwise.
+    expect(store.current().server.port).toBe(config.server.port)
+    expect(file()).toContain('port: 3400')
+  })
+
+  it('does not adopt a file it cannot resolve, and says why', async () => {
+    // One good save first, so there is something in force to be kept rather than defaults.
+    await saveOk([{ path: ['limits', 'maxServers'], value: 6 }])
+    expect(store.current().github.tokens).toHaveLength(1)
+
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['github', 'tokens', 1], value: { repo: 'acme/other', pat: '${NOT_EXPORTED_PAT}' } }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { applied: string[]; reloadBlocked?: string }
+    expect(body.applied).toEqual([])
+    expect(body.reloadBlocked).toContain('NOT_EXPORTED_PAT')
+    // And the values in force are still the ones that were working a moment ago.
+    expect(store.current().github.tokens).toHaveLength(1)
+  })
+
+  it('says how to restart without claiming that everything needs one', async () => {
     const res = await save({ mtimeMs: mtime(), changes: [{ path: ['limits', 'maxServers'], value: 4 }] })
     const body = (await res.json()) as {
       saved: boolean
@@ -767,6 +881,8 @@ describe('restart honesty', () => {
     }
     expect(body.saved).toBe(true)
     expect(body.restartHint).toContain('./start.sh')
+    // Since #264 the sentence is HOW to restart, not a claim that a save needs one.
+    expect(body.restartHint).not.toContain('reads this file once')
     // The same sentence in runs (#232), with the two things the operator types marked as
     // commands so a client can set them in monospace without parsing the prose. Joining the
     // runs must give the string back, or the two halves of this answer disagree.
@@ -865,8 +981,16 @@ describe('saving a favourite machine type (issue #124)', () => {
     const ids = view.sections.map((s) => s.id)
     expect(ids).toContain('preferences')
     expect(ids).toContain('preferences.tiers.aws')
-    // The one sentence the rest of the page cannot say for it: this block, alone in the file,
-    // does not wait for a restart.
-    expect(view.sections.find((s) => s.id === 'preferences')?.help).toContain('re-read')
+    /**
+     * The help used to end with the sentence that made this block special: alone in the file,
+     * it was re-read while Rocky Surf ran. Issue #264 made that true of nearly everything, so
+     * the sentence has gone and the promise is now stated once, per field, by `appliesAt`.
+     */
+    const help = view.sections.find((s) => s.id === 'preferences')?.help ?? ''
+    expect(help).toContain('the very next server')
+    expect(help).not.toContain('Unlike everything else')
+    expect(view.fields.filter((f) => f.path.startsWith('preferences.')).map((f) => f.appliesAt)).not.toContain(
+      'restart',
+    )
   })
 })

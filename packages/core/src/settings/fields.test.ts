@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { configSchema } from '../config/index.js'
+import { configSchema, PINNED_PATHS } from '../config/index.js'
 import {
   isSecretKeyName,
   isSecretPath,
+  RESTART_REQUIRED_PATHS,
   SETTINGS_FIELDS,
   SETTINGS_LISTS,
   SETTINGS_SECTIONS,
@@ -405,5 +406,53 @@ describe('a reference is only a reference when it is the whole value', () => {
 
   it('masks a non-string, rather than assuming a number cannot be a credential', () => {
     expect(secretView(12345).state).toBe('set')
+  })
+})
+
+/**
+ * WHEN A SAVED VALUE STARTS BEING USED (issue #264).
+ *
+ * The page's promise and the mechanism behind it live in two files, so these hold them together.
+ * `config/live-config.ts` pins four paths to what this process booted with; every one of them
+ * must be marked `appliesAt: 'restart'` here, or the page would say "applied" about a value that
+ * is deliberately being ignored — the exact lie this classification exists to prevent. The
+ * reverse is NOT asserted: `mcp.scopes` needs a restart of somebody else's process and is not
+ * pinned, because nothing in core reads it.
+ */
+describe('appliesAt — the restart classification', () => {
+  it('states it for every field, so nothing acquires a silent default', () => {
+    for (const field of SETTINGS_FIELDS) {
+      expect(['save', 'restart'], `${field.path}`).toContain(field.appliesAt)
+    }
+  })
+
+  it('gives a reason for every field that needs a restart, in a sentence', () => {
+    for (const field of SETTINGS_FIELDS.filter((f) => f.appliesAt === 'restart')) {
+      const reason = field.restartReason ?? ''
+      expect(reason.length, `${field.path} needs a restart and does not say why`).toBeGreaterThan(40)
+      expect(reason.trim().endsWith('.'), `${field.path}: ${reason}`).toBe(true)
+    }
+  })
+
+  it('marks a field for every path the config store pins to its booted value', () => {
+    for (const path of PINNED_PATHS) {
+      expect(RESTART_REQUIRED_PATHS, `${path} is pinned but the page claims it applies on save`).toContain(path)
+    }
+  })
+
+  it('keeps the list short, and names it — a restart is the exception now', () => {
+    expect([...RESTART_REQUIRED_PATHS].sort()).toEqual([
+      'auth.mode',
+      'mcp.scopes',
+      'server.dataDir',
+      'server.host',
+      'server.port',
+    ])
+  })
+
+  it('does not put a restart note on a field it also says applies on save', () => {
+    for (const field of SETTINGS_FIELDS.filter((f) => f.appliesAt === 'save')) {
+      expect(field.restartReason, `${field.path}`).toBeUndefined()
+    }
   })
 })

@@ -29,6 +29,14 @@
  * `${VAR}`, a hand-written reference still loads, and both are masked on the way out. The policy
  * is about what this product writes into a file it asks people to back up, not about what the
  * format can express.
+ *
+ * AND SINCE ISSUE #264, EVERY FIELD SAYS WHEN IT STARTS BEING USED. `appliesAt` is the whole of
+ * the answer to "do I have to restart?", written per field rather than as one banner over the
+ * page — because the true answer was never the same for all of them. Five fields need a restart
+ * and each says why in its own words; everything else is in force the moment it is saved. This
+ * inventory is the only place that classification is written down: `settings/routes.ts` reports
+ * it, the page renders it beside the control, and `fields.test.ts` holds it to
+ * `config/live-config.ts`'s `PINNED_PATHS` so the promise and the mechanism cannot drift.
  */
 
 /**
@@ -46,6 +54,31 @@ export interface FieldSpec {
   kind: FieldKind
   /** False when the editor shows the value but will not write it. `reason` is then required. */
   writable: boolean
+  /**
+   * WHEN A SAVED VALUE STARTS BEING USED (issue #264).
+   *
+   * `'save'` is a PROMISE, not a hope: the moment the file is written, `config/live-config.ts`
+   * re-reads it, this process adopts it, and whatever was built from the old value — a provider
+   * client, the pack shop's client — is rebuilt by its owner. A field marked `'save'` whose
+   * consumer still reads a value captured at boot is a bug in that consumer, and the honest fix
+   * is to make the consumer live rather than to re-label the field.
+   *
+   * `'restart'` is the other half of the same honesty, and `restartReason` says why in words an
+   * operator can act on. There are five, and each is a fact about a process rather than caution
+   * in general: the listener is bound (`server.port`, `server.host`), the database and the
+   * master key are open from one directory (`server.dataDir`), the mode that issued every live
+   * session cannot be swapped underneath them (`auth.mode`), and `mcp.scopes` is read by a
+   * DIFFERENT process altogether — the one an MCP client starts — which Rocky Surf cannot
+   * restart on anybody's behalf. The first four are `PINNED_PATHS` in `config/live-config.ts`,
+   * so this process keeps running on its own values however the file is edited.
+   *
+   * REQUIRED BY THE TYPE, on `help`'s precedent: a field added here has to state which of the
+   * two it is, so nothing acquires a silent default and the page can never say "applies now"
+   * about a value nothing re-reads.
+   */
+  appliesAt: 'save' | 'restart'
+  /** Why a restart is needed, for the note the page prints beside the control. */
+  restartReason?: string
   /**
    * What this setting is for, in operator language — rendered under the label, always visible
    * (rockysurf-5qzg).
@@ -150,6 +183,7 @@ const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flat
     path: `preferences.tiers.${cloud.id}.${size}`,
     kind: 'string' as const,
     writable: true,
+    appliesAt: 'save',
     help:
       `The ${cloud.noun} to use whenever you ask ${cloud.label} for a ${size} box — ` +
       `${cloud.example}, for instance. Leave it blank to take the cheapest ${cloud.noun} that ` +
@@ -188,13 +222,21 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'server.port',
     kind: 'number',
     writable: true,
+    appliesAt: 'restart',
+    restartReason:
+      'The socket this page arrived on is already bound to the old port, and a running process ' +
+      'cannot move a listener without dropping every connection on it. The new port applies at ' +
+      'the next restart — and this page moves with it, so the address in your browser changes too.',
     help: 'The port the web UI and the API are served on.',
-    warning: 'Changing the port takes effect at the next restart, and this page moves with it.',
   },
   {
     path: 'server.host',
     kind: 'string',
     writable: true,
+    appliesAt: 'restart',
+    restartReason:
+      'The listener is already bound to the old interface, and rebinding it would drop every ' +
+      'connection including this one. The new address applies at the next restart.',
     help:
       'Which network interface to listen on. The default keeps Rocky Surf reachable from this ' +
       'machine only.',
@@ -208,6 +250,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'server.publicUrl',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The public URL of this control plane. Only callback-mode bootstrap needs it; push mode — ' +
       'the default — needs no inbound connectivity at all, so leave it unset unless this instance ' +
@@ -217,6 +260,10 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'server.dataDir',
     kind: 'string',
     writable: false,
+    appliesAt: 'restart',
+    restartReason:
+      'The database, the master key and the encrypted secrets store are open from the old ' +
+      'directory right now. Nothing about that can change while Rocky Surf is running.',
     help: 'Where the database, the generated keys and the encrypted secrets live. Back this directory up.',
     reason:
       'The database, the master key and the encrypted secrets store are open from this directory ' +
@@ -229,6 +276,10 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'auth.mode',
     kind: 'string',
     writable: false,
+    appliesAt: 'restart',
+    restartReason:
+      'Every session open right now was issued by the mode this process started in; swapping it ' +
+      'underneath them is not something a running process can do honestly.',
     hidden: true,
     help: 'How you sign in. `local` is a single admin account and no configuration.',
     reason:
@@ -269,6 +320,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.oauth.clientId',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The client ID of an OAuth App, which is what the Connect GitHub button signs in against. ' +
       'Register one at github.com/settings/applications/new, tick "Enable Device Flow" in its ' +
@@ -279,6 +331,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.pat',
     kind: 'secret',
     writable: true,
+    appliesAt: 'save',
     accepts: 'literal',
     help:
       'The token used to clone private repositories that no scoped entry below matches. Paste the ' +
@@ -289,6 +342,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.tokens.*.host',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The forge this entry is for, when it is not github.com — a self-hosted GitHub Enterprise, ' +
       'with a port if it uses one. An entry with a host and nothing else covers everything on it.',
@@ -297,6 +351,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.tokens.*.owner',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The account or organisation an entry covers. The scope box writes it: `acme/widgets` fills ' +
       'in both halves, and `acme` on its own means every repository under that account.',
@@ -305,6 +360,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.tokens.*.repo',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Which repositories this token opens: `acme/widgets` for one, or `acme` on its own for every ' +
       'repository under that account. Leave it blank and name a host to cover a whole forge, or ' +
@@ -314,6 +370,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'github.tokens.*.pat',
     kind: 'secret',
     writable: true,
+    appliesAt: 'save',
     accepts: 'literal',
     help:
       'The token this scope uses. Paste the token itself: it is stored in the configuration file, ' +
@@ -326,6 +383,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.hetzner.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether Rocky Surf may create servers at Hetzner. Every provider is off until you turn it ' +
       'on, so a fresh install cannot spend money by accident.',
@@ -334,6 +392,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.hetzner.token',
     kind: 'secret',
     writable: true,
+    appliesAt: 'save',
     help:
       'The NAME of an environment variable holding a read/write API token from console.hetzner.com ' +
       '— `HETZNER_TOKEN`, not the token itself. The token is scoped to one project, which is the ' +
@@ -343,6 +402,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.hetzner.location',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Which datacentre new servers are created in: fsn1/nbg1/hel1 (Germany, Finland), ash/hil ' +
       '(US), sin (Singapore). ARM (CAX) types are only sold in fsn1, nbg1 and hel1.',
@@ -351,6 +411,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.hetzner.consoleProjectId',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help:
       'Optional, and used only to put a "View in Hetzner Console" link on a server\'s page. The API ' +
       'never reveals the number, so take it from the console address bar: ' +
@@ -361,6 +422,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.aws.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether Rocky Surf may create EC2 instances. Credentials come from the standard AWS chain — ' +
       'environment, named profile, instance role — and never from this file.',
@@ -369,12 +431,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.aws.region',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'Which AWS region new instances are created in.',
   },
   {
     path: 'providers.aws.profile',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'A named profile from your shared AWS credentials file. Leave it unset to take whatever the ' +
       'default AWS chain resolves to.',
@@ -383,6 +447,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.aws.sshAllowedCidr',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Which network may reach SSH on the boxes AWS creates here, as a CIDR — your own address as a ' +
       '/32 is the usual answer. Required whenever AWS is enabled, with no default on purpose.',
@@ -394,6 +459,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.aws.sizes',
     kind: 'stringList',
     writable: false,
+    appliesAt: 'save',
     help:
       'The only instance types this installation will create — on the New Server page and through ' +
       'the API, the CLI and MCP alike. Unset offers everything the region sells; ' +
@@ -405,6 +471,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.azure.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether Rocky Surf may create Azure virtual machines. Credentials come from the environment, ' +
       'from a managed identity, or from the Azure CLI — and never from this file.',
@@ -413,12 +480,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.azure.subscriptionId',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'The Azure subscription every VM, disk, network interface and address is created in.',
   },
   {
     path: 'providers.azure.resourceGroup',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The one resource group Rocky Surf owns. You create it — `az group create --name ' +
       'rocky-surf-rg --location eastus` — because a role cannot be scoped to a group that does not ' +
@@ -428,12 +497,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.azure.location',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'Which Azure region new VMs are created in, e.g. eastus.',
   },
   {
     path: 'providers.azure.sshAllowedCidr',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Which network may reach SSH on the boxes Azure creates here, as a CIDR — your own address as ' +
       'a /32 is the usual answer. Required whenever Azure is enabled, with no default on purpose.',
@@ -445,6 +516,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.azure.sizes',
     kind: 'stringList',
     writable: false,
+    appliesAt: 'save',
     help:
       'The only VM sizes this installation will create — on the New Server page and through the ' +
       'API, the CLI and MCP alike. Unset offers everything the region sells; the ' +
@@ -456,6 +528,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.gcp.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether Rocky Surf may create Compute Engine instances. Credentials come from Application ' +
       'Default Credentials — the same chain `gcloud` uses — and never from this file.',
@@ -464,6 +537,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.gcp.projectId',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The project every instance lives in. Required whenever GCP is enabled, and never inferred: ' +
       'a Google credential can be valid for many projects and names none of them, so a guess here ' +
@@ -473,6 +547,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.gcp.zone',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The single zone new instances are created in. The default is us-central1-a rather than -c, ' +
       'deliberately — arm64 (Tau T2A) exists in only eight zones, and us-central1-c is not one of ' +
@@ -482,6 +557,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.gcp.sshAllowedCidr',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Which network may reach SSH on the boxes GCP creates here, as a CIDR — your own address as ' +
       'a /32 is the usual answer. Required whenever GCP is enabled, with no default on purpose.',
@@ -493,6 +569,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.gcp.sizes',
     kind: 'stringList',
     writable: false,
+    appliesAt: 'save',
     help:
       'The only machine types this installation will create — on the New Server page and through ' +
       'the API, the CLI and MCP alike. Unset offers everything the zone sells; ' +
@@ -505,6 +582,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.byo.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether machines you already own can be managed over SSH. No cloud API and no provisioning — ' +
       'Rocky Surf installs onto them and manages them from there.',
@@ -513,6 +591,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.byo.identityFile',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'A path to the private key used to log in to every host below — never the key itself, which ' +
       'stays where your own SSH keeps it. Leave it unset to use your SSH agent: if you can already ' +
@@ -522,18 +601,21 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.byo.hosts.*.name',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'What you will call this machine in the UI. It is also how a new server picks the host.',
   },
   {
     path: 'providers.byo.hosts.*.host',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'The hostname or IP address Rocky Surf connects to.',
   },
   {
     path: 'providers.byo.hosts.*.user',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'The admin login Rocky Surf claims the machine with; it needs root or passwordless sudo. This ' +
       'is not the account it later connects as — that one is `rocky`, and it is created for you.',
@@ -542,12 +624,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.byo.hosts.*.port',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help: 'The SSH port, when it is not 22.',
   },
   {
     path: 'providers.byo.hosts.*.fingerprint',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'Optional host key fingerprint, from `ssh-keyscan` piped through `ssh-keygen -lf`. Supplying it ' +
       'means even the first connection is verified; omit it to trust the key on first connect.',
@@ -561,6 +645,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'providers.byo.hosts.*.identityFile',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'A private key for this machine alone, overriding the default above. A path, never the key itself.',
   },
 
@@ -569,6 +654,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'limits.maxServers',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help:
       'The most servers that may exist at once. Enforced server-side, which is what makes it safe to ' +
       'let an agent create its own boxes through the MCP server.',
@@ -577,6 +663,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'limits.createRatePerHour',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help: 'The most servers that may be created per hour. Blunts terminate-and-recreate loops.',
   },
   /** Written and removed as a whole — half a spend cap is not a smaller spend cap. */
@@ -584,6 +671,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'limits.spendCap',
     kind: 'group',
     writable: true,
+    appliesAt: 'save',
     help:
       'Stop creating servers once the running cost estimate passes a figure. Turning it off removes ' +
       'the cap from the file entirely rather than setting it to zero.',
@@ -592,12 +680,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'limits.spendCap.amount',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help: 'The figure the running estimate may not pass.',
   },
   {
     path: 'limits.spendCap.currency',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'An ISO 4217 code — providers do not all quote in USD.',
   },
 
@@ -620,6 +710,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'registry.enabled',
     kind: 'boolean',
     writable: true,
+    appliesAt: 'save',
     help:
       'Whether Rocky Surf browses pack sources at all. Off is the air-gapped setting: the shop says ' +
       'it is switched off, and packs that shipped with your release or were imported here are ' +
@@ -629,12 +720,14 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'registry.sources.*.name',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help: 'What you will call this source in the UI. It is also how an installed pack is attributed.',
   },
   {
     path: 'registry.sources.*.url',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       'An https URL. Ending in `.yaml` means the URL IS one pack — how you publish your own; ' +
       'anything else is a directory serving `index.json` beside its pack files, the way the shop ' +
@@ -648,6 +741,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'registry.sources.*.trust',
     kind: 'string',
     writable: true,
+    appliesAt: 'save',
     help:
       "Your own label for this source — `community` or `internal`. It is the only place a source's " +
       'trustworthiness is recorded, deliberately not something the source itself publishes. There is ' +
@@ -657,6 +751,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'registry.cacheTtlSeconds',
     kind: 'number',
     writable: true,
+    appliesAt: 'save',
     help:
       'How long a fetched listing is reused before the shop refetches it. The Refresh button ignores ' +
       'it, so this is about not hammering a host while somebody browses, not about how fresh a pack ' +
@@ -671,6 +766,11 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     path: 'mcp.scopes',
     kind: 'stringList',
     writable: true,
+    appliesAt: 'restart',
+    restartReason:
+      'The MCP server is a separate process — the one your MCP client starts with `rockysurf ' +
+      'mcp` — and it reads this list when it starts. Rocky Surf itself needs no restart; the MCP ' +
+      'client does, so reconnect it (in Claude Code, restart the session) to pick this up.',
     help:
       'What an MCP client connected to this instance may do on your behalf. `read` and `stop` are ' +
       'the default pair; the other two are granted deliberately.',
@@ -761,8 +861,7 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
     help:
       'Your own answers, remembered. Small, medium and large are floors — the cheapest machine ' +
       'that meets them — until you name the type you actually want, and then that is what you ' +
-      'get every time. Unlike everything else in this file, these are re-read while Rocky Surf ' +
-      'is running, so a saved type applies to the very next server rather than after a restart.',
+      'get every time. A saved type applies to the very next server you create.',
   },
   ...TIER_PREFERENCE_CLOUDS.map((cloud) => ({
     id: `preferences.tiers.${cloud.id}`,
@@ -834,6 +933,16 @@ const SECRET_KEY_NAME = /^(token|pat|password|secret|apikey)$|[a-z0-9](Token|Pat
 export function isSecretKeyName(name: string): boolean {
   return SECRET_KEY_NAME.test(name)
 }
+
+/**
+ * Every path that needs a restart before it is used, `*` intact (issue #264).
+ *
+ * Derived from the inventory rather than written a second time, so the list cannot fall behind
+ * the field entries the page renders from.
+ */
+export const RESTART_REQUIRED_PATHS: readonly string[] = SETTINGS_FIELDS.filter(
+  (f) => f.appliesAt === 'restart',
+).map((f) => f.path)
 
 /** Every secret-classified path in the inventory, `*` intact. */
 export const SECRET_FIELD_PATHS: readonly string[] = SETTINGS_FIELDS.filter((f) => f.kind === 'secret').map(
