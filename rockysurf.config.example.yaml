@@ -12,6 +12,13 @@
 # With none of them, Rocky Surf starts on the defaults below and says so. The settings page
 # writes whichever file was loaded, and creates the home one when there was none.
 #
+# THE FILE IS RE-READ WHEN THE SETTINGS PAGE SAVES IT, and this process adopts what it finds, so
+# almost nothing here waits for a restart. Five settings do, and each says so where it is
+# declared below: `server.port`, `server.host`, `server.dataDir` and `auth.mode` are facts about
+# a process that is already running, and `mcp.scopes` is read by the separate `rockysurf mcp`
+# process. Hand-editing this file is not a save: Rocky Surf re-reads it when the page writes it,
+# not on a timer, so an edit made in an editor still applies at the next start.
+#
 # Every value shown below is the default unless the comment says otherwise, so you can delete
 # any section you do not care about and get the same behaviour.
 #
@@ -27,6 +34,9 @@
 
 server:
   # Port for the web UI and API.
+  #
+  # NEEDS A RESTART. The socket is bound before this file can be saved again, and a running
+  # process cannot move a listener without dropping every connection on it.
   port: 3000
 
   # Which interface to listen on. Loopback by default: this process holds your cloud
@@ -37,6 +47,8 @@ server:
   # behind a firewall or a reverse proxy that terminates TLS. Inside a container it must be
   # "0.0.0.0" (the container's loopback is not the host's); the shipped compose file handles
   # that and still publishes the port on the host's loopback only.
+  #
+  # NEEDS A RESTART, for the same reason the port does: the listener is already bound.
   # host: "127.0.0.1"
 
   # Public URL of THIS control plane. Only needed for callback-mode bootstrap, which requires
@@ -46,6 +58,9 @@ server:
 
   # Database, generated keys and encrypted secrets live here. `~` is expanded, and a relative
   # path resolves against the working directory. Back this directory up.
+  #
+  # NEEDS A RESTART, and a move: the database, the master key and the encrypted store are open
+  # from the old directory. Stop Rocky Surf, move the directory, edit this line, start again.
   dataDir: "~/.rockysurf"
 
 auth:
@@ -74,7 +89,9 @@ github:
   # Needs `repo` scope. Leave unset if you only clone public repos.
   #
   # Instance-wide: every box created here receives it, whoever created it. It is never stored
-  # in the database, so rotating it is an edit here (or of $GITHUB_PAT) plus a restart.
+  # in the database, and it is read from this file when a box is created — so rotating it is an
+  # edit here and nothing else. Changing $GITHUB_PAT itself still needs a restart: a running
+  # process cannot be handed a new environment.
   # pat: "${GITHUB_PAT}"
 
   # One token per repository, for fine-grained PATs — which GitHub issues per repository, so
@@ -303,8 +320,8 @@ limits:
 #   # ordinary default, and the New Server page says which and why rather than substituting in
 #   # silence. It must be a type `providers.<cloud>.sizes` allows, where you have set one.
 #   #
-#   # THIS BLOCK IS RE-READ WHILE ROCKY SURF IS RUNNING — the only one that is — so a type saved
-#   # from the New Server page applies to the very next server rather than after a restart.
+#   # READ FROM THIS FILE AT CREATE TIME, so a type saved from the New Server page applies to the
+#   # very next server — including when it was hand-edited here rather than saved from the page.
 #   tiers:
 #     hetzner:
 #       small: cpx21
@@ -339,8 +356,8 @@ registry:
 
   # The sources to browse, in order. The default is the community shop and nothing else. Add your
   # own to serve packs internally — or to publish your own packs (issue #88). The admin Settings
-  # page edits this list too, under "Pack sources"; either way it is this file that changes, and
-  # a change here applies at the next restart.
+  # page edits this list too, under "Pack sources"; either way it is this file that changes. A
+  # save from the page applies at once; a hand-edit here applies at the next start.
   #
   # A SOURCE IS EITHER ONE FILE OR A DIRECTORY, and the URL is what says which:
   #   - ending in `.yaml` / `.yml`, the URL IS the pack — how you publish one of your own;

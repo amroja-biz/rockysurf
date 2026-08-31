@@ -1106,9 +1106,10 @@ which needs a pull request here:
    then appears in the shop, Refresh picks up your latest edit, and reinstalling is a click.
 
 `https` is required for a source, because an `installScript` is root shell and http lets anything
-on the network rewrite it in flight. Adding a source is admin-only, it takes effect at the next
-restart, and it fetches nothing by itself: the pack is fetched when somebody opens the shop, and
-installed only after the disclosure has shown them every script it contains.
+on the network rewrite it in flight. Adding a source is admin-only, it takes effect as soon as it
+is saved on the Settings page (issue #264), and it fetches nothing by itself: the pack is fetched
+when somebody opens the shop, and installed only after the disclosure has shown them every script
+it contains.
 
 ### Publishing to the shop
 
