@@ -1,13 +1,12 @@
 ---
-name: creating-surge-packs
+name: create-surge-pack
 description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "I want a Rocky Surf box with Rust and Neovim on it", "add ripgrep to the claude-code pack", "add OMP and an MCP server on top of the Claude Code pack", "add ripgrep and fzf on top of the opencode pack", "I want the opencode pack plus my own tools", "extend the ai-coding-agents pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, how to extend an existing pack without breaking it, and how to install and share the finished pack.
 ---
 
-# Creating a Surge Pack
+# Create a Surge Pack
 
 A Surge Pack is a bundle of tools Rocky Surf installs on a fresh cloud box. It is **one YAML
-file**: data rather than code, so adding one is meant to need no change to the application. (Meant
-to — one test currently disagrees; step 3 says what to do about it.)
+file**: data rather than code, so adding one needs no change to the application.
 
 Your job in this skill is to take the user from "I want a box with X on it" to a pack file that
 **provably** works: it survives an interrupted install, it works on both CPU architectures, and
@@ -24,7 +23,7 @@ rather than fixing it afterwards.
 Verification needs two things. Establish both now — do not discover at step 4 that the user
 cannot run the harness.
 
-1. **A Rocky Surf checkout.** The harness, the loader and the six worked examples are all in the
+1. **A Rocky Surf checkout.** The harness, the loader and the worked examples are all in the
    repository (in tree — an out-of-tree pack author has none of them). Check whether you are
    already in one: `packs/` and `scripts/pack-smoke.mjs` both present means yes, and this skill
    shipping from `.claude/skills/` means you very likely are. If not:
@@ -87,7 +86,7 @@ else, and infer what you reasonably can from what the user already said.
   code — and `$REPOS` reaches your scripts so you can do extra work per repository. A `git`
   your setup script runs against one of those URLs, itself or through a tool that clones on its
   own (`gt rig add` does), authenticates the way the clone did: the bootstrap hands the step the
-  clone's credential helper through `GIT_CONFIG_*`. Write no credential code (issue #142).
+  clone's credential helper through `GIT_CONFIG_*`. Write no credential code.
 - **How much of the shared base toolchain do they want?** See below. This is the highest-leverage
   question in the whole file and the easiest one to skip: it decides both what the box can do and
   how long every smoke run takes.
@@ -123,7 +122,7 @@ pack is for the user's own instance rather than a pull request.
 id rather than redefining. Read that file before writing a single install script: half of what a
 new pack needs is usually already there.
 
-**Take the subset you need.** All six shipped packs list the full set because all six are
+**Take the subset you need.** The shipped packs list the full set because they are
 general-purpose AI-coding boxes, not because the format requires it. A narrower pack should say so
 with its tool list — a terminal-first box has no use for Chromium, and dropping `playwright` and
 `playwright-deps` roughly halves every smoke run you are about to do.
@@ -230,10 +229,8 @@ grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u
 ```
 
 That also tells you when something close to your tool already exists, and — just as usefully —
-when it does not. **No shipped pack installs a compiler.** `gas-town` had a `gas-town-toolchain`
-tool (Ubuntu's Go) until it switched to upstream's release binary, and nothing replaced it: a
-pack that genuinely needs a toolchain defines its own, under its own id, and says in the file
-what needs it.
+when it does not. **Do not assume a compiler is available**: a pack that genuinely needs a
+toolchain defines its own, under its own id, and says in the file what needs it.
 
 **The base file is not the only place tool ids come from.** The agents themselves are defined
 across `packs/amp-agents.yaml` (`amp`), `packs/codex-cli.yaml` (`codex`), `packs/open-code.yaml`
@@ -244,7 +241,7 @@ so take it if you take them. If the user asked for a named agent, go and read th
 defines it before writing anything.
 
 Then open the closest worked example beside it and follow its shape. `packs/open-code.yaml` is
-the smallest and freshest: one new tool, everything else referenced from the base file. Pick from
+the smallest: one new tool, everything else referenced from the base file. Pick from
 these by what you are doing:
 
 | You are | Read |
@@ -252,7 +249,7 @@ these by what you are doing:
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
 | adding an apt repository (keyring + source list) | the `gh` tool in `packs/ai-coding-agents.yaml` |
 | downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads-viewer` for a checksummed one |
-| tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of that swap, and why (its `go install` was the one un-retriable fetch in the whole repository) |
+| tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of installing one instead of compiling, and why |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
 | building on a pack that already exists | `packs/gas-town.yaml`, and Step 1E |
@@ -286,8 +283,9 @@ Get the version question right, and say in a comment which of the two rules you 
 on a quota-free registry (npm, PyPI via `pipx`) installs **unversioned** — users expect the current
 agent and most agents update themselves anyway, so a pin bought staleness for a reproducibility it
 could not keep. A tool that ships only as a GitHub release asset stays **pinned to a tag with a
-`sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API that took the
-trunk down once already. Neither rule licenses piping a vendor's `install.sh` to `bash`. Full
+`sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API, and a pack
+that calls it breaks for everyone the moment the quota runs out. Neither rule licenses piping a
+vendor's `install.sh` to `bash`. Full
 reasoning, and the narrow case where an agent may still be pinned, in `docs/writing-a-pack.md`
 § Which version to install.
 
@@ -330,9 +328,9 @@ Fix everything here before you start a container — this loop is a thousand tim
 one in step 4, and it catches most of what a first draft gets wrong.
 
 Your pack file is the only thing you have to add: no test in this repository names the packs it
-expects, so adding one to `packs/` is not an application change. `routes.test.ts` proves it — *a
-seventh pack file changes nothing about the application* builds a temporary `packs/` with an extra
-pack in it and runs the whole public contract over it. A red test here is about **your pack**.
+expects, so adding one to `packs/` is not an application change. `routes.test.ts` proves it —
+the case that adds a pack file builds a temporary `packs/` with an extra pack in it and runs the
+whole public contract over it. A red test here is about **your pack**.
 
 One thing that is easy to get half-right: `imageUrl` is optional, but if you do set it to a
 bundled path (`/images/surge-packs/<something>.png`), the PNG has to be in *both*
@@ -446,9 +444,8 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
   redefine them. Work through the checklist at the end of `docs/writing-a-pack.md` first.
 - **Upload it into their own running instance** — Surge Packs (`/packs`) → Personal → New Surge
   Pack → Upload a pack file. An imported pack becomes a database row that boot never overwrites
-  and never restores. (Issue #204 retired the one-off "import from a URL" button that used to
-  sit beside this — the UI path for a URL-published pack is now **add it as a pack source**,
-  below, which remembers and can refetch it.)
+  and never restores. A pack published at a URL goes in by **adding it as a pack source**, below,
+  which remembers and can refetch it; there is no one-off import-from-a-URL button.
 - **Start from an existing pack, in the same page** — New Surge Pack's third choice seeds the
   create form with a new id and the source pack's own tools already checked, referencing them
   the same way deriving by hand does (Step 1E). **Do not use Export as a "fork this pack"
