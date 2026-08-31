@@ -27,25 +27,33 @@ export function HomePage() {
         height={600}
       />
 
-      <h1>A Linux box for your coding agents, on a cloud you already own</h1>
+      <h1>It's time for coding agents to move off your laptop</h1>
       <p className="home-lede">
-        Rocky Surf is an open-source personal productivity tool for software engineers. You run
-        one process yourself. It creates a Linux box on your own cloud account, installs the
-        coding agents you actually use, clones the GitHub repos you name, and hands you an SSH
-        command. One admin password, no accounts, no telemetry, nothing hosted.
+        Coding agents want a computer, and your laptop ain't it. Your agents have
+        no business being on the same machine as your email, your poorly secured 
+        API keys, and your banking app. Not to mention all the times you killed
+        your agent by closing the lid. No, your agents need a place to call home.
+      </p>        
+      <p className="home-lede">        
+        Zillion dollar companies want to lock you into their platforms by making
+        it easy to run things in their cloud. But that traps you in their platform,
+        and you can't try all of the other amazing tools out there.
       </p>
-      <p className="home-lede">
-        Coding agents want a real machine, and a laptop is a bad one. Close the lid and the agent
-        dies. Leave it running and it shares your files, your SSH keys, and the rest of the apps
-        on that computer. Setting the same thing up by hand in a cloud console is a pile of IAM,
-        images, keys, and install scripts. Hosted agent clouds take that work off your plate by
-        taking the other side of the relationship: they run the boxes, they see the spend, and
-        they sit on the path to your keys and code.
+      <p className="home-lede">        
+        You could set up servers in your own cloud, but that's a pain. There's config, permissions, 
+        key management, IaC, and other details that have nothing to do with the software
+        you're trying to build. And what if you want to take advantage of cheaper rates on a different cloud?
+        You'd have to tear everything down and start over. 
       </p>
+      <p className="home-lede">        
+        No thanks.
+      </p>      
       <p className="home-lede">
-        Rocky Surf keeps the isolation without the middleman. The agents get a machine that is
-        not the one you use for everything else. You keep the cloud account, the licenses, and
-        the repos.
+        Rocky Surf is an open-source personal productivity tool for software engineers. 
+        It gives you a lightweight management plane for Linux VMs running on your own cloud accounts, 
+        pre-installed with coding tools and GitHub repos of your choice. Rocky Surf runs on your 
+        computer and stores all data locally. No accounts, no telemetry, no SaaS. The only costs 
+        are the ones from your cloud and coding agents.
       </p>
 
       <section className="home-section">
@@ -53,8 +61,8 @@ export function HomePage() {
         <ul className="home-claims">
           <li>
             <strong>BYOC — bring your own cloud.</strong> Your AWS account, your Hetzner project,
-            Azure, GCP, or a machine you already own. Rocky Surf holds the credential and calls the
-            API. The resources and the bill are yours.
+            Azure, or GCP. Once logged in to your clouds, Rocky Surf calls their APIs on your behalf.
+            Credentials don't leave your computer.
           </li>
           <li>
             <strong>BYOK — bring your own keys.</strong> Your Claude Code subscription, your Codex
