@@ -10,7 +10,7 @@ add, and a skill is how their own agent learns to do it properly.
 
 | Skill | Use it when |
 |---|---|
-| [`creating-surge-packs`](creating-surge-packs/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
+| [`create-surge-pack`](create-surge-pack/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
 | [`adding-providers`](adding-providers/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet |
 | [`rockysurf-design`](rockysurf-design/) | You are changing the web UI, or making a mock, slide, or asset that should look like Rocky Surf — the tokens, the voice rules, every component's props contract, the specimen cards, a click-through of the app and the two etched screens (`ui_kits/`), and the etched skin's rollout order (`handoff/README.md`), and the designer's rendered guide to the applied system (`design-guide.html.txt`) |
 
@@ -25,13 +25,13 @@ skill by name.
 **Outside a checkout**, copy the one you want into your own skills directory:
 
 ```bash
-cp -r .claude/skills/creating-surge-packs ~/.claude/skills/        # just you, every project
-cp -r .claude/skills/creating-surge-packs <your-project>/.claude/skills/   # a team, checked in
+cp -r .claude/skills/create-surge-pack ~/.claude/skills/        # just you, every project
+cp -r .claude/skills/create-surge-pack <your-project>/.claude/skills/   # a team, checked in
 ```
 
 Restart the session afterwards so it is picked up.
 
-That second path is worth knowing about for `creating-surge-packs` in particular, because of a
+That second path is worth knowing about for `create-surge-pack` in particular, because of a
 chicken-and-egg problem: the skill's first instruction is to get a checkout, and it cannot give you
 that instruction if it only exists inside the checkout you do not have yet. If you expect to write
 packs from your own projects, install it personally once.
@@ -40,7 +40,7 @@ packs from your own projects, install it personally once.
 
 Both skills verify their work with this repository's real harnesses rather than a weaker
 substitute of their own, so both will ask for a checkout with `pnpm install && pnpm -r build` run
-once. `creating-surge-packs` also needs Docker, for the run-twice smoke test. Either can write the
+once. `create-surge-pack` also needs Docker, for the run-twice smoke test. Either can write the
 file without those; neither can honestly tell you it works, and both are written to say so rather
 than guess.
 

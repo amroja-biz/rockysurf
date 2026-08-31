@@ -654,7 +654,7 @@ being built on gets modified:
   `packs/ai-coding-agents.yaml`, that is the shared base toolchain for every pack in the
   repository, so re-smoke everything, not just the one pack touched.
 
-Full workflow, a worked example and the failures that come up: the `creating-surge-packs` skill,
+Full workflow, a worked example and the failures that come up: the `create-surge-pack` skill,
 Step 1E and `references/extending.md`.
 
 ### Tool
