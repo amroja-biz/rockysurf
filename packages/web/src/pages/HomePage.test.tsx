@@ -46,14 +46,14 @@ describe('HomePage', () => {
     renderHome()
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    expect(headings[0]!.textContent).toMatch(/linux box for your coding agents/i)
+    expect(headings[0]!.textContent).toMatch(/coding agents to move off your laptop/i)
   })
 
   it('calls itself an open-source personal tool, not a hosted service', () => {
     renderHome()
     const main = screen.getByRole('main')
     expect(main.textContent).toMatch(/open-source personal productivity tool/i)
-    expect(main.textContent).toMatch(/nothing hosted/)
+    expect(main.textContent).toMatch(/No accounts, no telemetry, no SaaS/)
   })
 
   it('names the BYO trio by their lead-ins', () => {
