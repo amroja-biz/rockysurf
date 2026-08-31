@@ -83,7 +83,7 @@ export function HomePage() {
       <section className="home-section">
         <h2>Creating a server</h2>
         <p>
-          You pick a cloud you already pay for — AWS, GCP, Azure, or Hetzner. You pick a{' '}
+          Pick a cloud you already have an account with — AWS, GCP, Azure, or Hetzner. You pick a{' '}
           <strong>Surge Pack</strong>, which is a YAML file that names the tools to install:
           Claude Code, Codex, Amp, OpenCode, or whichever harness you actually run. You paste the
           GitHub repo you want on the box, public or private. Create.
