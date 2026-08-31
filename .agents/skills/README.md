@@ -1,4 +1,4 @@
-# `.agent-skills/`
+# `.agents/skills/`
 
 Agent Skills for working with Rocky Surf. Each directory here teaches a coding agent one of this
 project's contracts — what a file must satisfy, how it is verified, and how it gets shipped — so it
@@ -17,7 +17,7 @@ add, and a skill is how their own agent learns to do it properly.
 ## Using them
 
 **In a checkout, there is nothing to install.** Any coding agent that supports the Agent Skills
-format discovers `.agent-skills/<name>/SKILL.md` automatically, so if you cloned this repository
+format discovers `.agents/skills/<name>/SKILL.md` automatically, so if you cloned this repository
 and started a session in it with such an agent, the skills are already live. Just describe what
 you want — "make me a Rocky Surf pack with Rust, Neovim and Claude Code on it" — and the right one
 loads itself. You never invoke a skill by name.
@@ -25,8 +25,8 @@ loads itself. You never invoke a skill by name.
 **Outside a checkout**, copy the one you want into your own skills directory:
 
 ```bash
-cp -r .agent-skills/create-surge-pack ~/.agent-skills/        # just you, every project
-cp -r .agent-skills/create-surge-pack <your-project>/.agent-skills/   # a team, checked in
+cp -r .agents/skills/create-surge-pack ~/.agents/skills/        # just you, every project
+cp -r .agents/skills/create-surge-pack <your-project>/.agents/skills/   # a team, checked in
 ```
 
 Restart the session afterwards so it is picked up.

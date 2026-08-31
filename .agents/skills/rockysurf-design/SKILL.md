@@ -1,7 +1,8 @@
 ---
 name: rockysurf-design
 description: Use this skill to generate well-branded interfaces and assets for Rocky Surf, either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for protoyping.
-user-invocable: true
+metadata:
+  user-invocable: "true"
 ---
 
 Read the README.md file within this skill, and explore the other available files.

@@ -106,10 +106,10 @@ export function HelpPage() {
               copy one in:
             </p>
             <pre>
-              <code>cp -r .agent-skills/create-surge-pack ~/.agent-skills/</code>
+              <code>cp -r .agents/skills/create-surge-pack ~/.agents/skills/</code>
             </pre>
             <p>
-              <a href={repoDocUrl('.agent-skills/README.md')} target="_blank" rel="noreferrer">
+              <a href={repoDocUrl('.agents/skills/README.md')} target="_blank" rel="noreferrer">
                 About the skills
               </a>
             </p>
