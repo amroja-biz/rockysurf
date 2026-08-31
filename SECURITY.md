@@ -54,10 +54,13 @@ Each row's identity is bound into the GCM associated data as `keyId kind ownerId
 `server-ssh-key` blob from server A onto server B does not yield A's key under B's name; it fails
 to decrypt. Rotation is not implemented in v0.1, but every row carries a `keyId` so it can be.
 
-Five kinds of secret are stored (`packages/core/src/secrets/store.ts`): the per-server SSH key
-material, git forge tokens, remote-desktop passwords, provider credentials pasted into the UI,
-and a session signing key. Each is one row per `(kind, ownerId)` pair, replaced rather than
-accumulated.
+Six kinds of secret are stored (`packages/core/src/secrets/store.ts`): the per-server SSH key
+material, git forge tokens, remote-desktop passwords, a server's secret pack inputs, the secret
+half of a server's user-supplied environment, and a session signing key. Each is one row per
+`(kind, ownerId)` pair, replaced rather than accumulated. **None of them is a cloud
+credential**: the `provider-token` kind that once held tokens pasted into the first-run wizard
+was removed by owner ruling (issue #280), and migration 0017 deleted any rows it had — see
+"Provider credentials" below.
 
 ### The master key
 
@@ -100,11 +103,25 @@ on the exemption list, because a public key is not a secret. It exists so client
 
 ### Provider credentials
 
-A provider credential supplied through the environment (`HCLOUD_TOKEN`, `AWS_ACCESS_KEY_ID`,
-`AWS_PROFILE`, and the rest) is configuration, not data. It wins at runtime, and `putProviderToken`
-**refuses** to persist one while its variable is set. Storing both would create two copies with
-different lifetimes, so rotating the environment variable would leave a stale database row still
-being offered to the cloud.
+**Rocky Surf stores no cloud credentials — unconditionally** (issue #280). There used to be an
+asterisk here: the first-run wizard accepted a pasted token and encrypted-stored it. That path
+is gone — the wizard selects clouds and switches them on, nothing more, and
+`POST /api/v1/setup/providers/:id` refuses a credential by name.
+
+Every cloud authenticates through your own auth path, which never gives Rocky Surf a copy to
+hold:
+
+- **Hetzner** — an environment variable (`HETZNER_TOKEN` or `HCLOUD_TOKEN`), read at boot. The
+  config file may name the variable (`token: "${HETZNER_TOKEN}"`), never its value.
+- **AWS** — the standard SDK chain: `AWS_PROFILE`, environment variables, or an instance role.
+- **Azure** — `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`, a managed identity, or
+  `az login`.
+- **GCP** — Application Default Credentials: `gcloud auth application-default login`,
+  `GOOGLE_APPLICATION_CREDENTIALS`, or the metadata server.
+
+A credential supplied through the environment is configuration, not data: it is read where the
+process starts and written nowhere, so rotating it is an edit to your environment plus a
+restart, with no stored copy to diverge from it.
 
 ### The GitHub token
 
@@ -295,7 +312,7 @@ pretend to.
 `server.host` defaults to `127.0.0.1`, so a fresh install is reachable only from the machine it
 runs on. Widening it to `0.0.0.0` is a one-line, deliberate change, and it should be paired with
 a reverse proxy or a firewall: the UI is a single-password admin surface with no TLS of its own,
-and the process behind it holds every provider credential and every managed server's private key.
+and the process behind it can reach your cloud with your own credentials and holds every managed server's private key.
 
 The container is the one place the value is `0.0.0.0` by default, because a container's loopback
 is its own and the published port would otherwise reach nothing. The boundary moves rather than

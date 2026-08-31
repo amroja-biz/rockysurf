@@ -196,16 +196,19 @@ Two things that row encodes:
 - **`enabled` is stripped.** It is core's field — orchestration, not provider configuration — and
   every provider schema is a `strictObject`, so passing it through is rejected outright. That
   rejection is the boundary doing its job.
-- **Credentials resolve config-first, then the encrypted secrets store.** A credential written in
-  the config file is the one an operator can see, diff and roll back, so it wins; the store holds
-  what the first-run wizard pasted, for the operator who does not edit files.
+- **Credentials resolve config-first, then the environment** (issue #280). A credential written
+  in the config file is the one an operator can see, diff and roll back, so it wins; with the
+  field empty, `PROVIDER_CREDENTIAL_ENV` names the variables the composition root reads
+  directly — the path the first-run wizard steers a token cloud to. Nothing is ever stored:
+  "Rocky Surf stores no cloud credentials" is unconditional.
 - **Composition runs again when the config file changes** (issue #264). Providers are still
   constructed all at once, from one config, and the registry every route holds takes the new set
   in place — so an operator who fixes a region or switches a cloud on gets working clients
   without a restart. Nothing on a provider is closed when it is replaced: the SDK deliberately
   gives a provider no lifecycle, and a client still inside an in-flight call keeps serving that
-  call to the end. A credential pasted in the wizard is the exception, because the wizard writes
-  the encrypted store rather than the file; it takes effect at the **next restart**.
+  call to the end. A credential arriving through an environment variable is the exception,
+  because a variable cannot appear inside a running process; it takes effect at the **next
+  restart**, which is when composition sees it.
 
 A provider that is enabled but cannot be built is **reported and skipped**, never fatal. The
 control plane still starts, because the UI is where an operator fixes it.

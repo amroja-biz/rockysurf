@@ -105,13 +105,13 @@ describe('boot', () => {
     expect(existsSync(secretKeyPath(join(dir, 'data')))).toBe(true)
 
     // A round trip proves the key that was minted is the key the store is using.
-    booted.secretsStore.putProviderToken('hetzner', 'hz_secret_value')
-    expect(booted.secretsStore.getProviderToken('hetzner')).toBe('hz_secret_value')
+    booted.secretsStore.putGithubToken('u1', 'gh_secret_value')
+    expect(booted.secretsStore.getGithubToken('u1')).toBe('gh_secret_value')
 
     // And the same key still opens it after a restart.
     await booted.close()
     booted = await bootHere()
-    expect(booted.secretsStore.getProviderToken('hetzner')).toBe('hz_secret_value')
+    expect(booted.secretsStore.getGithubToken('u1')).toBe('gh_secret_value')
   })
 
   it('keeps the admin password hash out of the encrypted store, where no kind fits it', async () => {

@@ -19,8 +19,10 @@ import { z } from 'zod'
  */
 export const hetznerConfigSchema = z.strictObject({
   /**
-   * API token, read/write. Comes from the secrets store at runtime, never from a config file
-   * in plaintext — `${HETZNER_TOKEN}` in the config file resolves before it reaches here.
+   * API token, read/write. Comes from the operator's environment at runtime, never from a
+   * config file in plaintext — `${HETZNER_TOKEN}` in the config file resolves before it
+   * reaches here, and with no token in the file the composition root reads the variable
+   * directly. Rocky Surf stores no copy anywhere (issue #280).
    */
   token: z.string().min(1, { error: 'a Hetzner API token is required' }),
 

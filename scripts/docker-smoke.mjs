@@ -11,10 +11,12 @@
  * Neither is provable by reading YAML. The first depends on a config file existing at all (the
  * entrypoint seeds one), on the SPA having been copied where core looks for it, and on a
  * non-root process being able to write the volume. The second depends on the volume actually
- * holding the database AND the master key — a restart that silently regenerated `secret.key`
- * would still serve a login page, and every stored credential would be quietly unreadable.
- * So the test stores a credential through the wizard's own endpoint and reads it back after a
- * restart, which is the narrowest thing that can only pass if both files survived.
+ * holding the config file, the database AND the master key — a restart that silently
+ * regenerated `secret.key` would still serve a login page, and every stored secret would be
+ * quietly unreadable. So the test makes the wizard's one write — switching a cloud on, which
+ * lands in the volume's config file (issue #280: the wizard stores no credentials, so there is
+ * no credential to round-trip) — and after each restart checks that the enable survived, the
+ * ORIGINAL password still logs in, and `secret.key` is byte-identical.
  *
  * ISOLATION. Runs under a compose project name and a host port that belong to THIS PROCESS —
  * the project is suffixed with the pid and the port comes from the OS — and tears down with
@@ -233,24 +235,41 @@ async function main() {
 
   /* --------------------------------------------------- AC: data survives a restart */
 
-  // A credential is the strongest thing to round-trip: reading it back needs the database AND
-  // the master key, so a volume that lost either one fails here rather than looking fine.
-  const marker = `docker-smoke-${Date.now()}`
-  const stored = await api('/api/v1/setup/providers/hetzner', {
-    token,
-    method: 'POST',
-    body: { token: marker },
-  })
-  if (stored.status !== 200) throw new Error(`storing a credential failed: HTTP ${stored.status} ${stored.text}`)
-  step('a credential is stored through the wizard endpoint', 'encrypted into the volume')
+  // The wizard's one write (issue #280): switch a cloud on. It lands in the volume's config
+  // file, which is one of the three files that must survive; the database is proven by the
+  // original password still logging in, and the master key by `secret.key` staying identical.
+  const enabled = await api('/api/v1/setup/providers/hetzner', { token, method: 'POST', body: {} })
+  if (enabled.status !== 200) throw new Error(`enabling a cloud failed: HTTP ${enabled.status} ${enabled.text}`)
+  step('a cloud is switched on through the wizard endpoint', 'providers.hetzner.enabled written into the volume')
 
-  /** The credential is readable again, which needs both the database and the master key. */
+  // And the same endpoint REFUSES a credential — the regression this release must never allow.
+  const refused = await api('/api/v1/setup/providers/hetzner', { token, method: 'POST', body: { token: 'nope' } })
+  if (refused.status !== 400 || !refused.text.includes('no longer accepts credentials')) {
+    throw new Error(`the wizard endpoint accepted a credential: HTTP ${refused.status} ${refused.text}`)
+  }
+  step('the wizard endpoint refuses a credential', 'HTTP 400, in as many words')
+
+  /** The master key file, hashed inside the container so nothing secret leaves it. */
+  function secretKeyDigest() {
+    return execFileSync(
+      'docker',
+      ['compose', '-p', PROJECT, 'exec', '-T', 'rockysurf', 'sha256sum', '/data/secret.key'],
+      { cwd: repoRoot, encoding: 'utf8', env: { ...process.env, ROCKYSURF_HOST_PORT: String(HOST_PORT) } },
+    ).split(/\s+/)[0]
+  }
+  const keyDigest = secretKeyDigest()
+
+  /** The volume's three lives: the enable in the config file, the login row, the master key. */
   async function assertDataIntact(what) {
     const freshToken = await login(password)
     const state = payload(await api('/api/v1/setup', { token: freshToken }))
     const hetzner = state?.providers?.find((p) => p.id === 'hetzner')
-    if (hetzner?.source !== 'stored' || hetzner?.configured !== true) {
-      throw new Error(`the stored credential did not survive ${what}: ${JSON.stringify(hetzner)}`)
+    if (hetzner?.enabled !== true) {
+      throw new Error(`the enabled cloud did not survive ${what}: ${JSON.stringify(hetzner)}`)
+    }
+    const digest = secretKeyDigest()
+    if (digest !== keyDigest) {
+      throw new Error(`secret.key changed across ${what} — the master key did not survive`)
     }
   }
 
@@ -260,7 +279,7 @@ async function main() {
     throw new Error('the restart announced a first boot again — the data directory did not survive')
   }
   await assertDataIntact('a restart')
-  step('a restart keeps the data', 'same password, credential still readable, no second first-boot banner')
+  step('a restart keeps the data', 'same password, cloud still enabled, same master key, no second first-boot banner')
 
   /**
    * NOW THE ONE THAT PROVES THE VOLUME.

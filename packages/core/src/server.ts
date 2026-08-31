@@ -38,7 +38,7 @@ import { runStartupRecovery } from './jobs/recovery.js'
  *     store, so every later milestone has it and the key file exists from day one.
  *
  *     The admin password HASH deliberately does not go in there. That store encrypts things
- *     that must come back out as plaintext — SSH private keys, provider tokens, git tokens —
+ *     that must come back out as plaintext — SSH private keys, git tokens —
  *     and a scrypt hash is one-way by design, with no plaintext to protect and no
  *     `SecretKind` that fits. It lives in the `settings` table behind an allowlist that
  *     refuses anything reversible (`auth/secret-store.ts`).
@@ -75,9 +75,8 @@ export interface BootOptions extends LoadConfigOptions {
    * `npx` cold start. So providers arrive already constructed, from a COMPOSITION ROOT that is
    * allowed to import both: `packages/rockysurf`.
    *
-   * Called after the config and the secrets store exist, because resolving a provider's
-   * credential needs both — the config file first, then the encrypted store for anything the
-   * first-run wizard saved.
+   * Called once the config exists. Credentials resolve from the config file first, then from
+   * the provider's own environment variables — never from anything stored (issue #280).
    *
    * Omitted, core falls back to the fake provider, which is what makes `npx` usable with no
    * cloud account at all.
@@ -88,8 +87,8 @@ export interface BootOptions extends LoadConfigOptions {
 /** What a composition root gets to build the registry from. */
 export interface ProviderCompositionContext {
   config: Config
-  /** For credentials the wizard stored rather than the config file naming. */
-  secrets: SecretsStore
+  /** The environment credential variables are read from. Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv
   /** Where a composition root reports what it wired, or why it could not. */
   log: (message: string) => void
 }
@@ -214,7 +213,7 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
   // app factory stays a pure function of its dependencies and tests can point it anywhere.
   const publicDir = resolvePublicDir()
 
-  const registry = options.providers?.({ config, secrets: secretsStore, log })
+  const registry = options.providers?.({ config, log })
 
   /**
    * REBUILT WHEN THE PROVIDER CONFIGURATION CHANGES (issue #264).
@@ -235,7 +234,7 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
       if (JSON.stringify([next.providers, next.pricing]) === JSON.stringify([previous.providers, previous.pricing])) {
         return
       }
-      registry.replaceWith(compose({ config: next, secrets: secretsStore, log }))
+      registry.replaceWith(compose({ config: next, log }))
     })
   }
 

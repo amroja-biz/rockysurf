@@ -1,9 +1,9 @@
 import {
+  PROVIDER_CREDENTIAL_ENV,
   ProviderRegistry,
   makeFakeProvider,
   type Config,
   type ProviderCompositionContext,
-  type SecretsStore,
   type UnavailableProvider,
 } from '@rockysurf/core'
 import type { ComputeProvider, ProviderFactory } from '@rockysurf/provider-sdk'
@@ -34,15 +34,17 @@ import hetznerProviderFactory from '@rockysurf/provider-hetzner'
 /**
  * How a provider's credential is found, and what field it lands in.
  *
- * CREDENTIAL RESOLUTION IS CONFIG-FIRST, THEN THE SECRETS STORE. That order is the fix for the
- * second half of the wizard's problem: the config file names a token (possibly via `${VAR}`)
- * for someone who edits files, and the encrypted store holds what the wizard pasted for
- * someone who does not. Before this, the config schema rejected `enabled` without a token, so
- * the state the wizard creates — provider on, credential in the store — was not expressible at
- * all.
+ * CREDENTIAL RESOLUTION IS CONFIG-FIRST, THEN THE ENVIRONMENT (issue #280). The config file
+ * names a token — usually as `${HETZNER_TOKEN}`, the variable's NAME rather than its value —
+ * for someone who edits files; for someone who does not, the wizard enables the provider and
+ * the credential arrives straight from the environment variable the wizard told them to
+ * export. There used to be a third source between these two, the encrypted store holding what
+ * the old wizard's credential box captured; the owner's ruling removed the box, the store's
+ * provider-token kind and this function's read of it, so that "Rocky Surf stores no cloud
+ * credentials" is unconditionally true.
  *
  * Config wins on purpose. A credential written in the file is the one an operator can see,
- * diff and roll back; silently preferring a stored token would mean a file that lies.
+ * diff and roll back; silently preferring an ambient variable would mean a file that lies.
  */
 interface ProviderWiring<TConfig> {
   factory: ProviderFactory<TConfig>
@@ -104,7 +106,8 @@ const WIRINGS: ProviderWiring<never>[] = [
       ...(credential ? { token: credential } : {}),
     }),
     credentialHint:
-      'set providers.hetzner.token in rockysurf.config.yaml (e.g. "${HETZNER_TOKEN}"), or paste it in the setup wizard',
+      'export HETZNER_TOKEN (or HCLOUD_TOKEN) in the environment Rocky Surf starts from and restart, ' +
+      'or set providers.hetzner.token in rockysurf.config.yaml (e.g. "${HETZNER_TOKEN}")',
   },
   {
     factory: awsProviderFactory as unknown as ProviderFactory<never>,
@@ -121,9 +124,9 @@ const WIRINGS: ProviderWiring<never>[] = [
     factory: azureProviderFactory as unknown as ProviderFactory<never>,
     section: (config) => config.providers.azure,
     // Azure credentials come from the environment, from a managed identity, or from the Azure
-    // CLI — never from a field this app stores. Same posture as AWS, and it is what keeps the
-    // wizard from drawing a box inviting someone to paste a client secret into a file that gets
-    // backed up and pasted into bug reports.
+    // CLI — never from a field this app stores. Same posture as AWS, and since issue #280 the
+    // posture of every cloud: nothing anywhere invites someone to paste a client secret into a
+    // file that gets backed up and pasted into bug reports.
     credentialField: null,
     // `sizes` is core's own idea — an allowlist for the UI — and the provider has never heard of
     // it, so it is stripped alongside `enabled`.
@@ -136,8 +139,8 @@ const WIRINGS: ProviderWiring<never>[] = [
     factory: gcpProviderFactory as unknown as ProviderFactory<never>,
     section: (config) => config.providers.gcp,
     // GCP credentials come from Application Default Credentials — an ambient session, a key
-    // file named by path, or the metadata server — so there is nothing for the wizard to hold
-    // and nothing for `resolveCredential` to decrypt. A path is not a secret to store.
+    // file named by path, or the metadata server — so there is nothing to store anywhere.
+    // A path is not a secret to store.
     credentialField: null,
     // `sizes` is core's own idea — an allowlist for the UI — and the provider has never heard
     // of it, so it is stripped alongside `enabled`.
@@ -150,8 +153,8 @@ const WIRINGS: ProviderWiring<never>[] = [
     factory: byoProviderFactory as unknown as ProviderFactory<never>,
     section: (config) => config.providers.byo,
     // No credential to resolve. BYO authenticates with the operator's OWN SSH key — a path in
-    // `identityFile`, or an agent — and a path is not a secret to store, so there is nothing for
-    // the wizard to hold and nothing for `resolveCredential` to decrypt.
+    // `identityFile`, or an agent — and a path is not a secret to store, so there is nothing
+    // for `resolveCredential` to resolve.
     credentialField: null,
     input: ({ enabled: _enabled, ...rest }) => rest,
     credentialHint: 'set providers.byo.identityFile, or run an SSH agent that holds the key you log in with',
@@ -173,7 +176,8 @@ export interface ComposeResult {
  * loaded — which is exactly the state the wizard's "Almost there" step explains.
  */
 export function composeRegistry(context: ProviderCompositionContext): ComposeResult {
-  const { config, secrets, log } = context
+  const { config, log } = context
+  const env = context.env ?? process.env
   const providers: ComputeProvider[] = []
   const notes: string[] = []
   const unavailable: UnavailableProvider[] = []
@@ -187,7 +191,7 @@ export function composeRegistry(context: ProviderCompositionContext): ComposeRes
       continue
     }
 
-    const credential = resolveCredential(wiring, section, id, secrets)
+    const credential = resolveCredential(wiring, section, id, env)
     if (wiring.credentialField && !credential) {
       notes.push(`${id}: enabled but no credential found — ${wiring.credentialHint}`)
       unavailable.push({ id, reason: `no credential found — ${wiring.credentialHint}` })
@@ -220,7 +224,7 @@ export function composeRegistry(context: ProviderCompositionContext): ComposeRes
    *
    * Not a test double here: it is what lets `npx rockysurf` come up with a working provider on
    * a machine with no cloud account, so someone can create a server, watch it boot and
-   * terminate it before deciding whether to paste a token. Dropped the moment a real provider
+   * terminate it before handing any cloud a credential. Dropped the moment a real provider
    * loads, so it can never be picked by accident on a configured installation.
    *
    * `simulateBootstrap` is the difference between that sentence being true and being a promise
@@ -270,27 +274,29 @@ function describeConfigError(error: unknown): string {
 }
 
 /**
- * Config first, then the secrets store.
+ * Config first, then the environment (issue #280).
  *
- * `getProviderToken` is a decrypt, so it is only reached when the config has nothing — both to
- * avoid needless decryption and to keep the file authoritative when it speaks.
+ * The environment fallback is what makes the wizard's Hetzner instructions — export
+ * `HETZNER_TOKEN`, restart, come back — actually load the provider without anything being
+ * written anywhere: `PROVIDER_CREDENTIAL_ENV` names the variables each provider's credential
+ * may arrive under, and the setup state reports the same variables, so what the wizard detects
+ * and what this function resolves can never disagree. The config field stays authoritative
+ * when it speaks, because a value in the file is the one an operator can see and diff.
  */
 function resolveCredential(
   wiring: ProviderWiring<never>,
   section: Record<string, unknown>,
   id: string,
-  secrets: SecretsStore,
+  env: NodeJS.ProcessEnv,
 ): string | undefined {
   if (!wiring.credentialField) return undefined
 
   const fromConfig = section[wiring.credentialField]
   if (typeof fromConfig === 'string' && fromConfig.trim() !== '') return fromConfig
 
-  try {
-    return secrets.getProviderToken(id)
-  } catch {
-    // A store that cannot be read is not this function's problem to report; the caller's
-    // "no credential found" message covers it, and boot must not die here.
-    return undefined
+  for (const variable of PROVIDER_CREDENTIAL_ENV[id] ?? []) {
+    const value = env[variable]
+    if (typeof value === 'string' && value.trim() !== '') return value
   }
+  return undefined
 }

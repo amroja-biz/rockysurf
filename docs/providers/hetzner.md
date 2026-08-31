@@ -40,10 +40,12 @@ providers:
 ```
 
 That `${...}` form is resolved before the value reaches the provider, so the secret never lands in
-a file you might back up, diff or paste into an issue. The first-run wizard is the other route —
-what you paste there goes into Rocky Surf's encrypted secrets store instead. **A token in the
-config file wins over a stored one**, because the file is the copy an operator can see and roll
-back.
+a file you might back up, diff or paste into an issue. The `token` line is optional: with the
+provider enabled and no token in the file, Rocky Surf reads `HETZNER_TOKEN` (or `HCLOUD_TOKEN`)
+from its environment directly, which is what the first-run wizard's enable-and-export flow
+relies on — the wizard never collects the token itself, and Rocky Surf stores no cloud
+credentials anywhere (issue #280). **A token named in the config file wins over the ambient
+variable**, because the file is the copy an operator can see and roll back.
 
 ## There is no least-privilege token, and that is worth knowing
 

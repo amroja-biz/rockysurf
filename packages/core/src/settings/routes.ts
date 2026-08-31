@@ -428,8 +428,11 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
  * file's — so an operator who had chmodded a config file holding a pasted token to 0600 would
  * find it world-readable after saving the port from a web page. A file this route creates gets
  * 0600 for the same reason.
+ *
+ * Exported for the one other route that writes the config file: the wizard's enable-a-cloud
+ * POST (`../setup/routes.ts`, issue #280), which must not reinvent the crash-safety above.
  */
-function writeAtomically(path: string, text: string, existingMode: number | null): void {
+export function writeAtomically(path: string, text: string, existingMode: number | null): void {
   const temp = join(dirname(path), `.${basename(path)}.rockysurf-${process.pid}.tmp`)
   try {
     /**
