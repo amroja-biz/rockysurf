@@ -172,7 +172,7 @@ must look the same on every reload.
 | `ui_kits/etched/` | The two screens the etched skin landed on: the dashboard built from the parts, and the create form plus server detail |
 | `thumbnail.html` | The homepage tile |
 | `handoff/` | Dropping the etched skin into `packages/web`: `etched.css`, `etched.tsx.txt`, and a README with the rollout order and the upstream delta |
-| `SKILL.md` | Agent Skills front matter, for using this system in Claude Code |
+| `SKILL.md` | Agent Skills front matter, for using this system in a coding agent |
 | `github.md` | The source-repo association and sync record |
 
 ### Components

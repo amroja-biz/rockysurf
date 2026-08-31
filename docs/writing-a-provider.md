@@ -279,12 +279,12 @@ one you can actually run rather than one you have to take on trust. It depends o
 What an out-of-tree provider does *not* get is the wiring: the checklist above assumes a
 composition root, a core config section and a settings inventory that are all in this repository.
 Building your own registry means you own those decisions instead —
-[`.claude/skills/adding-providers/references/wiring.md`](../.claude/skills/adding-providers/references/wiring.md)
+[`.agents/skills/adding-providers/references/wiring.md`](../.agents/skills/adding-providers/references/wiring.md)
 lists every in-tree touch point, which doubles as the list of things you are replacing.
 
 ## A skill that walks through all of this
 
-`.claude/skills/adding-providers/` is an agent skill covering both jobs the word "provider"
+`.agents/skills/adding-providers/` is an agent skill covering both jobs the word "provider"
 covers: configuring one of the five that ship, and authoring a new one. It carries the procedure
 this page describes, the trap checklist, and the full registration list — which is longer than
 [Wiring it in](#wiring-it-in) above suggests.

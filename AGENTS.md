@@ -36,5 +36,5 @@ one.
 - Operator- and contributor-facing contracts: [`docs/self-hosting.md`](docs/self-hosting.md),
   [`docs/writing-a-provider.md`](docs/writing-a-provider.md),
   [`docs/writing-a-pack.md`](docs/writing-a-pack.md).
-- Reusable Claude Code skills for this repository: [`.claude/skills/`](.claude/skills/), indexed at
-  `.claude/skills/README.md`.
+- Reusable Agent Skills for this repository: [`.agents/skills/`](.agents/skills/), indexed at
+  `.agents/skills/README.md`.

@@ -51,7 +51,7 @@ jobs:
           fi
           files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
           # UI-only: every changed file is under one of these, or is Markdown.
-          if printf '%s\n' "$files" | grep -qvE '^(packages/web/|docs/|\.claude/|\.pass-along/|LICENSE$)|\.md$'; then
+          if printf '%s\n' "$files" | grep -qvE '^(packages/web/|docs/|\.claude/|\.agents/skills/|\.pass-along/|LICENSE$)|\.md$'; then
             echo "beyond-ui=true" >> "$GITHUB_OUTPUT"
             echo "runs everything: the pull request reaches beyond the UI and docs"
           else

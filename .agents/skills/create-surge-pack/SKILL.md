@@ -1,6 +1,6 @@
 ---
 name: create-surge-pack
-description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "I want a Rocky Surf box with Rust and Neovim on it", "add ripgrep to the claude-code pack", "add OMP and an MCP server on top of the Claude Code pack", "add ripgrep and fzf on top of the opencode pack", "I want the opencode pack plus my own tools", "extend the ai-coding-agents pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, how to extend an existing pack without breaking it, and how to install and share the finished pack.
+description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "add ripgrep to the ai-coding-agents pack", "extend the opencode pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, extending a pack without breaking it, and installing and sharing the finished pack.
 ---
 
 # Create a Surge Pack
@@ -26,7 +26,7 @@ cannot run the harness.
 1. **A Rocky Surf checkout.** The harness, the loader and the worked examples are all in the
    repository (in tree — an out-of-tree pack author has none of them). Check whether you are
    already in one: `packs/` and `scripts/pack-smoke.mjs` both present means yes, and this skill
-   shipping from `.claude/skills/` means you very likely are. If not:
+   shipping from `.agents/skills/` means you very likely are. If not:
    ```bash
    git clone https://github.com/amroja-biz/rockysurf
    cd rockysurf

@@ -1,8 +1,8 @@
-# `.claude/skills/`
+# `.agents/skills/`
 
-Agent Skills for working with Rocky Surf. Each directory here teaches a Claude Code session one of
-this project's contracts — what a file must satisfy, how it is verified, and how it gets shipped —
-so it can do the job correctly the first time instead of rediscovering the rules from the source.
+Agent Skills for working with Rocky Surf. Each directory here teaches a coding agent one of this
+project's contracts — what a file must satisfy, how it is verified, and how it gets shipped — so it
+can do the job correctly the first time instead of rediscovering the rules from the source.
 
 They are written for **users of Rocky Surf**, not only for contributors to it. Extensibility is the
 point of this project: a pack and a provider are both things an outsider is meant to be able to
@@ -16,17 +16,17 @@ add, and a skill is how their own agent learns to do it properly.
 
 ## Using them
 
-**In a checkout, there is nothing to install.** Claude Code discovers
-`.claude/skills/<name>/SKILL.md` automatically, so if you cloned this repository and started a
-session in it, the skills are already live. Just describe what you want — "make me a Rocky Surf
-pack with Rust, Neovim and Claude Code on it" — and the right one loads itself. You never invoke a
-skill by name.
+**In a checkout, there is nothing to install.** Any coding agent that supports the Agent Skills
+format discovers `.agents/skills/<name>/SKILL.md` automatically, so if you cloned this repository
+and started a session in it with such an agent, the skills are already live. Just describe what
+you want — "make me a Rocky Surf pack with Rust, Neovim and Claude Code on it" — and the right one
+loads itself. You never invoke a skill by name.
 
 **Outside a checkout**, copy the one you want into your own skills directory:
 
 ```bash
-cp -r .claude/skills/create-surge-pack ~/.claude/skills/        # just you, every project
-cp -r .claude/skills/create-surge-pack <your-project>/.claude/skills/   # a team, checked in
+cp -r .agents/skills/create-surge-pack ~/.agents/skills/        # just you, every project
+cp -r .agents/skills/create-surge-pack <your-project>/.agents/skills/   # a team, checked in
 ```
 
 Restart the session afterwards so it is picked up.

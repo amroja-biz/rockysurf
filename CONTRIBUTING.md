@@ -242,8 +242,8 @@ put a secret, credential, IP address, or account ID in either one.
   request.
 - Run `pnpm run check` before pushing. If a package you did not touch is failing, say so
   explicitly rather than silently working around it.
-- A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/` or
-  `.pass-along/` runs typecheck, the unit tests and the secret scan, and nothing else; release
+- A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/`, `.agents/skills/`
+  or `.pass-along/` runs typecheck, the unit tests and the secret scan, and nothing else; release
   tarballs, the BYO lifecycle, the structural lint and Pack smoke wait for the push to `main`,
   which always runs everything. Pack smoke runs on a pull request only when it touches what runs
   on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile

@@ -106,7 +106,7 @@ export function HomePage() {
           When a new coding harness shows up — the one from this morning&rsquo;s Hacker News
           thread — you do not wait for Rocky Surf to ship it. A Surge Pack is one YAML file. The{' '}
           <a
-            href={repoDocUrl('.claude/skills/create-surge-pack/SKILL.md')}
+            href={repoDocUrl('.agents/skills/create-surge-pack/SKILL.md')}
             target="_blank"
             rel="noreferrer"
           >

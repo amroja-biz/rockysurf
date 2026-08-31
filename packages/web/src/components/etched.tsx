@@ -11,7 +11,7 @@ import { STATUS_LABELS, STEP_LABELS, STEP_ORDER } from '../lib/format'
  * 0.9px in `currentColor`, and density — never fill — carries value, which is how the source
  * illustration carries tone.
  *
- * Two rules the design depends on, from `.claude/skills/rockysurf-design/SKILL.md`:
+ * Two rules the design depends on, from `.agents/skills/rockysurf-design/SKILL.md`:
  *
  *  - **Caps label a field; they never carry a sentence.** The step labels below are cut in
  *    caps; the notice under a step (#129) is prose and is explicitly opted back out.

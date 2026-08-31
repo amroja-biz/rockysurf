@@ -60,7 +60,7 @@ describe('HelpPage', () => {
 
   it('tells an outsider how to take the skills with them', () => {
     const { container } = renderHelp()
-    expect(container.textContent).toContain('cp -r .claude/skills/create-surge-pack ~/.claude/skills/')
+    expect(container.textContent).toContain('cp -r .agents/skills/create-surge-pack ~/.agents/skills/')
   })
 
   /**
