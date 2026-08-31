@@ -992,6 +992,17 @@ export interface SettingsField {
    * still governs every credential except the two GitHub PATs.
    */
   accepts?: 'literal' | 'envVarName'
+  /**
+   * When a saved value starts being used (issue #264).
+   *
+   * `'save'` is the answer for nearly everything: core re-reads the file the moment this page
+   * writes it and adopts what it finds. `'restart'` is the small remainder, and
+   * `restartReason` is core's own sentence about why — printed beside the control rather than
+   * summarised into a banner over the whole page.
+   */
+  appliesAt: 'save' | 'restart'
+  /** Why this one cannot change while Rocky Surf runs. Present when `appliesAt` is 'restart'. */
+  restartReason?: string
 }
 
 /** A section of the page, with the words for what the whole section is about. */
@@ -1025,8 +1036,14 @@ export interface SettingsView {
    * before the restart, and it stays on every read until it does.
    */
   warnings?: { path: string; message: string; variable: string }[]
-  /** True when the file's values differ from the ones this process booted with. */
+  /**
+   * True when one of the restart-required settings has been saved and not yet restarted into
+   * (issue #264). Narrower than it used to be: everything else is applied on save, so a save is
+   * no longer a reason for a banner.
+   */
   drifted: boolean
+  /** Exactly which of them are waiting, with core's reason for each. */
+  pendingRestart: { path: string; reason: string }[]
   restartHint: string
   /**
    * The same sentence in runs, with the ones the operator types or copies flagged (#232). Core
@@ -1056,11 +1073,19 @@ export async function getSettings(): Promise<SettingsView> {
  * A 409 means the file changed underneath — someone edited it by hand, or another tab saved —
  * and nothing was written. The caller re-reads rather than retrying with the same token.
  */
-export async function saveSettings(
-  mtimeMs: number | null,
-  changes: SettingsChange[],
-): Promise<SettingsView & { saved: true }> {
-  return request<SettingsView & { saved: true }>('/settings', {
+/** What a save did, over the paths it carried (issue #264). */
+export interface SettingsSaveResult extends SettingsView {
+  saved: true
+  /** The paths in this save that the running process is already using. */
+  applied: string[]
+  /** The paths in this save that wait for a restart, each with core's reason. */
+  restartRequired: { path: string; reason: string }[]
+  /** Present when core could not adopt the file at all — the sentence says why. */
+  reloadBlocked?: string
+}
+
+export async function saveSettings(mtimeMs: number | null, changes: SettingsChange[]): Promise<SettingsSaveResult> {
+  return request<SettingsSaveResult>('/settings', {
     method: 'PUT',
     body: JSON.stringify({ mtimeMs, changes }),
   })

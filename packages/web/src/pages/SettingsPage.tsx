@@ -52,9 +52,13 @@ import {
  *     A secret field saves only what you type into it, because the alternative — blank meaning
  *     "delete the token" — would wipe a credential every time somebody changed the port.
  *     Removing one is a separate, labelled button with a confirmation.
- *  3. **Nothing takes effect until a restart.** Rocky Surf reads this file once, at startup. The
- *     banner saying so is not a toast a page reload can lose: the server compares the file
- *     against the values it booted with, so the notice survives until the process is restarted.
+ *  3. **It says what a save actually did, per setting** (issue #264). Almost everything here is
+ *     in force the moment it is written — core re-reads the file and adopts it before the save
+ *     even answers — and the page says so, by name. The handful that a running process cannot
+ *     adopt (the port and the address it listens on, the data directory, the auth mode, and the
+ *     MCP server's scopes, which belong to a different process) carry the reason at the control
+ *     itself, and only THOSE raise the banner. The banner is still server-derived rather than a
+ *     toast, so it survives a reload and stays up until the restart happens.
  *
  * The field inventory — field labels aside — comes from the server: which fields are writable,
  * why the read-only ones are not, which carry a warning, what each one is FOR, and which do not
@@ -252,6 +256,26 @@ function RestartHint({ segments }: { segments: SettingsView['restartHintSegments
         segment.code ? <code key={segment.text}>{segment.text}</code> : <span key={segment.text}>{segment.text}</span>,
       )}
     </>
+  )
+}
+
+/**
+ * The note under a control that a running Rocky Surf cannot honour yet (issue #264).
+ *
+ * PER FIELD, AT THE CONTROL, and the wording is core's. The old page put one banner over
+ * everything saying nothing had taken effect; the true statement is about five specific
+ * settings, and the place to make it is beside each of them — where somebody about to change
+ * the port reads it before they click Save, rather than after.
+ *
+ * Rendered for the writable and the read-only alike: `server.dataDir` is not editable here and
+ * an operator still has to know that moving it is a stop-and-start, not an edit.
+ */
+function RestartNote({ spec }: { spec: SettingsField | undefined }) {
+  if (spec?.appliesAt !== 'restart' || !spec.restartReason) return null
+  return (
+    <p className="hint settings-restart-note" data-restart-required={spec.path}>
+      <strong>Takes effect after a restart.</strong> {spec.restartReason}
+    </p>
   )
 }
 
@@ -472,9 +496,30 @@ export function SettingsPage() {
     setFormError(null)
     setFieldErrors({})
     try {
-      setView(await saveSettings(view.file.mtimeMs, sent))
+      const result = await saveSettings(view.file.mtimeMs, sent)
+      setView(result)
       setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !clear.has(key))))
-      toast.success('Saved to the configuration file')
+      /**
+       * WHAT THE SAVE DID, not merely that it happened (issue #264).
+       *
+       * The toast used to say "Saved to the configuration file", which was true and was also the
+       * least useful half of the answer — the operator's actual question is whether the thing
+       * they just changed is doing anything yet. Core answers it per path, so this reports it
+       * per path: applied now, waiting for a restart, or not applied at all because the file
+       * names a variable this process cannot see.
+       *
+       * The waiting case is a toast AND stays on the page: the banner and the per-field notes
+       * are server-derived and outlive this message, which is what a reload must not lose.
+       */
+      if (result.reloadBlocked) toast.error(result.reloadBlocked)
+      else if (result.restartRequired.length > 0) {
+        const names = result.restartRequired.map((entry) => entry.path).join(', ')
+        toast.success(
+          result.applied.length > 0
+            ? `Saved and applied. ${names} needs a restart before it takes effect.`
+            : `Saved. ${names} needs a restart before it takes effect.`,
+        )
+      } else toast.success('Saved, and applied — no restart needed')
       return true
     } catch (err) {
       if (err instanceof ApiError) {
@@ -620,6 +665,7 @@ export function SettingsPage() {
         {helpFor(pattern, key)}
         {control}
         {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        <RestartNote spec={spec} />
         {warnings[key] && <p className="warning settings-field-warning">{warnings[key]}</p>}
         {error && <p className="error settings-field-error">{error}</p>}
       </div>
@@ -641,6 +687,7 @@ export function SettingsPage() {
         {helpFor(pattern, key)}
         <p className="settings-value">{shown}</p>
         <p className="read-only">{spec?.reason}</p>
+        <RestartNote spec={spec} />
       </div>
     )
   }
@@ -1491,9 +1538,9 @@ export function SettingsPage() {
       <>
         {/*
           FIRST IN THE SECTION, because it is the catch-all and everything below it is the
-          exceptions. It is also the only thing in this section that does NOT need a restart:
-          its token goes to the encrypted store, which core reads live at server-create, while
-          the pasted PATs below go to the file and keep the restart notice they always had.
+          exceptions. Its token goes to the encrypted store, which core reads live at
+          server-create; since issue #264 the pasted PATs below are live too, read from the file
+          per box, so nothing in this section waits for a restart any more.
         */}
         <ConnectGitHubCard
           connection={connection}
@@ -1522,8 +1569,9 @@ export function SettingsPage() {
           leaving the browser — and it is an ordinary text box rather than a credential box
           because a device-flow client ID is public.
 
-          It DOES need a restart, unlike the token the button then obtains: this one goes to
-          the config file, which is read once at boot.
+          It goes to the config file rather than the store — and since issue #264 that is no
+          longer a restart: the routes behind the button read the client id per request, so
+          pasting one here enables the card above immediately.
         */}
         {textField(['github', 'oauth', 'clientId'], 'OAuth App client ID')}
         {tokenEntries.map(tokenCard)}
@@ -1839,11 +1887,17 @@ export function SettingsPage() {
         {view.file.exists ? '.' : ', which does not exist yet — saving creates it.'}
       </p>
 
-      {/* Server-derived, so a reload does not lose it. */}
+      {/*
+        Server-derived, so a reload does not lose it — and NARROW since issue #264. It used to
+        appear after every save, because every save left the process behind; now a save is
+        adopted, so this appears only when one of the few settings a running process cannot take
+        on has been changed, and it names them rather than making the operator guess which.
+      */}
       {view.drifted && (
         <p className="warning" role="status">
-          This file has changed since Rocky Surf started, so the running process is still using the
-          old settings. <RestartHint segments={view.restartHintSegments} />
+          Saved, and waiting on a restart:{' '}
+          {view.pendingRestart.map((entry) => entry.path).join(', ')}. Everything else you have
+          saved is already in use. <RestartHint segments={view.restartHintSegments} />
         </p>
       )}
 
@@ -1929,8 +1983,18 @@ export function SettingsPage() {
           <button type="button" className="btn-secondary" disabled={!anyDirty || saving} onClick={() => setEdits({})}>
             Discard changes
           </button>
+          {/*
+            THE STANDING SENTENCE UNDER THE SAVE BUTTON (issue #264).
+
+            It used to be the restart instruction, unconditionally — the page telling everyone,
+            before they had even clicked, that nothing they were about to do would work yet. The
+            standing fact is now the opposite one, and the restart instruction appears only when
+            something is actually waiting for it.
+          */}
           <p className="hint">
-            <RestartHint segments={view.restartHintSegments} />
+            Saving applies straight away. The few settings that need a restart say so under the
+            box.{' '}
+            {view.drifted && <RestartHint segments={view.restartHintSegments} />}
           </p>
         </footer>
       </form>

@@ -8,7 +8,13 @@ import { ensureDataDir } from './boot/data-dir.js'
 import { acquireDataDirLock } from './boot/data-dir-lock.js'
 import { syncPacksAtBoot } from './boot/packs.js'
 import { SettingsSecretStore, type SecretStore } from './auth/secret-store.js'
-import { loadConfigOrExitWithSource, type Config, type LoadConfigOptions } from './config/index.js'
+import {
+  createConfigStore,
+  loadConfigOrExitWithSource,
+  type Config,
+  type ConfigStore,
+  type LoadConfigOptions,
+} from './config/index.js'
 import { defaultDatabasePath, openDatabase, type OpenedDatabase } from './db/client.js'
 import { createSecretsStore, loadMasterKey, type SecretsStore } from './secrets/index.js'
 import { createServerSecretsLoader } from './bootstrap/server-secrets.js'
@@ -89,7 +95,14 @@ export interface ProviderCompositionContext {
 }
 
 export interface BootedApp {
+  /** What this process started on. The values in `PINNED_PATHS` stay these forever (#264). */
   config: Config
+  /**
+   * The live configuration (issue #264). `current()` is what every route reads; `reload()` is
+   * what the settings save calls. Exposed so a caller embedding core — and the boot tests — can
+   * drive an adoption without going through HTTP.
+   */
+  configStore: ConfigStore
   db: OpenedDatabase
   app: Hono<AppEnv>
   events: EventsService
@@ -125,6 +138,21 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
    */
   const { config, source } = loadConfigOrExitWithSource(options)
   const configPath = source.path
+
+  /**
+   * THE LIVE CONFIGURATION (issue #264): the same file, re-read whenever the settings page
+   * saves it, with `PINNED_PATHS` held at the values this process actually started on.
+   *
+   * Built here rather than inside `createApp` because this is the only place that knows which
+   * file was loaded and what it parsed to — the two halves the store needs — and because a core
+   * embedded by a test is entitled to run on exactly the config it was handed. Everything after
+   * this point that wants a value takes it from the store.
+   */
+  const configStore = createConfigStore({
+    booted: config,
+    ...(configPath ? { configPath } : {}),
+    ...(options.env ? { env: options.env } : {}),
+  })
 
   // Before anything writes into it: both openDatabase and loadMasterKey create the data
   // directory as a side effect, with the default mode, and it ends up holding secret.key.
@@ -188,9 +216,33 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
 
   const registry = options.providers?.({ config, secrets: secretsStore, log })
 
+  /**
+   * REBUILT WHEN THE PROVIDER CONFIGURATION CHANGES (issue #264).
+   *
+   * The one thing on the settings page that most obviously did nothing until a restart: turning
+   * a cloud on, fixing a region, or correcting `sshAllowedCidr` all changed the file while the
+   * process went on holding whatever clients boot had built. Composition is a pure function of
+   * the config and the secrets store (`packages/rockysurf/src/compose.ts` — never throws, reports
+   * a bad section instead), so re-running it is safe to do while the app serves; the registry
+   * object the whole app holds takes the new contents in place.
+   *
+   * Scoped to the `providers` block, so saving the port does not rebuild five cloud clients, and
+   * `pricing`, which composition also reads, travels with them — a rebuild is a rebuild.
+   */
+  if (registry && options.providers) {
+    const compose = options.providers
+    configStore.onChange((next, previous) => {
+      if (JSON.stringify([next.providers, next.pricing]) === JSON.stringify([previous.providers, previous.pricing])) {
+        return
+      }
+      registry.replaceWith(compose({ config: next, secrets: secretsStore, log }))
+    })
+  }
+
   const created: CreatedApp = createApp({
     db: db.db,
     config,
+    configStore,
     secrets,
     secretsStore,
     events,
@@ -208,9 +260,14 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
     //
     // `github.tokens` joins it on exactly the same terms (rockysurf-ta7g): read once, passed,
     // never stored. Both are configuration, and neither becomes data.
-    loadServerSecrets: createServerSecretsLoader(secretsStore, {
-      ...(config.github.pat ? { githubPat: config.github.pat } : {}),
-      ...(config.github.tokens.length > 0 ? { githubTokens: config.github.tokens } : {}),
+    // A function since #264, so that editing the token and saving rotates it for the very next
+    // box rather than for the next start. Still passed, still never persisted.
+    loadServerSecrets: createServerSecretsLoader(secretsStore, () => {
+      const live = configStore.current()
+      return {
+        ...(live.github.pat ? { githubPat: live.github.pat } : {}),
+        ...(live.github.tokens.length > 0 ? { githubTokens: live.github.tokens } : {}),
+      }
     }),
     ...(registry ? { providers: registry } : {}),
     ...(publicDir ? { publicDir } : {}),
@@ -252,6 +309,7 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
   let closed = false
   return {
     config,
+    configStore,
     db,
     app: created.app,
     events: created.events,

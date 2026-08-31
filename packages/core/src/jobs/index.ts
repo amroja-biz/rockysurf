@@ -1,7 +1,7 @@
 import type { Db } from '../db/client.js'
 import { deleteExpiredSessions } from '../db/index.js'
 import type { ServerRow } from '../db/schema.js'
-import type { LimitsConfig } from '../config/index.js'
+import { readLive, type Live, type LimitsConfig } from '../config/index.js'
 import type { BootstrapOnFailure } from '../config/schema.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { EventsService } from '../services/events.js'
@@ -40,7 +40,11 @@ export interface JobsDeps {
   db: Db
   registry: ProviderRegistry
   events: EventsService
-  limits: LimitsConfig
+  /**
+   * The limits in force. A function since issue #264, so raising a cap on the Settings page
+   * applies to the very next create rather than at the next restart.
+   */
+  limits: Live<LimitsConfig>
   /** From the lifecycle service. Already honours the describe() propagation grace. */
   sync: (row: ServerRow) => Promise<ServerRow>
   /** The push bootstrap driver (`bootstrap/supervisor.ts`), passed by `createApp`. */

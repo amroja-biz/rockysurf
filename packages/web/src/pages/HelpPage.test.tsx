@@ -85,10 +85,18 @@ describe('HelpPage', () => {
       expect(text).toContain('no client secret')
     })
 
-    it('says which half needs a restart and which does not', () => {
+    /**
+     * Both halves are live since issue #264, and the page has to say so about BOTH — the client
+     * ID and a pasted PAT used to be the restart half, and a reader who took that on trust would
+     * now be restarting for nothing.
+     */
+    it('says that neither half needs a restart, and where each credential lives', () => {
       const text = gitAuth()
-      // The Client ID goes to the config file, read once at boot.
-      expect(text).toContain('restart Rocky Surf')
+      expect(text).not.toContain('restart Rocky Surf')
+      // The client ID goes to the config file, which is now re-read when Settings saves it.
+      expect(text).toContain('the button works straight away, with no restart')
+      // A pasted PAT goes to the same file, and is read when a box is created.
+      expect(text).toContain('It applies to the next server you create, with no restart.')
       // The connected token goes to the encrypted store, read at create.
       expect(text).toContain('immediately')
       expect(text).toContain('stored encrypted')

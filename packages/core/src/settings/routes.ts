@@ -3,11 +3,25 @@ import { basename, dirname, join } from 'node:path'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppEnv } from '../app.js'
-import { checkConfigText, configSchema, type ConfigIssue, type ConfigWarning } from '../config/index.js'
+import {
+  checkConfigText,
+  configSchema,
+  type ConfigIssue,
+  type ConfigWarning,
+  type ReloadOutcome,
+} from '../config/index.js'
 import { badRequest, conflict, forbidden, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import { applyChanges, parseTree, type Change } from './document.js'
-import { SETTINGS_FIELDS, SETTINGS_LISTS, SETTINGS_SECTIONS, specFor, patternOf, type FieldSpec } from './fields.js'
+import {
+  RESTART_REQUIRED_PATHS,
+  SETTINGS_FIELDS,
+  SETTINGS_LISTS,
+  SETTINGS_SECTIONS,
+  specFor,
+  patternOf,
+  type FieldSpec,
+} from './fields.js'
 import { fingerprint, redactTree } from './view.js'
 
 /**
@@ -27,11 +41,15 @@ import { fingerprint, redactTree } from './view.js'
  *  3. **The write goes to the config file**, through the comment-preserving Document API, and
  *     touches only the paths named. Config is configuration and never becomes data (yzae): the
  *     database is not consulted here and gains no copy of any of this.
- *  4. **Restart honesty.** Everything in this file is read at boot. A save says so, and the
- *     `drifted` flag keeps saying so on every subsequent read until the process is restarted —
- *     a notice that survives a page reload rather than a toast that does not. `warnings` is the
- *     same idea sharpened: a saved reference to a variable this process cannot see is a restart
- *     that will FAIL rather than merely one that is pending, and it says so until it is fixed.
+ *  4. **Restart honesty, now per field** (issue #264). A save APPLIES: the file is re-read and
+ *     this process adopts it before the response is written, so the response can say which of
+ *     the paths just saved are already in force. The five that cannot be — the port, the
+ *     listening address, the data directory, the auth mode, and the MCP server's scopes, which
+ *     belong to a different process — say so individually, with `fields.ts`'s own reason.
+ *     `drifted` and `pendingRestart` are narrowed to exactly those: a notice that survives a
+ *     page reload, and now one that appears only when something really is waiting. `warnings`
+ *     is the case where nothing could be applied at all — a saved reference to a variable this
+ *     process cannot see leaves the file un-adoptable until it is exported and core restarted.
  *  5. **Conflicts are refused, never merged.** A read hands the caller the file's mtime; a save
  *     hands it back, and a mismatch is a 409 with nothing written. Someone hand-editing the
  *     file while the page is open is the ordinary case, not the exotic one.
@@ -44,6 +62,15 @@ export interface SettingsRoutesDeps {
   configPath: string
   /** Environment used to check `${VAR}` references on save. */
   env?: NodeJS.ProcessEnv
+  /**
+   * Make this process adopt the file it has just written (issue #264).
+   *
+   * `createApp` supplies `configStore.reload`. It is optional because a core built without a
+   * config store has nothing to adopt WITH, and the honest thing for such a build to say is the
+   * old sentence: saved, applies at the next restart. That is what `NO_CONFIG_STORE` below
+   * says, rather than this route claiming an effect nothing produced.
+   */
+  reload?: () => ReloadOutcome
 }
 
 /**
@@ -95,11 +122,28 @@ interface SettingsView {
    * `drifted` does, and for the same reason.
    */
   warnings?: readonly ConfigWarning[]
-  /** True when the file's values differ from the ones this process booted with. */
+  /**
+   * True when a RESTART-REQUIRED value in the file differs from the one in force (issue #264).
+   *
+   * It used to mean "the file differs from what this process booted with", which after #264 is
+   * true of every successful save and says nothing an operator can act on — the process has
+   * adopted those values. Narrowed to the five paths that genuinely wait, so the banner appears
+   * when there is something to restart FOR, and `pendingRestart` names them.
+   */
   drifted: boolean
+  /** Which restart-required settings are waiting, with the reason each one gives. */
+  pendingRestart: readonly PendingRestart[]
   restartHint: string
   /** The same sentence, split so a client can set its commands in monospace (#232). */
   restartHintSegments: readonly HintSegment[]
+}
+
+/** One setting saved into the file that the running process is not using yet. */
+export interface PendingRestart {
+  /** The inventory path, so the page can put the note on the control. */
+  path: string
+  /** `fields.ts`'s own sentence about why this one cannot change while core runs. */
+  reason: string
 }
 
 /**
@@ -118,9 +162,14 @@ export interface HintSegment {
  * scanning the prose for `./start.sh` to decide what to mark up — which makes core's copy an
  * accidental API, and breaks the moment the sentence is reworded. `RESTART_HINT` is still the
  * whole sentence, joined here so the two cannot drift apart.
+ *
+ * REWORDED BY ISSUE #264, because the old sentence — "Rocky Surf reads this file once, at
+ * startup" — stopped being true. It is now HOW TO RESTART rather than a claim that you have to,
+ * so the page can print it under the small number of settings that still need one without also
+ * telling everyone else that nothing they saved has taken effect.
  */
 export const RESTART_HINT_SEGMENTS: readonly HintSegment[] = [
-  { text: 'Rocky Surf reads this file once, at startup. Changes apply after a restart: stop the process with ' },
+  { text: 'To restart Rocky Surf: stop the process with ' },
   { text: 'Ctrl-C', code: true },
   { text: ' and run ' },
   { text: './start.sh', code: true },
@@ -128,6 +177,41 @@ export const RESTART_HINT_SEGMENTS: readonly HintSegment[] = [
 ]
 
 export const RESTART_HINT = RESTART_HINT_SEGMENTS.map((segment) => segment.text).join('')
+
+/**
+ * What a core with no live config store says about a save. See `SettingsRoutesDeps.reload`.
+ *
+ * The old behaviour, stated rather than pretended away: nothing here re-read the file, so the
+ * values in force are the ones this process started with.
+ */
+const NO_CONFIG_STORE =
+  'Saved to the file. This Rocky Surf was built without a live configuration store, so the new ' +
+  'values apply at the next restart.'
+
+/** The schema's own defaults, unredacted — what a value absent from the file actually resolves to. */
+const SCHEMA_DEFAULTS: unknown = configSchema.parse({})
+
+/** Read a dotted path out of a parsed tree. `undefined` for anything not present. */
+function valueAtPath(tree: unknown, path: string): unknown {
+  let node: unknown = tree
+  for (const segment of path.split('.')) {
+    if (node === null || node === undefined || typeof node !== 'object') return undefined
+    node = (node as Record<string, unknown>)[segment]
+  }
+  return node
+}
+
+/**
+ * The effective value of a path: what the file says, or what the loader would default it to.
+ *
+ * Comparing raw file values would report a restart as pending for someone who saved
+ * `server.port: 8080` into a file that had simply been relying on the default 8080 — a banner
+ * about a change that is not one. The defaults are the same ones `configSchema` gives boot.
+ */
+function effectiveAt(tree: unknown, path: string): unknown {
+  const found = valueAtPath(tree, path)
+  return found === undefined ? valueAtPath(SCHEMA_DEFAULTS, path) : found
+}
 
 interface ReadFile {
   text: string
@@ -156,17 +240,39 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
 
   /**
    * The file as this process loaded it. Taken here because building the app IS boot, and taken
-   * over the parsed tree rather than the bytes so a comment edit is not reported as drift.
+   * over the parsed TREE rather than the bytes so a comment edit is not reported as drift.
+   *
+   * The tree itself is kept, not only its hash: since #264 the question is no longer "has
+   * anything changed?" but "has one of these five changed?", and that needs the values.
    */
-  const bootFingerprint = fingerprint(parseTree(readFile(deps.configPath).text))
+  const bootTree = parseTree(readFile(deps.configPath).text)
 
   /** The schema's own defaults, redacted like everything else so there is one masked path. */
-  const defaults = redactTree(configSchema.parse({}))
+  const defaults = redactTree(SCHEMA_DEFAULTS)
+
+  /**
+   * Which restart-required settings the file has moved and this process has not (issue #264).
+   *
+   * Compared against the values at BOOT rather than against the store's current config, because
+   * `PINNED_PATHS` means the store is still serving the booted values for four of the five and
+   * would report no difference at all. `mcp.scopes` is the fifth and is not pinned — nothing in
+   * this process reads it — so it is compared the same way and for the same reason.
+   */
+  function pendingRestart(tree: unknown): PendingRestart[] {
+    return RESTART_REQUIRED_PATHS.flatMap((path) => {
+      // No inventory path that needs a restart is inside a list, so none of them carries a `*`.
+      if (path.includes('*')) return []
+      if (fingerprint(effectiveAt(tree, path)) === fingerprint(effectiveAt(bootTree, path))) return []
+      const reason = SETTINGS_FIELDS.find((field) => field.path === path)?.restartReason
+      return reason ? [{ path, reason }] : []
+    })
+  }
 
   function view(): SettingsView {
     const file = readFile(deps.configPath)
     const tree = parseTree(file.text)
     const checked = checkConfigText(file.text, env)
+    const waiting = pendingRestart(tree)
     return {
       file: { path: deps.configPath, exists: file.exists, mtimeMs: file.mtimeMs },
       values: redactTree(tree),
@@ -176,7 +282,8 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
       lists: SETTINGS_LISTS,
       ...(checked.ok ? {} : { issues: checked.issues }),
       ...(checked.warnings.length > 0 ? { warnings: checked.warnings } : {}),
-      drifted: fingerprint(tree) !== bootFingerprint,
+      drifted: waiting.length > 0,
+      pendingRestart: waiting,
       restartHint: RESTART_HINT,
       restartHintSegments: RESTART_HINT_SEGMENTS,
     }
@@ -268,7 +375,41 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
 
     writeAtomically(deps.configPath, text, before.mode)
 
-    return success(c, { saved: true, ...view() })
+    /**
+     * AND THEN THE PROCESS ADOPTS IT (issue #264), before the response is written.
+     *
+     * Synchronous and inline rather than a background watcher, and that ordering is the whole
+     * point: by the time the page's save resolves, the values are already the ones in force, so
+     * the very next request the operator makes — a create on a cloud they have just turned on —
+     * sees them. A watcher would have made "did it take?" a race the page could not report on.
+     *
+     * A reload that cannot be applied leaves the previous values running and says so; the file
+     * is still written either way, because the save is a record of the operator's intent and
+     * the environment catching up (`rockysurf-1z5q`) is the ordinary next step.
+     */
+    const outcome: ReloadOutcome = deps.reload?.() ?? { applied: false, blocked: NO_CONFIG_STORE }
+
+    /**
+     * WHAT THIS SAVE DID, path by path, so the page never has to generalise.
+     *
+     * Split by the inventory's own `appliesAt`, over the paths the request actually named — not
+     * over the whole file. An operator who saved the AWS region and the port did two different
+     * things in one click, and the honest report is one line about each.
+     */
+    const saved = changes.map((change) => patternOf(change.path as (string | number)[]))
+    const waiting = view().pendingRestart
+    const restartRequired = waiting.filter((entry) => saved.includes(entry.path))
+
+    return success(c, {
+      saved: true,
+      /** Paths in this save that the running process is already using. Empty if it could not adopt. */
+      applied: outcome.applied ? saved.filter((path) => specFor(path.split('.'))?.appliesAt !== 'restart') : [],
+      /** Paths in this save that wait for a restart, each with its own reason. */
+      restartRequired,
+      /** Why nothing could be applied, when that is the case. */
+      ...(outcome.blocked ? { reloadBlocked: outcome.blocked } : {}),
+      ...view(),
+    })
   })
 
   return routes

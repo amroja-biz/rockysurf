@@ -57,6 +57,17 @@ export {
 } from './live-preferences.js'
 
 export {
+  PINNED_PATHS,
+  createConfigStore,
+  readLive,
+  type ConfigStore,
+  type ConfigStoreDeps,
+  type ConfigView,
+  type Live,
+  type ReloadOutcome,
+} from './live-config.js'
+
+export {
   DEFAULT_REGISTRY_URL,
   REGISTRY_TRUST,
   configSchema,

@@ -1,3 +1,4 @@
+import { readLive, type Live } from '../config/live-config.js'
 import type { GithubTokenEntry } from '../config/schema.js'
 import { getServerEnvironment, getServerPackInputs, getServerRepositories } from '../db/repositories/servers.js'
 import type { ServerRow } from '../db/schema.js'
@@ -185,9 +186,19 @@ export interface ServerSecretsOptions {
  */
 export function createServerSecretsLoader(
   secrets: SecretsStore,
-  options: ServerSecretsOptions = {},
+  /**
+   * Accepts a function since issue #264, and `boot()` passes one.
+   *
+   * These two fields are the config file's GitHub tokens, and `ServerSecretsOptions` above
+   * explains at length why they are passed rather than persisted: so that editing the file
+   * really does rotate the token. Re-reading them per box is that same argument carried one
+   * step further — the edit now takes effect on the next server created rather than on the next
+   * start, and there is still no second copy anywhere to go stale.
+   */
+  configured: Live<ServerSecretsOptions> = {},
 ): (server: ServerRow) => Promise<Record<string, string>> {
   return async function loadServerSecrets(server: ServerRow): Promise<Record<string, string>> {
+    const options = readLive(configured)
     const env: Record<string, string> = {}
 
     /*

@@ -5,7 +5,7 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
-import { createPreferenceReader, type Config } from './config/index.js'
+import { createPreferenceReader, type Config, type ConfigStore } from './config/index.js'
 import type { Db } from './db/client.js'
 import { getPack } from './db/repositories/packs.js'
 import { getUserByGithubUsername } from './db/repositories/users.js'
@@ -64,7 +64,24 @@ export interface AppEnv {
 
 export interface AppDeps {
   db: Db
+  /**
+   * The configuration this app was built with.
+   *
+   * Since issue #264 this is the STARTING value rather than the only one: with a `configStore`
+   * below, every read inside this factory goes through `currentConfig()` and sees whatever the
+   * file has since been saved as. Without one — which is every test that builds an app by hand
+   * — the two are the same object and nothing behaves differently from before.
+   */
   config: Config
+  /**
+   * The live configuration (issue #264), so a save on the Settings page reaches this process.
+   *
+   * `boot()` builds one over the file it loaded and hands it here; the settings route asks it to
+   * reload after every write. Optional, because a core built without one is a core running on
+   * exactly the config it was handed, which is what every unit test in this repository wants and
+   * what the settings route says out loud when it has no reloader.
+   */
+  configStore?: ConfigStore
   /** Where the admin password hash is read from. See auth/secret-store.ts for the gonw.6 seam. */
   secrets: SecretStore
   /**
@@ -172,17 +189,34 @@ const publicUser = (user: User) => ({
 })
 
 export function createApp(deps: AppDeps): CreatedApp {
-  const { db, config, secrets } = deps
+  const { db, secrets } = deps
+  /**
+   * THE CONFIGURATION IN FORCE, ASKED FOR RATHER THAN CAPTURED (issue #264).
+   *
+   * Every `config.…` in this factory used to be a read at CONSTRUCTION time, and construction
+   * is boot — which is exactly why saving on the Settings page changed nothing until the
+   * process was restarted. It is now a call, so a read that happens inside a route handler sees
+   * the file as it is now, and the handful of dependencies that legitimately want a value up
+   * front are handed a `Live<T>` function instead of a value.
+   *
+   * Reading through a function is the whole mechanism. There is no invalidation and no
+   * subscription for the ordinary case: `configStore.current()` returns one immutable object
+   * that is swapped wholesale, so a request either sees all of the old config or all of the new
+   * one. The two things that are BUILT from config rather than read from it — the provider
+   * registry and the pack shop's client — subscribe to `onChange` and rebuild.
+   */
+  const currentConfig: () => Config = deps.configStore ? () => deps.configStore!.current() : () => deps.config
   const events = deps.events ?? createEventsService()
   const sessionTtlMs = deps.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
   const heartbeatMs = deps.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
   // Secure cookies only when core is actually served over TLS; a `Secure` cookie on plain
   // http://localhost is silently dropped by the browser, which would make first-run login
-  // fail in the one setup every self-hoster starts with.
-  const secureCookie = config.server.publicUrl?.startsWith('https:') ?? false
+  // fail in the one setup every self-hoster starts with. Read per login rather than once, so
+  // saving `server.publicUrl` as an https address takes effect on the next sign-in.
+  const secureCookie = () => currentConfig().server.publicUrl?.startsWith('https:') ?? false
 
   const registry = deps.providers ?? createDefaultRegistry()
-  const bootstrapHooks = bootstrapModeHooks(db, config)
+  const bootstrapHooks = bootstrapModeHooks(db, currentConfig)
 
   /**
    * The push bootstrap, driven by the provision ticker (rockysurf-55fx.13).
@@ -221,13 +255,13 @@ export function createApp(deps: AppDeps): CreatedApp {
       db,
       registry,
       events,
-      limits: config.limits,
+      limits: () => currentConfig().limits,
       sync: (row) => {
         if (!lifecycleRef) throw new Error('jobs ticked before the lifecycle service was built')
         return lifecycleRef.sync(row)
       },
       ...(bootstrap ? { bootstrap } : {}),
-      onFailure: config.bootstrap.onFailure,
+      onFailure: currentConfig().bootstrap.onFailure,
     })
 
   const lifecycle =
@@ -252,7 +286,7 @@ export function createApp(deps: AppDeps): CreatedApp {
       snapshotInstallPlan: (row, mode, options) =>
         void snapshotInstallPlan(db, row, {
           mode,
-          ...(config.server.publicUrl ? { publicUrl: config.server.publicUrl } : {}),
+          ...(currentConfig().server.publicUrl ? { publicUrl: currentConfig().server.publicUrl! } : {}),
           ...(options?.managedPublicKey ? { managedPublicKey: options.managedPublicKey } : {}),
           ...(options?.secretEnvironmentNames ? { secretEnvironmentNames: options.secretEnvironmentNames } : {}),
         }),
@@ -286,8 +320,8 @@ export function createApp(deps: AppDeps): CreatedApp {
     success(c, {
       ok: true,
       name: 'rockysurf',
-      authMode: config.auth.mode,
-      providers: Object.entries(config.providers)
+      authMode: currentConfig().auth.mode,
+      providers: Object.entries(currentConfig().providers)
         .filter(([, provider]) => provider.enabled)
         .map(([id]) => id),
     }),
@@ -296,8 +330,8 @@ export function createApp(deps: AppDeps): CreatedApp {
   app.post('/api/v1/auth/login', validate('json', loginBody), async (c) => {
     const { password } = c.req.valid('json')
 
-    if (config.auth.mode !== 'local') {
-      return badRequest(c, `password login is not available in auth mode "${config.auth.mode}"`)
+    if (currentConfig().auth.mode !== 'local') {
+      return badRequest(c, `password login is not available in auth mode "${currentConfig().auth.mode}"`)
     }
 
     const storedHash = await secrets.get(ADMIN_PASSWORD_HASH_KEY)
@@ -313,7 +347,7 @@ export function createApp(deps: AppDeps): CreatedApp {
       httpOnly: true,
       sameSite: 'Lax',
       path: '/',
-      secure: secureCookie,
+      secure: secureCookie(),
       maxAge: Math.floor(sessionTtlMs / 1000),
     })
 
@@ -379,17 +413,20 @@ export function createApp(deps: AppDeps): CreatedApp {
   // injected — it is a pure function of `config.registry` with no lifecycle and nothing to
   // close. Constructing it performs no fetch (rockysurf-arym.3), so this costs nothing at boot
   // and a control plane with no route off the machine starts exactly as it did before.
-  app.route(
-    '/',
-    createPackRoutes({ db, registry: deps.registry ?? createRegistryClient({ config: config.registry }) }),
-  )
+  //
+  // ONE OF THE TWO THINGS #264 REBUILDS RATHER THAN RE-READS. A registry client holds a cache
+  // keyed to the sources it was built for, so editing the source list has to produce a new
+  // client: reusing the old one would serve a listing fetched from an address that is no longer
+  // configured. Dropping the cache with it is the correct loss, not a cost — a listing from a
+  // source the operator has just removed is not a listing anybody wants.
+  app.route('/', createPackRoutes({ db, registry: deps.registry ?? liveRegistryClient(currentConfig, deps.configStore) }))
 
   /* ---------------------------------------------------------------------------- costs */
 
   // Read-only spend view (rockysurf-hzi7.4). Shares the jobs' spend tracker rather than
   // recomputing, so the number the page shows and the number the create path enforces the cap
   // against are the same number.
-  app.route('/', createCostsRoutes({ db, spend: jobs.spend, limits: config.limits }))
+  app.route('/', createCostsRoutes({ db, spend: jobs.spend, limits: () => currentConfig().limits }))
 
   /*
    * The box-facing callback routes, mounted OUTSIDE `/api/v1` on purpose: a booting server
@@ -406,7 +443,7 @@ export function createApp(deps: AppDeps): CreatedApp {
       // So a callback-mode tool failure releases the machine the same way push mode's does
       // (ADR-0010): one rule, both topologies.
       registry,
-      onFailure: config.bootstrap.onFailure,
+      onFailure: currentConfig().bootstrap.onFailure,
     }),
   )
   /*
@@ -424,8 +461,8 @@ export function createApp(deps: AppDeps): CreatedApp {
    * to have ruled them out.
    */
   const preflightDeps = () => ({
-    tokens: config.github.tokens,
-    ...(config.github.pat ? { fallbackToken: config.github.pat } : {}),
+    tokens: currentConfig().github.tokens,
+    ...(currentConfig().github.pat ? { fallbackToken: currentConfig().github.pat! } : {}),
   })
   app.route(
     '/',
@@ -448,8 +485,8 @@ export function createApp(deps: AppDeps): CreatedApp {
        * what they were built with"), so the page states it too.
        */
       githubTokenScopes: (repositories) =>
-        narrowTokensToRepositories(config.github.tokens, repositories).map(githubTokenScope),
-      carriesFallbackToken: Boolean(config.github.pat),
+        narrowTokensToRepositories(currentConfig().github.tokens, repositories).map(githubTokenScope),
+      carriesFallbackToken: () => Boolean(currentConfig().github.pat),
       /*
        * WHAT THE SELECTED PACK ASKS FOR, so the create route can check the request against it
        * (issue #189, ADR-0013).
@@ -479,11 +516,11 @@ export function createApp(deps: AppDeps): CreatedApp {
        * function taking a registry id, so no cloud's name enters core.
        */
       tierPreference: createPreferenceReader({
-        booted: config.preferences,
+        booted: currentConfig().preferences,
         ...(deps.configPath ? { configPath: deps.configPath } : {}),
       }),
       offeringAllowlist: (providerId) => {
-        const section: unknown = (config.providers as Record<string, unknown>)[providerId]
+        const section: unknown = (currentConfig().providers as Record<string, unknown>)[providerId]
         if (typeof section !== 'object' || section === null) return undefined
         const sizes: unknown = (section as { sizes?: unknown }).sizes
         if (!Array.isArray(sizes) || sizes.some((s) => typeof s !== 'string')) return undefined
@@ -507,11 +544,23 @@ export function createApp(deps: AppDeps): CreatedApp {
     }),
   )
   // First-run wizard state and credential capture (rockysurf-hzi7.2).
-  app.route('/', createSetupRoutes({ config, registry, ...(deps.secretsStore ? { secrets: deps.secretsStore } : {}) }))
+  app.route(
+    '/',
+    createSetupRoutes({ config: currentConfig, registry, ...(deps.secretsStore ? { secrets: deps.secretsStore } : {}) }),
+  )
   // The config-file editor (rockysurf-m29b). Admin-only, and it reads and writes the FILE —
   // config is configuration and never becomes data.
   if (deps.configPath) {
-    app.route('/', createSettingsRoutes({ configPath: deps.configPath, ...(deps.env ? { env: deps.env } : {}) }))
+    app.route(
+      '/',
+      createSettingsRoutes({
+        configPath: deps.configPath,
+        ...(deps.env ? { env: deps.env } : {}),
+        // What makes a save take effect (issue #264): the route writes the file and then asks
+        // this process to adopt it, before it answers.
+        ...(deps.configStore ? { reload: () => deps.configStore!.reload() } : {}),
+      }),
+    )
   }
 
   /* ------------------------------------------------------------------------ ssh keys */
@@ -541,8 +590,8 @@ export function createApp(deps: AppDeps): CreatedApp {
         db,
         secrets: deps.secretsStore,
         config: {
-          ...(config.github.oauth.clientId ? { clientId: config.github.oauth.clientId } : {}),
-          configFallbackSet: Boolean(config.github.pat),
+          ...(currentConfig().github.oauth.clientId ? { clientId: currentConfig().github.oauth.clientId! } : {}),
+          configFallbackSet: Boolean(currentConfig().github.pat),
         },
         ...(deps.githubFetch ? { fetch: deps.githubFetch } : {}),
       }),
@@ -604,6 +653,35 @@ export function createApp(deps: AppDeps): CreatedApp {
   lifecycleRef = lifecycle
 
   return { app, events, jobs, sync: (row) => lifecycle.sync(row) }
+}
+
+/**
+ * A pack registry client that is rebuilt whenever `registry` in the config file changes (#264).
+ *
+ * A DELEGATE RATHER THAN A `Live<RegistryClient>`, because a registry client is not a value the
+ * caller reads — it is an object with a cache and three methods, and `createPackRoutes` holds it
+ * for the life of the app. So the routes get one stable object and it forwards to whichever
+ * client the current `registry` config produced.
+ *
+ * REBUILT ON THE SUBSCRIPTION, not on every call. Building per call would be correct and would
+ * also throw the cache away on every request, turning the shop into an unconditional refetch —
+ * which is precisely what `registry.cacheTtlSeconds` exists to prevent. The comparison is over
+ * the whole `registry` block, so a save that did not touch it keeps the cache warm.
+ *
+ * With no store — a test, an embedded core — nothing subscribes and this is one client built
+ * once, exactly as it was before.
+ */
+function liveRegistryClient(currentConfig: () => Config, store: ConfigStore | undefined): RegistryClient {
+  let client = createRegistryClient({ config: currentConfig().registry })
+  store?.onChange((next, previous) => {
+    if (JSON.stringify(next.registry) === JSON.stringify(previous.registry)) return
+    client = createRegistryClient({ config: next.registry })
+  })
+  return {
+    browse: (options) => client.browse(options),
+    getPack: (sourceName, packId) => client.getPack(sourceName, packId),
+    describe: () => client.describe(),
+  }
 }
 
 /**

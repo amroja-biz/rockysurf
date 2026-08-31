@@ -1,3 +1,4 @@
+import { readLive, type Live } from '../config/index.js'
 import type { Db } from '../db/client.js'
 import { recordProgress } from '../db/repositories/servers.js'
 import { appendEvent } from '../db/repositories/users.js'
@@ -95,14 +96,15 @@ export function selectBootstrapMode(
  */
 export function bootstrapModeHooks(
   db: Db,
-  config: { server: { publicUrl?: string } },
+  /** Read at create time since #264, so saving `server.publicUrl` enables callback mode at once. */
+  config: Live<{ server: { publicUrl?: string } }>,
   requested?: 'push' | 'callback',
 ): {
   selectMode: () => 'push' | 'callback'
   mintTokensIfNeeded: (serverId: string, mode: 'push' | 'callback') => void
 } {
   return {
-    selectMode: () => selectBootstrapMode(config, requested),
+    selectMode: () => selectBootstrapMode(readLive(config), requested),
     mintTokensIfNeeded: (serverId, mode) => {
       if (mode !== 'callback') return
       mintCallbackTokens(db, serverId)

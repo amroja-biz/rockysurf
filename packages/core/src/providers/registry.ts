@@ -28,6 +28,34 @@ export class ProviderRegistry {
   private readonly unavailableById = new Map<string, UnavailableProvider>()
 
   constructor(providers: ComputeProvider[] = [], unavailable: UnavailableProvider[] = []) {
+    this.fill(providers, unavailable)
+  }
+
+  /**
+   * Take on another registry's contents, keeping this object's identity (issue #264).
+   *
+   * WHY THE IDENTITY MATTERS. Composition happens outside core — `packages/rockysurf` is the
+   * only place allowed to import both core and a provider — and the registry it builds is passed
+   * once and then held by the job loop, the lifecycle service, the server routes and the
+   * bootstrap supervisor. Handing all of them a new object on every save would mean rethreading
+   * every one of those seams; swapping the CONTENTS of the one they already hold means the
+   * next `get()` returns a client built from the config now in force, and nothing else changed.
+   *
+   * WHAT AN IN-FLIGHT OPERATION SEES: the client it already resolved, for as long as it holds
+   * it. That is the correct answer and not a compromise — a create half-way through talking to
+   * EC2 must finish against the account it started with, not be handed a different one mid-call.
+   *
+   * The old providers are simply dropped. Nothing in the SDK is closeable (ADR-0003 deliberately
+   * has no lifecycle on a provider), so there is nothing to release; a provider still referenced
+   * by an in-flight call stays alive until that call is done, which is exactly what is wanted.
+   */
+  replaceWith(next: ProviderRegistry): void {
+    this.byId.clear()
+    this.unavailableById.clear()
+    this.fill(next.list(), next.unavailable())
+  }
+
+  private fill(providers: ComputeProvider[], unavailable: UnavailableProvider[]): void {
     for (const provider of providers) this.byId.set(provider.id, provider)
     for (const entry of unavailable) this.unavailableById.set(entry.id, entry)
   }

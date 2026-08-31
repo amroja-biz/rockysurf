@@ -1,5 +1,5 @@
 import { startStubServer, type StubServer } from '../test-server'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AuthProvider } from '../contexts/AuthContext'
@@ -36,6 +36,9 @@ const LITERAL_TOKEN = 'hcloud-LITERALtokenSHOULDneverLEAK'
  * carries whatever help it was handed. Deriving it from the path keeps that assertion honest
  * without pinning prose in two places.
  */
+/** Core's five, as `settings/fields.ts` classifies them. */
+const RESTART_REQUIRED = new Set(['server.port', 'server.host', 'server.dataDir', 'auth.mode', 'mcp.scopes'])
+
 const FIELDS: SettingsField[] = (
   [
     { path: 'server.port', kind: 'number', writable: true, warning: 'Changing the port takes effect at the next restart.' },
@@ -110,8 +113,22 @@ const FIELDS: SettingsField[] = (
     { path: 'registry.sources.*.trust', kind: 'string', writable: true },
     { path: 'registry.cacheTtlSeconds', kind: 'number', writable: true },
     { path: 'mcp.scopes', kind: 'stringList', writable: true, warning: 'create spends money and terminate destroys a box.' },
-  ] satisfies Omit<SettingsField, 'help'>[]
-).map((field) => ({ ...field, help: `What ${field.path} is for.` }))
+  ] satisfies Omit<SettingsField, 'help' | 'appliesAt'>[]
+).map((field) => ({
+  ...field,
+  help: `What ${field.path} is for.`,
+  /**
+   * The restart classification, mirrored from core's own five (issue #264).
+   *
+   * Derived rather than written per row for the reason `help` is: the WORDS are core's business
+   * and are checked there; what this file checks is that the page renders whatever it was
+   * handed. The list is spelled out so a stub that quietly stopped marking anything would fail
+   * the page's own "names them" assertions rather than pass by omission.
+   */
+  ...(RESTART_REQUIRED.has(field.path)
+    ? { appliesAt: 'restart' as const, restartReason: `Why ${field.path} cannot change while Rocky Surf runs.` }
+    : { appliesAt: 'save' as const }),
+}))
 
 const SECTIONS: SettingsSection[] = [
   { id: 'server', title: 'Server', help: 'Where Rocky Surf itself listens.' },
@@ -131,6 +148,8 @@ const SECTIONS: SettingsSection[] = [
 /** The redacted view, as core serves it: no literal anywhere, references intact. */
 const VIEW: SettingsView = {
   file: { path: '/srv/rockysurf.config.yaml', exists: true, mtimeMs: 1_700_000_000_000 },
+  /** Nothing waiting on a restart, which is the ordinary state of the page since #264. */
+  pendingRestart: [],
   values: {
     server: { port: 3000, dataDir: '/home/rocky/.rockysurf' },
     auth: { mode: 'local' },
@@ -278,8 +297,34 @@ beforeEach(async () => {
           res.end(JSON.stringify(nextSaveFailure.body))
           return
         }
+        /*
+          THE STUB CLASSIFIES THE SAVE THE WAY CORE DOES (issue #264).
+
+          It used to answer every PUT with `drifted: true`, which was the truth when every save
+          left the process behind. It no longer is: core adopts what it can and reports the
+          remainder per path, and a stub that kept claiming drift would let the page pass while
+          telling an operator their save had done nothing. So it splits the paths it was sent by
+          the inventory it is already serving.
+        */
+        const saved = (JSON.parse(body) as { changes: { path: (string | number)[] }[] }).changes.map((change) =>
+          change.path.map((segment) => (typeof segment === 'number' ? '*' : segment)).join('.'),
+        )
+        const specOf = (path: string) => served.fields.find((field) => field.path === path)
+        const restartRequired = saved.flatMap((path) => {
+          const spec = specOf(path)
+          return spec?.appliesAt === 'restart' ? [{ path, reason: spec.restartReason ?? '' }] : []
+        })
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ saved: true, ...served, drifted: true }))
+        res.end(
+          JSON.stringify({
+            saved: true,
+            applied: saved.filter((path) => specOf(path)?.appliesAt !== 'restart'),
+            restartRequired,
+            ...served,
+            drifted: restartRequired.length > 0,
+            pendingRestart: restartRequired,
+          }),
+        )
       })
       return
     }
@@ -1408,24 +1453,66 @@ describe('a reference to a variable the running core cannot see', () => {
   })
 })
 
-describe('restart honesty', () => {
+/**
+ * WHAT A SAVE DID, PER SETTING (issue #264).
+ *
+ * The page used to say one thing about every save: nothing has taken effect, restart. It now
+ * says the true thing, which differs by field — so these cases are about the SPLIT. The
+ * per-field note is the primary surface (it is there before anybody clicks Save); the banner and
+ * the footer sentence follow from it.
+ */
+const drifting = (path: string, reason: string) => ({
+  ...structuredClone(VIEW),
+  drifted: true,
+  pendingRestart: [{ path, reason }],
+})
+
+describe('restart honesty, per setting', () => {
   it('says nothing about restarting a process that matches its file', async () => {
     renderPage()
     await loaded()
     expect(screen.queryByRole('status')).toBeNull()
   })
 
-  it('keeps a standing notice once the file and the running process differ', async () => {
-    served = { ...structuredClone(VIEW), drifted: true }
+  /**
+   * THE NOTE THE OPERATOR READS BEFORE THEY CLICK. It renders from the inventory alone, on a
+   * page nobody has saved anything on, which is exactly when it is most useful.
+   */
+  it('marks each field that needs a restart, at the control, with core own reason', async () => {
+    renderPage()
+    await loaded()
+
+    const port = document.querySelector('[data-restart-required="server.port"]')!
+    expect(port.textContent).toContain('Takes effect after a restart')
+    expect(port.textContent).toContain('Why server.port cannot change while Rocky Surf runs.')
+    // The read-only one carries it too: moving a data directory is a stop-and-start, and the
+    // fact that the box is not editable does not tell an operator that.
+    expect(document.querySelector('[data-restart-required="server.dataDir"]')).toBeTruthy()
+  })
+
+  it('puts no such note on the settings that apply on save — which is nearly all of them', async () => {
+    renderPage()
+    await loaded()
+
+    expect(document.querySelector('[data-restart-required="limits.maxServers"]')).toBeNull()
+    expect(document.querySelector('[data-restart-required="providers.aws.region"]')).toBeNull()
+    expect(document.querySelectorAll('[data-restart-required]').length).toBeLessThan(5)
+  })
+
+  it('keeps a standing notice, naming what is waiting, once one of them has been saved', async () => {
+    served = drifting('server.port', 'The socket this page arrived on is already bound.')
     renderPage()
     await loaded()
 
     const banner = screen.getByRole('status')
-    expect(banner.textContent).toContain('still using the old settings')
+    expect(banner.textContent).toContain('waiting on a restart')
+    expect(banner.textContent).toContain('server.port')
+    // And it says the rest of the file is not waiting, which is the half a bare banner lost.
+    expect(banner.textContent).toContain('already in use')
     expect(banner.textContent).toContain('./start.sh')
   })
 
-  it('raises that notice after a save, because a save is exactly when it becomes true', async () => {
+  it('raises that notice after saving a setting that needs one', async () => {
     renderPage()
     await loaded()
     expect(screen.queryByRole('status')).toBeNull()
@@ -1433,17 +1520,38 @@ describe('restart honesty', () => {
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
     save()
 
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('./start.sh'))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('server.port'))
+    expect(screen.getByRole('status').textContent).toContain('./start.sh')
   })
 
-  it('always states the restart requirement beside the save button, drift or no drift', async () => {
+  /** The behaviour change, stated as a test: saving a limit no longer raises the banner. */
+  it('raises nothing after saving a setting that is already in force', async () => {
+    renderPage()
+    await loaded()
+
+    fireEvent.change(control('limits.maxServers'), { target: { value: '12' } })
+    save()
+
+    await waitFor(() => expect(saves).toHaveLength(1))
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('tells the operator beside the save button that saving applies, and offers the restart only when one is due', async () => {
+    renderPage()
+    await loaded()
+    const actions = () => document.querySelector('.settings-actions')!.textContent
+    expect(actions()).toContain('Saving applies straight away')
+    expect(actions()).not.toContain('./start.sh')
+
+    cleanup()
+    served = drifting('server.port', 'The socket this page arrived on is already bound.')
     renderPage()
     await loaded()
     expect(document.querySelector('.settings-actions')!.textContent).toContain('./start.sh')
   })
 
   it('sets the commands the operator types in <code>, and still reads as one sentence (#232)', async () => {
-    served = { ...structuredClone(VIEW), drifted: true }
+    served = drifting('server.port', 'The socket this page arrived on is already bound.')
     renderPage()
     await loaded()
 
@@ -1636,12 +1744,14 @@ describe('finding your way around the page', () => {
       path: 'boxes.small',
       kind: 'string',
       writable: true,
+      appliesAt: 'save',
       help: 'The offering Small resolves to.',
     })
     served.fields.push({
       path: 'boxes.dedicated',
       kind: 'boolean',
       writable: true,
+      appliesAt: 'save',
       help: 'Whether Small means a dedicated core.',
     })
 
@@ -1686,6 +1796,7 @@ describe('finding your way around the page', () => {
           path: `preferences.tiers.${cloud}.${size}`,
           kind: 'string',
           writable: true,
+          appliesAt: 'save',
           help: `The type to use whenever you ask ${cloud} for a ${size} box. Leave it blank for the default.`,
         })
       }
@@ -1748,6 +1859,7 @@ describe('finding your way around the page', () => {
           path: `preferences.tiers.${cloud}.${size}`,
           kind: 'string',
           writable: true,
+          appliesAt: 'save',
           help: `The type to use whenever you ask ${cloud} for a ${size} box. Leave it blank for the default.`,
         })
       }
@@ -1889,6 +2001,7 @@ describe('finding your way around the page', () => {
       path: 'preferences.tiers.aws.small',
       kind: 'string',
       writable: true,
+      appliesAt: 'save',
       help: 'The type to use whenever you ask AWS for a small box. Leave it blank for the default.',
     })
 
@@ -1903,6 +2016,7 @@ describe('finding your way around the page', () => {
       path: 'limits.maxRunningHours',
       kind: 'number',
       writable: true,
+      appliesAt: 'save',
       help: 'How long a box may run before it is stopped.',
     })
 
@@ -1924,6 +2038,7 @@ describe('finding your way around the page', () => {
       path: 'telemetry.enabled',
       kind: 'boolean',
       writable: true,
+      appliesAt: 'save',
       help: 'Whether anything is reported anywhere.',
     })
 
@@ -1942,6 +2057,7 @@ describe('finding your way around the page', () => {
       path: 'limits.blockedRegions',
       kind: 'stringList',
       writable: true,
+      appliesAt: 'save',
       help: 'Regions no server may be created in.',
     })
     ;(served.values['limits'] as Record<string, unknown>)['blockedRegions'] = ['eu-west-1']

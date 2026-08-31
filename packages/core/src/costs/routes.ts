@@ -5,7 +5,7 @@ import { listServersByUser } from '../db/repositories/servers.js'
 import type { ServerRow } from '../db/schema.js'
 import { success } from '../http/responses.js'
 import type { SpendTracker } from '../jobs/limits.js'
-import type { LimitsConfig } from '../config/index.js'
+import { readLive, type Live, type LimitsConfig } from '../config/index.js'
 
 /**
  * Costs, read-only (rockysurf-hzi7.4).
@@ -34,7 +34,8 @@ import type { LimitsConfig } from '../config/index.js'
 export interface CostsRoutesDeps {
   db: Db
   spend: SpendTracker
-  limits: LimitsConfig
+  /** Read per request since #264, so the page reports the limits actually in force. */
+  limits: Live<LimitsConfig>
 }
 
 export interface ServerCost {
@@ -110,10 +111,10 @@ export function createCostsRoutes(deps: CostsRoutesDeps): Hono<AppEnv> {
       },
       lifetime: { byCurrency: fleetByCurrency },
       limits: {
-        maxServers: deps.limits.maxServers,
+        maxServers: readLive(deps.limits).maxServers,
         // Read-only: the cap is configuration, and changing it is an edit to the config file.
         // A UI control here would imply core could raise its own ceiling.
-        spendCap: deps.limits.spendCap ?? null,
+        spendCap: readLive(deps.limits).spendCap ?? null,
       },
       cap: {
         overCap: snapshot.overCap,

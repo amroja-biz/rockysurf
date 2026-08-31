@@ -1697,7 +1697,8 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
     sections: [],
     lists: [],
     drifted: false,
-    restartHint: 'Changes apply after a restart.',
+    pendingRestart: [],
+    restartHint: 'To restart Rocky Surf: stop the process and start it again.',
     restartHintSegments: [{ text: 'Changes apply after a restart.' }],
   })
 
@@ -1789,7 +1790,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
   it('writes the preference to the config file, guarded by the mtime it just read', async () => {
     const user = userEvent.setup()
     const get = vi.spyOn(api, 'getSettings').mockResolvedValue(settingsView(99))
-    const put = vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(100), saved: true })
+    const put = vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(100), saved: true, applied: ['preferences.tiers.fake.medium'], restartRequired: [] })
 
     renderPage()
     await screen.findByRole('button', { name: /create server/i })
@@ -1810,7 +1811,7 @@ describe('a saved machine type on the New Server page (issue #124)', () => {
   it('applies what was just saved to the page it was saved from', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'getSettings').mockResolvedValue(settingsView())
-    vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(), saved: true })
+    vi.spyOn(api, 'saveSettings').mockResolvedValue({ ...settingsView(), saved: true, applied: [], restartRequired: [] })
 
     renderPage()
     await screen.findByRole('button', { name: /create server/i })

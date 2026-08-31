@@ -42,8 +42,8 @@ docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
 Open <http://127.0.0.1:3000>, sign in with that password, and the first-run wizard asks for a
-cloud credential. Paste a Hetzner token, then enable the provider in the config file and
-restart — the wizard says the same thing when you get there.
+cloud credential. Paste a Hetzner token, then switch the provider on — in the config file, or on
+the Settings page, which applies it without a restart.
 
 ### Where the data lives
 
@@ -195,10 +195,29 @@ save was refused over — carries a dot, so nothing is left waiting on a section
 looking at. The GitHub tokens are the one exception, and each card says so: they save one entry
 at a time, because removing an entry renumbers the ones after it.
 
-Nothing saved here reaches the running process until Rocky Surf is restarted — with one
-deliberate exception, `preferences`, described below. The page says so beside the button, and
-keeps saying so — read back from the file rather than shown as a message a reload could lose —
-until the restart has happened.
+**Saving applies straight away.** Rocky Surf re-reads the file the moment the page writes it
+and adopts what it finds, so a cloud you have just switched on, a region you have just corrected
+and a limit you have just raised are all in force before the save even answers — no restart.
+
+Five settings cannot work that way, and each says so under its own box rather than leaving you
+to guess:
+
+| Setting | Why a restart |
+| --- | --- |
+| `server.port` | The socket this page arrived on is bound to the old port. |
+| `server.host` | The listener is bound to the old interface. |
+| `server.dataDir` | The database, the master key and the encrypted store are open from the old directory. |
+| `auth.mode` | Every session open right now was issued by the mode the process started in. |
+| `mcp.scopes` | Read by a *different* process — the one your MCP client starts with `rockysurf mcp`. Rocky Surf itself needs no restart; reconnect the MCP client. |
+
+Saving one of those raises a banner naming it, read back from the file rather than shown as a
+message a reload could lose, and it stays up until the restart has happened. Saving anything else
+raises nothing, because there is nothing to wait for.
+
+One case is neither: a token box that names an environment variable this process cannot see. The
+file is written — that is the workflow the page asks for — but its values are not knowable, so
+nothing is adopted and the page says which variable to export. See *Tokens the file names but the
+process cannot see*, below.
 
 ## What Small, Medium and Large mean
 
@@ -238,10 +257,10 @@ Three things worth knowing about them:
   longer sold, Rocky Surf creates the cheapest machine meeting the floor instead — and says
   which and why, on the New Server page and in the API response, rather than substituting in
   silence. An architecture you ask for explicitly also wins over a saved type of the other one.
-- **It applies immediately.** This is the one block Rocky Surf re-reads while it is running,
-  because a preference you set on the New Server page has to apply to the next server you
-  create, not to the next time somebody restarts the process. Everything else in the file still
-  waits for a restart.
+- **It applies immediately**, to the next server you create — as almost everything in this file
+  now does. `preferences` was the first block Rocky Surf re-read while running, and it is read
+  straight from the file at create time rather than through the settings page, so it applies
+  whether or not anybody saved it from the browser.
 
 The saved type must be one this installation would actually create: if you have narrowed a cloud
 with `providers.<cloud>.sizes`, a preference outside that list is refused when the file is read,
@@ -510,9 +529,8 @@ relationship with. So you register one, and it takes about a minute:
 3. Leave **Expire user access tokens** unticked. An expiring token would need something phoning
    home to refresh it, which is not what this product is.
 4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page's *GitHub
-   access tokens* tab, or write it into the config file yourself, and restart — this one is an
-   ordinary setting, read at startup like everything else in the file. (The token the button
-   later obtains is not, and needs no restart.)
+   access tokens* tab, or write it into the config file yourself. No restart: the routes behind
+   the button read it per request, so the card is live as soon as the save lands.
 
 ```yaml
 github:
@@ -632,18 +650,20 @@ detail page lists the scopes it carries and says the same thing.
 **The create form shows you all of this as you type.** Each repository URL is resolved live
 against the same rules, and the form says which token will be used — by scope, and by the
 environment variable it comes from when it comes from one — or that the repository is public and
-needs none, or that nothing matches it yet. If you have just added a token on the Settings page,
-it will also tell you that the entry exists but this process has not restarted into it, and, for
-a `${VAR}` entry, whether the variable it names is exported (if it is not, that restart will
-refuse to start — see the note about `${VAR}` above).
+needs none, or that nothing matches it yet. A token you added on the Settings page is in force
+straight away, so the form resolves against it immediately. The exception is a `${VAR}` entry
+naming a variable this process cannot see: the file holds the entry, nothing has been adopted,
+and the form says which variable has to be exported before a restart (see the note about
+`${VAR}` above).
 
 **And it offers what you have already configured, so you do not retype it.** Every entry above
 that names both an owner and a repository is a one-click chip on the create form: clicking it puts
 that repository's HTTPS URL in the box, where it is resolved exactly like a URL you typed. An entry
 naming only an account (`owner: acme`) or only a host is listed beside them but is not clickable —
 it names an account or a forge, not a repository, and Rocky Surf has no way to list what is under
-one — so type the repository's URL and it will be matched. An entry the file holds that this
-process has not restarted into is offered too, marked *after a restart*.
+one — so type the repository's URL and it will be matched. An entry the file holds that this process could
+not adopt — a `${VAR}` naming a variable nobody exported — is offered too, marked *after a
+restart*.
 
 ### Repository URLs are checked before a machine is launched
 
@@ -712,13 +732,13 @@ worth knowing:
 Three properties worth knowing before you set any of this, and they hold for `pat` and for every
 entry of `tokens` alike:
 
-- **Rotating a token in this file is an edit and a restart.** Tokens written here are read from
-  the config file at boot and passed straight through; none is ever copied into the database.
-  Change the value (or the environment variable behind it), restart Rocky Surf, and the next box
-  gets the new token. Boxes already provisioned keep the tokens they were built with —
-  `secrets.env` is on the box. **A connected account needs no restart**: that token lives in the
-  encrypted store, which is read at the moment a box is created, so pressing Connect (or
-  Disconnect) takes effect on the very next one.
+- **Rotating a token in this file is an edit, and that is all.** Tokens written here are read
+  from the file when a box is created and passed straight through; none is ever copied into the
+  database. Change the value and the next box gets the new token — no restart. Changing the
+  environment variable *behind* a `${VAR}` entry is the one case that still needs one, because a
+  running process cannot be handed a new environment. Boxes already provisioned keep the tokens
+  they were built with — `secrets.env` is on the box. A connected account behaves the same way:
+  that token lives in the encrypted store, read at the moment a box is created.
 - **Every token in this file is instance-wide, so scope each one like it.** Every server created
   on this installation gets all of them, whoever created it — a repo-scoped entry narrows which
   repository a token is *used for*, not which people receive it. On a single-admin install that
@@ -1063,7 +1083,8 @@ and `rockysurf pack index` generates it.
 create with it, and over plain http anything on the path can rewrite them in transit — including
 the digest that is meant to catch that, since it arrives over the same connection. A source is
 also **admin-only** to add, in the config file and on the Settings page alike, and the page saves
-the same way every other setting does: **it takes effect at the next restart**.
+the same way every other setting does: **it takes effect as soon as it is saved**, on the next
+listing the shop fetches.
 
 **Adding a source fetches nothing and runs nothing.** It records a URL. The pack behind it is
 fetched when an admin opens the shop, and it is installed only after they have read every script

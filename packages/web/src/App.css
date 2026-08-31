@@ -2567,6 +2567,23 @@ p.hint {
   margin: 0.5rem 0 0;
 }
 
+/*
+ * "Takes effect after a restart", beside the five controls it is true of (issue #264).
+ *
+ * A HINT, NOT A WARNING, and the colour is the argument. Nothing is wrong here: the operator is
+ * about to change a setting that behaves slightly differently from every other one on the page,
+ * and a yellow box would read as a mistake they had already made. It is the same weight as the
+ * help line above the control, with the lead clause bold so it is findable at a glance while
+ * scrolling — which is how somebody about to change the port encounters it.
+ */
+.settings-restart-note {
+  margin: 0.5rem 0 0;
+}
+
+.settings-restart-note strong {
+  color: var(--rs-yellow);
+}
+
 .settings-clear {
   align-self: flex-start;
 }

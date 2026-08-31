@@ -198,8 +198,14 @@ Two things that row encodes:
   rejection is the boundary doing its job.
 - **Credentials resolve config-first, then the encrypted secrets store.** A credential written in
   the config file is the one an operator can see, diff and roll back, so it wins; the store holds
-  what the first-run wizard pasted, for the operator who does not edit files. A credential pasted
-  in the wizard takes effect at the **next restart**, because providers are constructed at boot.
+  what the first-run wizard pasted, for the operator who does not edit files.
+- **Composition runs again when the config file changes** (issue #264). Providers are still
+  constructed all at once, from one config, and the registry every route holds takes the new set
+  in place — so an operator who fixes a region or switches a cloud on gets working clients
+  without a restart. Nothing on a provider is closed when it is replaced: the SDK deliberately
+  gives a provider no lifecycle, and a client still inside an in-flight call keeps serving that
+  call to the end. A credential pasted in the wizard is the exception, because the wizard writes
+  the encrypted store rather than the file; it takes effect at the **next restart**.
 
 A provider that is enabled but cannot be built is **reported and skipped**, never fatal. The
 control plane still starts, because the UI is where an operator fixes it.

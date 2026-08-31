@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono'
 import type { AppEnv } from '../app.js'
+import { readLive, type Live } from '../config/live-config.js'
 import type { Db } from '../db/client.js'
 import { deleteSetting, getSetting, setSetting } from '../db/repositories/settings.js'
 import { failure, forbidden, notFound, success, type ErrorBody, type ErrorCode } from '../http/responses.js'
@@ -56,7 +57,8 @@ export interface GithubConnectionConfig {
 export interface GithubRoutesDeps {
   db: Db
   secrets: SecretsStore
-  config: GithubConnectionConfig
+  /** Read per request since issue #264, so a client id saved on Settings enables the button at once. */
+  config: Live<GithubConnectionConfig>
   /** Injected in tests. Production takes the platform `fetch`. */
   fetch?: FetchLike
 }
@@ -151,7 +153,7 @@ export function createGithubRoutes(deps: GithubRoutesDeps): Hono<AppEnv> {
     const connected = isConnected(user.id)
     const stored = connected ? readConnection(user.id) : undefined
     return success(c, {
-      clientIdConfigured: Boolean(deps.config.clientId),
+      clientIdConfigured: Boolean(readLive(deps.config).clientId),
       connected,
       ...(stored
         ? { login: stored.login, scopes: stored.scopes ?? [], connectedAt: stored.connectedAt }
@@ -162,7 +164,7 @@ export function createGithubRoutes(deps: GithubRoutesDeps): Hono<AppEnv> {
        * stale, and per-user-beats-instance-wide is the intended precedence. What the page
        * prevents by rendering this is the support question "which token did my box get?".
        */
-      configFallbackSet: deps.config.configFallbackSet,
+      configFallbackSet: readLive(deps.config).configFallbackSet,
     })
   })
 
@@ -170,7 +172,8 @@ export function createGithubRoutes(deps: GithubRoutesDeps): Hono<AppEnv> {
 
   routes.post('/api/v1/github/connect', async (c) => {
     const user = c.get('user')
-    if (!deps.config.clientId) return failure(c, 'bad_request', NO_CLIENT_ID)
+    const { clientId } = readLive(deps.config)
+    if (!clientId) return failure(c, 'bad_request', NO_CLIENT_ID)
 
     sweep()
     // One pending flow per user: starting again abandons the last one rather than stacking.
@@ -179,7 +182,7 @@ export function createGithubRoutes(deps: GithubRoutesDeps): Hono<AppEnv> {
     let grant
     try {
       grant = await requestDeviceCode({
-        clientId: deps.config.clientId,
+        clientId,
         ...(deps.fetch ? { fetch: deps.fetch } : {}),
       })
     } catch (err) {
@@ -249,7 +252,7 @@ export function createGithubRoutes(deps: GithubRoutesDeps): Hono<AppEnv> {
     let result
     try {
       result = await pollForToken({
-        clientId: deps.config.clientId!,
+        clientId: readLive(deps.config).clientId!,
         deviceCode: flow.deviceCode,
         ...(deps.fetch ? { fetch: deps.fetch } : {}),
       })

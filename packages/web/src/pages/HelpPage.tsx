@@ -150,9 +150,9 @@ export function HelpPage() {
           Turning one on is three things: whatever has to exist in the cloud <em>before</em>{' '}
           Rocky Surf can be scoped to it, a credential in your environment, and a few keys in
           the config file. Do the last part on the provider&rsquo;s own tab in{' '}
-          <Link to="/settings">Settings</Link>, or by editing the file — either way the process
-          has to restart before the provider loads, and the create form will tell you when an
-          entry exists that the running process has not restarted into. The{' '}
+          <Link to="/settings">Settings</Link>, or by editing the file. Saving on the Settings
+          page loads the provider straight away — no restart; a hand-edit to the file applies at
+          the next start. The{' '}
           <Link to="/setup">setup wizard</Link> walks the same ground for a first install, and
           what you paste there goes into the encrypted secrets store rather than into the file.
         </p>
@@ -470,9 +470,9 @@ export function HelpPage() {
         sentences, no recommendations and no trade-off talk. What each approach IS and how to set
         it up. The comparison between them belongs in SECURITY.md and ADR-0007, which are linked.
 
-        Every claim below is a fact about the shipped code rather than about the plan: the client
-        ID needs a restart (it lives in the config file, read once at boot) while the connected
-        token does not (it lives in the encrypted store, read at create). Both are stated.
+        Every claim below is a fact about the shipped code rather than about the plan. Since issue
+        #264 neither the client ID nor a pasted PAT needs a restart: the config file is re-read
+        when Settings saves it, and both are read per use rather than at boot.
       */}
       <section id="git-auth">
         <h2>Git Auth</h2>
@@ -503,8 +503,9 @@ export function HelpPage() {
           either — <code>http://localhost:3000</code> satisfies both. On the same form, tick{' '}
           <strong>Enable Device Flow</strong> and leave <strong>Expire user access tokens</strong>{' '}
           unticked. Copy the app&rsquo;s
-          Client ID into the <em>OAuth App client ID</em> box in Settings and restart Rocky Surf. The
-          Client ID is public and needs no client secret; the device flow uses none.
+          Client ID into the <em>OAuth App client ID</em> box in Settings and save — the button
+          works straight away, with no restart. The Client ID is public and needs no client secret;
+          the device flow uses none.
         </p>
         <p>
           <strong>Connecting, per person.</strong> Press <strong>Connect GitHub</strong> in Settings.
@@ -530,8 +531,9 @@ export function HelpPage() {
           repository as <code>owner/name</code>, and paste the token.
         </p>
         <p>
-          The token is written into the configuration file, so treat that file as a credential, and
-          it applies after Rocky Surf is restarted. The configuration file also accepts{' '}
+          The token is written into the configuration file, so treat that file as a credential. It
+          applies to the next server you create, with no restart. The configuration file also
+          accepts{' '}
           <code>{'${GITHUB_PAT}'}</code>-style references to environment variables if you edit it by
           hand.
         </p>
@@ -605,9 +607,10 @@ export function HelpPage() {
           Settings is admin-only because it edits the config file — the document that holds provider
           sections, limits, and what the MCP server is allowed to do. Token fields take the{' '}
           <em>name</em> of an environment variable, never the secret itself, so credentials stay in
-          your environment and out of the file. Changes to the file are picked up when the process
-          restarts, and the create form will tell you when an entry exists that the running process
-          has not restarted into.
+          your environment and out of the file. Saving applies straight away: Rocky Surf re-reads
+          the file and adopts it before the save answers. Five settings cannot work that way — the
+          port, the address it listens on, the data directory, the auth mode, and the MCP
+          server&rsquo;s scopes — and each says so under its own box.
         </p>
       </section>
 
