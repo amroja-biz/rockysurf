@@ -21,6 +21,10 @@
   every agent-opened PR gets a plain-spoken comment — what it does, what merging changes, what
   the human must do, what it costs — and required setup ships as a run-one-script, never as
   copy/paste steps.
+- [setup-scripts-verify-what-they-claimed](2026-08-31-setup-scripts-verify-what-they-claimed.md):
+  issue #270 — the Azure nightly's federated credential was fixed and still missing, because the
+  step that made it had an `else` branch that carried on. A wiring step gets no fallback, and the
+  script reads the state back and compares it with what the other side will send.
 - [keep-both-merge-gate-rule](2026-08-13-keep-both-merge-gate-rule.md): a keep-both merge conflict
   resolution can produce syntax damage no marker scan or diff review will catch — run the full
   quality gate after every one.

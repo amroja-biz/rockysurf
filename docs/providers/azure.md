@@ -195,6 +195,11 @@ az ad app federated-credential create --id <appId> --parameters '{
 }'
 ```
 
+On GitHub Actions specifically, add a second credential with the same issuer and audience whose
+subject carries GitHub's numeric ids — `repo:<owner>@<owner id>/<repo>@<repo id>:ref:refs/heads/main`
+— because a token can arrive in either shape and Entra matches the subject exactly. The nightly's
+own setup script does both, and [explains why](#github-names-this-repository-two-ways-and-entra-has-to-accept-both).
+
 `AZURE_FEDERATED_TOKEN_FILE` names a file holding that token; Rocky Surf reads it — **on every
 acquisition, because the thing that writes it rotates it** — and exchanges it at the same Entra
 endpoint the client-secret path uses, sending it as a `client_assertion` with
@@ -654,12 +659,13 @@ without running anything.
 | 3 | nothing | Registers `Microsoft.Compute` and `Microsoft.Network` if this subscription never has. |
 | 4 | the CI resource group | `rocky-surf-ci` by default. Rocky Surf never creates a resource group itself — see [above](#getting-started). |
 | 5 | two app registrations and their service principals | One is the identity under test; one is the sweep. [Why two](#why-there-are-two-app-registrations). |
-| 6 | a federated credential on each | This is what lets GitHub sign in with no password. It names this repository and one branch, and accepts nothing else. |
+| 6 | two federated credentials on each | This is what lets GitHub sign in with no password. It names this repository and one branch, and accepts nothing else. Two per identity because GitHub writes the repository two ways — see [below](#github-names-this-repository-two-ways-and-entra-has-to-accept-both). |
 | 7 | the published roles | [`role.bicep`](../../deploy/azure/role.bicep), **unmodified** — the file a self-hoster deploys, which is the whole point of the leg. |
 | 8 | the sweep role | [`nightly-sweep-role.bicep`](../../deploy/azure/nightly-sweep-role.bicep): delete-only, one resource group, no create of any kind, no delete on the shared network. |
 | 9 | nothing | Reads your core quota and tells you what to click if it is zero. |
-| 10 | six repository variables | Names and ids. None of them is a credential. |
-| 11 | nothing | Offers to start a run. |
+| 10 | nothing | Reads back what each identity now accepts and compares it, character for character, with the two sign-ins GitHub will present. Stops here if either one is missing, before the variables below turn the leg on. |
+| 11 | six repository variables | Names and ids. None of them is a credential. |
+| 12 | nothing | Offers to start a run. |
 
 The variables it sets:
 
@@ -673,6 +679,27 @@ The variables it sets:
 | `AZURE_CI_LOCATION` | the region; `westus3` unless you pass `--location` |
 
 Defaults are overridable: `--group`, `--location`, `--repo`, `--branch`, `--subscription`.
+
+#### GitHub names this repository two ways, and Entra has to accept both
+
+The subject in a GitHub OIDC token used to be `repo:owner/name:ref:refs/heads/main`. GitHub is
+moving to an immutable form that carries numeric ids instead —
+`repo:owner@<owner id>/name@<repo id>:ref:refs/heads/main` — and a token can arrive in either
+shape. Entra matches a federated credential's subject **exactly**: no wildcards, no prefixes. One
+credential therefore cannot cover both, and an identity that trusts only the old shape refuses the
+run with `AADSTS700213: No matching federated identity record found`.
+
+That is why step 6 makes two credentials per identity rather than one: `rockysurf-nightly` for the
+classic shape and `rockysurf-nightly-id` for the id shape, with the two numbers read live from
+`gh api repos/<owner>/<name>`.
+
+**The ids are not optional, and the script will not quietly do without them** (gh issue #270). It
+used to fall back to a one-line note when it could not read them, which produced a setup that
+reported success and a nightly that could not sign in — a failure that only surfaces hours later,
+in a workflow log. It now stops and says so, and step 10 reads back what Entra actually holds and
+compares it with both subjects before any repository variable is written. If a run is ever refused
+with `AADSTS700213` again, run `./deploy/azure/setup-nightly.sh` and read step 10: it prints what
+each identity accepts next to what GitHub will present.
 
 #### The one thing a script cannot do for you
 

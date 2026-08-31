@@ -17,7 +17,9 @@
 # long-lived is stored in the repository, nothing needs rotating, and there is nothing to leak.
 #
 # RUN IT AS OFTEN AS YOU LIKE. Every step checks before it creates, so a second run reports
-# "already done" instead of failing.
+# "already done" instead of failing. It also ENDS BY CHECKING that Azure accepts the sign-in
+# GitHub will actually present, so running it again is the way to diagnose a nightly refused with
+# "AADSTS700213: No matching federated identity record found" (gh issue #270).
 #
 # NOTHING THIS SCRIPT CREATES COSTS MONEY. Identities, roles and an empty resource group are all
 # free; only the nightly's own machines bill, at roughly two cents a night.
@@ -74,7 +76,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-TOTAL=11
+TOTAL=12
 say() { printf '%s\n' "$*"; }
 step() { printf '\n[%d/%d] %s\n' "$1" "$TOTAL" "$2"; }
 made() {
@@ -242,53 +244,72 @@ SWEEP_OBJECT_ID=$(ensure_sp "$SWEEP_APP_ID" "$SWEEP_APP")
 step 6 'Letting GitHub sign in as those identities, without a password.'
 note "Azure will accept a token GitHub makes for $REPO on the $BRANCH branch, and nothing else."
 
+GITHUB_ISSUER='https://token.actions.githubusercontent.com'
+GITHUB_AUDIENCE='api://AzureADTokenExchange'
+
 SUBJECT="repo:${REPO}:ref:refs/heads/${BRANCH}"
 # GitHub is moving from `repo:owner/name:...` to an immutable-id form,
 # `repo:owner@1234/name@5678:...`, and a token may carry either — the first real run was refused
 # with AADSTS700213 because only the classic form was trusted. Entra matches a federated
 # credential's subject EXACTLY (no wildcards), so each app registration gets one credential per
 # form: "${CREDENTIAL_NAME}" for the classic name and "${CREDENTIAL_NAME}-id" for the id form.
-IMMUTABLE_SUBJECT=''
-fed_owner_id=$(gh api "repos/${REPO}" --jq '.owner.id' 2>/dev/null || true)
-fed_repo_id=$(gh api "repos/${REPO}" --jq '.id' 2>/dev/null || true)
-if [ -n "$fed_owner_id" ] && [ -n "$fed_repo_id" ]; then
-  IMMUTABLE_SUBJECT="repo:${REPO%%/*}@${fed_owner_id}/${REPO##*/}@${fed_repo_id}:ref:refs/heads/${BRANCH}"
+#
+# THE TWO IDS ARE NOT OPTIONAL (gh issue #270). This step used to fall back to a one-line note
+# when it could not read them, which made the id form easy to skip without noticing: the script
+# still said it was done, and the only symptom was a run refused hours later in a workflow log
+# nobody was watching. A setup that cannot produce the id form is a setup that does not work, so
+# it stops here instead.
+fed_ids=$(gh api "repos/${REPO}" --jq '"\(.owner.id)\t\(.id)"' 2>/dev/null || true)
+fed_owner_id=$(printf '%s' "$fed_ids" | cut -f1)
+fed_repo_id=$(printf '%s' "$fed_ids" | cut -f2)
+# Digits, both of them: an unreadable field comes back as the string "null", which would build a
+# subject Entra accepts and GitHub never presents — a worse outcome than not building one at all.
+is_number() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
+if ! is_number "$fed_owner_id" || ! is_number "$fed_repo_id"; then
+  fail "I could not read the two numbers GitHub uses to name $REPO in the token it makes for the
+nightly — the owner id and the repository id. Azure has to be told to trust a sign-in carrying
+those numbers, and they cannot be guessed, so I stopped rather than finish a setup whose only
+symptom would be a failed run tomorrow morning.
+
+This is nearly always an expired GitHub sign-in. Run 'gh auth login', then run this script again.
+Everything it made before this point is fine to leave exactly where it is."
 fi
+IMMUTABLE_SUBJECT="repo:${REPO%%/*}@${fed_owner_id}/${REPO##*/}@${fed_repo_id}:ref:refs/heads/${BRANCH}"
 
 ensure_federated_credential() {
   fed_app_id=$1
   fed_label=$2
   fed_name=$3
   fed_subject=$4
+  # Both fields in one read: the delete below needs the credential's own id, because the name is
+  # ours and the id is Entra's, and only the id is certain to identify it.
   existing=$(az ad app federated-credential list --id "$fed_app_id" \
-    --query "[?name=='${fed_name}'].subject" -o tsv 2>/dev/null || true)
-  if [ "$existing" = "$fed_subject" ]; then
+    --query "[?name=='${fed_name}'].[id,subject]" -o tsv 2>/dev/null || true)
+  existing_id=$(printf '%s' "$existing" | cut -f1)
+  existing_subject=$(printf '%s' "$existing" | cut -f2)
+  if [ -n "$existing_id" ] && [ "$existing_subject" = "$fed_subject" ]; then
     have "GitHub sign-in ($fed_name) for $fed_label"
     return 0
   fi
-  if [ -n "$existing" ]; then
+  if [ -n "$existing_id" ]; then
     # The repository or branch changed since the last run. Replace it rather than adding a second.
     note "Updating the GitHub sign-in ($fed_name) for $fed_label, which pointed somewhere else."
-    run az ad app federated-credential delete --id "$fed_app_id" --federated-credential-id "$fed_name" --yes
+    run az ad app federated-credential delete --id "$fed_app_id" --federated-credential-id "$existing_id" --yes
   fi
   run az ad app federated-credential create --id "$fed_app_id" --parameters "$(printf '{
     "name": "%s",
-    "issuer": "https://token.actions.githubusercontent.com",
+    "issuer": "%s",
     "subject": "%s",
     "description": "Rocky Surf nightly real-cloud run",
-    "audiences": ["api://AzureADTokenExchange"]
-  }' "$fed_name" "$fed_subject")" --output none
+    "audiences": ["%s"]
+  }' "$fed_name" "$GITHUB_ISSUER" "$fed_subject" "$GITHUB_AUDIENCE")" --output none
   made "GitHub sign-in ($fed_name) for $fed_label"
 }
 
 ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP" "$CREDENTIAL_NAME" "$SUBJECT"
 ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP" "$CREDENTIAL_NAME" "$SUBJECT"
-if [ -n "$IMMUTABLE_SUBJECT" ]; then
-  ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
-  ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
-else
-  note "GitHub did not tell me this repository's ids, so only the classic sign-in name is trusted."
-fi
+ensure_federated_credential "$PROVIDER_APP_ID" "$PROVIDER_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
+ensure_federated_credential "$SWEEP_APP_ID" "$SWEEP_APP" "${CREDENTIAL_NAME}-id" "$IMMUTABLE_SUBJECT"
 
 # ---------------------------------------------------------------------------------------------
 step 7 'Giving the tested identity exactly the permissions we publish.'
@@ -347,7 +368,67 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------
-step 10 'Saving the settings in GitHub.'
+step 10 'Checking Azure will accept the sign-in GitHub will actually present.'
+note 'Reading it back from Azure, rather than trusting that step 6 did what it said.'
+
+# WHY THIS STEP EXISTS (gh issue #270). Entra matches a federated credential's subject exactly,
+# and a missing one is invisible from here: nothing goes red until a run is refused with
+# AADSTS700213, which is hours later, in a workflow log. Every way of ending up without one — a
+# step that quietly skipped, a credential deleted by hand, a repository renamed — looks identical
+# to a healthy setup unless something reads the state back and compares it. This is that read.
+#
+# It runs late on purpose: after the role deployments, so Entra has had a minute to catch up with
+# the writes in step 6, and before the repository variables in step 11, so a setup that cannot
+# sign in never turns the Azure leg on.
+verify_app_trust() {
+  vt_app_id=$1
+  vt_label=$2
+  vt_rows=$(az ad app federated-credential list --id "$vt_app_id" \
+    --query "[].[subject,issuer,join(',', audiences)]" -o tsv 2>/dev/null || true)
+  note "$vt_label accepts:"
+  if [ -z "$vt_rows" ]; then
+    note '    nothing at all'
+  else
+    printf '%s\n' "$vt_rows" | while IFS=$'\t' read -r vt_subject vt_issuer vt_audience; do
+      printf '    %s\n      from %s, for %s\n' "$vt_subject" "$vt_issuer" "$vt_audience"
+    done
+  fi
+  for vt_wanted in "$SUBJECT" "$IMMUTABLE_SUBJECT"; do
+    if printf '%s\n' "$vt_rows" | awk -F'\t' -v s="$vt_wanted" -v i="$GITHUB_ISSUER" \
+      -v a="$GITHUB_AUDIENCE" '$1 == s && $2 == i && index($3, a) { found = 1 }
+                               END { exit found ? 0 : 1 }'; then
+      continue
+    fi
+    MISSING_TRUST="${MISSING_TRUST}
+  $vt_label does not accept: $vt_wanted"
+  done
+}
+
+note 'GitHub will present one of these two, and Azure has to accept both:'
+note "    $SUBJECT"
+note "    $IMMUTABLE_SUBJECT"
+
+MISSING_TRUST=''
+if [ "$DRY_RUN" = 1 ]; then
+  note 'Nothing was created in a dry run, so there is nothing to read back.'
+else
+  verify_app_trust "$PROVIDER_APP_ID" "$PROVIDER_APP"
+  verify_app_trust "$SWEEP_APP_ID" "$SWEEP_APP"
+fi
+
+if [ -n "$MISSING_TRUST" ]; then
+  fail "Azure will refuse the nightly, because it does not accept every sign-in GitHub can present:
+${MISSING_TRUST}
+
+That is the state behind 'AADSTS700213: No matching federated identity record found'. Run this
+script again — it creates whatever is missing. If it says this a second time, the account you are
+signed in to Azure with is probably not allowed to add sign-ins to these two identities, and
+somebody who administers the Entra tenant has to run it instead."
+fi
+ready 'Azure accepts both sign-ins, on both identities'
+
+# ---------------------------------------------------------------------------------------------
+step 11 'Saving the settings in GitHub.'
 note 'None of these is a secret. They are names and ids, and they are safe to read.'
 
 set_variable() {
@@ -365,7 +446,7 @@ set_variable AZURE_PROVIDER_CLIENT_ID "$PROVIDER_APP_ID"
 set_variable AZURE_NIGHTLY_CLIENT_ID "$SWEEP_APP_ID"
 
 # ---------------------------------------------------------------------------------------------
-step 11 'Starting the nightly, if you want to see it work now.'
+step 12 'Starting the nightly, if you want to see it work now.'
 
 say ''
 say 'Setup is done.'
