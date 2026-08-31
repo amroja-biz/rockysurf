@@ -26,7 +26,7 @@ cannot run the harness.
 1. **A Rocky Surf checkout.** The harness, the loader and the worked examples are all in the
    repository (in tree — an out-of-tree pack author has none of them). Check whether you are
    already in one: `packs/` and `scripts/pack-smoke.mjs` both present means yes, and this skill
-   shipping from `.claude/skills/` means you very likely are. If not:
+   shipping from `.agent-skills/` means you very likely are. If not:
    ```bash
    git clone https://github.com/amroja-biz/rockysurf
    cd rockysurf

@@ -149,7 +149,7 @@ Then, one PR per part, in this order — each independently revertable:
 and `Shore` / `Swell` / `Plate` last. The rollout section above has the reasoning for the order.
 
 **Point the agent at the design system, not just at the diff.** `SKILL.md` at the root of this
-project is Agent Skills-compatible: dropped into `.claude/skills/`, it gives an agent the
+project is Agent Skills-compatible: dropped into `.agent-skills/`, it gives an agent the
 palette, the type and spacing scales, the assets, the tone-of-voice rules, and the prompt notes
 on every component — including the two rules the etched design depends on (caps never carry a
 sentence; a level needs its ceiling named). An agent with the skill loaded will make judgement

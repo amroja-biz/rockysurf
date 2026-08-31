@@ -99,17 +99,17 @@ export function HelpPage() {
           <div>
             <h3>Agent Skills</h3>
             <p>
-              The repository ships two skills a Claude Code session started in a checkout picks up
-              with no install step: <code>create-surge-pack</code> interviews you and writes a
+              The repository ships two skills a compatible coding agent started in a checkout
+              picks up with no install step: <code>create-surge-pack</code> interviews you and writes a
               pack that passes the real smoke harness, and <code>adding-providers</code> covers
               switching on a cloud or adding one Rocky Surf does not have yet. Outside a checkout,
               copy one in:
             </p>
             <pre>
-              <code>cp -r .claude/skills/create-surge-pack ~/.claude/skills/</code>
+              <code>cp -r .agent-skills/create-surge-pack ~/.agent-skills/</code>
             </pre>
             <p>
-              <a href={repoDocUrl('.claude/skills/README.md')} target="_blank" rel="noreferrer">
+              <a href={repoDocUrl('.agent-skills/README.md')} target="_blank" rel="noreferrer">
                 About the skills
               </a>
             </p>

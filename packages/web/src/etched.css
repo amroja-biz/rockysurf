@@ -105,7 +105,7 @@ body[data-rs-skin='etched'] {
    App.css sets the band to 0.62 for the true --rs-surface ground (#161b22, the design
    mockups' target). Under this skin the ground is --rs-surface: #171420 PLUS this file's own
    cream highlight two rules up — measured against the design's reference preview
-   (`.claude/skills/rockysurf-design/handoff/header-wash/header-wash.preview.html.txt`), 0.62
+   (`.agent-skills/rockysurf-design/handoff/header-wash/header-wash.preview.html.txt`), 0.62
    reads busier here than the target and leaves the brand mark's plate edge more visible, not
    less, so this drops it rather than raising it. Confirmed against the reference at 0.5. */
 [data-rs-skin='etched'] .app-header::before {

@@ -173,7 +173,7 @@ hr {
    notice. `mix-blend-mode: screen` against the opaque `--rs-surface` ground drops the
    painting's night to nothing and keeps only the lit pixels — that is what removes the
    rectangle, not the mask. This is a deliberate, one-off exception to "flat backgrounds, no
-   imagery beyond 40px pack tiles" (see `.claude/skills/rockysurf-design/README.md`); if it
+   imagery beyond 40px pack tiles" (see `.agent-skills/rockysurf-design/README.md`); if it
    spreads past this one bar, the rule is gone rather than bent.
 
    The header background MUST stay opaque (screen composites against whatever is behind it) —

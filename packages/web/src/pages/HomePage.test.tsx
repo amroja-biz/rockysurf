@@ -95,7 +95,7 @@ describe('HomePage', () => {
     renderHome()
     expect(
       screen.getByRole('link', { name: 'create-surge-pack' }).getAttribute('href'),
-    ).toBe(repoDocUrl('.claude/skills/create-surge-pack/SKILL.md'))
+    ).toBe(repoDocUrl('.agent-skills/create-surge-pack/SKILL.md'))
     expect(screen.getByRole('link', { name: 'Rocky Surf Shop' }).getAttribute('href')).toBe(
       SHOP_URL,
     )
