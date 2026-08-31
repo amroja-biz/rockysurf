@@ -77,3 +77,7 @@
   a create twice — SKU restrictions, then per-family core quota — and a fresh subscription has most
   families at zero; read `locations/usages` (case-insensitive family join), show the reason, and
   never treat an unreadable quota as no quota.
+- [branch-protection-and-pr-workflow](2026-08-31-branch-protection-and-pr-workflow.md): Main is PR-only
+  on rockysurf and rockysurf-shop (protect-main rulesets); the exact branch→PR→auto-merge commands,
+  which four checks are required and why path-filtered jobs must never be, and the shop index bot's
+  deploy-key bypass.
