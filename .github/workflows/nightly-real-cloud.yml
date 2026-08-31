@@ -179,11 +179,19 @@ name: Nightly real-cloud lifecycle
 #   ./deploy/azure/setup-nightly.sh --dry-run     # changes nothing; prints every command first
 #   ./deploy/azure/setup-nightly.sh
 #
-# It makes the resource group, both app registrations and their service principals, a federated
-# credential on each, deploys deploy/azure/role.bicep UNMODIFIED for the provider principal and
+# It makes the resource group, both app registrations and their service principals, TWO federated
+# credentials on each (GitHub writes this repository's name two ways — a classic form and one
+# carrying numeric ids — and Entra matches a subject exactly, so one credential covers only one of
+# them), deploys deploy/azure/role.bicep UNMODIFIED for the provider principal and
 # deploy/azure/nightly-sweep-role.bicep for the sweep one, reads the core quota and says in plain
-# words what to click if it is zero, and sets the five variables. Every step checks before it
-# creates, so running it twice is safe. `./deploy/azure/teardown-nightly.sh` undoes all of it.
+# words what to click if it is zero, reads back what Entra actually accepts and stops if it is not
+# both, and sets the five variables. Every step checks before it creates, so running it twice is
+# safe. `./deploy/azure/teardown-nightly.sh` undoes all of it.
+#
+# IF A RUN IS EVER REFUSED WITH `AADSTS700213: No matching federated identity record found`, that
+# is this exact gap (gh issue #270, and gh pull request #263 before it): run the setup script
+# again and read its step 10, which prints what each identity accepts beside what GitHub will
+# present.
 #
 # THE COST of this leg, on the same basis as the numbers in docs/providers/gcp.md: two B-series
 # VMs for roughly five to ten minutes each, billed per minute — about one to two cents a night on
