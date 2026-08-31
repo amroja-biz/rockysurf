@@ -225,8 +225,14 @@ export interface ServerRoutesDeps {
    * configuration says nothing rather than saying "none" — which are different claims.
    */
   githubTokenScopes?: (repositories: readonly string[]) => string[]
-  /** Whether the instance-wide `github.pat` — which every box carries — is configured at all. */
-  carriesFallbackToken?: boolean
+  /**
+   * Whether the instance-wide `github.pat` — which every box carries — is configured at all.
+   *
+   * A function since issue #264, for the reason the two hooks above are: the answer lives in the
+   * config file, which is now re-read on save, so a token pasted a moment ago has to be visible
+   * here without a restart.
+   */
+  carriesFallbackToken?: () => boolean
   /**
    * The offering ids this installation permits on a given cloud — `providers.<cloud>.sizes`
    * (rockysurf-j10e). `undefined` for a provider with no allowlist, which offers everything.
@@ -357,7 +363,7 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * behalf.
      */
     githubTokenScopes: deps.githubTokenScopes?.(repos),
-    carriesFallbackToken: deps.carriesFallbackToken,
+    carriesFallbackToken: deps.carriesFallbackToken?.(),
     sshUser: row.sshUser,
     // Absent when it is 22, so every existing client keeps rendering `ssh user@host` unchanged
     // and only a host that really is somewhere else grows a `-p` (ADR-0003, E13).

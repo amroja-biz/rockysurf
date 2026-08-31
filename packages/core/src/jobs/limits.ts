@@ -3,7 +3,7 @@ import type { Db } from '../db/client.js'
 import { getSetting, setSetting } from '../db/repositories/settings.js'
 import { isBillingRow } from '../db/repositories/servers.js'
 import { servers } from '../db/schema.js'
-import type { LimitsConfig } from '../config/index.js'
+import { readLive, type Live, type LimitsConfig } from '../config/index.js'
 
 /**
  * Limit enforcement: concurrency, create rate, and the spend cap.
@@ -83,11 +83,16 @@ const baselineKey = (month: string) => `jobs.spend.baseline.${month}`
  * The estimate is clamped at zero: rows can be deleted, which would otherwise make the total
  * go backwards and the month look negative.
  */
-export function createSpendTracker(db: Db, limits: LimitsConfig): SpendTracker {
+export function createSpendTracker(db: Db, configured: Live<LimitsConfig>): SpendTracker {
+  /**
+   * Read per use, not captured (issue #264): a spend cap saved on the Settings page has to
+   * govern the next accrual and the next create, not the next restart.
+   */
+  const limits = () => readLive(configured)
   let current: SpendSnapshot = {
     month: monthKey(new Date()),
     byCurrency: {},
-    ...(limits.spendCap ? { cap: limits.spendCap } : {}),
+    ...(limits().spendCap ? { cap: limits().spendCap } : {}),
     overCap: false,
     unpricedServers: 0,
     computedAt: new Date(0).toISOString(),
@@ -133,7 +138,7 @@ export function createSpendTracker(db: Db, limits: LimitsConfig): SpendTracker {
       byCurrency[currency] = Math.max(0, total - (baseline[currency] ?? 0))
     }
 
-    const cap = limits.spendCap
+    const cap = limits().spendCap
     const spentInCapCurrency = cap ? (byCurrency[cap.currency] ?? 0) : 0
 
     current = {
@@ -160,7 +165,8 @@ export function createSpendTracker(db: Db, limits: LimitsConfig): SpendTracker {
 
 export interface LimitsEnforcerDeps {
   db: Db
-  limits: LimitsConfig
+  /** Read per check, so a limit saved on the Settings page binds the very next create (#264). */
+  limits: Live<LimitsConfig>
   spend: SpendTracker
   /** Injected in tests. */
   now?: () => Date
@@ -183,10 +189,13 @@ function createsInLastHour(db: Db, userId: string, now: Date): number {
  * the limit they actually hit rather than whichever was checked first.
  */
 export function createLimitsEnforcer(deps: LimitsEnforcerDeps) {
-  const { db, limits, spend } = deps
+  const { db, spend } = deps
   const now = deps.now ?? (() => new Date())
 
   return function checkLimits(input: { userId: string }, activeServers: number): void {
+    // Resolved per check, not per enforcer (issue #264): raising `limits.maxServers` on the
+    // settings page has to bind the create the operator makes immediately afterwards.
+    const limits = readLive(deps.limits)
     if (activeServers >= limits.maxServers) {
       throw new LimitExceededError(
         'max_servers',

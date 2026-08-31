@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_HASH_KEY } from './auth/admin.js'
 import { DataDirLockError, dataDirLockPath } from './boot/data-dir-lock.js'
 import { secretKeyPath } from './secrets/index.js'
+import { makeFakeProvider } from './providers/fake.js'
+import { ProviderRegistry } from './providers/registry.js'
 import { boot, type BootedApp, type BootOptions } from './server.js'
 
 /**
@@ -347,5 +349,106 @@ describe('boot', () => {
     expect(seen).toContain('booted')
 
     await reader.cancel()
+  })
+})
+
+/**
+ * A SAVE ON THE SETTINGS PAGE REACHES THIS PROCESS (issue #264).
+ *
+ * Driven through the whole boot path and the real HTTP route, because the claim is entirely
+ * about wiring: `settings/settings.test.ts` proves the route adopts the file, and this proves
+ * that the store it adopts into is the one `boot()` gave every route and the composition root.
+ * A unit test on either half would pass with the two disconnected.
+ */
+describe('settings reach the running process (issue #264)', () => {
+  const configFile = () => join(dir, 'rockysurf.config.yaml')
+
+  beforeEach(() => {
+    process.env[ADMIN_PASSWORD_ENV] = 'test-admin-password'
+  })
+
+  async function login(): Promise<string> {
+    const res = await booted!.app.request('/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'test-admin-password' }),
+    })
+    expect(res.status).toBe(200)
+    return ((await res.json()) as { token: string }).token
+  }
+
+  const save = (token: string, changes: unknown[]) =>
+    booted!.app.request('/api/v1/settings', {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ mtimeMs: statSync(configFile()).mtimeMs, changes }),
+    })
+
+  it('puts a saved value into force, where a route reading per request can see it', async () => {
+    writeConfig('limits:\n  maxServers: 3\n')
+    booted = await bootHere()
+    const token = await login()
+
+    expect((await save(token, [{ path: ['limits', 'maxServers'], value: 12 }])).status).toBe(200)
+    expect(booted.configStore.current().limits.maxServers).toBe(12)
+
+    // `/health` reads `config.providers` inside the handler, so it is the cheapest end-to-end
+    // witness that a route sees the file rather than the values this process booted on.
+    expect(await (await booted.app.request('/health')).json()).toMatchObject({ providers: [] })
+    // BYO needs no cloud credential; the schema does require it to name at least one machine,
+    // so the host and the switch travel together the way the page would send them.
+    const turnByoOn = [
+      { path: ['providers', 'byo', 'hosts', 0], value: { name: 'workshop', host: '10.0.0.9', user: 'admin' } },
+      { path: ['providers', 'byo', 'enabled'], value: true },
+    ]
+    expect((await save(token, turnByoOn)).status, await (await save(token, turnByoOn)).text()).toBe(200)
+    expect(await (await booted.app.request('/health')).json()).toMatchObject({ providers: ['byo'] })
+  })
+
+  /**
+   * THE PROVIDER REGISTRY IS RECOMPOSED, in place, by the composition root `boot()` was handed.
+   * The composer here stands in for `packages/rockysurf`'s: what is asserted is that it is
+   * called again with the new config, and only when the providers block actually moved.
+   */
+  it('recomposes the provider registry when the providers block changes', async () => {
+    writeConfig()
+    const composedWith: boolean[] = []
+    booted = await boot({
+      argv: [],
+      cwd: dir,
+      env: {},
+      listen: false,
+      announce: () => {},
+      providers: ({ config }) => {
+        composedWith.push(config.providers.byo.enabled)
+        return new ProviderRegistry(
+          config.providers.byo.enabled ? [makeFakeProvider({ bootMs: 1, terminateMs: 1 })] : [],
+        )
+      },
+    })
+    expect(composedWith).toEqual([false])
+
+    const token = await login()
+    const res = await save(token, [
+      { path: ['providers', 'byo', 'hosts', 0], value: { name: 'workshop', host: '10.0.0.9', user: 'admin' } },
+      { path: ['providers', 'byo', 'enabled'], value: true },
+    ])
+    expect(res.status, await res.text()).toBe(200)
+    expect(composedWith).toEqual([false, true])
+
+    // And a save that leaves the providers block alone does not rebuild five cloud clients.
+    expect((await save(token, [{ path: ['limits', 'maxServers'], value: 9 }])).status).toBe(200)
+    expect(composedWith).toEqual([false, true])
+  })
+
+  it('keeps serving on the port it bound, whatever the file is saved as', async () => {
+    writeConfig('  port: 4602\n')
+    booted = await bootHere()
+    const token = await login()
+
+    expect((await save(token, [{ path: ['server', 'port'], value: 4700 }])).status).toBe(200)
+    expect(booted.port).toBe(4602)
+    expect(booted.configStore.current().server.port).toBe(4602)
+    expect(readFileSync(configFile(), 'utf8')).toContain('port: 4700')
   })
 })

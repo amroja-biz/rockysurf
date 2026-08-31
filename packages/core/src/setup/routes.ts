@@ -2,7 +2,7 @@ import { isProviderError } from '@rockysurf/provider-sdk'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppEnv } from '../app.js'
-import type { Config } from '../config/index.js'
+import { readLive, type Config, type Live } from '../config/index.js'
 import { badRequest, conflict, failure, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import type { ProviderRegistry } from '../providers/registry.js'
@@ -22,7 +22,8 @@ import { computeSetupState } from './state.js'
  */
 
 export interface SetupRoutesDeps {
-  config: Config
+  /** Read per request since #264, so the wizard reflects a save without a restart. */
+  config: Live<Config>
   registry: ProviderRegistry
   /** Absent when core has no encrypted store; the wizard then reports credentials read-only. */
   secrets?: SecretsStore
@@ -38,7 +39,7 @@ export function createSetupRoutes(deps: SetupRoutesDeps): Hono<AppEnv> {
   const routes = new Hono<AppEnv>()
   const state = () =>
     computeSetupState({
-      config: deps.config,
+      config: readLive(deps.config),
       registry: deps.registry,
       ...(deps.secrets ? { secrets: deps.secrets } : {}),
       ...(deps.env ? { env: deps.env } : {}),
