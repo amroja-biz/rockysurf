@@ -965,12 +965,69 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
  * comment written above it, which is the one place a GUI save cannot preserve what the file
  * said. That is inherent — the comment described the thing being removed — and it is stated
  * in the UI rather than worked around.
+ *
+ * `blank` IS PART OF THE INVENTORY, and it is here rather than in the SPA because it is a claim
+ * about the SCHEMA (issue #302 follow-up). A new entry has to be a value `configSchema` accepts
+ * the moment Add writes it — `ssh.keys` requires a non-empty `name`, `registry.sources` a real
+ * https URL — and the page cannot know that. Declaring it here is what lets the page draw a
+ * list it has never heard of: `fields.test.ts` parses every one of these through the schema, so
+ * a blank that would be refused on Add fails the build instead of the operator's save.
+ *
+ * `labelField` names the item field that titles a card — the one an operator recognises the
+ * entry by. Defaults to the first of `itemFields`.
  */
-export const SETTINGS_LISTS: readonly { path: string; itemFields: readonly string[] }[] = [
-  { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
-  { path: 'ssh.keys', itemFields: ['name', 'publicKey'] },
-  { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
-  { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
+export interface ListSpec {
+  path: string
+  itemFields: readonly string[]
+  /**
+   * A new entry, as a value the config schema accepts — and the page's whole ability to draw an
+   * Add button for a list it has never heard of.
+   *
+   * ABSENT means this list is not added to generically, and `github.tokens` is the only one:
+   * every shape of entry it takes needs a token, a token cannot be invented as a placeholder,
+   * and it has a bespoke card that collects one before writing anything. A list with no blank
+   * still renders its entries generically; it just does not offer Add.
+   */
+  blank?: Readonly<Record<string, string | number | boolean>>
+  labelField?: string
+  /** Shown in place of the list when it is empty. */
+  empty: string
+}
+
+export const SETTINGS_LISTS: readonly ListSpec[] = [
+  {
+    path: 'github.tokens',
+    itemFields: ['host', 'owner', 'repo', 'pat'],
+    labelField: 'owner',
+    empty: 'None yet. The token above covers everything unmatched; add one to narrow a token to an account or a repository.',
+  },
+  {
+    path: 'ssh.keys',
+    itemFields: ['name', 'publicKey'],
+    // `name` cannot be blank — it is how the key is chosen on the New Server page, and the
+    // schema refuses an empty one. `publicKey` CAN be, and means "added, not yet filled in".
+    blank: { name: 'my-laptop', publicKey: '' },
+    labelField: 'name',
+    empty:
+      'None yet. Add one and the New Server page will offer it — you can still paste a key there ' +
+      'without saving it here.',
+  },
+  {
+    path: 'providers.byo.hosts',
+    itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
+    blank: { name: 'change-me', host: '10.0.0.1' },
+    labelField: 'name',
+    empty: 'None yet. Enabling this provider requires at least one host.',
+  },
+  {
+    path: 'registry.sources',
+    itemFields: ['name', 'url', 'trust'],
+    blank: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+    labelField: 'name',
+    empty:
+      "None yet. Add one to browse somebody else's packs — or your own, published as a single " +
+      'YAML file at an https URL.',
+  },
 ] as const
 
 /**
