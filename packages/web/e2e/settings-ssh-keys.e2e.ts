@@ -121,15 +121,30 @@ test('a saved key can be removed, and the file loses it', async ({ page, control
  * `test.fail()` line, converting the reproduction into an ordinary regression test. Deleting
  * that one line is the entire follow-up.
  *
- * WHAT IS BROKEN, on the commit this was written against:
+ * WHAT IS BROKEN, on the commit this was written against. `listSection` appends a blank entry
+ * carrying a CONSTANT name, and computes ONE `blocked` flag from "does this list have any
+ * pending edit" which disables Add and Remove together. That is two defects, and they are
+ * asserted here in order of how objectively they fail rather than in the order a hand meets
+ * them:
  *
- *   `listSection` computes ONE `blocked` flag from "does this list have any pending edit" and
- *   uses it to disable Add and Remove together, and the blank entry it appends carries a
- *   constant name. So the moment you type a name into the key you just added, the buttons
- *   beside it go dead with "Save or discard your other changes to this list first" — and a
- *   second Add is refused outright by the schema, because the two blanks share a name.
+ *   1. A SECOND `Add` IS REFUSED OUTRIGHT. Both blanks are born with the same name, the schema
+ *      rejects the pair with `two saved SSH keys share a name`, the write comes back 400, and
+ *      the list still holds exactly one entry. Nothing on screen says so. This is the hardest
+ *      failure to argue with — a count, not a matter of style — so it is asserted first, and it
+ *      is therefore the one that actually runs while the bug is present.
+ *   2. AND THE CONTROLS BESIDE A VALID EDIT GO DEAD. Type a name into the entry you just added
+ *      and Add and Remove are disabled with "Save or discard your other changes to this list
+ *      first" — for renaming the key you are in the middle of adding.
  *
- * Both halves are asserted, in the order an operator meets them.
+ * The footer `Save to the file` button is NOT one of the defects, which is worth writing down
+ * because the issue's own wording points at it: no valid single edit was ever found that
+ * disabled it, either by driving the page here or by the author of the fix. The dead controls
+ * are the list's own Add and Remove.
+ *
+ * THE SAME TRAP IS LATENT IN `registry.sources` AND `providers.byo.hosts` — same uniqueness
+ * rule, same constant placeholder. #311 numbers new entries generically in `listSection`, so
+ * one fix covers all three; only this list has a test, and the other two are worth a pass if
+ * this suite is ever widened.
  */
 test('adding a second key is not blocked by an edit to the first', async ({ page, controlPlane }) => {
   test.fail()
@@ -140,17 +155,19 @@ test('adding a second key is not blocked by an edit to the first', async ({ page
   const entries = panel.locator('.settings-entry')
   const before = await entries.count()
 
-  /* One: a valid, single, in-progress edit must not disable the controls next to it. Renaming
-     the entry you have just added is the most ordinary thing there is to do in this list. */
+  /* One: two Adds make two entries. Two machines is the reason the list is a list at all — an
+     installation that can hold exactly one saved key did not need one. Asserted on the count
+     rendered, because the refusal behind this is a 400 the page never mentions. */
   await add.click()
   await expect(entries).toHaveCount(before + 1)
+  await add.click()
+  await expect(entries).toHaveCount(before + 2)
+
+  /* Two: and naming one of them does not disable the controls beside it. */
   await page.locator(`#ssh\\.keys\\.${before}\\.name`).fill('desktop')
   await expect(add).toBeEnabled()
 
-  /* Two: and a second key can actually be added. Two machines is the reason the list is a list;
-     an installation that can hold exactly one saved key did not need one. */
-  await add.click()
-  await expect(entries).toHaveCount(before + 2)
+  /* Three: the pair survives the round trip to the file, which is the point of all of it. */
   await page.locator(`#ssh\\.keys\\.${before + 1}\\.name`).fill('yubikey')
   await page.locator(`#ssh\\.keys\\.${before + 1}\\.publicKey`).fill(PUBLIC_KEY)
   await page.getByRole('button', { name: 'Save to the file' }).click()
