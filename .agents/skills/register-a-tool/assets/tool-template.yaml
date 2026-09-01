@@ -1,0 +1,102 @@
+# TEMPLATE — a Rocky Surf TOOL FILE. Copy this, fill it in, and import it under Tools, or paste
+# the tool into a packs/*.yaml file in a checkout.
+#
+# This is NOT a pack file. A pack file has a `pack:` key and describes a whole box; this
+# describes one installable thing that any number of packs can reference by id. Importing a pack
+# file here is refused with a message telling you which door to use.
+#
+# Delete the comments that only explain the format. KEEP the ones that record a DECISION — why a
+# version is pinned, why something is unpinned, why a flag is passed. Those are what a reviewer
+# and your future self actually need.
+#
+# Before naming anything, see what is taken — toolId must be unique across the installation:
+#   grep -h 'toolId:' packs/*.yaml | sort -u        # in a checkout
+#                                                   # or read the Tools page in a running one
+#
+# Validate after every edit, in ~2s and with no Docker (from a checkout root):
+#   pnpm --filter @rockysurf/core exec vitest run src/packs/
+# Then PROVE it — see references/verifying.md for the wrapper-pack recipe:
+#   rockysurf pack check <dir> --pack <wrapper-id> --arch arm64
+#
+# Two things that FAIL the file rather than warning you: a script containing `apt-get install`
+# must contain the literal string `apt-updated`, and a `runAs: rocky` script may not contain the
+# word for privilege escalation ANYWHERE, comments included.
+version: 1
+
+tools:
+  # ------------------------------------------------------------------------------------------
+  # Bands: 10 apt packages · 20 language runtimes · 30 needs a runtime · 35 desktop · 40 agents
+  # 50 needs an agent. Leave gaps of 10. installOrder is ORDERING, NOT DEPENDENCY — equal values
+  # break ties by toolId so an interrupted install resumes against the same plan. If you need
+  # something, either outrank it and accept that is all you get, or install it yourself.
+  # ------------------------------------------------------------------------------------------
+  - toolId: my-tool               # unique across the installation; lowercase, single hyphens
+    name: My Tool
+    description: One line, shown next to the name in the UI
+    category: base                # 'agent' for an AI coding agent, 'base' for anything else
+    url: https://example.com      # the tool's home page — the format requires one
+    installOrder: 40
+    runAs: root                   # 'root' system-wide, 'rocky' for a per-user install in $HOME
+    bootstrap: false              # ALWAYS false — true is reserved for the runtime's own steps
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+
+      # apt: the shared stamp refreshes the package list once per box and keeps the harness's
+      # second run a genuine no-op. Required — the loader test looks for this literal string.
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      apt-get install -y ca-certificates
+
+      # Downloading a binary? Branch on $ARCH — never write x86_64/aarch64 into a URL — and fail
+      # loudly on anything else. Delete this block if you install from apt or npm.
+      case "$ARCH" in
+        amd64) tool_arch=amd64 ;;
+        arm64) tool_arch=arm64 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      # A release asset downloaded by URL is PINNED to a tag, ideally with a sha256 — the only
+      # endpoint that would tell you what "latest" is here is the rate-limited GitHub API, and a
+      # tool that calls it breaks for everyone the moment the quota runs out. Note beside the pin
+      # where a bump comes from. (A tool on a registry — npm, pipx — is the other case entirely:
+      # install it UNVERSIONED and delete this whole block.)
+      TOOL_VERSION=1.2.3
+      if [ "$(my-tool --version 2>/dev/null | awk 'NR==1{print $2}')" != "$TOOL_VERSION" ]; then
+        tmp=$(mktemp)
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://example.com/releases/v${TOOL_VERSION}/my-tool-linux-${tool_arch}" -o "$tmp"
+        install -m 0755 "$tmp" /usr/local/bin/my-tool
+        rm -f "$tmp"
+      fi
+
+      # Every script ends by proving the install worked — and verifies THE NAME THE USER WILL
+      # TYPE. Installers exit 0 after half-working, and this is how you find out.
+      my-tool --version >/dev/null
+
+    # Optional. Per-server configuration, run after every tool's installScript, as the same
+    # runAs. This is where $REPOS work belongs.
+    # setupScript: |
+    #   set -euo pipefail
+    #   for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
+    #     [ -n "$repo" ] || continue
+    #     dir="$HOME/$(basename "$repo" .git)"
+    #     [ -d "$dir" ] || continue
+    #     (cd "$dir" && my-tool index)
+    #   done
+
+  # A per-user tool is a SECOND tool, not a privilege escalation. Delete if you do not need one.
+  # - toolId: my-tool-user
+  #   name: My Tool (user setup)
+  #   description: Per-user configuration for My Tool
+  #   category: base
+  #   url: https://example.com
+  #   installOrder: 45
+  #   runAs: rocky
+  #   bootstrap: false
+  #   enabled: true
+  #   installScript: |
+  #     set -euo pipefail
+  #     # Appends must be guarded, or the harness's byte-identical .bashrc check fails on run 2.
+  #     touch "$HOME/.bashrc"
+  #     grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"

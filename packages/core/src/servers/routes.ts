@@ -269,6 +269,26 @@ export interface ServerRoutesDeps {
    * describes.
    */
   packInputs?: (packId: string) => readonly PackInput[] | undefined
+  /**
+   * Whether an explicit `tools` selection names tools that exist and are enabled (issue #289).
+   *
+   * A FUNCTION over the ids, on the same discipline as `packInputs` and `offeringAllowlist`
+   * above, returning the operator-facing sentence or `undefined` for "fine".
+   *
+   * This exists because `tools` was the one create-time field nothing checked. The plan
+   * resolver drops an id it cannot find and skips a disabled one (`bootstrap/resolver.ts`), by
+   * design — a tool disabled after a server was created should stop being installed, not stop
+   * the server booting. But that leniency is about a plan RENDER, and it was also answering a
+   * fresh request: a create naming a misspelled tool launched a machine, charged for it, and
+   * quietly installed less than was asked for. Same doctrine as every other check here — fail
+   * before the money.
+   *
+   * Optional so an existing test that does not care wires nothing. `servers/routes.test.ts`
+   * drives the real `createApp` for this, not a hand-wired route, because a hook nothing
+   * supplies is exactly the failure `docs/memories/2026-08-21-whole-boot-wiring-tests.md`
+   * describes — the check would exist and never run.
+   */
+  checkTools?: (ids: string[]) => string | undefined
 }
 
 /**
@@ -603,6 +623,17 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
       ])
     }
     const userScript = userScriptBody ? { script: userScriptBody, runAs: body.userScriptRunAs ?? 'rocky' } : undefined
+
+    /**
+     * AN EXPLICIT TOOL SELECTION, checked on the same doctrine as everything below it
+     * (issue #289). `tools` overrides the pack's own list, so a typo in it is not a smaller
+     * box — it is a box missing the software the person asked for, discovered after the
+     * instance is running and billing.
+     */
+    if (body.tools?.length) {
+      const problem = deps.checkTools?.(body.tools)
+      if (problem) return badRequest(c, problem, [{ path: 'tools', message: problem }])
+    }
 
     /**
      * WHAT THE PACK ASKED FOR, checked against what arrived (issue #189, ADR-0013).

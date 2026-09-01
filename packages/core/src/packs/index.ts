@@ -8,7 +8,9 @@
 export {
   loadPacksFromDir,
   parsePackFile,
+  parseToolFile,
   renderPackFile,
+  renderToolFile,
   type LoadResult,
   type LoadedPack,
   type LoadedTool,
@@ -75,11 +77,13 @@ export {
   packInputValueSchema,
   packInputsSchema,
   packSchema,
+  toolFileSchema,
   toolSchema,
   type PackDefinition,
   type PackFile,
   type PackInput,
   type ToolDefinition,
+  type ToolFile,
 } from './schema.js'
 
 export {

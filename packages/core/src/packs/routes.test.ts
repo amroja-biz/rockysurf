@@ -646,3 +646,160 @@ describe('a pack that declares inputs (issue #189)', () => {
     expect(JSON.stringify((await json(res)).issues)).toMatch(/already exports/)
   })
 })
+
+/**
+ * Sharing ONE tool between installations (issue #289, ADR-0018).
+ *
+ * The pack export/import above shares a whole box. This shares the unit people actually trade:
+ * "here is how I install my linter." The tests that matter are the ones about what may NOT
+ * happen — a file-backed row overwritten, a pack file misread as a tool file, a URL fetched
+ * with nowhere to record where it had been.
+ */
+describe('tool export and import', () => {
+  const TOOL_YAML = [
+    'version: 1',
+    'tools:',
+    '  - toolId: acme-linter',
+    '    name: Acme Linter',
+    '    description: Lints the things',
+    '    category: base',
+    '    url: https://example.com/acme',
+    '    installOrder: 40',
+    '    runAs: root',
+    '    bootstrap: false',
+    '    enabled: true',
+    '    installScript: |',
+    '      set -euo pipefail',
+    '      acme --version >/dev/null',
+    '',
+  ].join('\n')
+
+  it('exports a personal tool as a downloadable tool file', async () => {
+    await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, auth())
+
+    const res = await send('GET', '/api/v1/admin/tools/acme-linter/export', undefined, auth())
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('application/yaml')
+    expect(res.headers.get('content-disposition')).toBe('attachment; filename="acme-linter.yaml"')
+
+    const text = await res.text()
+    expect(text).toContain('toolId: acme-linter')
+    expect(text).not.toContain('pack:')
+    // Provenance is this installation's fact about its own disk; it must not travel.
+    expect(text).not.toContain('sourceFile')
+    expect(text).not.toContain('alwaysInstall')
+  })
+
+  it('exports a file-backed tool too — those bytes are already public in the repository', async () => {
+    const res = await send('GET', '/api/v1/admin/tools/git/export', undefined, auth())
+    expect(res.status).toBe(200)
+    expect(await res.text()).not.toContain('sourceFile')
+  })
+
+  it('404s for a tool that does not exist', async () => {
+    expect((await send('GET', '/api/v1/admin/tools/nope/export', undefined, auth())).status).toBe(404)
+  })
+
+  it('imports a tool as personal — null sourceFile, so boot never touches it', async () => {
+    const res = await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, auth())
+    expect(res.status).toBe(201)
+
+    const tools = (await json(await send('GET', '/api/v1/admin/tools', undefined, auth()))) as any[]
+    const imported = tools.find((t) => t.toolId === 'acme-linter')
+    expect(imported.name).toBe('Acme Linter')
+    expect(imported.sourceFile).toBeUndefined()
+  })
+
+  it('round-trips across installations byte for byte', async () => {
+    await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, auth())
+    const exported = await (await send('GET', '/api/v1/admin/tools/acme-linter/export', undefined, auth())).text()
+
+    // A second installation, holding only the bytes.
+    const other = await startApp(packsDir)
+    const post = await other.app.app.request('/api/v1/admin/tools/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${other.token}` },
+      body: JSON.stringify({ yaml: exported }),
+    })
+    expect(post.status).toBe(201)
+
+    const reExported = await (
+      await other.app.app.request('/api/v1/admin/tools/acme-linter/export', {
+        headers: { authorization: `Bearer ${other.token}` },
+      })
+    ).text()
+    expect(reExported).toBe(exported)
+    other.db.close()
+  })
+
+  /**
+   * THE REFUSAL THAT MATTERS MOST. A file-backed row belongs to the boot reconcile (ADR-0004),
+   * so an import allowed to win here would be undone at the next restart — the operator would
+   * watch their tool "work" and then quietly revert. A 409 that explains itself beats that.
+   */
+  it('refuses to overwrite a tool that comes from a pack file', async () => {
+    const collide = TOOL_YAML.replace('acme-linter', 'git')
+    const res = await send('POST', '/api/v1/admin/tools/import', { yaml: collide }, auth())
+    expect(res.status).toBe(409)
+    const body = await json(res)
+    expect(body.code).toBe('conflict')
+    expect(body.error).toContain('git')
+    expect(body.error).toContain('pack file')
+
+    // And the shipped definition is untouched.
+    const tool = await json(await send('GET', '/api/v1/admin/tools/git', undefined, auth()))
+    expect(tool.name).not.toBe('Acme Linter')
+  })
+
+  it('replaces a personal tool of the same id, which is what re-importing an edit means', async () => {
+    await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, auth())
+    const edited = TOOL_YAML.replace('name: Acme Linter', 'name: Acme Linter 2')
+    expect((await send('POST', '/api/v1/admin/tools/import', { yaml: edited }, auth())).status).toBe(201)
+
+    const tool = await json(await send('GET', '/api/v1/admin/tools/acme-linter', undefined, auth()))
+    expect(tool.name).toBe('Acme Linter 2')
+  })
+
+  it('tells someone who pasted a pack file which door to use', async () => {
+    const packYaml = await (
+      await send('GET', '/api/v1/admin/surge-packs/open-code/export', undefined, auth())
+    ).text()
+    const res = await send('POST', '/api/v1/admin/tools/import', { yaml: packYaml }, auth())
+    expect(res.status).toBe(400)
+    expect(JSON.stringify((await json(res)).issues)).toContain('this is a pack file')
+  })
+
+  it('refuses bootstrap: true, which is the runtime’s to promise', async () => {
+    const res = await send(
+      'POST',
+      '/api/v1/admin/tools/import',
+      { yaml: TOOL_YAML.replace('bootstrap: false', 'bootstrap: true') },
+      auth(),
+    )
+    expect(res.status).toBe(400)
+    expect(JSON.stringify((await json(res)).issues)).toContain('reserved')
+  })
+
+  /**
+   * NO `url` ARM, deliberately. The `tools` table has no provenance columns, so a URL import
+   * would install root-running shell while being unable to say where it came from — the problem
+   * issue #88 fixed for packs. Adding those columns is its own change.
+   */
+  it('takes no url — a tool has nowhere to record where it came from', async () => {
+    const res = await send(
+      'POST',
+      '/api/v1/admin/tools/import',
+      { url: 'https://example.com/tool.yaml' },
+      auth(),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('requires admin', async () => {
+    const user = upsertUserByGithubId(opened.db, { githubId: 'gh:3', githubUsername: 'someone' })
+    const { token: userToken } = issueSession(opened.db, user.id)
+    const headers = { authorization: `Bearer ${userToken}` }
+    expect((await send('GET', '/api/v1/admin/tools/git/export', undefined, headers)).status).toBe(403)
+    expect((await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, headers)).status).toBe(403)
+  })
+})

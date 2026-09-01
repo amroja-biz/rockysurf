@@ -5,7 +5,7 @@ import { ensureLocalAdmin } from '../auth/admin.js'
 import { MemorySecretStore } from '../auth/secret-store.js'
 import { configSchema, type Config } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
-import { upsertPack } from '../db/repositories/packs.js'
+import { upsertPack, upsertTool } from '../db/repositories/packs.js'
 import { getServer } from '../db/repositories/servers.js'
 import { parseInstallPlan, PLAN_VERSION } from '../bootstrap/plan.js'
 import type { PackInput } from '../packs/schema.js'
@@ -957,5 +957,105 @@ describe('an environment the creator supplied', () => {
     expect(getServer(opened.db, serverId)!.environment).toBeNull()
     const body = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
     expect(body['environment']).toBeUndefined()
+  })
+})
+
+/**
+ * AN EXPLICIT TOOL SELECTION IS CHECKED BEFORE THE MONEY (issue #289).
+ *
+ * `tools` overrides the pack's own list, and until this change nothing validated it: the plan
+ * resolver drops an id it cannot find, so a typo launched and billed a machine that quietly
+ * installed less than was asked for. Driven through the real `createApp` for the reason
+ * `docs/memories/2026-08-21-whole-boot-wiring-tests.md` gives — the check only exists if
+ * composition supplies the `checkTools` hook.
+ */
+describe('an explicit tools selection', () => {
+  const PACK_ID = 'tooled'
+
+  const tool = (id: string, enabled = true) =>
+    upsertTool(opened.db, {
+      id,
+      name: `Tool ${id}`,
+      description: 'x',
+      category: 'base',
+      url: 'https://example.com',
+      installScript: 'set -euo pipefail\ntrue\n',
+      setupScript: null,
+      enabled,
+      installOrder: 40,
+      bootstrap: false,
+      runAs: 'root',
+      sourceFile: null,
+    })
+
+  beforeEach(() => {
+    tool('acme-linter')
+    tool('acme-disabled', false)
+    upsertPack(opened.db, {
+      id: PACK_ID,
+      name: 'Tooled',
+      tools: ['acme-linter'],
+      displayOrder: 1,
+      enabled: true,
+      requiresRepos: false,
+      requiresRdp: false,
+    })
+  })
+
+  const create = (tools: string[]) => post('/api/v1/servers', { ...CREATE, packId: PACK_ID, tools })
+
+  it('refuses a tool id that does not exist, naming it', async () => {
+    const res = await create(['acme-linter', 'nope'])
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['error']).toContain('nope')
+    expect(JSON.stringify(body['issues'])).toContain('tools')
+  })
+
+  it('refuses a disabled tool, because disabling one should stop it being installed', async () => {
+    const res = await create(['acme-disabled'])
+    expect(res.status).toBe(400)
+    expect((await res.json()) as Record<string, unknown>).toHaveProperty('error')
+  })
+
+  it('refuses before the provider is touched — no instance, no charge', async () => {
+    const before = fake.provisionCalls
+    await create(['nope'])
+    expect(fake.provisionCalls).toBe(before)
+  })
+
+  it('accepts a selection that names real, enabled tools', async () => {
+    expect((await create(['acme-linter'])).status).toBe(201)
+  })
+
+  /**
+   * END TO END, the path issue #289 exists to serve: a tool registered on this installation
+   * joins a pack, and the plan a create snapshots names its step in the right band. This is
+   * what makes "registering a tool" mean anything — the ONLY route to a box is through a pack
+   * (owner ruling, issue #295).
+   */
+  it('puts a registered tool into the snapshotted plan as its own step', async () => {
+    tool('acme-extra')
+    upsertPack(opened.db, {
+      id: PACK_ID,
+      name: 'Tooled',
+      tools: ['acme-linter', 'acme-extra'],
+      displayOrder: 1,
+      enabled: true,
+      requiresRepos: false,
+      requiresRdp: false,
+    })
+
+    const res = await post('/api/v1/servers', { ...CREATE, packId: PACK_ID })
+    expect(res.status).toBe(201)
+    const { serverId } = (await res.json()) as { serverId: string }
+
+    const plan = parseInstallPlan(JSON.parse(getServer(opened.db, serverId)!.installPlan!))
+    const ids = plan.steps.map((s) => s.id)
+    expect(ids).toContain('tool:acme-linter')
+    expect(ids).toContain('tool:acme-extra')
+    // installOrder 40 for both, so they tie and break by toolId — the determinism guarantee
+    // an interrupted install resumes against.
+    expect(ids.indexOf('tool:acme-extra')).toBeLessThan(ids.indexOf('tool:acme-linter'))
   })
 })

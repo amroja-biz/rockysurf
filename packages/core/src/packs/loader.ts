@@ -1,7 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { packFileSchema, type PackDefinition, type PackFile, type ToolDefinition } from './schema.js'
+import {
+  packFileSchema,
+  toolFileSchema,
+  type PackDefinition,
+  type PackFile,
+  type ToolDefinition,
+  type ToolFile,
+} from './schema.js'
 
 /**
  * Loading `packs/*.yaml`.
@@ -166,6 +173,92 @@ export function renderPackFile(pack: PackDefinition, tools: ToolDefinition[]): s
     tools: [...tools]
       .sort((a, b) => a.installOrder - b.installOrder || a.toolId.localeCompare(b.toolId))
       .map(strip),
+  }
+  return stringifyYaml(file, { lineWidth: 100, blockQuote: 'literal' })
+}
+
+/**
+ * Parse and validate one TOOL file's text (issue #289, ADR-0018). Pure — no filesystem.
+ *
+ * Deliberately not a variant of `parsePackFile`. A tool file has no `packId`, so the filename
+ * check does not apply, and it has no cross-file references to resolve — standing alone is the
+ * whole point of the format.
+ */
+export function parseToolFile(fileName: string, text: string): { file?: ToolFile; issues: PackIssue[] } {
+  let raw: unknown
+  try {
+    raw = parseYaml(text)
+  } catch (err) {
+    return { issues: [{ file: fileName, message: `not valid YAML: ${(err as Error).message}` }] }
+  }
+
+  /**
+   * A PACK FILE PASTED INTO THE TOOL IMPORT IS THE LIKELIEST MISTAKE HERE, and `strictObject`
+   * would answer it with `Unrecognized key: "pack"` — true, and useless. The two formats are
+   * siblings that look alike; the person has the right file and the wrong door, and the only
+   * thing they need told is which door.
+   */
+  if (raw !== null && typeof raw === 'object' && 'pack' in raw) {
+    return {
+      issues: [
+        {
+          file: fileName,
+          message: 'this is a pack file, not a tool file — import it under Surge Packs instead',
+        },
+      ],
+    }
+  }
+
+  const parsed = toolFileSchema.safeParse(raw)
+  if (!parsed.success) {
+    return {
+      issues: parsed.error.issues.map((issue) => ({
+        file: fileName,
+        message: `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`,
+      })),
+    }
+  }
+
+  const issues: PackIssue[] = []
+  const seen = new Set<string>()
+  for (const tool of parsed.data.tools) {
+    if (seen.has(tool.toolId)) issues.push({ file: fileName, message: `duplicate toolId "${tool.toolId}"` })
+    seen.add(tool.toolId)
+    /**
+     * The one field the shared format CARRIES but a tool file may not USE. It stays in the
+     * schema so a tool moves between the two formats unchanged; `true` is refused here because
+     * those steps belong to the runtime, not to anything a person imports. Same words as
+     * `lint.ts`'s reserved-field rule, so a pack author and an importer are told the same thing.
+     */
+    if (tool.bootstrap) {
+      issues.push({
+        file: fileName,
+        message:
+          `tool "${tool.toolId}" sets bootstrap: true, which is reserved for the tools the ` +
+          'runtime guarantees before any plan runs. Set it to false',
+      })
+    }
+  }
+
+  return issues.length > 0 ? { issues } : { file: parsed.data, issues }
+}
+
+/**
+ * Render tool definitions to a shareable tool file.
+ *
+ * Same round-trip contract as `renderPackFile`, and `sourceFile` is stripped for the same
+ * reason: it is provenance THIS installation attached, it means nothing on anybody else's
+ * machine, and the strict schema rejects a file carrying it.
+ */
+export function renderToolFile(tools: ToolDefinition[]): string {
+  const file: ToolFile = {
+    version: 1,
+    tools: [...tools]
+      .sort((a, b) => a.installOrder - b.installOrder || a.toolId.localeCompare(b.toolId))
+      .map((tool) => {
+        const { sourceFile: _dropped, ...rest } = tool as ToolDefinition & { sourceFile?: string }
+        return stripUndefined(rest) as ToolDefinition
+      }),
   }
   return stringifyYaml(file, { lineWidth: 100, blockQuote: 'literal' })
 }

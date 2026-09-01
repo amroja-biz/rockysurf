@@ -7,7 +7,7 @@ import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { createPreferenceReader, type Config, type ConfigStore } from './config/index.js'
 import type { Db } from './db/client.js'
-import { getPack } from './db/repositories/packs.js'
+import { getPack, listTools } from './db/repositories/packs.js'
 import { getUserByGithubUsername } from './db/repositories/users.js'
 import type { ServerRow, Session, User } from './db/schema.js'
 import { ADMIN_PASSWORD_HASH_KEY, LOCAL_ADMIN_USERNAME } from './auth/admin.js'
@@ -499,6 +499,21 @@ export function createApp(deps: AppDeps): CreatedApp {
        * rows.
        */
       packInputs: (packId) => getPack(db, packId)?.inputs,
+      /**
+       * The same check the admin pack routes apply to a pack's tool list, applied to a create
+       * request's explicit `tools` (issue #289) — one sentence for one mistake, wherever the
+       * list was typed.
+       */
+      checkTools: (ids) => {
+        const found = new Map(listTools(db).map((t) => [t.id, t]))
+        const missing = ids.filter((id) => !found.has(id))
+        if (missing.length > 0) return `Tools not found: ${missing.join(', ')}`
+        const disabled = ids.map((id) => found.get(id)!).filter((t) => !t.enabled)
+        if (disabled.length > 0) {
+          return `Cannot include disabled tools: ${disabled.map((t) => t.name).join(', ')}`
+        }
+        return undefined
+      },
       /*
        * `providers.<cloud>.sizes`, finally read by something (rockysurf-j10e).
        *

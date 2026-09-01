@@ -1182,6 +1182,27 @@ export async function deleteAdminSurgePack(packId: string): Promise<void> {
   return request<void>(`/admin/surge-packs/${packId}`, { method: 'DELETE' })
 }
 
+/** The rendered YAML for ONE tool, as the tool export route returns it (issue #289). */
+export async function exportToolYaml(toolId: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/admin/tools/${toolId}/export`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    credentials: 'include',
+  })
+  if (!response.ok) throw new ApiError(response.status, response.statusText)
+  return response.text()
+}
+
+/**
+ * Import tools from a pasted or uploaded tool file.
+ *
+ * NO URL ARM, unlike `importSurgePack` above — and that is the point rather than an omission.
+ * A pack records where a URL import came from; the tools table has no provenance columns, so a
+ * URL import would install root-running shell while being unable to say where it had been.
+ */
+export async function importTools(yaml: string): Promise<AdminTool[]> {
+  return request<AdminTool[]>('/admin/tools/import', { method: 'POST', body: JSON.stringify({ yaml }) })
+}
+
 /* --------------------------------------------------------------------------- pack shop */
 
 /**

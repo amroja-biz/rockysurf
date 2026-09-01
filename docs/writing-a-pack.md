@@ -28,6 +28,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
   - [`inputs` — what your pack asks the user for](#inputs--what-your-pack-asks-the-user-for)
   - [Building on an existing pack](#building-on-an-existing-pack)
 - [A complete pack](#a-complete-pack)
+- [Sharing a single tool](#sharing-a-single-tool)
 - [The CI smoke test](#the-ci-smoke-test)
 - [Checklist before you open a pull request](#checklist-before-you-open-a-pull-request)
 - [Where these rules come from](#where-these-rules-come-from)
@@ -1193,6 +1194,48 @@ su - rocky -c 'ARCH=arm64 DEBIAN_FRONTEND=noninteractive bash /work/my-install-s
 ```
 
 If that command needs `sudo`, your `runAs` is wrong. See rule 4.
+
+---
+
+## Sharing a single tool
+
+A pack describes a whole box. Sometimes the thing worth sharing is one tool — "here is how I
+install my linter" — and for that there is a second format, a **tool file** (ADR-0018):
+
+```yaml
+version: 1
+tools:
+  - toolId: my-tool
+    ...            # exactly the fields a pack file's `tools:` entries take
+```
+
+It is `version: 1` and a list of tools, with no `pack:` key. The tool entries reuse the *same*
+schema a pack file uses, so a tool moves between the two formats as a copy rather than a
+translation — paste it straight across in either direction.
+
+**Export** any tool from the Tools page and you get `<toolId>.yaml`. `sourceFile` is stripped:
+which `packs/*.yaml` a row came from is one installation's fact about its own disk. **Import**
+takes the file back on any installation, where it becomes a Personal row with a `NULL`
+`sourceFile` that boot never overwrites and never restores.
+
+Three refusals worth knowing before they surprise you:
+
+- A **pack file** pasted into the tool import is refused with a message naming the right door.
+  The formats look alike and this is the common mistake.
+- An id a **file-backed tool** already owns is refused rather than overwritten — the boot
+  reconcile owns those rows, so a win here would be silently undone at the next restart.
+- An **unknown key** is an error, not a value quietly dropped. A dropped key is a promise the
+  file made and the installation did not keep.
+
+There is **no import-from-a-URL** for tools, unlike packs. A pack records where a URL import came
+from; the `tools` table has no provenance columns, so a URL import would install root-privileged
+shell while being unable to say anything true about its origin. Send the file.
+
+A tool file is for *sharing*, not for *deploying*: a tool reaches a box only by being listed in a
+pack. Registering one makes it available to put in a pack; it installs nothing on its own.
+
+The `register-a-tool` agent skill walks an agent through all of this, including how to prove a
+single tool in the real Docker harness by generating a throwaway wrapper pack.
 
 ---
 

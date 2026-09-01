@@ -1,6 +1,6 @@
 ---
 name: create-surge-pack
-description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "add ripgrep to the ai-coding-agents pack", "extend the opencode pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, extending a pack without breaking it, and installing and sharing the finished pack.
+description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "add ripgrep to the ai-coding-agents pack", "extend the opencode pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, extending a pack without breaking it, and installing and sharing the finished pack. NOT for registering ONE tool on its own — a tool reusable across packs, or exported as a tool file to send someone, is `register-a-tool`; come here for a whole box, go there for a single tool.
 ---
 
 # Create a Surge Pack
@@ -63,6 +63,12 @@ exists get modified, or does it stay exactly as it is?**
 | their own variant — extra tooling on top of a pack that already works; the original stays in the picker, untouched | **Derive** (the default) | exactly one new file, `packs/<new-id>.yaml` |
 | everyone who already uses pack X to get the new tool too, and X is theirs to change | **Amend** | the one existing `packs/X.yaml` |
 | a new tool that several packs should share | one definition in whichever file owns it, referenced from each pack's `tools:` list | the owning file, plus each pack's `tools:` list |
+
+**Adding one tool that several packs should share?** The tool itself — the interview, the script,
+proving it, and exporting it as a file you can send someone — is
+[`register-a-tool`](../register-a-tool/SKILL.md). Come back here to define it in whichever pack
+file owns it and reference it from each pack's `tools:` list. A tool reaches a box only through a
+pack, so that second half is not optional.
 
 **Default to derive.** A derived pack cannot break anybody else's pack; an amend to a base file
 like `packs/ai-coding-agents.yaml` empties the entire pack picker at boot if it goes wrong (see
