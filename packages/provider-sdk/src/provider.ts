@@ -3,6 +3,7 @@ import type { InstanceView } from './instance.js'
 import type { ManagedResource } from './managed.js'
 import type { Offering } from './offering.js'
 import type { ProvisionSpec } from './provision.js'
+import type { SshAccessSyncResult } from './ssh-access.js'
 
 /**
  * A provider's opaque handle for one instance (ADR-0003, A1).
@@ -165,6 +166,30 @@ export interface ComputeProvider {
    * comes back on a DIFFERENT public IP, and core must re-read it afterwards.
    */
   start(data: ProviderData): Promise<void>
+
+  /**
+   * Bring the shared SSH-access object in line with this provider's own `sshAllowedCidr`, now,
+   * without provisioning anything.
+   *
+   * REQUIRED when `capabilities.managesSshAccess` is `true`, and absent otherwise — the one
+   * optional method on this interface (ADR-0021 amends ADR-0003 E11, whose own text invited
+   * exactly this: "Revisit if a second provider needs the same call." Three do).
+   *
+   * Takes no argument on purpose. The provider reads the config it was constructed with, which
+   * after a settings save is the config the operator just approved; handing it a list instead
+   * would let a caller push CIDRs the config file does not contain, which is the one thing
+   * `sshAllowedCidr` being written down is supposed to prevent.
+   *
+   * Implementations MUST:
+   * - never create the shared object — report `skipped` when it does not exist yet;
+   * - never delete it, and never delete-and-recreate it (ADR-0003 D1: it is `ownership: 'shared'`,
+   *   so removing it cuts SSH to every box in the account at once);
+   * - only remove entries they can prove they created, and `reported` everything else;
+   * - authorize what is missing BEFORE removing what is extra, so a failure part-way through
+   *   leaves the operator with more access than they had, never less;
+   * - own their own deadline, so one unreachable cloud cannot hang the caller.
+   */
+  syncSshAccess?(): Promise<SshAccessSyncResult>
 }
 
 /**

@@ -10,6 +10,8 @@ import {
   isProviderError,
   isRetryableProviderErrorCode,
   isTerminalInstanceState,
+  normalizeSshCidrs,
+  opensSshToTheInternet,
   PROVIDER_ERROR_CODES,
   ProviderError,
   RESOURCE_OWNERSHIPS,
@@ -474,5 +476,54 @@ function describeCode(code: ProviderErrorCode): string {
 describe('exhaustiveness', () => {
   it('every code is handled by a switch with a never-default', () => {
     for (const code of PROVIDER_ERROR_CODES) expect(describeCode(code)).toBeTruthy()
+  })
+})
+
+
+/**
+ * The one place three providers have to agree character-for-character (issue #304).
+ *
+ * The normalized list is diffed against what each cloud reports, so two providers disagreeing
+ * about whether ` 10.0.0.0/8 ` and `10.0.0.0/8` are the same entry would show up as a phantom
+ * change that never converges — a sync that reports "updated" forever.
+ */
+describe('normalizeSshCidrs', () => {
+  it('accepts a bare string as a list of one, so an existing config file keeps working', () => {
+    expect(normalizeSshCidrs('203.0.113.7/32')).toEqual(['203.0.113.7/32'])
+  })
+
+  it('trims, and drops blanks left by an empty box in the editor', () => {
+    expect(normalizeSshCidrs([' 203.0.113.7/32 ', '', '   '])).toEqual(['203.0.113.7/32'])
+  })
+
+  it('folds an exact repeat but keeps the order the operator wrote', () => {
+    expect(normalizeSshCidrs(['198.51.100.0/24', '203.0.113.7/32', '198.51.100.0/24'])).toEqual([
+      '198.51.100.0/24',
+      '203.0.113.7/32',
+    ])
+  })
+
+  /**
+   * The tempting optimisation, deliberately not taken. A /32 inside a /24 means something to the
+   * person maintaining the file — "the office" and "my laptop at the office" — and collapsing
+   * them makes removal lossy in a way the UI cannot explain: the entry the operator clicks
+   * Remove on would not be the entry that disappears.
+   */
+  it('never collapses an overlapping range into the one that contains it', () => {
+    expect(normalizeSshCidrs(['203.0.113.0/24', '203.0.113.7/32'])).toEqual([
+      '203.0.113.0/24',
+      '203.0.113.7/32',
+    ])
+  })
+})
+
+describe('opensSshToTheInternet', () => {
+  it('is true when ANY entry is 0.0.0.0/0, not only when it is the only one', () => {
+    expect(opensSshToTheInternet(['203.0.113.7/32', '0.0.0.0/0'])).toBe(true)
+    expect(opensSshToTheInternet(['0.0.0.0/0'])).toBe(true)
+  })
+
+  it('is false for a list of ordinary ranges', () => {
+    expect(opensSshToTheInternet(['203.0.113.7/32', '10.0.0.0/8'])).toBe(false)
   })
 })

@@ -93,4 +93,29 @@ export interface ProviderCapabilities {
    * report a box as installed with nothing installed on it.
    */
   simulatedInstances?: boolean
+
+  /**
+   * The provider maintains a shared cloud object that decides which networks may reach SSH, and
+   * can be asked to bring it in line with `sshAllowedCidr` WITHOUT provisioning anything.
+   *
+   * Added by ADR-0021 (issue #304). **Additive and optional; absent means `false`**, which is
+   * what a provider with no whitelist to maintain declares by saying nothing — Hetzner creates no
+   * firewall object at all, and BYO does not own the network its hosts sit on.
+   *
+   * `true` on `aws`, `azure` and `gcp`, each of which already creates exactly one shared object
+   * (a security group, an NSG child rule, a firewall rule) and, before this release, only ever
+   * wrote the operator's CIDR into it during `provision()`. That is the bug this flag exists to
+   * fix: the setting applied on save (ADR-0017) while the firewall went on enforcing whatever the
+   * last launch had left there, so an operator who changed networks could edit the value, be told
+   * it was applied, and still be locked out of every box.
+   *
+   * When this is `true` the provider MUST implement `syncSshAccess()`. Core checks THIS FLAG and
+   * never `typeof provider.syncSshAccess === 'function'` — the rule this whole struct exists to
+   * enforce. It is the first optional METHOD on the interface, which is a deliberate departure
+   * from the `stop`/`start` precedent (ADR-0003 A2: required, and throwing when the flag is
+   * false); the reasoning is in ADR-0021, and the short version is that a required method is a
+   * breaking change for every provider written outside this repository, while a capability nobody
+   * declares costs them nothing.
+   */
+  managesSshAccess?: boolean
 }
