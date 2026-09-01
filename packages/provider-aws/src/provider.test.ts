@@ -187,6 +187,7 @@ describe('SDK conformance', () => {
       canInjectHostKeys: true,
       userDataMaxBytes: 16384,
       generatesUserData: true,
+      managesSshAccess: true,
     })
   })
 })
@@ -436,11 +437,20 @@ describe('the shared security group', () => {
     expect(auth.IpPermissions[0]?.IpRanges[0]?.CidrIp).toBe(CIDR)
   })
 
-  it('reuses the group on a second provision', async () => {
+  it('reuses the group on a second provision, and re-authorizes the cidr every time', async () => {
     await provider.provision(spec())
     await provider.provision(spec({ idempotencyKey: 'idem-2', serverId: 'srv-def456' }))
     expect(ec2Mock.commandCalls(CreateSecurityGroupCommand)).toHaveLength(1)
-    expect(ec2Mock.commandCalls(AuthorizeSecurityGroupIngressCommand)).toHaveLength(1)
+    /**
+     * TWICE, and that is the fix rather than a regression (issue #304).
+     *
+     * This used to assert ONE call, because an `ingressEnsured` latch skipped the authorize for
+     * the rest of the process's life. That latch meant an operator who corrected `sshAllowedCidr`
+     * on the Settings page did not get the new rule on EC2 even on their next launch — only
+     * after restarting Rocky Surf. The call is idempotent and a duplicate is the success case, so
+     * the latch saved one API call per boot and cost the operator the fix they had just made.
+     */
+    expect(ec2Mock.commandCalls(AuthorizeSecurityGroupIngressCommand)).toHaveLength(2)
   })
 
   it('adopts a group left by an earlier process', async () => {
@@ -483,7 +493,7 @@ describe('the sshAllowedCidr contract', () => {
 
   it('allows 0.0.0.0/0 when the operator says so twice', () => {
     const parsed = awsConfigSchema.parse({ sshAllowedCidr: '0.0.0.0/0', allowAllCidr: true })
-    expect(parsed.sshAllowedCidr).toBe('0.0.0.0/0')
+    expect(parsed.sshAllowedCidr).toEqual(['0.0.0.0/0'])
   })
 
   it('rejects a malformed cidr', () => {
@@ -868,8 +878,138 @@ describe('acceptance criteria a reviewer can grep for', () => {
     expect(code).not.toMatch(/checkip|ipify|whatismyip/i)
   })
 
+  /**
+   * The narrowing half of #304 is NOT in this release, and this is the assertion that keeps it
+   * that way. Rocky Surf authorizes and reports; it removes nothing. A revoke that arrives before
+   * the operator has been offered "keep or remove" for the ranges an older release accumulated
+   * would delete access they never agreed to lose — possibly the network they are sitting on.
+   */
+  it('revokes no ingress rule anywhere, on any path', () => {
+    expect(code).not.toMatch(/Revoke/)
+  })
+
   it('imports only the two AWS clients it needs', () => {
     const packages = [...code.matchAll(/from '(@aws-sdk\/[^']+)'/g)].map((m) => m[1])
     expect([...new Set(packages)].sort()).toEqual(['@aws-sdk/client-ec2', '@aws-sdk/client-ssm'])
+  })
+})
+
+
+describe('sshAllowedCidr as a list (issue #304)', () => {
+  it('accepts several networks, so home and the office both work', () => {
+    const parsed = awsConfigSchema.parse({ sshAllowedCidr: ['203.0.113.7/32', '198.51.100.0/24'] })
+    expect(parsed.sshAllowedCidr).toEqual(['203.0.113.7/32', '198.51.100.0/24'])
+  })
+
+  it('still accepts a bare string, so an existing config file keeps working', () => {
+    expect(awsConfigSchema.parse({ sshAllowedCidr: CIDR }).sshAllowedCidr).toEqual([CIDR])
+  })
+
+  it('drops an exact duplicate but keeps an overlapping range', () => {
+    // The /32 inside the /24 is not redundant to the person maintaining the file: one is "the
+    // office", the other is "my laptop at the office", and removing the first must not silently
+    // take the second with it.
+    const parsed = awsConfigSchema.parse({
+      sshAllowedCidr: ['203.0.113.7/32', '203.0.113.7/32', '203.0.113.0/24'],
+    })
+    expect(parsed.sshAllowedCidr).toEqual(['203.0.113.7/32', '203.0.113.0/24'])
+  })
+
+  it('refuses an empty list, which would mean SSH reachable from nowhere', () => {
+    expect(() => awsConfigSchema.parse({ sshAllowedCidr: [] })).toThrow(/at least one network/)
+  })
+
+  it('requires allowAllCidr when ANY entry is 0.0.0.0/0, not only when it is the sole entry', () => {
+    expect(() => awsConfigSchema.parse({ sshAllowedCidr: [CIDR, '0.0.0.0/0'] })).toThrow(/allowAllCidr/)
+    expect(
+      awsConfigSchema.parse({ sshAllowedCidr: [CIDR, '0.0.0.0/0'], allowAllCidr: true }).sshAllowedCidr,
+    ).toEqual([CIDR, '0.0.0.0/0'])
+  })
+
+  it('authorizes every configured network at provision', async () => {
+    const many = build({ sshAllowedCidr: ['203.0.113.7/32', '198.51.100.0/24'] })
+    await many.provision(spec())
+    const authorized = ec2Mock
+      .commandCalls(AuthorizeSecurityGroupIngressCommand)
+      .map((call) => (call.args[0].input as { IpPermissions: { IpRanges: { CidrIp: string }[] }[] }).IpPermissions[0]?.IpRanges[0]?.CidrIp)
+    expect(authorized).toEqual(['203.0.113.7/32', '198.51.100.0/24'])
+  })
+})
+
+describe('syncSshAccess (issue #304)', () => {
+  /** The shared group as EC2 would describe it, with whatever port-22 ranges the test wants. */
+  const groupWith = (ranges: { CidrIp: string; Description?: string }[]) => ({
+    SecurityGroups: [
+      {
+        GroupId: SG_ID,
+        IpPermissions: [{ IpProtocol: 'tcp', FromPort: 22, ToPort: 22, IpRanges: ranges }],
+      },
+    ],
+  })
+
+  it('declares the capability, so core never sniffs for the method', () => {
+    expect(provider.capabilities.managesSshAccess).toBe(true)
+  })
+
+  it('skips when the group does not exist yet, and creates nothing', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves({ SecurityGroups: [] })
+    const result = await provider.syncSshAccess!()
+    expect(result.status).toBe('skipped')
+    expect(result.detail).toMatch(/first launch/)
+    expect(ec2Mock.commandCalls(CreateSecurityGroupCommand)).toHaveLength(0)
+    expect(ec2Mock.commandCalls(AuthorizeSecurityGroupIngressCommand)).toHaveLength(0)
+  })
+
+  it('authorizes only what is missing, and says so', async () => {
+    const many = build({ sshAllowedCidr: [CIDR, '198.51.100.0/24'] })
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([{ CidrIp: CIDR, Description: 'rockysurf sshAllowedCidr' }]),
+    )
+    const result = await many.syncSshAccess!()
+    expect(result.status).toBe('updated')
+    expect(result.applied).toEqual([CIDR, '198.51.100.0/24'])
+    const authorized = ec2Mock
+      .commandCalls(AuthorizeSecurityGroupIngressCommand)
+      .map((call) => (call.args[0].input as { IpPermissions: { IpRanges: { CidrIp: string }[] }[] }).IpPermissions[0]?.IpRanges[0]?.CidrIp)
+    expect(authorized).toEqual(['198.51.100.0/24'])
+  })
+
+  it('reports unchanged when the group already matches', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([{ CidrIp: CIDR, Description: 'rockysurf sshAllowedCidr' }]),
+    )
+    const result = await provider.syncSshAccess!()
+    expect(result.status).toBe('unchanged')
+    expect(ec2Mock.commandCalls(AuthorizeSecurityGroupIngressCommand)).toHaveLength(0)
+  })
+
+  /**
+   * The case the adversarial review caught. EC2 swallows a duplicate authorize, so a range the
+   * OPERATOR added by hand keeps their description rather than acquiring ours — which is exactly
+   * what lets us tell the two apart, and why removing it is not ours to do.
+   */
+  it('leaves a range it did not create alone, and hands over the command that removes it', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: 'rockysurf sshAllowedCidr' },
+        { CidrIp: '10.0.0.0/8', Description: 'added by hand in the console' },
+      ]),
+    )
+    const result = await provider.syncSshAccess!()
+    expect(result.reported).toContain('10.0.0.0/8')
+    expect(result.detail).toContain('did not create that rule and will not remove it')
+    expect(result.detail).toContain('aws ec2 revoke-security-group-ingress')
+  })
+
+  it('reports a range an older Rocky Surf authorized rather than removing it', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: 'rockysurf sshAllowedCidr' },
+        { CidrIp: '192.0.2.0/24', Description: 'rockysurf sshAllowedCidr' },
+      ]),
+    )
+    const result = await provider.syncSshAccess!()
+    expect(result.reported).toContain('192.0.2.0/24')
+    expect(result.detail).toMatch(/no longer in your list/)
   })
 })

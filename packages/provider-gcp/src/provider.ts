@@ -12,10 +12,11 @@ import {
   type ProviderData,
   type ProvisionResult,
   type ProvisionSpec,
+  type SshAccessSyncResult,
 } from '@rockysurf/provider-sdk'
 import { GceApi, lastSegment } from './api.js'
 import { makeAdcTokenSource, type TokenSource } from './auth.js'
-import { resolveSshCidr, type GcpProviderConfig } from './config.js'
+import { resolveSshCidrs, type GcpProviderConfig } from './config.js'
 import { isAlreadyExists, isNotFound } from './errors.js'
 import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { allowedBootDiskTypes, buildOfferings, familyOf } from './offerings.js'
@@ -62,6 +63,11 @@ const CAPABILITIES: ProviderCapabilities = {
    */
   userDataMaxBytes: 262144,
   generatesUserData: true,
+  /**
+   * One shared firewall rule per project, whose `sourceRanges` decide who may reach port 22, and
+   * `syncSshAccess()` patches it on demand without provisioning anything.
+   */
+  managesSshAccess: true,
 }
 
 /**
@@ -107,6 +113,55 @@ const STATE_MAP: Record<string, InstanceState> = {
   SUSPENDING: 'unknown',
   SUSPENDED: 'unknown',
   REPAIRING: 'unknown',
+}
+
+/**
+ * The description Rocky Surf writes on the shared firewall rule at create time — and the ONLY
+ * thing that makes the rule safe to modify later.
+ *
+ * A firewall rule is project-global and named by configuration, so the name alone proves nothing:
+ * an operator may have created `rockysurf-ssh` themselves, or repurposed one. Patching a rule
+ * Rocky Surf did not create would edit somebody else's access policy on the strength of a name
+ * collision, and on GCE that policy governs every instance carrying the tag. So this string is
+ * the ownership marker: `syncSshAccess()` patches a rule that carries it, reports one that does
+ * not, and never touches anything else.
+ *
+ * Changing this string orphans the rule every previous release created. Don't.
+ */
+const SSH_RULE_DESCRIPTION = 'rockysurf: SSH to managed dev boxes. Shared across servers; safe to reuse.'
+
+/**
+ * How long a settings save waits for Compute Engine before giving up on it.
+ *
+ * `syncSshAccess()` is called from a page an operator is sitting in front of, and it may be one
+ * of several providers being synced at once — so an unreachable project must cost that operator a
+ * bounded wait and an honest message, not a request that never returns. Thirty seconds is
+ * comfortably longer than the two round trips this makes even with `GceApi`'s retries, and short
+ * enough that a human is still there to read the answer.
+ */
+const SSH_SYNC_DEADLINE_MS = 30_000
+
+/**
+ * Run `work`, and answer with `onExpiry()` if it has not finished in `ms`.
+ *
+ * The abandoned call is NOT cancelled, and that is deliberate rather than a limitation worked
+ * around: a patch already in flight may well land, and there is no way to un-issue it. So the
+ * deadline bounds what the CALLER waits for, and the result it returns says only what this
+ * provider can honestly claim — which after a timeout is "I do not know", never "applied".
+ *
+ * `Promise.race` attaches a handler to `work` either way, so a rejection arriving after the
+ * deadline is absorbed rather than surfacing as an unhandled rejection.
+ */
+async function withDeadline<T>(ms: number, work: () => Promise<T>, onExpiry: () => T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onExpiry()), ms)
+  })
+  try {
+    return await Promise.race([work(), expiry])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 const MANAGED_BY_LABEL = 'managed-by'
@@ -192,6 +247,15 @@ export interface GcpProviderOptions {
   sleep?: (ms: number) => Promise<void>
   /** Injected by tests; production builds a `PriceFeedClient` from the config. */
   priceFeed?: { get(): Promise<PriceFeedDoc | null> }
+  /**
+   * How long `syncSshAccess()` waits for Compute Engine. Injected by tests; production uses the
+   * constant.
+   *
+   * Overridable because a deadline nothing can shorten is a deadline no test can prove exists,
+   * and this one is the difference between an operator seeing an honest failure and a settings
+   * save that never returns.
+   */
+  sshSyncDeadlineMs?: number
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -210,6 +274,7 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
 
   const grace = options.absenceGrace ?? DESCRIBE_ABSENCE_GRACE
   const sleep = options.sleep ?? defaultSleep
+  const deadlineMs = options.sshSyncDeadlineMs ?? SSH_SYNC_DEADLINE_MS
 
   /**
    * Instances this provider has observed running, which is what keeps the propagation grace
@@ -237,7 +302,6 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
 
   /** Per-process caches. Everything here is cheap to rebuild and safe to lose. */
   const imageCache = new Map<Architecture, string>()
-  let firewallEnsured = false
 
   const instancePath = (name: string) => `${api.projectPath}/zones/${zone}/instances/${name}`
 
@@ -282,11 +346,22 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
    * address. See `config.ts` for why that matters.
    */
   async function ensureFirewall(): Promise<void> {
-    if (firewallEnsured) return
-
+    /*
+     * NO PROCESS-LIFETIME LATCH (issue #304).
+     *
+     * This used to open with `if (firewallEnsured) return`, set after the first successful
+     * check and never cleared. Combined with the early return below — the rule exists, so
+     * nothing is written — it meant `sourceRanges` was written EXACTLY ONCE, at create time, and
+     * then never again for the life of the rule. An operator who changed `sshAllowedCidr` and
+     * launched a new box got the old ranges; an operator who deleted the rule to start over got
+     * a process that believed it was still there. This was the worst of the three clouds: on
+     * EC2 and on Azure the setting at least reached the cloud on the next provision.
+     *
+     * The latch bought one GET per boot. The GET is what makes this function honest, and it is
+     * nothing beside the minutes that follow it building a machine.
+     */
     try {
       await api.call<GceFirewall>('GET', firewallPath)
-      firewallEnsured = true
       return
     } catch (err) {
       if (!isNotFound(err)) throw err
@@ -295,11 +370,14 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
     try {
       await api.callAndWait('POST', `${api.projectPath}/global/firewalls`, {
         name: config.firewallRuleName,
-        description: 'rockysurf: SSH to managed dev boxes. Shared across servers; safe to reuse.',
+        description: SSH_RULE_DESCRIPTION,
         network: `projects/${projectId}/global/networks/${config.network}`,
         direction: 'INGRESS',
         priority: 1000,
-        sourceRanges: [resolveSshCidr(config)],
+        // EVERY configured CIDR, not the first one. The setting became a list in #304 because
+        // the operator it exists for is the one who moves, and a rule that could hold one
+        // network made "add the cafe" mean "lose the office".
+        sourceRanges: resolveSshCidrs(config),
         targetTags: [config.firewallRuleName],
         allowed: [{ IPProtocol: 'tcp', ports: ['22'] }],
       })
@@ -307,8 +385,6 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
       // Two concurrent provisions race here; the loser adopts the winner's rule.
       if (!isAlreadyExists(err)) throw err
     }
-
-    firewallEnsured = true
   }
 
   function viewOf(instance: GceInstance): InstanceView {
@@ -670,6 +746,150 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
     async start(data: ProviderData): Promise<void> {
       const name = String(data['instanceName'] ?? '')
       await api.callAndWait('POST', `${instancePath(name)}/start`)
+    },
+
+    /**
+     * Bring the shared firewall rule in line with `sshAllowedCidr`, without provisioning anything.
+     *
+     * The call issue #304 exists for, and GCE is where it was most needed: `ensureFirewall()`
+     * writes `sourceRanges` only when it CREATES the rule, so before this method a changed
+     * `sshAllowedCidr` had never once reached Compute Engine for the life of an existing rule —
+     * not on the next launch, not on a restart, not ever.
+     *
+     * PATCH, NEVER DELETE-AND-RECREATE. The obvious way to change a GCE firewall rule's ranges is
+     * to delete it and insert a new one, and it is the one thing this must not do: the rule is
+     * project-global, it is `ownership: 'shared'` for exactly this reason (ADR-0003, D1), and for
+     * the seconds between the two calls port 22 is closed on EVERY box in the project at once.
+     * `compute.firewalls.patch` changes the one field in place, and a patch that fails changes
+     * nothing.
+     */
+    async syncSshAccess(): Promise<SshAccessSyncResult> {
+      const desired = resolveSshCidrs(config)
+
+      /** The one command that finishes, by hand, whatever this could not do itself. */
+      const command = (ranges: readonly string[]) =>
+        `gcloud compute firewall-rules update ${config.firewallRuleName} ` +
+        `--source-ranges=${ranges.join(',')} --project=${projectId}`
+
+      return await withDeadline<SshAccessSyncResult>(
+        deadlineMs,
+        async () => {
+          let rule: GceFirewall | undefined
+          try {
+            rule = await api.call<GceFirewall>('GET', firewallPath)
+          } catch (err) {
+            if (!isNotFound(err)) throw err
+          }
+
+          // A settings save MUST NOT create the rule. Creating cloud objects in a project nobody
+          // has launched into is the product acting on an intention the operator has not formed
+          // yet; the first launch creates it, with these CIDRs already in it.
+          if (!rule) {
+            return {
+              status: 'skipped',
+              applied: [],
+              reported: [],
+              detail:
+                `No ${config.firewallRuleName} firewall rule exists in ${projectId} yet, so there ` +
+                'is nothing to update. Rocky Surf creates it at the first launch, with these ' +
+                'CIDRs already in it.',
+            }
+          }
+
+          const existing = rule.sourceRanges ?? []
+
+          // THE OWNERSHIP CHECK. The rule is found by NAME, and a name proves nothing about who
+          // wrote it — an operator may have created `rockysurf-ssh` themselves, or reused one
+          // from something else. The description Rocky Surf stamps at create time is the only
+          // evidence of authorship there is, so a rule without it is left exactly as found.
+          //
+          // `failed` rather than `skipped`, deliberately: the operator asked for their list to be
+          // in force and it is NOT, and nothing Rocky Surf can do will change that. `skipped`
+          // reads as "there was nothing to do", which would be the second time this setting told
+          // somebody it had applied when it had not.
+          if (rule.description !== SSH_RULE_DESCRIPTION) {
+            const keep = [...desired, ...existing.filter((cidr) => !desired.includes(cidr))]
+            return {
+              status: 'failed',
+              applied: [],
+              reported: existing,
+              detail:
+                `${config.firewallRuleName} in ${projectId} was not created by Rocky Surf — its ` +
+                'description does not match the one Rocky Surf writes — so it has been left ' +
+                `exactly as it is, still allowing ${existing.join(', ') || 'nothing'}. To apply ` +
+                'your list yourself, keeping what the rule already allows, run: ' +
+                `${command(keep)}`,
+            }
+          }
+
+          // Anything on the rule the config no longer names. On GCE these are not stray edits:
+          // `sourceRanges` was frozen when the rule was created, so they are the CIDRs of an
+          // OLDER config — quite possibly the network the operator is sitting on right now.
+          const extras = existing.filter((cidr) => !desired.includes(cidr))
+          const missing = desired.filter((cidr) => !existing.includes(cidr))
+
+          // WIDEN ONLY, FOR NOW. Patching to exactly `desired` would drop `extras`, and the first
+          // thing an operator does with this feature is save it from a network the frozen rule
+          // may be the only reason they can reach. So the patch carries the union, the extras are
+          // `reported`, and the detail says how to remove them. Converging to exactly-the-list is
+          // deferred until the operator has been offered keep-or-remove and picked one — the same
+          // report-don't-revoke stance `provider-aws` takes on an unstamped ingress range.
+          const target = [...desired, ...extras]
+
+          if (missing.length > 0) {
+            try {
+              // Only `sourceRanges` is sent. A patch body carrying the whole rule would re-assert
+              // the network, the target tags and the ports as a side effect of changing who may
+              // connect, and the moment those drift from the config that becomes a second,
+              // invisible change riding along with this one.
+              await api.callAndWait('PATCH', firewallPath, { sourceRanges: target })
+            } catch (err) {
+              // A 403 here is a PLAIN failure, not an optional extra: Rocky Surf creates this
+              // rule and expects to own it, so a role that cannot update it cannot deliver the
+              // setting. Named permission plus the command that does the same job by hand.
+              if (err instanceof ProviderError && err.code === 'auth') {
+                return {
+                  status: 'failed',
+                  applied: [],
+                  reported: extras,
+                  detail:
+                    `Compute Engine refused to update ${config.firewallRuleName}: this credential ` +
+                    'is missing the compute.firewalls.update permission. Grant it, or run: ' +
+                    `${command(target)}`,
+                }
+              }
+              throw err
+            }
+          }
+
+          const kept =
+            extras.length > 0
+              ? ` ${extras.join(', ')} was already on the rule and is not in your list; it has ` +
+                'been KEPT, because it may be the network you are reading this from. To remove ' +
+                `it, run: ${command(desired)}`
+              : ''
+
+          return {
+            status: missing.length > 0 ? 'updated' : 'unchanged',
+            applied: desired,
+            reported: extras,
+            detail:
+              (missing.length > 0
+                ? `Added ${missing.join(', ')} to ${config.firewallRuleName}, which now allows ` +
+                  `${target.join(', ')} on port 22.`
+                : `${config.firewallRuleName} already allowed ${desired.join(', ')} on port 22.`) + kept,
+          }
+        },
+        () => ({
+          status: 'failed',
+          applied: [],
+          reported: [],
+          detail:
+            `Compute Engine did not answer within ${Math.round(deadlineMs / 1000)}s, so Rocky Surf ` +
+            `cannot say whether ${config.firewallRuleName} now allows ${desired.join(', ')}. ` +
+            'Nothing was deleted. Check the project is reachable and save again.',
+        }),
+      )
     },
   }
 

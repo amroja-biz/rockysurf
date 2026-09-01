@@ -27,6 +27,8 @@ import type { GceInstance } from './types.js'
 const PROJECT = 'demo-project'
 const ZONE = 'us-central1-a'
 const CIDR = '203.0.113.7/32'
+/** A second network, because `sshAllowedCidr` became a LIST in issue #304. */
+const OTHER_CIDR = '192.0.2.0/24'
 const SSH_KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY rockysurf@core'
 const IMAGE = 'https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-20260801'
 
@@ -40,7 +42,10 @@ const IMAGE = 'https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/gl
  */
 function fakeGce() {
   const instances = new Map<string, GceInstance>()
-  const firewalls = new Map<string, { name: string; sourceRanges: string[]; targetTags: string[] }>()
+  const firewalls = new Map<
+    string,
+    { name: string; description?: string; sourceRanges: string[]; targetTags: string[] }
+  >()
   const byRequestId = new Map<string, string>()
 
   const state = {
@@ -55,6 +60,15 @@ function fakeGce() {
     lastInsertBody: undefined as undefined | Record<string, unknown>,
     /** Forces the next insert to fail with the given reason. */
     failNextInsert: undefined as undefined | string,
+    /**
+     * EVERY request, so a test can assert what was NOT sent.
+     *
+     * The load-bearing assertion in the SSH-sync block is a negative one — that no DELETE ever
+     * goes near the firewall rule — and a negative is only checkable against a full log.
+     */
+    calls: [] as { method: string; path: string; body?: Record<string, unknown> }[],
+    /** Makes `firewalls.patch` answer 403, which is what a role short of the permission gets. */
+    denyFirewallPatch: false,
   }
 
   const json = (body: unknown, status = 200) =>
@@ -85,6 +99,7 @@ function fakeGce() {
     const path = url.pathname.replace('/compute/v1', '')
     const method = init?.method ?? 'GET'
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined
+    state.calls.push({ method, path, ...(body !== undefined ? { body } : {}) })
 
     // zones.get — the credential check
     if (method === 'GET' && path === `/projects/${PROJECT}/zones/${ZONE}`) {
@@ -99,13 +114,36 @@ function fakeGce() {
     // firewalls
     if (path === `/projects/${PROJECT}/global/firewalls/rockysurf-ssh`) {
       const rule = firewalls.get('rockysurf-ssh')
-      return rule ? json(rule) : error(404, 'notFound', 'firewall not found')
+      if (!rule) return error(404, 'notFound', 'firewall not found')
+
+      // `firewalls.patch` merges the fields it is given and leaves the rest, which is the whole
+      // reason the provider uses it instead of delete-and-insert.
+      if (method === 'PATCH') {
+        if (state.denyFirewallPatch) {
+          return error(403, 'forbidden', "Required 'compute.firewalls.update' permission")
+        }
+        firewalls.set('rockysurf-ssh', {
+          ...rule,
+          ...(body?.['sourceRanges'] ? { sourceRanges: body['sourceRanges'] as string[] } : {}),
+        })
+        return doneOperation('op-fw-patch', 'global')
+      }
+
+      // Modelled ONLY so a test can prove the provider never reaches for it. Deleting this rule
+      // closes port 22 on every instance in the project at once.
+      if (method === 'DELETE') {
+        firewalls.delete('rockysurf-ssh')
+        return doneOperation('op-fw-delete', 'global')
+      }
+
+      return json(rule)
     }
     if (method === 'POST' && path === `/projects/${PROJECT}/global/firewalls`) {
       const name = String(body?.['name'])
       if (firewalls.has(name)) return error(409, 'alreadyExists', 'the firewall already exists')
       firewalls.set(name, {
         name,
+        ...(body?.['description'] ? { description: String(body['description']) } : {}),
         sourceRanges: (body?.['sourceRanges'] as string[]) ?? [],
         targetTags: (body?.['targetTags'] as string[]) ?? [],
       })
@@ -296,7 +334,17 @@ describe('SDK conformance', () => {
       canInjectHostKeys: true,
       userDataMaxBytes: 262144,
       generatesUserData: true,
+      // One shared firewall rule this provider maintains, and `syncSshAccess()` to push the
+      // operator's `sshAllowedCidr` at it without launching anything (issue #304).
+      managesSshAccess: true,
     })
+  })
+
+  it('implements syncSshAccess, because it declares managesSshAccess', () => {
+    // The SDK's rule: core branches on the FLAG, so a provider that raises the flag and does not
+    // implement the method fails at the call site rather than here.
+    expect(provider.capabilities.managesSshAccess).toBe(true)
+    expect(typeof provider.syncSshAccess).toBe('function')
   })
 })
 
@@ -648,6 +696,193 @@ describe('provision', () => {
     ])
     expect(gce.state.firewalls.size).toBe(1)
     expect(gce.state.instances.size).toBe(2)
+  })
+
+  /**
+   * THE LATCH IS GONE (issue #304).
+   *
+   * `ensureFirewall()` used to set a `firewallEnsured` flag for the lifetime of the process, so
+   * after the first check it never looked at Compute Engine again. This is the case that proves
+   * it is gone: the rule disappears out of band, and the SAME provider instance notices and
+   * rebuilds it from the config it holds now. Under the latch the second provision skipped the
+   * check entirely and left the project with no SSH rule at all.
+   */
+  it('re-checks the rule on every provision instead of latching, so a vanished rule comes back', async () => {
+    await provider.provision(spec())
+    expect(gce.state.firewalls.size).toBe(1)
+
+    gce.state.firewalls.delete('rockysurf-ssh')
+
+    await provider.provision(spec({ serverId: 'srv-two', idempotencyKey: 'idem-two' }))
+    expect(gce.state.firewalls.get('rockysurf-ssh')).toMatchObject({ sourceRanges: [CIDR] })
+  })
+
+  it('writes every configured CIDR at create time, not just the first', async () => {
+    const two = build({ sshAllowedCidr: [CIDR, OTHER_CIDR] })
+    await two.provision(spec())
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual([CIDR, OTHER_CIDR])
+  })
+})
+
+/**
+ * `syncSshAccess()` — the call issue #304 exists for.
+ *
+ * Before it, `sourceRanges` was written exactly once, when the rule was created, so a changed
+ * `sshAllowedCidr` never reached Compute Engine for the life of that rule. The tests here are
+ * mostly about what the method REFUSES to do, because the dangerous version of this feature is
+ * easy to write: delete the rule and insert a new one, or patch whatever rule happens to carry
+ * the configured name.
+ */
+describe('syncSshAccess', () => {
+  /** The description Rocky Surf stamps at create time, spelled out so a change to it fails here. */
+  const OURS = 'rockysurf: SSH to managed dev boxes. Shared across servers; safe to reuse.'
+
+  /** `syncSshAccess` is optional on the SDK interface; this provider declares it, so it is there. */
+  async function sync(p: ComputeProvider) {
+    if (!p.syncSshAccess) throw new Error('provider does not implement syncSshAccess')
+    return await p.syncSshAccess()
+  }
+
+  const seedRule = (overrides: Partial<{ description: string; sourceRanges: string[] }> = {}) => {
+    gce.state.firewalls.set('rockysurf-ssh', {
+      name: 'rockysurf-ssh',
+      description: OURS,
+      sourceRanges: [CIDR],
+      targetTags: ['rockysurf-ssh'],
+      ...overrides,
+    })
+  }
+
+  const firewallCalls = () => gce.state.calls.filter((call) => call.path.includes('/global/firewalls'))
+
+  it('patches the rule in place when the list gained a network', async () => {
+    seedRule()
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR, OTHER_CIDR] }))
+
+    expect(result.status).toBe('updated')
+    expect(result.applied).toEqual([CIDR, OTHER_CIDR])
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual([CIDR, OTHER_CIDR])
+
+    const patches = firewallCalls().filter((call) => call.method === 'PATCH')
+    expect(patches).toHaveLength(1)
+    expect(patches[0]?.body).toEqual({ sourceRanges: [CIDR, OTHER_CIDR] })
+  })
+
+  /**
+   * THE ONE THAT MATTERS MOST. Delete-and-insert is the obvious way to change a GCE firewall
+   * rule's ranges, and for the seconds between the two calls port 22 is shut on every instance
+   * in the project. Nothing in this provider — sync, provision or terminate — may issue it.
+   */
+  it('never issues a DELETE against the firewall rule, on any path', async () => {
+    await provider.provision(spec())
+    await sync(build({ sshAllowedCidr: [OTHER_CIDR] }))
+    await provider.terminate({ instanceName: 'rockysurf-srv-abc123' })
+
+    expect(firewallCalls().filter((call) => call.method === 'DELETE')).toEqual([])
+    expect(gce.state.firewalls.has('rockysurf-ssh')).toBe(true)
+  })
+
+  it('leaves a rule Rocky Surf did not create alone, and says how to apply the list by hand', async () => {
+    seedRule({ description: 'ssh for the data team', sourceRanges: ['198.51.100.0/24'] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR] }))
+
+    expect(result.status).toBe('failed')
+    expect(result.applied).toEqual([])
+    // Found on the shared object and deliberately not touched — which is what `reported` is for.
+    expect(result.reported).toEqual(['198.51.100.0/24'])
+    expect(result.detail).toContain(
+      `gcloud compute firewall-rules update rockysurf-ssh --source-ranges=${CIDR},198.51.100.0/24 --project=${PROJECT}`,
+    )
+
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual(['198.51.100.0/24'])
+    expect(firewallCalls().filter((call) => call.method === 'PATCH')).toEqual([])
+  })
+
+  it('reports a refused patch with the missing permission and the gcloud command', async () => {
+    seedRule()
+    gce.state.denyFirewallPatch = true
+
+    const result = await sync(build({ sshAllowedCidr: [OTHER_CIDR] }))
+
+    expect(result.status).toBe('failed')
+    expect(result.applied).toEqual([])
+    expect(result.detail).toContain('compute.firewalls.update')
+    expect(result.detail).toContain(
+      `gcloud compute firewall-rules update rockysurf-ssh --source-ranges=${OTHER_CIDR},${CIDR} --project=${PROJECT}`,
+    )
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual([CIDR])
+  })
+
+  it('skips when the rule does not exist yet, and creates nothing', async () => {
+    const result = await sync(build())
+
+    expect(result.status).toBe('skipped')
+    expect(result.applied).toEqual([])
+    expect(result.detail).toContain('first launch')
+    expect(gce.state.firewalls.size).toBe(0)
+    expect(firewallCalls().every((call) => call.method === 'GET')).toBe(true)
+  })
+
+  /**
+   * `sourceRanges` was frozen when the rule was created, so an entry the config no longer names
+   * is an OLD config's network — quite possibly the one the operator is saving this from. It is
+   * kept and reported rather than dropped; converging to exactly the list waits until the
+   * operator has been offered keep-or-remove.
+   */
+  it('keeps a range the list no longer names, reports it, and says how to remove it', async () => {
+    seedRule({ sourceRanges: [CIDR, '198.51.100.0/24'] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR, OTHER_CIDR] }))
+
+    expect(result.status).toBe('updated')
+    expect(result.reported).toEqual(['198.51.100.0/24'])
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual([CIDR, OTHER_CIDR, '198.51.100.0/24'])
+    expect(result.detail).toContain('KEPT')
+    expect(result.detail).toContain(
+      `gcloud compute firewall-rules update rockysurf-ssh --source-ranges=${CIDR},${OTHER_CIDR} --project=${PROJECT}`,
+    )
+  })
+
+  it('reports unchanged, and writes nothing, when the rule already allows the whole list', async () => {
+    seedRule({ sourceRanges: [CIDR, OTHER_CIDR] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR, OTHER_CIDR] }))
+
+    expect(result.status).toBe('unchanged')
+    expect(result.applied).toEqual([CIDR, OTHER_CIDR])
+    expect(result.reported).toEqual([])
+    expect(firewallCalls().filter((call) => call.method !== 'GET')).toEqual([])
+  })
+
+  it('reports a frozen extra even when nothing needed adding, without writing', async () => {
+    // The "did my earlier save actually land?" case: the list is already allowed, and the honest
+    // answer still has to mention the range the rule carries that the list does not name.
+    seedRule({ sourceRanges: [CIDR, '198.51.100.0/24'] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR] }))
+
+    expect(result.status).toBe('unchanged')
+    expect(result.reported).toEqual(['198.51.100.0/24'])
+    expect(result.detail).toContain('KEPT')
+    expect(firewallCalls().filter((call) => call.method !== 'GET')).toEqual([])
+  })
+
+  it('answers within its own deadline when Compute Engine never replies', async () => {
+    const hangs = (async () => await new Promise<Response>(() => {})) as unknown as typeof fetch
+    const stuck = makeGcpProvider({
+      config: config(),
+      api: new GceApi({ projectId: PROJECT, tokenSource: { getAccessToken: async () => 't' }, fetchImpl: hangs }),
+      priceFeed: feedOf(FEED),
+      sshSyncDeadlineMs: 5,
+    })
+
+    const result = await sync(stuck)
+
+    expect(result.status).toBe('failed')
+    expect(result.applied).toEqual([])
+    expect(result.detail).toContain('did not answer')
   })
 })
 

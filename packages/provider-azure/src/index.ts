@@ -42,7 +42,7 @@ import { AZURE_PROVIDER_ID, makeAzureProvider } from './provider.js'
 
 export { API_VERSIONS, ARM_BASE, ArmApi, resourceGroupPath, resourcePath, type ArmApiOptions } from './api.js'
 
-export { azureConfigSchema, resolveSshCidr, type AzureProviderConfig } from './config.js'
+export { azureConfigSchema, resolveSshCidrs, type AzureProviderConfig } from './config.js'
 
 export {
   ARM_RESOURCE,

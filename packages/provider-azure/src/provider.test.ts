@@ -85,6 +85,16 @@ function specFor(overrides: Partial<ProvisionSpec> = {}): ProvisionSpec {
   }
 }
 
+/** A second network, because `sshAllowedCidr` became a LIST in issue #304. */
+const OTHER_CIDR = '192.0.2.0/24'
+
+/** The properties of the ssh rule as it now stands in the fake resource group. */
+function ruleProperties(fake: FakeArm): Record<string, unknown> {
+  const rule = fake.ofType('Microsoft.Network/networkSecurityGroups/securityRules')[0]
+  if (!rule) throw new Error('fake: no rockysurf-ssh security rule')
+  return rule.properties ?? {}
+}
+
 const VM = 'Microsoft.Compute/virtualMachines'
 const DISK = 'Microsoft.Compute/disks'
 const NIC = 'Microsoft.Network/networkInterfaces'
@@ -230,6 +240,159 @@ describe('provision', () => {
       (c) => c.method === 'PUT' && /networkSecurityGroups\/[^/]+$/.test(c.path.split('?')[0]!),
     )
     expect((nsgWrites[0]!.body as { properties: Record<string, unknown> }).properties).toEqual({})
+  })
+
+  /**
+   * ARM accepts EITHER `sourceAddressPrefix` (one) or `sourceAddressPrefixes` (many) and rejects
+   * a rule that sets both, so the key the body uses is a decision rather than a formatting
+   * detail. Pinned in both directions because getting it wrong fails at provision time, on the
+   * one call an operator cannot work around.
+   */
+  it('names one source with sourceAddressPrefix and several with sourceAddressPrefixes', async () => {
+    const one = new FakeArm()
+    await providerFor(one).provision(specFor())
+    expect(ruleProperties(one)).toMatchObject({ sourceAddressPrefix: '203.0.113.7/32' })
+    expect('sourceAddressPrefixes' in ruleProperties(one)).toBe(false)
+
+    const many = new FakeArm()
+    await providerFor(many, { sshAllowedCidr: ['203.0.113.7/32', OTHER_CIDR] }).provision(specFor())
+    expect(ruleProperties(many)).toMatchObject({ sourceAddressPrefixes: ['203.0.113.7/32', OTHER_CIDR] })
+    expect('sourceAddressPrefix' in ruleProperties(many)).toBe(false)
+  })
+})
+
+/**
+ * `syncSshAccess()` — the call issue #304 exists for.
+ *
+ * Before it, the only thing that ever wrote this operator's CIDRs to Azure was a launch, so an
+ * operator who moved networks edited the setting, was told it applied, and stayed locked out
+ * until they started a box they did not want.
+ *
+ * Azure is the simple one of the three: the rule is a resource of its own and the PUT replaces
+ * its source set. So the tests here are mostly about the one way this could still go badly —
+ * writing to the security GROUP instead of to the rule.
+ */
+describe('syncSshAccess', () => {
+  /** `syncSshAccess` is optional on the SDK interface; this provider declares it, so it is there. */
+  async function sync(provider: ComputeProvider) {
+    if (!provider.syncSshAccess) throw new Error('provider does not implement syncSshAccess')
+    return await provider.syncSshAccess()
+  }
+
+  /** Every write, so a test can assert which paths were touched and which were not. */
+  const writes = (fake: FakeArm) => fake.calls.filter((c) => c.method !== 'GET')
+
+  it('declares the capability, so core can branch on the flag rather than on the method', () => {
+    const provider = providerFor(new FakeArm())
+    expect(provider.capabilities.managesSshAccess).toBe(true)
+    expect(typeof provider.syncSshAccess).toBe('function')
+  })
+
+  /**
+   * THE ONE THAT MATTERS MOST. A PUT on `.../networkSecurityGroups/rockysurf-ssh` replaces the
+   * group's `securityRules` array and silently deletes every rule the operator added to it. The
+   * only legal write is the child.
+   */
+  it('writes the CHILD rule path and never touches the security group itself', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake).provision(specFor())
+    fake.calls.length = 0
+
+    await sync(providerFor(fake, { sshAllowedCidr: ['203.0.113.7/32', OTHER_CIDR] }))
+
+    const paths = writes(fake).map((c) => c.path.split('?')[0]!)
+    expect(paths).toEqual([
+      `/subscriptions/${fake.subscriptionId}/resourceGroups/${fake.resourceGroup}` +
+        '/providers/Microsoft.Network/networkSecurityGroups/rockysurf-ssh/securityRules/rockysurf-ssh',
+    ])
+    // Belt and braces: nothing at all landed on the bare group path.
+    expect(paths.filter((path) => /networkSecurityGroups\/[^/]+$/.test(path))).toEqual([])
+  })
+
+  it('pushes the whole list, using sourceAddressPrefixes when there is more than one', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake).provision(specFor())
+
+    const result = await sync(providerFor(fake, { sshAllowedCidr: ['203.0.113.7/32', OTHER_CIDR] }))
+
+    expect(result.status).toBe('updated')
+    expect(result.applied).toEqual(['203.0.113.7/32', OTHER_CIDR])
+    expect(ruleProperties(fake)).toMatchObject({ sourceAddressPrefixes: ['203.0.113.7/32', OTHER_CIDR] })
+  })
+
+  it('narrows back to one source, on the scalar key, when the list loses an entry', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake, { sshAllowedCidr: ['203.0.113.7/32', OTHER_CIDR] }).provision(specFor())
+
+    const result = await sync(providerFor(fake, { sshAllowedCidr: [OTHER_CIDR] }))
+
+    expect(result.status).toBe('updated')
+    expect(ruleProperties(fake)).toMatchObject({ sourceAddressPrefix: OTHER_CIDR })
+    // The removal is stated, because "applied" alone would not tell the operator that the
+    // network they used to reach this box from is no longer allowed.
+    expect(result.detail).toContain('203.0.113.7/32')
+    expect(result.detail).toContain('no longer appears in sshAllowedCidr')
+  })
+
+  /**
+   * `reported` is the "found it, deliberately left it" list, and on Azure it is always empty:
+   * the rule is rewritten whole on every provision, so nothing accumulates on it to adopt.
+   */
+  it('reports unchanged, and nothing to adopt, when the rule already allows the list', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake).provision(specFor())
+
+    const result = await sync(providerFor(fake))
+
+    expect(result.status).toBe('unchanged')
+    expect(result.applied).toEqual(['203.0.113.7/32'])
+    expect(result.reported).toEqual([])
+    expect(result.detail).toContain('already allowed')
+  })
+
+  it('skips when the security group does not exist yet, and creates nothing', async () => {
+    const fake = new FakeArm()
+
+    const result = await sync(providerFor(fake))
+
+    expect(result.status).toBe('skipped')
+    expect(result.applied).toEqual([])
+    expect(result.detail).toContain('first launch')
+    expect(writes(fake)).toEqual([])
+    expect(fake.has('Microsoft.Network/networkSecurityGroups', 'rockysurf-ssh')).toBe(false)
+  })
+
+  it('writes the rule when the group exists but the rule does not', async () => {
+    const fake = new FakeArm()
+    await providerFor(fake).provision(specFor())
+    fake.vanish('Microsoft.Network/networkSecurityGroups/securityRules', 'rockysurf-ssh')
+    fake.calls.length = 0
+
+    const result = await sync(providerFor(fake))
+
+    expect(result.status).toBe('updated')
+    expect(ruleProperties(fake)).toMatchObject({ sourceAddressPrefix: '203.0.113.7/32' })
+  })
+
+  it('answers within its own deadline when ARM never replies', async () => {
+    const hangs = (async () => await new Promise<Response>(() => {})) as unknown as typeof fetch
+    const stuck = makeAzureProvider({
+      config: configFor(new FakeArm()),
+      priceFeed: feedOf(FEED),
+      fetchImpl: hangs,
+      credentials: new CredentialChain({
+        fetchImpl: hangs,
+        env: { AZURE_TENANT_ID: 't', AZURE_CLIENT_ID: 'c', AZURE_CLIENT_SECRET: 's' },
+        allowAzureCli: false,
+      }),
+      sshSyncDeadlineMs: 5,
+    })
+
+    const result = await sync(stuck)
+
+    expect(result.status).toBe('failed')
+    expect(result.applied).toEqual([])
+    expect(result.detail).toContain('did not answer')
   })
 })
 
