@@ -147,6 +147,7 @@ const TOOL: AdminTool = {
   toolId: 'claude-code',
   name: 'Claude Code',
   description: 'the agent',
+  alwaysInstall: false,
   category: 'agent',
   url: 'https://example.com/claude',
   installScript: 'true',
@@ -1094,5 +1095,120 @@ describe("Personal's New Surge Pack flow (issue #204)", () => {
     const select = (await screen.findByTestId('from-existing-source')) as HTMLSelectElement
     const optionValues = [...select.options].map((o) => o.value)
     expect(optionValues).toEqual(expect.arrayContaining(['ai-coding-agents', 'rust-dev', 'mine']))
+  })
+
+  /**
+   * The fork carries its parent's face and the fields no control covers (issue #295).
+   *
+   * Dropping `guide` and `inputs` was a real bug rather than a cosmetic one: a fork of a pack
+   * that declares inputs and loses them gets a create form with no fields, and its scripts then
+   * run without the values they were written to read.
+   */
+  it('records the parent and inherits its artwork, guide and inputs', async () => {
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
+      officialAdmin({
+        imageUrl: '/images/surge-packs/claude-code.png',
+        guide: 'Run claude login.',
+        inputs: [{ name: 'KEY', label: 'Key', required: true, secret: false }],
+      }),
+      localAdmin(),
+    ])
+    renderList({ tab: 'personal' })
+    await screen.findByTestId('pack-card-mine')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
+    fireEvent.click(screen.getByTestId('create-option-existing'))
+    const form = await screen.findByTestId('pack-form')
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.createAdminSurgePack).toHaveBeenCalled())
+    const body = vi.mocked(api.createAdminSurgePack).mock.calls[0]![0]
+    expect(body.derivedFromPackId).toBe('ai-coding-agents')
+    expect(body.imageUrl).toBe('/images/surge-packs/claude-code.png')
+    expect(body.guide).toBe('Run claude login.')
+    expect(body.inputs).toHaveLength(1)
+  })
+})
+
+/**
+ * THE DELTA (issue #295, owner's ruling).
+ *
+ * One fact seen from two sides: on the official pack it says a personal version exists, on the
+ * personal version it says what it began as. It never means an official pack was altered —
+ * nothing alters an official pack, which is the whole reason forking exists.
+ */
+describe('the modified mark', () => {
+  const forked = () => ({
+    publicPacks: [officialPublic(), localPublic({ derivedFromPackId: 'ai-coding-agents' })],
+    adminPacks: [officialAdmin(), localAdmin({ derivedFromPackId: 'ai-coding-agents' })],
+  })
+
+  const withForks = () => {
+    const { publicPacks, adminPacks } = forked()
+    vi.mocked(api.listSurgePacks).mockResolvedValue(publicPacks)
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue(adminPacks)
+  }
+
+  it('marks the official pack, naming the personal version', async () => {
+    withForks()
+    renderList()
+    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    expect(within(card).getByLabelText('Personal version: Mine')).toBeDefined()
+  })
+
+  it('marks the fork with what it began as', async () => {
+    withForks()
+    renderList({ tab: 'personal' })
+    const card = await screen.findByTestId('pack-card-mine')
+    expect(within(card).getByLabelText('Your personal version of Claude Code')).toBeDefined()
+  })
+
+  /**
+   * DERIVED FROM THE LIST, so it is self-healing: nothing stores a count and nothing has to be
+   * invalidated. Delete the fork and the parent's mark goes with it.
+   */
+  it('leaves the official pack unmarked when no fork exists', async () => {
+    renderList()
+    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    expect(within(card).queryByLabelText(/personal version/i)).toBeNull()
+  })
+
+  /**
+   * THE OFFICIAL TAB STAYS PRISTINE AND SELECTABLE. The mark is decoration: it filters
+   * nothing, disables nothing, and nothing was ever written to the official row — the boot
+   * reconcile would erase it anyway.
+   */
+  it('leaves the marked official pack exactly as selectable as before', async () => {
+    withForks()
+    renderList()
+    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    expect(card.getAttribute('href')).toBe('/packs/ai-coding-agents')
+    expect(card.hasAttribute('aria-disabled')).toBe(false)
+  })
+
+  it('marks a community pack that was forked too', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([
+      registryPublic(),
+      localPublic({ derivedFromPackId: 'rust-dev' }),
+    ])
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
+      registryAdmin(),
+      localAdmin({ derivedFromPackId: 'rust-dev' }),
+    ])
+    renderList({ tab: 'community' })
+    const card = await screen.findByTestId('pack-card-rust-dev')
+    expect(within(card).getByLabelText('Personal version: Mine')).toBeDefined()
+  })
+
+  /**
+   * A release can drop a pack (#290 dropped one). The fork keeps its own mark and names the id
+   * it began as, because a dangling id is still the truth about where it came from.
+   */
+  it('still names a parent that is no longer installed', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([localPublic({ derivedFromPackId: 'gone-in-v2' })])
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([localAdmin({ derivedFromPackId: 'gone-in-v2' })])
+    renderList({ tab: 'personal' })
+    const card = await screen.findByTestId('pack-card-mine')
+    expect(within(card).getByLabelText('Your personal version of gone-in-v2')).toBeDefined()
   })
 })

@@ -725,6 +725,19 @@ export interface PackInput {
 export interface SurgePack {
   packId: string
   name: string
+  /**
+   * The pack this one was forked from, if it was (issue #295).
+   *
+   * Provenance, not a sync relationship: it says where this pack BEGAN, and nothing is offered
+   * to bring it up to date. The Surge Packs page reads it two ways — a fork wears its parent's
+   * artwork with a delta over it, and the parent's own card gets the same delta to say a
+   * personal version exists — both derived in the browser from this list, so deleting a fork
+   * clears the mark with no route to ask.
+   *
+   * May name a pack that is no longer installed: a release can drop one, and the id is still
+   * the truth about where this pack came from. Every reader checks before dereferencing.
+   */
+  derivedFromPackId?: string
   displayOrder: number
   enabled: boolean
   imageUrl?: string
@@ -784,6 +797,15 @@ export interface Tool {
   description: string
   category: 'agent' | 'base'
   url: string
+  /**
+   * Installed on every box, whichever pack was chosen (issue #295).
+   *
+   * On the PUBLIC tool so the create page can be honest about what it is about to install: a
+   * box gets its pack's tools plus these, so a preview built from the pack alone understates
+   * it. Never part of a pack file or a tool file — it is a fact about this installation, not
+   * about the tool (ADR-0020).
+   */
+  alwaysInstall: boolean
 }
 
 export async function listTools(): Promise<Tool[]> {
@@ -794,6 +816,7 @@ export async function listTools(): Promise<Tool[]> {
 
 export interface AdminTool extends Tool {
   installScript: string
+  /* `alwaysInstall` is inherited from `Tool` — see the note there. */
   setupScript?: string
   enabled: boolean
   installOrder: number
@@ -813,6 +836,8 @@ export interface AdminSurgePack {
   packId: string
   name: string
   tools: string[]
+  /** The pack this one was forked from. See `SurgePack.derivedFromPackId`. */
+  derivedFromPackId?: string
   displayOrder: number
   enabled: boolean
   imageUrl?: string
@@ -824,6 +849,14 @@ export interface AdminSurgePack {
   desktop?: 'xfce'
   /** Loopback port of the pack's web UI. See `SurgePack.webPort`. */
   webPort?: number
+  /**
+   * What this pack asks the person creating a server for. See `SurgePack.inputs`.
+   *
+   * Core has always sent this on the admin projection; it was missing from this type, which
+   * meant a fork of a pack that declares inputs would silently drop the declaration and give
+   * the copy a create form with no fields (issue #295).
+   */
+  inputs?: PackInput[]
   /**
    * The YAML file this pack came from, or null for a row created here.
    *

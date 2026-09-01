@@ -46,6 +46,7 @@ export function ToolFormModal({
   const [runAs, setRunAs] = useState<AdminTool['runAs']>(tool?.runAs ?? 'root')
   const [installOrder, setInstallOrder] = useState(String(tool?.installOrder ?? 30))
   const [enabled, setEnabled] = useState(tool?.enabled ?? true)
+  const [alwaysInstall, setAlwaysInstall] = useState(tool?.alwaysInstall ?? false)
   const [installScript, setInstallScript] = useState(tool?.installScript ?? '')
   const [setupScript, setSetupScript] = useState(tool?.setupScript ?? '')
 
@@ -65,6 +66,7 @@ export function ToolFormModal({
         runAs,
         installOrder: Number(installOrder),
         enabled,
+        alwaysInstall,
         installScript,
         // Sent only when non-empty: an empty string is not the same as "no setup script",
         // and the schema treats a present-but-empty script as invalid.
@@ -193,6 +195,36 @@ export function ToolFormModal({
           <label>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Enabled
           </label>
+
+          <label>
+            <input
+              type="checkbox"
+              data-testid="tool-always-install"
+              checked={alwaysInstall}
+              onChange={(e) => setAlwaysInstall(e.target.checked)}
+            />{' '}
+            Install on every box you create from now on
+          </label>
+          <details className="hint">
+            <summary>What that means, and what it does not</summary>
+            <p>
+              This tool is added to <strong>every</strong> server you create, whichever Surge Pack you
+              pick and even if you pick none. It does not change any box that already exists: the
+              install plan is written when a server is created, so servers already running keep the
+              plan they were built with.
+            </p>
+            <p>
+              Because it runs everywhere, it has to stand on its own. Write it to depend on nothing a
+              pack might not have installed, and give it an <code>installOrder</code> that puts it after
+              whatever it needs — a tool that assumes a runtime some pack does not install will fail on
+              those boxes, and <strong>a failed tool install terminates the machine</strong>. A
+              mis-ordered tool here breaks every new server you create, not one.
+            </p>
+            <p>
+              It is not part of any pack, so a shared pack file will not carry it and neither will an
+              exported tool file. It is a setting on this installation.
+            </p>
+          </details>
 
           <fieldset>
             <legend>Install script</legend>

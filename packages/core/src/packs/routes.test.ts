@@ -9,6 +9,7 @@ import { ensureLocalAdmin } from '../auth/admin.js'
 import { MemorySecretStore } from '../auth/secret-store.js'
 import { configSchema, type Config } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
+import { deletePack, deleteTool } from '../db/repositories/packs.js'
 import { issueSession } from '../auth/sessions.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { loadPacksFromDir } from './loader.js'
@@ -143,11 +144,29 @@ const expectServedPackShape = (pack: any) => {
 }
 
 describe('public shapes match the SPA client', () => {
-  it('GET /api/v1/tools returns exactly the five public fields', async () => {
+  it('GET /api/v1/tools returns exactly the six public fields', async () => {
     const tools = await json(await send('GET', '/api/v1/tools', undefined, auth()))
     expect(tools.length).toBeGreaterThan(0)
     for (const t of tools) {
-      expect(Object.keys(t).sort()).toEqual(['category', 'description', 'name', 'toolId', 'url'])
+      /**
+       * SIX SINCE ISSUE #295, and the sixth earned its place rather than drifted in.
+       * `alwaysInstall` is what lets the create page say "also installed, whichever pack you
+       * pick" — without it a page listing a pack's tools understates what is about to run as
+       * root on the box, and this repository's whole posture on packs is that what will run is
+       * disclosed before it runs.
+       *
+       * It is on THIS list and deliberately not on the tools embedded in a served pack, whose
+       * five-key shape `expectServedPackShape` still pins above: whether a tool also installs
+       * on boxes built from other packs is a fact about the installation, not about the pack.
+       */
+      expect(Object.keys(t).sort()).toEqual([
+        'alwaysInstall',
+        'category',
+        'description',
+        'name',
+        'toolId',
+        'url',
+      ])
     }
     // No scripts on the public route, ever.
     expect(JSON.stringify(tools)).not.toContain('apt-get')
@@ -801,5 +820,220 @@ describe('tool export and import', () => {
     const headers = { authorization: `Bearer ${userToken}` }
     expect((await send('GET', '/api/v1/admin/tools/git/export', undefined, headers)).status).toBe(403)
     expect((await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, headers)).status).toBe(403)
+  })
+})
+
+/**
+ * Forking a pack, and the record of where the fork came from (issue #295).
+ *
+ * The owner's model is a forked repository: an official pack is never edited in place, and
+ * modifying one gives you a pack of your own. `derivedFromPackId` is the whole of what makes
+ * that legible afterwards — without it a fork is just another personal pack, and the Surge
+ * Packs page cannot say "you have your own version of this" on the official pack's card.
+ */
+describe('a personal pack that was forked from another (issue #295)', () => {
+  const fork = (over: Record<string, unknown> = {}) => ({
+    packId: 'my-agents',
+    name: 'My agents',
+    tools: ['claude-code'],
+    requiresRepos: false,
+    requiresRdp: false,
+    derivedFromPackId: 'ai-coding-agents',
+    ...over,
+  })
+
+  it('records the pack it was forked from, and serves it on both projections', async () => {
+    const res = await send('POST', '/api/v1/admin/surge-packs', fork(), auth())
+    expect(res.status).toBe(201)
+    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+
+    const publicList = await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))
+    expect(publicList.find((p: any) => p.packId === 'my-agents').derivedFromPackId).toBe('ai-coding-agents')
+  })
+
+  it('refuses a parent that does not exist, and refuses itself', async () => {
+    // Checked once, at create time — the same rule `servers.tools` moved to in #289, where
+    // leniency was right for RENDERING an old row and wrong as the answer to a fresh request.
+    const missing = await send('POST', '/api/v1/admin/surge-packs', fork({ derivedFromPackId: 'nope' }), auth())
+    expect(missing.status).toBe(400)
+
+    const itself = await send('POST', '/api/v1/admin/surge-packs', fork({ derivedFromPackId: 'my-agents' }), auth())
+    expect(itself.status).toBe(400)
+  })
+
+  /**
+   * THE BLOCKER THIS COLUMN WOULD OTHERWISE HAVE HIT. The admin pack PUT builds a whole row
+   * from the form, so an `upsertPack` that assigned `derivedFromPackId` unconditionally would
+   * erase it the first time somebody added a tool to their own fork — which is the single most
+   * likely thing anyone will ever do to a fork, and the entire point of this issue.
+   */
+  it('keeps its parent when a tool is added to it later', async () => {
+    await send('POST', '/api/v1/admin/surge-packs', fork(), auth())
+    const res = await send('PUT', '/api/v1/admin/surge-packs/my-agents', { tools: ['claude-code', 'git'] }, auth())
+    expect(res.status).toBe(200)
+    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+  })
+
+  it('survives its parent being deleted, keeping the id as the record', async () => {
+    await send('POST', '/api/v1/admin/surge-packs', fork(), auth())
+    // A release can drop a pack (#290 dropped one). The fork is a database row with a null
+    // `sourceFile`, so nothing deletes it, and the dangling id is still the truth about where
+    // it began — the UI checks before dereferencing rather than the column being cleared.
+    deletePack(opened.db, 'ai-coding-agents')
+
+    const res = await send('GET', '/api/v1/admin/surge-packs/my-agents', undefined, auth())
+    expect(res.status).toBe(200)
+    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+  })
+
+  /**
+   * PROVENANCE DOES NOT EXPORT — and the artwork goes with it (owner's ruling).
+   *
+   * On this installation a fork wears its parent's image with a delta over it. Neither half
+   * travels: `derivedFromPackId` is not in `packSchema` and never was, so the recipient cannot
+   * draw the delta — and official artwork with no delta, on an installation that never forked
+   * anything, is a personal pack wearing a first-party face (ADR-0006).
+   */
+  it('exports neither the parent id nor the artwork it inherited', async () => {
+    await send('POST', '/api/v1/admin/surge-packs', fork({ imageUrl: '/images/surge-packs/claude-code.png' }), auth())
+
+    const res = await send('GET', '/api/v1/admin/surge-packs/my-agents/export', undefined, auth())
+    expect(res.status).toBe(200)
+    const yaml = await res.text()
+    expect(yaml).not.toContain('derivedFromPackId')
+    expect(yaml).not.toContain('imageUrl')
+  })
+
+  /**
+   * The pack file format has never heard of this field, and `strictObject` is what makes that
+   * a loud refusal rather than a silently dropped promise — the same guarantee #298 pinned for
+   * `alwaysInstall` on the tool file. A pack file cannot import a parentage it invented.
+   */
+  it('refuses a pack file that names derivedFromPackId', async () => {
+    const yaml = [
+      'version: 1',
+      'pack:',
+      '  packId: pretender',
+      '  name: Pretender',
+      '  derivedFromPackId: ai-coding-agents',
+      '  tools:',
+      '    - pretender-tool',
+      '  displayOrder: 50',
+      '  enabled: true',
+      '  requiresRepos: false',
+      '  requiresRdp: false',
+      'tools:',
+      '  - toolId: pretender-tool',
+      '    name: Pretender Tool',
+      '    description: Does nothing',
+      '    category: base',
+      '    url: https://example.test/pretender',
+      '    installScript: |',
+      '      set -euo pipefail',
+      '      true',
+      '    enabled: true',
+      '    installOrder: 40',
+      '    runAs: root',
+      '    bootstrap: false',
+      '',
+    ].join('\n')
+    const res = await send('POST', '/api/v1/admin/surge-packs/import', { yaml }, auth())
+    expect(res.status).toBe(400)
+    expect(JSON.stringify((await json(res)).issues)).toContain('derivedFromPackId')
+  })
+})
+
+/**
+ * "Install this tool on every box" as a REQUEST field (issue #295).
+ *
+ * The column is set through these routes and through no file, which is the whole design in one
+ * sentence: `toolSchema` is untouched, so both file formats refuse the key by construction
+ * (`tool-file.test.ts` pinned that before the column existed), and the two request bodies
+ * `.extend()` it on instead.
+ */
+describe('alwaysInstall on the tool routes (issue #295)', () => {
+  it('defaults to false, and can be set on create and on update', async () => {
+    const created = await json(
+      await send(
+        'POST',
+        '/api/v1/admin/tools',
+        {
+          name: 'House Style',
+          description: 'every box',
+          category: 'base',
+          url: 'https://example.test/house',
+          installScript: 'true',
+          runAs: 'root',
+        },
+        auth(),
+      ),
+    )
+    expect(created.alwaysInstall).toBe(false)
+
+    const updated = await json(
+      await send('PUT', `/api/v1/admin/tools/${created.toolId}`, { alwaysInstall: true }, auth()),
+    )
+    expect(updated.alwaysInstall).toBe(true)
+  })
+
+  /**
+   * THE ONE FIELD OF A FILE-BACKED TOOL AN OPERATOR MAY SET, and the UI says so in as many
+   * words. Everything else on a shipped tool is rewritten from its YAML at the next boot
+   * (ADR-0004), so offering to edit it would be offering an edit that disappears. This is not
+   * file content: no file format has it, and where a tool installs on THIS machine was never
+   * the repository's to decide.
+   */
+  it('is settable on a file-backed tool, unlike everything else on it', async () => {
+    const shipped = await json(await send('GET', '/api/v1/admin/tools', undefined, auth()))
+    const fileBacked = shipped.find((t: any) => t.sourceFile)
+    expect(fileBacked, 'a shipped tool to mark').toBeTruthy()
+
+    const res = await send('PUT', `/api/v1/admin/tools/${fileBacked.toolId}`, { alwaysInstall: true }, auth())
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    expect(body.alwaysInstall).toBe(true)
+    // Still owned by its file — this changed where it installs, not what it is.
+    expect(body.sourceFile).toBe(fileBacked.sourceFile)
+  })
+
+  /**
+   * A ROUND TRIP LANDS ON FALSE, and that is the point rather than a rough edge. A tool file
+   * says how to install something; "and put it on every box" is a decision the person
+   * receiving it has not made. Exporting it would be this installation making a promise on
+   * their behalf — so the export drops it, and the import cannot reinstate it because the
+   * format has no such key.
+   */
+  it('is not carried by an exported tool file, and comes back false', async () => {
+    await send(
+      'POST',
+      '/api/v1/admin/tools',
+      {
+        toolId: 'travelling-tool',
+        name: 'Travelling Tool',
+        description: 'goes places',
+        category: 'base',
+        url: 'https://example.test/travel',
+        installScript: 'true',
+        runAs: 'root',
+        alwaysInstall: true,
+      },
+      auth(),
+    )
+
+    const yaml = await (await send('GET', '/api/v1/admin/tools/travelling-tool/export', undefined, auth())).text()
+    expect(yaml).not.toContain('alwaysInstall')
+
+    deleteTool(opened.db, 'travelling-tool')
+    const reimported = await json(await send('POST', '/api/v1/admin/tools/import', { yaml }, auth()))
+    expect(reimported[0].alwaysInstall).toBe(false)
+  })
+
+  it('appears on the public tool list, so the create page can disclose it', async () => {
+    const shipped = await json(await send('GET', '/api/v1/admin/tools', undefined, auth()))
+    const target = shipped.find((t: any) => t.enabled)
+    await send('PUT', `/api/v1/admin/tools/${target.toolId}`, { alwaysInstall: true }, auth())
+
+    const listed = await json(await send('GET', '/api/v1/tools', undefined, auth()))
+    expect(listed.find((t: any) => t.toolId === target.toolId).alwaysInstall).toBe(true)
   })
 })

@@ -448,6 +448,21 @@ export const tools = sqliteTable('tools', {
   installOrder: integer('install_order').notNull(),
   /** Reserved for tools the runtime guarantees before any plan runs. Packs set false. */
   bootstrap: integer('bootstrap', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Install this tool on every box, whichever pack was chosen (issue #295).
+   *
+   * NOT `bootstrap`, which is the tempting shortcut and the wrong one: that field is reserved,
+   * runs before the base toolchain, and a `bootstrap: true` tool cannot be put through the
+   * smoke harness at all (ADR-0018). This one is unioned into the resolved tool list AFTER
+   * `resolvePack`'s three-way branch, so it reaches a pack create, an explicit tool selection
+   * and a no-pack create alike, and it is an ordinary plan step in every other respect.
+   *
+   * INSTALLATION STATE, NOT FILE CONTENT. It is deliberately absent from `toolSchema`, so no
+   * pack file and no tool file can carry it — a shared file that promised "installs
+   * everywhere" would be making a promise about someone else's installation. That also means
+   * it is the one field of a file-backed tool an operator may edit here (ADR-0020).
+   */
+  alwaysInstall: integer('always_install', { mode: 'boolean' }).notNull().default(false),
   runAs: text('run_as').notNull().default('rocky'),
   /** Which pack file this definition came from, for round-tripping edits back to YAML. */
   sourceFile: text('source_file'),
@@ -488,6 +503,25 @@ export const packs = sqliteTable('packs', {
    */
   inputs: text('inputs'),
   sourceFile: text('source_file'),
+  /**
+   * The pack this one was forked from, if it was (issue #295).
+   *
+   * A pack id STRING and deliberately no foreign key. `syncPacksToDb` deletes and recreates
+   * every file-backed row on each boot, so an FK would either cascade a user's fork away when
+   * a release drops the official pack or block the reconcile that recreates it. The id is
+   * stable across that churn; a row id is not.
+   *
+   * PROVENANCE, NOT A SYNC RELATIONSHIP. It records where this pack BEGAN. Nothing syncs, no
+   * update is offered, and the fork already tracks the official pack's tool *scripts* anyway
+   * because `packs.tools` holds ids (#204) — what froze at fork time is the membership list.
+   * A parent that later changes, or vanishes from the release entirely, leaves this column
+   * exactly as it is: a dangling id is still the only true record of where the pack came from.
+   *
+   * Like the registry columns below, it is written by the route and never by a pack file:
+   * `packSchema` is a `strictObject` that has never heard of it, so a file naming it is
+   * refused, and an exported fork carries no trace of the parent.
+   */
+  derivedFromPackId: text('derived_from_pack_id'),
   /**
    * Where a pack installed from a registry came from (rockysurf-arym.4).
    *

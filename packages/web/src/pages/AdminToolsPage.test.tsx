@@ -1,5 +1,5 @@
 import { startStubServer, type StubServer } from '../test-server'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { AdminToolsPage } from './AdminToolsPage'
@@ -21,6 +21,7 @@ import type { AdminSurgePack, AdminTool } from '../lib/api'
 const tool = (over: Partial<AdminTool> & { toolId: string }): AdminTool => ({
   name: over.toolId,
   description: 'a tool',
+  alwaysInstall: false,
   category: 'base',
   url: 'https://example.com',
   installScript: 'echo hi\n',
@@ -39,6 +40,7 @@ const TOOLS: AdminTool[] = [
   tool({ toolId: 'git', installOrder: 10, sourceFile: 'ai-coding-agents.yaml' }),
   tool({ toolId: 'hand-rolled', installOrder: 30, installScript: TRICKY_SCRIPT }),
   tool({ toolId: 'switched-off', installOrder: 20, enabled: false }),
+  tool({ toolId: 'always-on', installOrder: 50, alwaysInstall: true }),
 ]
 
 const PACKS: AdminSurgePack[] = [
@@ -49,6 +51,18 @@ const PACKS: AdminSurgePack[] = [
     displayOrder: 1,
     enabled: true,
     requiresRepos: true,
+    requiresRdp: false,
+    // File-backed, so it can only be forked — the boot sync rewrites it from disk (issue #295).
+    sourceFile: 'ai-coding-agents.yaml',
+    imageUrl: '/images/surge-packs/claude-code.png',
+  },
+  {
+    packId: 'mine',
+    name: 'Mine',
+    tools: ['git'],
+    displayOrder: 2,
+    enabled: true,
+    requiresRepos: false,
     requiresRdp: false,
   },
 ]
@@ -127,8 +141,8 @@ describe('the tools table', () => {
   it('lists tools in the order they install, within each section', async () => {
     renderPage()
     const [personal, official] = await screen.findAllByRole('table')
-    // Personal: switched-off(20) then hand-rolled(30).
-    expect(idsIn(personal!)).toEqual(['switched-off', 'hand-rolled'])
+    // Personal: switched-off(20), hand-rolled(30), always-on(50).
+    expect(idsIn(personal!)).toEqual(['switched-off', 'hand-rolled', 'always-on'])
     // Official: curl(10) git(10) claude-code(40).
     expect(idsIn(official!)).toEqual(['curl', 'git', 'claude-code'])
   })
@@ -147,8 +161,8 @@ describe('the tools table', () => {
     // "file: " on their own — assert on the cell rather than on a text match.
     const sources = (await screen.findAllByTestId(/^file-backed-/)).map((el) => el.textContent)
     expect(sources).toEqual(Array(3).fill('file: ai-coding-agents.yaml'))
-    // `hand-rolled` and `switched-off` have no sourceFile.
-    expect(await screen.findAllByText('database')).toHaveLength(2)
+    // `hand-rolled`, `switched-off` and `always-on` have no sourceFile.
+    expect(await screen.findAllByText('database')).toHaveLength(3)
   })
 
   it('marks a disabled tool', async () => {
@@ -239,5 +253,115 @@ describe('editing a script', () => {
     expect(await screen.findByLabelText('Import a tool file')).toBeDefined()
     // A URL import would install root shell with nothing recorded about where it came from.
     expect(screen.queryByLabelText(/url/i)).toBeNull()
+  })
+
+  /**
+   * Getting a registered tool onto a box (issue #295).
+   *
+   * A tool reaches a box only through a pack, so registering one deploys nothing — this is the
+   * step that closes that gap, and it is offered on every row for the same reason Export is:
+   * where a tool installs is not part of its file.
+   */
+  describe('Add to a pack…', () => {
+    it('is offered on personal and file-backed rows alike', async () => {
+      renderPage()
+      expect(await screen.findByTestId('add-to-pack-hand-rolled')).toBeDefined()
+      expect(screen.getByTestId('add-to-pack-claude-code')).toBeDefined()
+    })
+
+    it('says a file-backed tool is read-only about its DEFINITION, not about where it installs', async () => {
+      renderPage()
+      const hint = await screen.findByTestId('readonly-hint-claude-code')
+      expect(hint.textContent).toContain('definition is read-only')
+      expect(hint.textContent).toContain('Where it installs is still yours to set')
+    })
+
+    it('adds the tool to a pack of your own in one call', async () => {
+      renderPage()
+      fireEvent.click(await screen.findByTestId('add-to-pack-hand-rolled'))
+      // `mine` is the only pack without a sourceFile, so it is the only editable one.
+      fireEvent.click(await screen.findByTestId('add-to-mine'))
+
+      await waitFor(() => expect(writes.some((w) => w.method === 'PUT')).toBe(true))
+      const put = writes.find((w) => w.method === 'PUT')!
+      expect(put.path).toBe('/api/v1/admin/surge-packs/mine')
+      expect(JSON.parse(put.body).tools).toContain('hand-rolled')
+    })
+
+    /**
+     * An official pack is not edited — it is forked, recording where the fork came from. That
+     * record is what puts the delta on the official pack's own card afterwards.
+     */
+    it('forks an official pack rather than editing it, recording the parent', async () => {
+      renderPage()
+      fireEvent.click(await screen.findByTestId('add-to-pack-hand-rolled'))
+      fireEvent.click(await screen.findByTestId('fork-ai-coding-agents'))
+
+      await waitFor(() => expect(writes.some((w) => w.method === 'POST')).toBe(true))
+      const post = writes.find((w) => w.method === 'POST')!
+      expect(post.path).toBe('/api/v1/admin/surge-packs')
+      const body = JSON.parse(post.body)
+      expect(body.derivedFromPackId).toBe('ai-coding-agents')
+      expect(body.tools).toContain('hand-rolled')
+      // The fork wears its parent's face, which is how it is recognisable on the Personal tab.
+      expect(body.imageUrl).toBe('/images/surge-packs/claude-code.png')
+      // Nothing was written to the official pack itself.
+      expect(writes.some((w) => w.path === '/api/v1/admin/surge-packs/ai-coding-agents')).toBe(false)
+    })
+
+    /**
+     * "Add to all packs" is one flag, not a loop that forks all ten official packs — and
+     * because its blast radius is every server created from now on, it asks first.
+     */
+    it('confirms before setting a tool to install on every box', async () => {
+      renderPage()
+      fireEvent.click(await screen.findByTestId('add-to-pack-hand-rolled'))
+      fireEvent.click(await screen.findByTestId('always-install-on-start'))
+
+      const warning = await screen.findByTestId('always-install-confirm')
+      expect(warning.textContent).toContain('terminates the box')
+      expect(writes.some((w) => w.method === 'PUT')).toBe(false)
+
+      fireEvent.click(screen.getByTestId('always-install-yes'))
+      await waitFor(() => expect(writes.some((w) => w.method === 'PUT')).toBe(true))
+      const put = writes.find((w) => w.method === 'PUT')!
+      expect(put.path).toBe('/api/v1/admin/tools/hand-rolled')
+      expect(JSON.parse(put.body).alwaysInstall).toBe(true)
+    })
+  })
+
+  /**
+   * The delete guard core enforces scans `packs.tools`, and an always-install tool is on every
+   * box precisely WITHOUT any pack listing it — so core's 409 never fires and this warning is
+   * the only thing between the operator and quietly ending an install they set up.
+   */
+  it('warns that deleting an always-install tool stops it reaching new boxes', async () => {
+    renderPage()
+    const row = (await screen.findByText('always-on', { selector: 'code' })).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+    expect((await screen.findByRole('dialog')).textContent).toContain('installed on every box you create')
+  })
+
+  it('badges a tool that installs on every box', async () => {
+    renderPage()
+    expect(await screen.findByTestId('always-install-badge-always-on')).toBeDefined()
+  })
+
+  /**
+   * The disclosure has to carry the blast radius, not just the behaviour. An always-install
+   * tool runs on every box regardless of pack, so it cannot lean on anything a pack might not
+   * have — and under ADR-0010 a failed tool install terminates the machine, which turns one
+   * mis-ordered tool here into every new server failing.
+   */
+  it('discloses what "install on every box" costs, in the tool form', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'New tool' }))
+    const form = await screen.findByRole('dialog')
+
+    expect(within(form).getByTestId('tool-always-install')).toBeDefined()
+    expect(form.textContent).toContain('Install on every box you create from now on')
+    // Snapshotted plans: a running box does not change under it.
+    expect(form.textContent).toContain('servers already running keep the plan they were built with')
+    expect(form.textContent).toContain('a failed tool install terminates the machine')
   })
 })

@@ -132,6 +132,9 @@ beforeEach(() => {
   // that has never saved a key — and the state in which the SSH fieldset must look and behave
   // exactly as it did before the picker existed.
   vi.spyOn(api, 'listSshKeys').mockResolvedValue([])
+  // The always-install disclosure's endpoint (issue #295). Empty by default: the installation
+  // where nothing is set to install everywhere, and the chooser looks exactly as it did.
+  vi.spyOn(api, 'listTools').mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -2194,5 +2197,62 @@ describe('choosing a saved SSH public key', () => {
 
     await waitFor(() => expect(api.createServer).toHaveBeenCalled())
     expect(vi.mocked(api.createServer).mock.calls[0]?.[0].sshPublicKey).toBe(LAPTOP)
+  })
+})
+
+/**
+ * WHAT THE PACK DOES NOT SAY (issue #295).
+ *
+ * A box gets its pack's tools plus every tool set to install on all of them. A chooser that
+ * listed only the pack's own would understate what is about to run as root on the machine, and
+ * this repository's whole posture on packs is that what will run is disclosed before it runs.
+ */
+describe('tools installed whichever pack you pick', () => {
+  const everyBoxTool = {
+    toolId: 'house-style',
+    name: 'House Style',
+    description: 'every box gets this',
+    category: 'base' as const,
+    url: 'https://example.com/house',
+    alwaysInstall: true,
+  }
+
+  it('names them under the pack chooser', async () => {
+    vi.spyOn(api, 'listTools').mockResolvedValue([everyBoxTool])
+    renderPage()
+    const note = await screen.findByTestId('always-installed-note')
+    expect(note.textContent).toContain('House Style')
+    expect(note.textContent).toContain('whichever pack you pick')
+  })
+
+  it('says nothing at all when no tool is set that way', async () => {
+    renderPage()
+    await screen.findByLabelText(/name/i)
+    expect(screen.queryByTestId('always-installed-note')).toBeNull()
+  })
+
+  /**
+   * Not counted twice: a tool can be both in the chosen pack and set to install everywhere,
+   * and naming it in both places would read as two installs. The resolver dedupes the plan
+   * itself for the same reason.
+   */
+  it('leaves out a tool the chosen pack already lists', async () => {
+    vi.spyOn(api, 'listTools').mockResolvedValue([{ ...everyBoxTool, toolId: 'claude-code' }])
+    vi.spyOn(api, 'listSurgePacks').mockResolvedValue([
+      packWith({
+        tools: [
+          {
+            toolId: 'claude-code',
+            name: 'Claude Code',
+            description: 'the agent',
+            category: 'agent',
+            url: 'https://example.com',
+          },
+        ],
+      }),
+    ])
+    renderPage()
+    await screen.findByLabelText(/name/i)
+    expect(screen.queryByTestId('always-installed-note')).toBeNull()
   })
 })

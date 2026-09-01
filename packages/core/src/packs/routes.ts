@@ -70,9 +70,25 @@ const publicTool = (t: ToolRow) => ({
   url: t.url,
 })
 
+/**
+ * The tool LIST's projection: what a pack embeds, plus whether it installs on every box.
+ *
+ * A SEPARATE PROJECTION rather than a wider `publicTool`, because the two answer different
+ * questions and one of them is pinned. `publicPack` embeds `publicTool` for each tool the pack
+ * names, and `routes.test.ts` pins that embedded shape to exactly its five keys — rightly: a
+ * pack's tool list is "what this pack installs", and whether a tool ALSO installs on boxes
+ * built from other packs is not a fact about this pack. It is a fact about the installation,
+ * so it rides on the installation-wide list, which is the one the create page reads to say
+ * "also installed, whichever pack you pick" (issue #295).
+ */
+const listedTool = (t: ToolRow) => ({
+  ...publicTool(t),
+  alwaysInstall: t.alwaysInstall,
+})
+
 /** The admin view is the whole record, including the scripts. */
 const adminTool = (t: ToolRow) => ({
-  ...publicTool(t),
+  ...listedTool(t),
   installScript: t.installScript,
   setupScript: t.setupScript ?? undefined,
   enabled: t.enabled,
@@ -91,6 +107,15 @@ const adminTool = (t: ToolRow) => ({
 const packFields = (p: Pack) => ({
   packId: p.id,
   name: p.name,
+  /**
+   * The pack this one was forked from (issue #295), in BOTH projections.
+   *
+   * It names a pack that is already listed to the same audience, so it discloses nothing new —
+   * and the Surge Packs page needs it on the public list to mark an official pack whose
+   * personal version exists. Deriving that mark in the browser, from the list it already has,
+   * is what makes the mark disappear the moment the fork is deleted with no route to notify.
+   */
+  derivedFromPackId: p.derivedFromPackId ?? undefined,
   displayOrder: p.displayOrder,
   enabled: p.enabled,
   imageUrl: p.imageUrl ?? undefined,
@@ -179,13 +204,39 @@ const adminPack = (p: Pack) => ({
 
 /* --------------------------------------------------------------------------- payloads */
 
+/**
+ * `alwaysInstall` is added HERE, on the request bodies, and never to `toolSchema` (issue #295).
+ *
+ * That one placement is what makes the whole rule hold with no guard to maintain. `toolSchema`
+ * is the frozen shape a pack file and a tool file BOTH carry (ADR-0018), and both are
+ * `strictObject`s — so a file naming `alwaysInstall` is already refused, loudly, by the schema
+ * that has never heard of it. The field is installation state: "install this on every box I
+ * create" is a fact about one installation, and a file that carried it would be making a
+ * promise about someone else's. See `tool-file.test.ts`, which pinned this before the column
+ * existed.
+ */
+const alwaysInstallField = { alwaysInstall: z.boolean().optional() }
+
 /** Create accepts the frozen tool shape minus the id, which may be derived from the name. */
 const createToolBody = toolSchema
   .partial({ toolId: true, enabled: true, installOrder: true, bootstrap: true })
+  .extend(alwaysInstallField)
   .strict()
-const updateToolBody = toolSchema.omit({ toolId: true }).partial().strict()
+const updateToolBody = toolSchema.omit({ toolId: true }).partial().extend(alwaysInstallField).strict()
 
-const createPackBody = packSchema.partial({ packId: true, enabled: true, displayOrder: true }).strict()
+/**
+ * `derivedFromPackId` is on CREATE only, and deliberately not on update (issue #295).
+ *
+ * Where a pack came from is settled the moment it is forked. An update route that accepted it
+ * would let a pack claim a parentage it never had, and — worse — the SPA's pack PUT sends a
+ * whole form, so the field would arrive as `undefined` on every ordinary edit and need a rule
+ * to distinguish "not mentioned" from "cleared". Keeping it off this body means the repository
+ * layer's "absent leaves it alone" is the only rule there is.
+ */
+const createPackBody = packSchema
+  .partial({ packId: true, enabled: true, displayOrder: true })
+  .extend({ derivedFromPackId: z.string().optional() })
+  .strict()
 const updatePackBody = packSchema.omit({ packId: true }).partial().strict()
 
 /**
@@ -252,7 +303,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
 
   /* ------------------------------------------------------------------------ public */
 
-  routes.get('/api/v1/tools', (c) => success(c, listTools(db).filter((t) => t.enabled).map(publicTool)))
+  routes.get('/api/v1/tools', (c) => success(c, listTools(db).filter((t) => t.enabled).map(listedTool)))
 
   routes.get('/api/v1/surge-packs', (c) => {
     const byId = new Map(listTools(db).map((t) => [t.id, t]))
@@ -290,6 +341,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           enabled: body.enabled ?? true,
           installOrder: body.installOrder ?? 100,
           bootstrap: body.bootstrap ?? false,
+          alwaysInstall: body.alwaysInstall ?? false,
           runAs: body.runAs,
           // Created here, not loaded from a file: null keeps the loader from deleting it.
           sourceFile: null,
@@ -322,6 +374,10 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           enabled: body.enabled ?? existing.enabled,
           installOrder: body.installOrder ?? existing.installOrder,
           bootstrap: body.bootstrap ?? existing.bootstrap,
+          // Editable on a FILE-BACKED tool too, unlike everything above it, because it is the
+          // one field here that is not file content (issue #295, ADR-0020). The next boot
+          // rewrites this row's name and scripts from its YAML and leaves this alone.
+          alwaysInstall: body.alwaysInstall ?? existing.alwaysInstall,
           runAs: body.runAs ?? existing.runAs,
           // An edit to a file-backed tool keeps its provenance, and is therefore overwritten
           // on the next boot — that is ADR-0004's stated behaviour, and the export endpoint
@@ -440,6 +496,21 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     if (getPack(db, id)) return conflict(c, 'A surge pack with this ID already exists')
     const problem = checkTools(body.tools)
     if (problem) return badRequest(c, problem)
+    /**
+     * A fork names a pack that EXISTS RIGHT NOW, checked once, here (issue #295).
+     *
+     * Checked at create time and never again, which is the same contract `servers.tools` moved
+     * to in #289: leniency is right when RENDERING an old row and wrong as the answer to a
+     * fresh request. Afterwards the parent may be edited, or dropped from a release entirely,
+     * and the recorded id stays exactly as it is — a dangling id is still the truth about where
+     * this pack began, and nothing downstream dereferences it without checking.
+     */
+    if (body.derivedFromPackId !== undefined) {
+      if (body.derivedFromPackId === id) return badRequest(c, 'A pack cannot be derived from itself')
+      if (!getPack(db, body.derivedFromPackId)) {
+        return badRequest(c, `Pack not found: ${body.derivedFromPackId}`)
+      }
+    }
 
     return created(
       c,
@@ -459,6 +530,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           webPort: body.webPort ?? null,
           inputs: body.inputs ?? null,
           sourceFile: null,
+          derivedFromPackId: body.derivedFromPackId ?? null,
         }),
       ),
     )
@@ -499,6 +571,11 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
           // silently delete a pack's whole declaration and break the create form for it.
           inputs: body.inputs ?? existing.inputs ?? null,
           sourceFile: existing.sourceFile,
+          // `derivedFromPackId` IS DELIBERATELY NOT LISTED HERE (issue #295). This is a whole-row
+          // literal, and the field is settled at fork time and absent from `updatePackBody`, so
+          // naming it would only create a way to lose it. `upsertPack` reads "absent" as "leave
+          // it alone", which is what keeps a fork's provenance — and the mark on the official
+          // pack's icon — through the very first "add a tool to my fork".
         }),
       ),
     )
@@ -536,7 +613,24 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         tools: pack.tools,
         displayOrder: pack.displayOrder,
         enabled: pack.enabled,
-        ...(pack.imageUrl ? { imageUrl: pack.imageUrl } : {}),
+        /**
+         * A FORK EXPORTS NO ARTWORK (issue #295, owner's ruling).
+         *
+         * On this installation a fork wears the official pack's image with a delta over it, so
+         * it reads as "your version of that pack" at a glance. Neither half of that survives
+         * the export: `derivedFromPackId` is provenance and provenance does not travel (it is
+         * not in `packSchema` and never was), so the delta cannot be drawn on the far side —
+         * and official artwork with no delta, on an installation that never forked anything, is
+         * a personal pack wearing a first-party face. That is ADR-0006's whole concern about
+         * who gets to look official. The recipient gets the monogram, which is what every pack
+         * built from scratch gets, and can set their own image.
+         *
+         * This is why it keys off the fork relationship rather than off the image: an image the
+         * operator chose themselves is indistinguishable from an inherited one by the time it
+         * reaches this row, and of the two possible mistakes, withholding an image someone
+         * picked is recoverable in a text editor while shipping borrowed official art is not.
+         */
+        ...(pack.imageUrl && !pack.derivedFromPackId ? { imageUrl: pack.imageUrl } : {}),
         ...(pack.theme ? { theme: pack.theme } : {}),
         ...(pack.guide ? { guide: pack.guide } : {}),
         requiresRepos: pack.requiresRepos,

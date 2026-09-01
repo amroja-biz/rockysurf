@@ -1102,7 +1102,15 @@ third of these; the second is a config-file thing, not a button on this page.
 3. **Start from an existing pack.** New Surge Pack's third choice: pick any pack already on this
    installation — official, community or personal — and the same create form as **Start from
    scratch** opens, seeded with a new `packId` and name and the source's own tools already
-   checked. Deliberately not `Export`'s output: Export inlines a full definition for every tool
+   checked. This is also what happens when you add one of your tools to an official pack from the
+   Tools page: **an official pack is never changed, it is copied.** The copy remembers what it
+   started from, keeps that pack's mark with a small bright **∆** on it, and appears on Personal —
+   while the official pack stays on Official, unchanged and still selectable, with the same ∆ on
+   its own mark to say you have a version of your own. Rest on either mark to see which pack it
+   means. Nothing syncs between them: the copy's list of tools is yours from that moment, though
+   the tools themselves stay up to date, because a pack references tools rather than containing
+   them. A copy you **export** carries no mark and no borrowed artwork — the person you send it to
+   has not forked anything, so official-looking art on their installation would be a lie. Deliberately not `Export`'s output: Export inlines a full definition for every tool
    the pack references, and importing that back would redefine — not reference — every one of
    them, up to and including the shared base tools other packs depend on. This seeds from the
    pack's tool **ids** instead, the same as picking them by hand, which is the UI version of
@@ -1186,6 +1194,24 @@ tabs carry those three words as their name — **Official**, **Community**, **Pe
 shown first — and a card's badge reads the same word its tab does (`registry` shows as COMMUNITY,
 `local` as PERSONAL; the value behind the badge does not change, only what you read). The tab is
 in the URL (`?tab=community`), so a link lands on the one it names.
+
+A pack's mark carries a small bright **∆** when it has been forked, on both sides of that: on a
+pack of yours it means "this started as that one", and on an official or community pack it means
+"you have your own version of this". It is a mark and nothing more — it filters nothing and
+disables nothing, and no official pack is ever written to.
+
+**Putting one tool on every box.** A tool reaches a box only through a Surge Pack, so registering
+one installs nothing by itself; the Tools page's **Add to a pack…** is how it gets somewhere. It
+adds the tool to a pack of your own outright, and offers to copy an official one for you. Beside
+those is the other option — **install it on every box you create from now on** — which is one
+setting rather than an edit to every pack, so a pack you make next month gets it too. It is asked
+for explicitly, because the blast radius is every server you create afterwards: a tool set this way
+must not depend on anything a particular pack installs, since **a tool that fails to install
+terminates the box**, and one that is wrong here breaks every new server rather than one. Servers
+that already exist never change — a server's install plan is written when it is created. The New
+Server page lists these under the pack chooser so what you are about to install is on the screen
+before you install it, and deleting such a tool warns you, because the guard that refuses to delete
+a tool a pack is using cannot see this one: no pack lists it.
 
 Community carries a fixed caption naming where its catalogue comes from — *Community packs from
 Rocky Surf Shop* — and a filter — **All** / **Installed** / **Not installed**, defaulting to

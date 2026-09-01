@@ -674,6 +674,13 @@ Step 1E and `references/extending.md`.
 | `bootstrap` | boolean | yes | Set `false`. Reserved for the handful of tools the runtime guarantees before any plan runs |
 | `runAs` | `'root'` \| `'rocky'` | yes | The user the step runs as. See rule 4 |
 
+There is no `alwaysInstall` field, and adding one to a file is an error rather than an omission.
+"Install this on every box" is a setting one installation makes about itself — an operator ticks it
+on their own Tools page, and it is stored in their database. A file that carried it would be making
+a promise about somebody else's machine, so `strictObject` refuses the key in a pack file and in a
+tool file alike, and exporting a tool that is set that way does not carry it either
+([ADR-0020](adr/0020-modifying-an-official-pack-forks-it.md)).
+
 #### `installOrder`, and the gaps-of-10 convention
 
 Steps run in ascending `installOrder`. **Leave gaps of 10** so someone can insert a step later
@@ -1107,7 +1114,12 @@ which needs a pull request here:
    installation, official, community or personal, and the same create form as "start from
    scratch" opens, seeded with a new `packId`/name and the source's own tools already checked —
    referenced, the way "Building on an existing pack" below describes, never redefined the way
-   `Export`'s inlined output would be if reimported.
+   `Export`'s inlined output would be if reimported. This is the UI's answer to "modify an
+   official pack": the official one is never edited — the boot sync would overwrite the edit
+   anyway — so you get a copy of your own, which records what it started from and wears that
+   pack's mark with a **∆** on it. The `derivedFromPackId` behind that mark is a database column
+   and not part of the pack format, so a pack file naming it is refused, and an exported copy
+   carries neither the mark nor artwork it inherited.
 3. **Add it as a source**, which is the one to use while you are still editing the pack, and the
    one for a `.yaml` URL — a raw GitHub file, a gist, a static host — now that issue #204 retired
    the one-off "import from a URL" button that used to sit beside Upload. A line in

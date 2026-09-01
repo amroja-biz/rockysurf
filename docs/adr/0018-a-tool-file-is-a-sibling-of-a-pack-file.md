@@ -69,6 +69,10 @@ promise. That matters most for `alwaysInstall`, the column
 [issue #295](https://github.com/amroja-biz/rockysurf/issues/295) proposes: a tool file naming it
 must fail rather than import a tool that believes it will be installed everywhere and is not.
 
+That column shipped in [ADR-0020](0020-modifying-an-official-pack-forks-it.md), and the refusal
+predicted here holds by construction rather than by a new guard: `alwaysInstall` was added to the
+request bodies and never to `toolSchema`, so the tests written here passed unedited.
+
 A tool file records no provenance, and none is faked.
 
 ## Alternatives considered
