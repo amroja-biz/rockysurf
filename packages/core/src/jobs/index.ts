@@ -71,7 +71,7 @@ export interface Jobs {
 
 export function createJobs(deps: JobsDeps): Jobs {
   const intervals = { ...DEFAULT_INTERVALS, ...deps.intervals }
-  const spend = createSpendTracker(deps.db, deps.limits)
+  const spend = createSpendTracker(deps.db, deps.limits, deps.now)
 
   const provisionTick = createProvisionTick({
     db: deps.db,
