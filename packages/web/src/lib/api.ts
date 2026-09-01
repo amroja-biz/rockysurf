@@ -729,10 +729,11 @@ export interface SurgePack {
    * The pack this one was forked from, if it was (issue #295).
    *
    * Provenance, not a sync relationship: it says where this pack BEGAN, and nothing is offered
-   * to bring it up to date. The Surge Packs page reads it two ways — a fork wears its parent's
-   * artwork with a delta over it, and the parent's own card gets the same delta to say a
-   * personal version exists — both derived in the browser from this list, so deleting a fork
-   * clears the mark with no route to ask.
+   * to bring it up to date. The Surge Packs page reads it two ways, with a DIFFERENT mark for
+   * each — a fork wears its parent's artwork with a delta over it, and only a fork carries that
+   * delta, while the parent's own card gets a quieter mark in the opposite corner to say a
+   * personal version exists. Both are derived in the browser from this list, so deleting a fork
+   * clears the parent's mark with no route to ask.
    *
    * May name a pack that is no longer installed: a release can drop one, and the id is still
    * the truth about where this pack came from. Every reader checks before dereferencing.

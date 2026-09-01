@@ -22,7 +22,8 @@ import { carryFromSource, forkNameFor, suggestNewPackId } from '../lib/derive-pa
  * boot reconcile rewrites file-backed rows from disk (ADR-0004), so an "edit" would vanish at
  * the next restart. Forking is not a workaround for that, it is the owner's own model of what
  * modifying an official pack means ("I think of it like a forked repo"). The fork keeps the
- * parent's artwork and wears a delta over it, and its parent's card gets the same delta back.
+ * parent's artwork and wears a delta over it — only the copy carries that delta, because only the
+ * copy is a copy; the parent gets a quieter mark of its own saying a personal version exists.
  *
  * "ADD TO ALL PACKS" IS NOT A LOOP OVER PACKS. Writing the tool into all ten official packs
  * would fork all ten, which is the outcome this whole issue exists to avoid; and a personal

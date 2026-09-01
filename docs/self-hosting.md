@@ -1105,9 +1105,11 @@ third of these; the second is a config-file thing, not a button on this page.
    checked. This is also what happens when you add one of your tools to an official pack from the
    Tools page: **an official pack is never changed, it is copied.** The copy remembers what it
    started from, keeps that pack's mark with a small bright **∆** on it, and appears on Personal —
-   while the official pack stays on Official, unchanged and still selectable, with the same ∆ on
-   its own mark to say you have a version of your own. Rest on either mark to see which pack it
-   means. Nothing syncs between them: the copy's list of tools is yours from that moment, though
+   while the official pack stays on Official, unchanged and still selectable. **Only your copy
+   gets the ∆**: it is the one that was modified, and it is wearing artwork that belongs to the
+   official pack, so the ∆ is what says so. The official pack gets a different and quieter mark in
+   the opposite corner — a small outlined **⧉** — meaning "a personal version of this exists",
+   never "this was changed". Rest on either mark to see which pack it means. Nothing syncs between them: the copy's list of tools is yours from that moment, though
    the tools themselves stay up to date, because a pack references tools rather than containing
    them. A copy you **export** carries no mark and no borrowed artwork — the person you send it to
    has not forked anything, so official-looking art on their installation would be a lie. Deliberately not `Export`'s output: Export inlines a full definition for every tool
@@ -1195,10 +1197,13 @@ shown first — and a card's badge reads the same word its tab does (`registry` 
 `local` as PERSONAL; the value behind the badge does not change, only what you read). The tab is
 in the URL (`?tab=community`), so a link lands on the one it names.
 
-A pack's mark carries a small bright **∆** when it has been forked, on both sides of that: on a
-pack of yours it means "this started as that one", and on an official or community pack it means
-"you have your own version of this". It is a mark and nothing more — it filters nothing and
-disables nothing, and no official pack is ever written to.
+Two different marks can appear on a pack's icon, and they mean different things. A small bright
+**∆** on the top right means *this pack is a copy of another one* — only a pack you made carries
+it, never an official pack. A quieter outlined **⧉** on the bottom right means *a personal version
+of this pack exists*; that is the one an official pack gets, and it never means the official pack
+was changed. A copy that has itself been copied shows both, which is why they sit in opposite
+corners. They are marks and nothing more — they filter nothing and disable nothing, and no
+official pack is ever written to.
 
 **Putting one tool on every box.** A tool reaches a box only through a Surge Pack, so registering
 one installs nothing by itself; the Tools page's **Add to a pack…** is how it gets somewhere. It

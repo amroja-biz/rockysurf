@@ -1117,7 +1117,8 @@ which needs a pull request here:
    `Export`'s inlined output would be if reimported. This is the UI's answer to "modify an
    official pack": the official one is never edited — the boot sync would overwrite the edit
    anyway — so you get a copy of your own, which records what it started from and wears that
-   pack's mark with a **∆** on it. The `derivedFromPackId` behind that mark is a database column
+   pack's mark with a **∆** on it. Only your copy gets the ∆; the official pack gets a quieter
+   mark of its own saying a personal version exists. The `derivedFromPackId` behind that mark is a database column
    and not part of the pack format, so a pack file naming it is refused, and an exported copy
    carries neither the mark nor artwork it inherited.
 3. **Add it as a source**, which is the one to use while you are still editing the pack, and the

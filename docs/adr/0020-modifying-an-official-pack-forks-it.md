@@ -69,6 +69,11 @@ A fork **inherits its parent's `imageUrl`**, with a small bright delta over the 
 mark (owner's ruling). That is what makes a fork recognisable at a glance on the Personal tab
 rather than looking like an unrelated pack that happens to hold the same tools.
 
+**Only a modded pack carries the delta** (owner's ruling, 2026-09-01, verbatim: "Only the modded
+pack should have the delta symbol"). The official pack it was forked from carries a different
+indicator entirely — it has a personal version, it was not itself modified, and one symbol for
+both would say otherwise.
+
 **Two marks, not one mark twice.** They mean opposite things and therefore look different:
 
 | | Says | Treatment |
