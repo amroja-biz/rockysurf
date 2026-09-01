@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
@@ -18,6 +18,7 @@ import {
   type SecretView,
   type SettingsChange,
   type SettingsField,
+  type SettingsList,
   type SettingsView,
 } from '../lib/api'
 import { ENV_VAR_ONLY, envVarDisplay, envVarReference } from '../lib/envRef'
@@ -392,6 +393,13 @@ export function SettingsPage() {
   const sections = useMemo(() => {
     const map = new Map<string, { title: string; help: string }>()
     for (const section of view?.sections ?? []) map.set(section.id, section)
+    return map
+  }, [view])
+
+  /** The lists core declares, by path — what `genericList` draws a card from. */
+  const lists = useMemo(() => {
+    const map = new Map<string, SettingsList>()
+    for (const list of view?.lists ?? []) map.set(list.path, list)
     return map
   }, [view])
 
@@ -1423,7 +1431,8 @@ export function SettingsPage() {
     path: string[],
     fields: ListField[],
     itemLabel: (entry: Record<string, unknown>, index: number) => string,
-    blank: Record<string, unknown>,
+    /** Absent means this list is not added to here — its entries still render. */
+    blank: Record<string, unknown> | undefined,
     empty: string,
   ): ReactNode {
     const entries = (valueAt(values, path) as Record<string, unknown>[] | undefined) ?? []
@@ -1463,16 +1472,73 @@ export function SettingsPage() {
             </button>
           </div>
         ))}
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={Boolean(blocked) || saving}
-          title={blocked}
-          onClick={() => void submit([{ path: [...path, entries.length], value: blank }], [])}
-        >
-          Add
-        </button>
+        {blank && (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={Boolean(blocked) || saving}
+            title={blocked}
+            onClick={() => void submit([{ path: [...path, entries.length], value: blank }], [])}
+          >
+            Add
+          </button>
+        )}
       </>
+    )
+  }
+
+  /**
+   * ANY LIST CORE DECLARES, DRAWN WITHOUT A HAND-WRITTEN BLOCK FOR IT.
+   *
+   * This is `humanize`'s doctrine (see its comment) applied to lists instead of fields, and it
+   * exists because the absence of it shipped a broken page. `ssh.keys` (issue #302) was added to
+   * core's inventory and to `SETTINGS_LISTS`, and the page drew its two section headers — those
+   * come down the wire — and no controls at all, because the only thing that has ever produced
+   * a list here is a hand-written entry keyed by section id. The operator got two boxes of prose
+   * and no way to add a key.
+   *
+   * `view.lists` was already being served and simply never read. Now it is: core says which
+   * paths are lists, what an entry is made of, what a new one looks like and what to say when
+   * there are none, and the page renders that. A hand-written block still wins where one exists
+   * — the token list's bespoke flow, the nicer labels on hosts and pack sources — so this is a
+   * floor under the page rather than a replacement for it.
+   *
+   * The labels are `humanize`d field names, which is honestly worse than hand-written ones and
+   * enormously better than nothing.
+   */
+  function genericList(id: string): ReactNode | undefined {
+    /*
+     * A list is drawn on the section that IS its path (`ssh.keys`), or — when core declared no
+     * section for it — on the nearest section that owns it (`notifications.targets` on a
+     * `notifications` tab). Without the second case a list one level below its section renders
+     * nowhere, which is the same silence this function exists to end.
+     */
+    const mine = [...lists.values()].filter((list) =>
+      allSections.includes(list.path) ? list.path === id : sectionOf(list.path, allSections) === id,
+    )
+    if (mine.length === 0) return undefined
+    return mine.map((list) => <Fragment key={list.path}>{oneList(list)}</Fragment>)
+  }
+
+  function oneList(list: SettingsList): ReactNode {
+    const id = list.path
+    const fields: ListField[] = list.itemFields.map((name) => {
+      const spec = specs.get(`${id}.*.${name}`)
+      return {
+        name,
+        label: humanize(name),
+        ...(spec?.kind === 'secret' ? { secret: true } : {}),
+      }
+    })
+    const labelField = list.labelField ?? list.itemFields[0]!
+    const noun = sections.get(id)?.title ?? humanize(id.split('.').pop() ?? id)
+
+    return listSection(
+      id.split('.'),
+      fields,
+      (entry, index) => String(entry[labelField] ?? `${noun} ${index + 1}`),
+      list.blank,
+      list.empty,
     )
   }
 
@@ -1656,27 +1722,13 @@ export function SettingsPage() {
     ),
 
     /*
-      YOUR OWN SSH PUBLIC KEYS (issue #302), a card on its own tab — the `registry.sources`
-      shape, because the tab has exactly one thing on it and that thing is a list.
-
-      BOTH BOXES ARE PLAIN TEXT, INCLUDING THE KEY. `secret: true` would mask it, and masking a
-      public key would hide from the person the one value they need to be able to compare with
-      `cat ~/.ssh/id_ed25519.pub` — while implying Rocky Surf is keeping something for them that
-      it is not. The blank entry carries an EMPTY key rather than a plausible-looking example:
-      core refuses anything that is not a real public key, and shipping a real one as a
-      placeholder would authorize a keypair whose private half belongs to whoever generated it.
+      `ssh.keys` (issue #302) is DELIBERATELY ABSENT from this record. It is drawn by
+      `genericList` from what core declares, which is the whole point of that function existing:
+      the hand-written entry this replaced was the only reason the section worked, and a section
+      whose editor lives here is a section that silently renders as prose the moment core ships
+      ahead of the SPA. Leaving one list to the generic path means the generic path is exercised
+      by the product rather than only by a test.
     */
-    'ssh.keys': listSection(
-      ['ssh', 'keys'],
-      [
-        { name: 'name', label: 'Name' },
-        { name: 'publicKey', label: 'Public key' },
-      ],
-      (entry, i) => String(entry['name'] ?? `key ${i + 1}`),
-      { name: 'my-laptop', publicKey: '' },
-      'None yet. Add one and the New Server page will offer it — you can still paste a key there ' +
-        'without saving it here.',
-    ),
 
     /* Nested under `providers.byo`, so it is a second card on that tab rather than a tab of its
        own: enabling the provider and satisfying its one requirement are the same errand. */
@@ -1987,13 +2039,44 @@ export function SettingsPage() {
                 aria-labelledby={`settings-tab-${tab}`}
                 hidden={tab !== active}
               >
-                {cardsOn(tab).map((id) => (
-                  <section key={id}>
-                    {sectionHeader(id)}
-                    {handWritten[id]}
-                    {leftoversIn(id).map((spec) => fallbackField(spec))}
-                  </section>
-                ))}
+                {cardsOn(tab).map((id) => {
+                  const contents = handWritten[id] ?? genericList(id)
+                  const extras = leftoversIn(id).map((spec) => fallbackField(spec))
+                  /*
+                    A section whose children hold the controls draws none of its own, and that is
+                    not the empty-card fault below — `ssh`, `preferences` and `registry` are
+                    headings over the cards nested under them. Only a LEAF that draws nothing is
+                    the state worth reporting.
+                  */
+                  const hasChildCards = cardsOn(tab).some((other) => other.startsWith(`${id}.`))
+                  return (
+                    <section key={id}>
+                      {sectionHeader(id)}
+                      {contents}
+                      {extras}
+                      {/*
+                        A CARD THAT DRAWS NOTHING SAYS SO (issue #302 follow-up).
+
+                        This is the state the ssh.keys bug was actually seen in: core sends a
+                        section, the page has no block and no declared list for it, and every
+                        field it covers is a `*` pattern excluded from the leftovers — so the
+                        card rendered a heading, a paragraph of help describing an editor, and
+                        no editor. Prose promising a control that is not there is worse than an
+                        error, because nothing looks broken.
+
+                        It cannot happen for a list core declares any more. It can still happen
+                        when the app is older than the core serving it, which is exactly when an
+                        operator needs to be told rather than left looking for a button.
+                      */}
+                      {!contents && extras.length === 0 && !hasChildCards && (
+                        <p className="hint settings-warning">
+                          This version of the Rocky Surf app has no editor for this section — it is newer than the
+                          page. Edit it in {view.file.path} directly, or update Rocky Surf.
+                        </p>
+                      )}
+                    </section>
+                  )
+                })}
               </div>
             ))}
           </div>

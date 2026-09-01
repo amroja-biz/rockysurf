@@ -1073,6 +1073,18 @@ export interface SettingsSection {
 export interface SettingsList {
   path: string
   itemFields: string[]
+  /**
+   * A new entry, as a value core's schema accepts — what the Add button writes.
+   *
+   * This is what lets the page draw a list it has no hand-written block for. Absent means the
+   * list is not added to generically (`github.tokens`, whose entries need a token that cannot
+   * be invented); its entries still render, it just offers no Add.
+   */
+  blank?: Record<string, string | number | boolean>
+  /** The item field that titles a card. Defaults to the first of `itemFields`. */
+  labelField?: string
+  /** Core's sentence for when the list is empty. */
+  empty: string
 }
 
 export interface SettingsView {

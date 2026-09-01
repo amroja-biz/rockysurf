@@ -191,11 +191,35 @@ const VIEW: SettingsView = {
   },
   fields: FIELDS,
   sections: SECTIONS,
+  /**
+   * Mirrored from core's `SETTINGS_LISTS`, `blank` and all — because the page now DRAWS from
+   * this (issue #302 follow-up). `ssh.keys` deliberately has no hand-written block on the page,
+   * so what these four rows say is the whole of what its card can be.
+   */
   lists: [
-    { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
-    { path: 'ssh.keys', itemFields: ['name', 'publicKey'] },
-    { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
-    { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
+    // No blank: the token list collects a token through its own card before writing anything.
+    { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'], labelField: 'owner', empty: 'None yet.' },
+    {
+      path: 'ssh.keys',
+      itemFields: ['name', 'publicKey'],
+      blank: { name: 'my-laptop', publicKey: '' },
+      labelField: 'name',
+      empty: 'None yet. Add one and the New Server page will offer it.',
+    },
+    {
+      path: 'providers.byo.hosts',
+      itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
+      blank: { name: 'change-me', host: '10.0.0.1' },
+      labelField: 'name',
+      empty: 'None yet. Enabling this provider requires at least one host.',
+    },
+    {
+      path: 'registry.sources',
+      itemFields: ['name', 'url', 'trust'],
+      blank: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      labelField: 'name',
+      empty: 'None yet.',
+    },
   ],
   drifted: false,
   restartHint: 'Changes apply after a restart: stop the process with Ctrl-C and run ./start.sh again.',
@@ -2025,6 +2049,77 @@ describe('finding your way around the page', () => {
     expect(selected()!.textContent).toContain('Preferences')
   })
 
+  /**
+   * NO SECTION IS ALL PROSE AND NO CONTROLS — the general form of the `ssh.keys` bug.
+   *
+   * That bug shipped as: core declared a section and a list, the page had no hand-written block
+   * for it, every field it covered was a `*` pattern excluded from the leftovers, and the card
+   * rendered a heading and a paragraph of help promising an editor that was not there. Nothing
+   * looked broken, which is why it reached an operator.
+   *
+   * So this walks EVERY tab core sends and insists each card either draws something or says
+   * plainly that this build has no editor for it. It is the assertion that would have failed on
+   * the shipped page, and it fails for the next section too, not only for this one.
+   */
+  it('never draws a card that is only prose, on any tab', async () => {
+    renderPage()
+    await loaded()
+
+    const tabTitles = screen.getAllByRole('tab').map((tab) => tab.textContent ?? '')
+    expect(tabTitles.length).toBeGreaterThan(5)
+
+    for (const title of tabTitles) {
+      fireEvent.click(screen.getByRole('tab', { name: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }))
+      const panel = document.querySelector('.settings-panel:not([hidden])')!
+      for (const header of panel.querySelectorAll('[data-section]')) {
+        const id = header.getAttribute('data-section')!
+        const card = header.closest('section')!
+        const controls = card.querySelectorAll('input, textarea, select, button')
+        const explains = card.textContent!.includes('has no editor for this section')
+        // A heading over nested cards draws nothing of its own, and that is not this fault.
+        const isHeadingOverCards = served.sections.some((s) => s.id.startsWith(`${id}.`))
+        expect(
+          controls.length > 0 || explains || isHeadingOverCards,
+          `the "${id}" card renders help text and no way to change anything`,
+        ).toBe(true)
+      }
+    }
+  })
+
+  /**
+   * A LIST CORE DECLARES THAT THIS BUILD HAS NEVER HEARD OF still gets an editor — the same
+   * promise `humanize` makes for a field core adds, which lists did not have and needed.
+   */
+  it('draws a list core added that the page has no block for', async () => {
+    served.sections.push({ id: 'notifications', title: 'Notifications', help: 'Where alerts go.' })
+    served.fields.push(
+      { path: 'notifications.targets.*.name', kind: 'string', writable: true, appliesAt: 'save', help: 'A label.' },
+      { path: 'notifications.targets.*.webhookUrl', kind: 'string', writable: true, appliesAt: 'save', help: 'A URL.' },
+    )
+    served.lists.push({
+      path: 'notifications.targets',
+      itemFields: ['name', 'webhookUrl'],
+      blank: { name: 'my-alerts', webhookUrl: '' },
+      labelField: 'name',
+      empty: 'None yet. Add one to be told when something happens.',
+    })
+    served.values['notifications'] = { targets: [{ name: 'oncall', webhookUrl: 'https://example.com/hook' }] }
+
+    renderPage()
+    await loaded()
+    open('Notifications')
+
+    expect(control('notifications.targets.0.name').value).toBe('oncall')
+    // The label is the humanized field name — worse than a hand-written one, and vastly better
+    // than the control not existing.
+    expect(control('notifications.targets.0.webhookUrl').closest('.form-group')!.textContent).toContain('Webhook Url')
+
+    fireEvent.click(within(panelOf('notifications')).getByRole('button', { name: 'Add' }))
+    expect((await onlySave()).changes).toEqual([
+      { path: ['notifications', 'targets', 1], value: { name: 'my-alerts', webhookUrl: '' } },
+    ])
+  })
+
   it('draws a field core added to a section it already knows, inside that section', async () => {
     served.fields.push({
       path: 'limits.maxRunningHours',
@@ -2202,5 +2297,84 @@ describe('saved SSH public keys', () => {
     save()
 
     expect((await onlySave()).changes).toEqual([{ path: ['ssh', 'keys', 0, 'publicKey'], value: KEY }])
+  })
+
+  it('removes a key', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
+
+    expect((await onlySave()).changes).toEqual([{ path: ['ssh', 'keys', 0], unset: true }])
+  })
+
+  it('shows core refusal of a private key against the box it was pasted into', async () => {
+    // Core's sentence, on the field, not in a banner: the operator has to see which box is
+    // wrong, and the message tells them to rotate what they just copied.
+    nextSaveFailure = {
+      status: 400,
+      body: {
+        error: 'ssh.keys.0.publicKey: that is a PRIVATE key…',
+        code: 'bad_request',
+        issues: [
+          {
+            path: 'ssh.keys.0.publicKey',
+            message:
+              'that is a PRIVATE key, and it must never be pasted here or stored by Rocky Surf. ' +
+              'Paste the PUBLIC half instead — the file ending in `.pub`.',
+          },
+        ],
+      },
+    }
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.change(control('ssh.keys.0.publicKey'), { target: { value: '-----BEGIN OPENSSH PRIVATE KEY-----' } })
+    save()
+
+    const group = await waitFor(() => {
+      const found = control('ssh.keys.0.publicKey').closest('.form-group')!
+      expect(found.textContent).toContain('PRIVATE key')
+      return found
+    })
+    expect(group.textContent).toContain('.pub')
+  })
+
+  /**
+   * THE STATE THE BUG WAS ACTUALLY SEEN IN (issue #302 follow-up).
+   *
+   * Every test above this one runs against a list that already has an entry, and all of them
+   * passed while the shipped page showed an operator with NO saved keys two boxes of prose and
+   * no way to add one. An empty list is what every installation starts in, so it is the case
+   * that had to be pinned and was not.
+   */
+  it('offers a way to add the first key when none are saved', async () => {
+    served.values['ssh'] = { keys: [] }
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    const panel = panelOf('ssh')
+    expect(within(panel).getByRole('button', { name: 'Add' })).toBeTruthy()
+    expect(panel.textContent).toContain('None yet')
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add' }))
+    expect((await onlySave()).changes).toEqual([
+      { path: ['ssh', 'keys', 0], value: { name: 'my-laptop', publicKey: '' } },
+    ])
+  })
+
+  it('offers a way to add the first key when the file has no ssh block at all', async () => {
+    // A config file that has never mentioned `ssh:` — which is every file until this feature is
+    // used once. `values.ssh` is then absent entirely, not an empty list.
+    delete served.values['ssh']
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    expect(within(panelOf('ssh')).getByRole('button', { name: 'Add' })).toBeTruthy()
   })
 })
