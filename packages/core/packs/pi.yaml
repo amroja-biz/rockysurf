@@ -1,0 +1,166 @@
+# Pi — the minimal, extensible coding harness from Earendil Works, on the shared base toolchain.
+#
+# Pi is a terminal agent like the others here, with one difference worth knowing before you pick
+# the card: it is provider-agnostic AND it defaults to Google's models, so the provider you sign
+# in to is the provider you get. The guide leads with that rather than letting somebody discover
+# it from a Gemini answer they did not ask for.
+#
+# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# Only `pi` is defined in this file.
+version: 1
+
+pack:
+  packId: pi
+  name: Pi
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - beads-viewer
+    - pi
+  displayOrder: 11
+  enabled: true
+  imageUrl: /images/surge-packs/pi.png
+  # Pi takes the directory it starts in as the project: it reads and edits that checkout, and
+  # it loads its context from an AGENTS.md or CLAUDE.md found there. A box with no repository
+  # is a box where it has nothing to work on.
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Pi
+      pi                      starts the terminal UI in the directory you are standing in
+      pi -p "..."             one prompt, answer to stdout, no UI — for scripts
+      pi -c                   picks the previous session back up
+
+      Sign in first. Pi ships with no credentials, and it has no provider of its own —
+      it talks to whichever one you give it access to.
+
+        /login                  run it INSIDE pi: pick a provider, then follow the prompts
+
+          A subscription — Claude Pro/Max, ChatGPT Plus/Pro, GitHub Copilot — signs in
+          through a browser, and this box has neither a desktop nor a browser. Open the
+          URL pi prints on your own machine, then paste the code, or the whole redirect
+          URL it lands on, back into the prompt. What you sign in with is written to
+          ~/.pi/agent/auth.json on this box, mode 0600.
+
+        echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+          bills an API key instead, and pi reads it straight out of the shell. Same shape
+          for OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY,
+          OPENROUTER_API_KEY and the rest — https://pi.dev/docs/latest/providers lists them.
+
+        pi auth check --provider anthropic    says whether that provider is actually ready
+        pi --list-models                      lists the models you can currently reach
+
+      PI STARTS ON GOOGLE unless you say otherwise, whatever else you signed in to:
+
+        pi --provider anthropic --model 'claude*'
+        pi --models 'anthropic/*,openai/*'    then ctrl-p cycles them inside the UI
+
+      Pi reads AGENTS.md, CLAUDE.md, and ~/.pi/agent/AGENTS.md for standing instructions,
+      so a repository that already carries one needs nothing from you.
+
+      Extensions, skills and themes are packages:
+
+        pi install npm:<package>    adds one; -l installs it into this project only
+        pi list                     what is installed
+        pi update --extensions      moves them forward
+
+      They land under ~/.pi/agent, which is yours — no root anywhere in that path.
+
+      This box has whatever Pi was current the day it booted, and nothing on the box moves
+      it forward on its own. `pi --version` says where you are; `pi update` moves you, and
+      installs into ~/.local, which is yours — no root needed.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      If the operator set `github.pat` in rockysurf.config.yaml, that token is in your
+      shell as $GITHUB_TOKEN — the same one that cloned your repositories — so `gh` works
+      as it is; run `gh auth setup-git` once and your own pushes do too. With no token
+      configured, `gh auth login` is the way in.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      tmux          run agents in here; a dropped SSH connection then costs you nothing
+      Playwright with Chromium, for browser work
+
+tools:
+  - toolId: pi
+    name: Pi
+    description: Earendil Works' minimal, extensible terminal coding agent, provider-agnostic
+    category: agent
+    url: https://pi.dev/
+    # Band 40, alongside the other agents: after the base toolchain, before any setup step.
+    # Node is band 20, and this package needs a recent one — see the floor note below.
+    installOrder: 40
+    # npm needs no privilege once it is pointed at a prefix inside this user's home, so
+    # claiming root would be the rule-4 dishonesty the smoke container is built to catch.
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      # npm's global prefix, for this user. The base toolchain installed npm system-wide as
+      # root, so a bare `npm install -g` would try to write under /usr and fail here exactly
+      # as it fails in the smoke container. A prefix under $HOME needs no privilege at all and
+      # leaves nothing root-owned in /home/rocky.
+      export NPM_CONFIG_PREFIX="$HOME/.local"
+      export PATH="$HOME/.local/bin:$PATH"
+      #
+      # THE NODE FLOOR IS UPSTREAM'S OWN, and it is why this comment exists rather than a
+      # check. The published package declares engines >=22.19.0, so npm surfaces a mismatch
+      # itself — and unlike deepseek-harness, which had to assert the floor because its
+      # package declares none, nothing here is silently permitted. The base `nodejs` tool
+      # tracks the latest 22.x patch, comfortably past that floor, and the version check at
+      # the end of this script is what would fail loudly if that ever stopped being true.
+      # (There is a `legacy-node20` dist-tag for older runtimes. This pack does not want it:
+      # it is a frozen branch, not the release channel.)
+      #
+      # UNVERSIONED, per docs/writing-a-pack.md § Which version to install. npm is a
+      # quota-free channel, so asking for the current release costs nothing and hands the
+      # user the harness they actually read about, where a pin would hand them a stale one
+      # and not even keep it — `pi update` exists and users run it. Dist-tags checked while
+      # writing this, which is the step that section asks for: `latest` IS the release
+      # channel here, the only other tag is `legacy-node20`, and there is no `next` or
+      # `stable` running ahead of it. A bare name is therefore latest stable.
+      #
+      # --ignore-scripts IS UPSTREAM'S OWN INSTALL LINE, not caution invented here: every
+      # package-manager command on https://pi.dev/ carries it. Nothing in the tree needs a
+      # lifecycle script — the CLI ships as a prebuilt JavaScript bundle, and its one native
+      # piece (a clipboard binding) arrives as per-platform optional dependencies that npm
+      # selects from their own os/cpu metadata. That is also why this script reads no $ARCH:
+      # npm resolves the platform, and the version check below is what proves it picked a
+      # build that actually executes.
+      #
+      # A presence guard rather than a version stamp, because there is no version to stamp:
+      # the second run finds the binary and does nothing, which is the half of rule 1 the
+      # run-twice gate measures. What that costs is written in the guide — the box keeps
+      # whatever was current the day it booted, and moving forward is `pi update`, not a
+      # re-bootstrap.
+      if ! command -v pi >/dev/null 2>&1; then
+        npm install -g --no-fund --no-audit --ignore-scripts @earendil-works/pi-coding-agent
+      fi
+      # `pi update` reinstalls pi through npm, and an interactive login shell does not have
+      # the prefix exported above. Without this line the user's own update writes to the
+      # system prefix, is refused, and they are stranded on the version the box booted with.
+      # Appended under a guard rather than written whole: an .npmrc may already hold settings
+      # that are none of this pack's business.
+      touch "$HOME/.npmrc"
+      grep -qF 'prefix=' "$HOME/.npmrc" || echo "prefix=$HOME/.local" >> "$HOME/.npmrc"
+      # Guarded for the same reason: an unguarded append puts the line in twice on a resumed
+      # install, and the smoke harness hashes .bashrc either side of the journal discard.
+      touch "$HOME/.bashrc"
+      grep -qF '.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+      pi --version >/dev/null
