@@ -41,7 +41,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - agent-deck
     - beads-viewer
     - bun
     - omp
@@ -78,7 +77,6 @@ pack:
 
     Also installed
       bd            Beads task tracker — run `bd init` in a repository to start
-      agent-deck    session manager for terminal agents
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
 
@@ -102,7 +100,7 @@ tools:
       # PINNED, and fetched from the release download endpoint rather than through the
       # vendor's own bun.sh installer, which is a curl-pipe-to-bash — against this
       # repository's policy no matter who wrote the script. The download endpoint,
-      # like the one `beads` and `agent-deck` above use in packs/ai-coding-agents.yaml, is a
+      # like the one `beads` and `beads-viewer` use in packs/ai-coding-agents.yaml, is a
       # CDN with no request quota (unlike api.github.com), and the release publishes
       # SHASUMS256.txt so the download can be verified before anything runs it.
       #

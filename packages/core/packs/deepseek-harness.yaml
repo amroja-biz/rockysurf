@@ -31,7 +31,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - agent-deck
     - beads-viewer
     - deepseek-harness
   displayOrder: 9
@@ -116,7 +115,6 @@ pack:
 
     Also installed
       bd            Beads task tracker — run `bd init` in a repository to start
-      agent-deck    session manager
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
 
