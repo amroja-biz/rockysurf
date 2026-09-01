@@ -24,7 +24,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - agent-deck
     - beads-viewer
     - claude-code
   displayOrder: 1
@@ -53,7 +52,6 @@ pack:
 
     Also installed
       bd            Beads task tracker — run `bd init` in a repository to start
-      agent-deck    session manager for Claude Code
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
 
@@ -427,64 +425,6 @@ tools:
       done
       command -v bd >/dev/null 2>&1
 
-  - toolId: agent-deck
-    name: Agent Deck
-    description: Claude Code session manager
-    category: base
-    url: https://github.com/asheshgoplani/agent-deck
-    installOrder: 30
-    runAs: rocky
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-      # PINNED and fetched from the release download endpoint, for the reason written out on
-      # `beads` above and on `beads-viewer` below: upstream's install.sh opens by asking
-      # api.github.com for the latest release, that call is unauthenticated on a box holding no
-      # token, and the quota it shares is keyed on source IP (rockysurf-c6cm).
-      #
-      # THIS ONE COULD HAVE BEEN PINNED IN PLACE, and was not, deliberately. That installer does
-      # take `--version`, which alone would have skipped the API call — but it is also
-      # interactive: it asks "Configure tmux for agent-deck? [Y/n]" through a `read` that only
-      # works here by accident, because a box with no controlling terminal makes the read fail
-      # and the empty answer defaults to yes. Rule 3 says a pack must not depend on that. The
-      # flag upstream provides for it, `--non-interactive`, sets SKIP_TMUX_CONFIG itself — so
-      # there is no invocation of that installer that is both rule-3 honest and keeps the tmux
-      # configuration. Since the configuration goes either way, the version that also drops the
-      # unpinned remote code and verifies a digest is the one worth having.
-      #
-      # WHAT THAT COSTS, stated rather than discovered later: ~/.tmux.conf no longer gets
-      # upstream's block (mouse scrolling, clipboard integration, 256-colour, 10k history,
-      # Shift+Enter in csi-u form). A box still runs agent-deck; tmux is just stock. Restoring it
-      # means vendoring upstream's block into this pack, where it would drift silently — worth
-      # doing only if someone asks for it, and worth doing as its own change.
-      #
-      # To bump: change the version and both digests. The release publishes checksums.txt.
-      ad_version=v1.11.0
-      case "$ARCH" in
-        amd64) ad_sha=b99ca6e61b9518d3a7a1b3487d941f199d8da695c6045afe2b903e2e6d62232b ;;
-        arm64) ad_sha=aa6bd85fe01c842b993d6c0d269e4d2480e8cd3a484b6bd32464d92cab024f50 ;;
-        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
-      esac
-      # The version is IN the stamp, so a bump reinstalls and no bump is a no-op.
-      stamp="$HOME/.rockysurf/installed-agent-deck-$ad_version"
-      if [ ! -f "$stamp" ]; then
-        tmp=$(mktemp -d)
-        trap 'rm -rf "$tmp"' EXIT
-        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-          "https://github.com/asheshgoplani/agent-deck/releases/download/$ad_version/agent-deck_${ad_version#v}_linux_$ARCH.tar.gz" \
-          -o "$tmp/agent-deck.tar.gz"
-        echo "$ad_sha  $tmp/agent-deck.tar.gz" | sha256sum -c - >/dev/null
-        tar -xzf "$tmp/agent-deck.tar.gz" -C "$tmp"
-        install -D -m 0755 "$tmp/agent-deck" "$HOME/.local/bin/agent-deck"
-        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
-      fi
-      # Self-contained, as beads-viewer is: a pack taking agent-deck without beads would
-      # otherwise get a binary its shell cannot find.
-      touch "$HOME/.bashrc"
-      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
-      "$HOME/.local/bin/agent-deck" version >/dev/null
-
   - toolId: beads-viewer
     name: Beads Viewer
     description: Web-based viewer for Beads task boards
@@ -508,13 +448,14 @@ tools:
       # through to a source build, finds no Go toolchain, and exits 1 — with the release asset
       # it wanted sitting there perfectly reachable, on a CDN that has no quota at all.
       #
-      # That is rockysurf-pcma. `agent-deck` and `beads` ask the same endpoint about their own
-      # repositories earlier in the plan, so a plan spends three of that hour's sixty requests
-      # and THIS step is the last of the three: when the shared address runs out of quota
-      # part-way through, this is the step it runs out on, which is exactly the state the
-      # failing run journalled — agent-deck done, beads done, beads-viewer failed, twice, on
-      # the one runner in a ten-leg matrix that drew a nearly-spent IP. Their installers carry
-      # the same fragility and are tracked separately (rockysurf-c6cm).
+      # That is rockysurf-pcma. `beads` asks the same endpoint about its own repository earlier
+      # in the plan, so a plan spends two of that hour's sixty requests and THIS step is the
+      # last of them: when the shared address runs out of quota part-way through, this is the
+      # step it runs out on, which is exactly the state the failing run journalled — beads
+      # done, beads-viewer failed, twice, on the one runner in a ten-leg matrix that drew a
+      # nearly-spent IP. (The run that produced it had a third such tool ahead of these two,
+      # `agent-deck`, which this pack no longer ships — #288.) Their installers carry the same
+      # fragility and are tracked separately (rockysurf-c6cm).
       #
       # To bump: change the version and both digests. The release publishes checksums.txt.
       bv_version=v0.19.0

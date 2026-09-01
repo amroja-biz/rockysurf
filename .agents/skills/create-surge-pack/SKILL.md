@@ -138,7 +138,7 @@ if you drop a tool that another one depends on, the dependent breaks:
 | `nodejs` | 20 | `curl` |
 | `playwright-deps` | 25 | `nodejs` (runs `npx`) |
 | `playwright` | 30 | `nodejs`, and `playwright-deps` for a browser that actually launches |
-| `beads`, `agent-deck` | 30 | `curl` |
+| `beads` | 30 | `curl` |
 | `beads-viewer` | 30 | `curl` |
 | `claude-code` | 40 | `curl` only — **not** `nodejs`; its installer ships its own runtime |
 

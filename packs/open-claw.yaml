@@ -25,7 +25,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - agent-deck
     - beads-viewer
     - desktop-environment
     - open-claw

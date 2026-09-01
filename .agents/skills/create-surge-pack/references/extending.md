@@ -13,8 +13,8 @@ coordinate with each other." Two tools, on top of a base that already ships.
 **1. Read the base.** `packs/ai-coding-agents.yaml` — `packId: ai-coding-agents`, `displayOrder:
 1`, `requiresRepos: true`, `requiresRdp: false`, no `desktop`, no `webPort`. Its `pack.tools` is
 fifteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
-`python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`, `agent-deck`,
-`beads-viewer`, `claude-code`. Nothing about the two new tools changes any of `requiresRepos`,
+`python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`, `beads-viewer`,
+`claude-code`. Nothing about the two new tools changes any of `requiresRepos`,
 `requiresRdp`, `desktop` or `webPort` — neither is a GUI app or a loopback web server — so those
 flags carry over unchanged.
 
@@ -39,7 +39,6 @@ tools:
   - playwright-deps
   - playwright
   - beads
-  - agent-deck
   - beads-viewer
   - claude-code
   - omp
