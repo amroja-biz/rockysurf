@@ -17,10 +17,14 @@ export {
 } from './keys.js'
 
 export {
-  deleteServerKeys,
-  getServerKeyMaterial,
   InvalidPublicKeyError,
   normalizeUserPublicKey,
+  SUPPORTED_PUBLIC_KEY_TYPES,
+} from './public-key.js'
+
+export {
+  deleteServerKeys,
+  getServerKeyMaterial,
   privateKeyFilename,
   provisionServerKeys,
   RETIRED_USER_KEY,

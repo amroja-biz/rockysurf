@@ -2,6 +2,7 @@ import type { Db } from '../db/client.js'
 import { setKeyMaterial } from '../db/repositories/servers.js'
 import type { SecretsStore, ServerKeyMaterial } from '../secrets/store.js'
 import { generateServerKeys, type ServerKeys } from './keys.js'
+import { normalizeUserPublicKey } from './public-key.js'
 
 /**
  * `ServerKeyMaterial.userPrivateKey`/`.userPublicKey` are `''` once `retireManagedUserKey` has
@@ -76,40 +77,13 @@ export interface ProvisionKeysInput {
   pinHostKey?: boolean
 }
 
-export class InvalidPublicKeyError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'InvalidPublicKeyError'
-  }
-}
-
 /**
- * A conservative parse of an authorized_keys line. Rejects anything with a newline, so a
- * pasted "key" cannot smuggle a second entry — or an `authorized_keys` option like
- * `command=` — into the file cloud-init writes.
+ * The public-key parse moved to `public-key.ts` in issue #302, so `config/schema.ts` can run
+ * the same one over a key saved in settings without importing the database. Re-exported here
+ * because every existing caller imports it from this module, and a parse that answers to two
+ * names is the thing the move was avoiding.
  */
-export function normalizeUserPublicKey(raw: string): string {
-  const value = raw.trim()
-  if (value === '') throw new InvalidPublicKeyError('public key is empty')
-  if (/[\r\n]/.test(value)) {
-    throw new InvalidPublicKeyError('public key must be a single line; multiple keys are not accepted here')
-  }
-
-  const [type, blob] = value.split(/\s+/)
-  const SUPPORTED = ['ssh-ed25519', 'ssh-rsa', 'ecdsa-sha2-nistp256', 'ecdsa-sha2-nistp384', 'ecdsa-sha2-nistp521']
-  if (!type || !SUPPORTED.includes(type)) {
-    throw new InvalidPublicKeyError(`unsupported key type "${type ?? ''}"; expected one of ${SUPPORTED.join(', ')}`)
-  }
-  if (!blob || !/^[A-Za-z0-9+/]+=*$/.test(blob)) {
-    throw new InvalidPublicKeyError('public key body is not base64; paste the contents of a .pub file')
-  }
-  // The type must match what the blob declares, or sshd silently ignores the entry.
-  const declared = Buffer.from(blob, 'base64').subarray(4, 4 + type.length).toString('utf8')
-  if (declared !== type) {
-    throw new InvalidPublicKeyError('public key body does not match its declared type')
-  }
-  return value
-}
+export { InvalidPublicKeyError, normalizeUserPublicKey } from './public-key.js'
 
 /**
  * Mint both keypairs, store the private halves encrypted, and record the public identity on

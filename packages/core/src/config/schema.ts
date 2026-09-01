@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
+import { InvalidPublicKeyError, normalizeUserPublicKey } from '../ssh/public-key.js'
 
 /**
  * The shape of `rockysurf.config.yaml`, as a zod v4 schema.
@@ -745,11 +746,88 @@ const preferencesSchema = section(
 /** Just the preferences block, so the live reader can validate it without the whole file. */
 export { preferencesSchema }
 
+/**
+ * YOUR OWN SSH PUBLIC KEYS, SAVED BY NAME (issue #302).
+ *
+ * A convenience and nothing more: the New Server page offers this list beside the box you can
+ * still paste into, so the person who authorizes the same laptop on every box stops fetching
+ * `~/.ssh/id_ed25519.pub` for the twentieth time. Nothing here changes what happens at create
+ * time — a chosen key travels the same `sshPublicKey` field a pasted one does, and core's own
+ * key is still appended and still retired after bootstrap (ADR-0008).
+ *
+ * PUBLIC HALVES ONLY, and the schema is where that stops being a request. `publicKey` runs the
+ * same `normalizeUserPublicKey` the create path runs, which refuses a PRIVATE key by name
+ * before it checks anything else — so a wrong-half paste is refused at the settings save, in
+ * the config file's own validator, rather than at launch on a box that is already costing
+ * money. A boot with a private key in this list fails the boot and says why.
+ *
+ * IN THE CONFIG FILE, NOT THE SECRET STORE, and that is the honest classification rather than
+ * a shortcut. A public key is published material — it is handed to a cloud provider in the
+ * clear on every create and written into `authorized_keys` on every box — so encrypting a copy
+ * of it beside the plaintext one it is derived for would be custody theatre, the same
+ * reasoning ADR-0011 applied to the user script. It also keeps
+ * "Rocky Surf stores no cloud credentials" (SECURITY.md) exactly as true as it was: a public
+ * key authenticates nobody and unlocks nothing.
+ *
+ * `appliesAt: 'save'` in the settings inventory, and it is free: nothing captures this list at
+ * boot — the create route reads it through `currentConfig()` on each request — so a key added
+ * here is offered on the very next page load (ADR-0017).
+ */
+const sshPublicKeySchema = z.strictObject({
+  /** What you will call this key in the picker. Unique within the list. */
+  name: z.string().trim().min(1, { error: 'a saved SSH key needs a name to choose it by' }),
+  /**
+   * One `authorized_keys` line — the contents of a `.pub` file.
+   *
+   * Validated by the create path's own parser rather than by a regex written here, so the
+   * settings editor cannot accept a key the New Server page would then refuse. The parser's
+   * message is passed through verbatim: it is written for the person who pasted, and rewording
+   * it here would give one mistake two sentences.
+   *
+   * EMPTY IS LEGAL, and it means one thing only: an entry somebody has added and not yet
+   * filled in. The Settings page's Add button writes a blank entry to the file before the
+   * person types into it — that is how every list on that page works — so a schema demanding a
+   * key here would make Add itself unsaveable, and the alternative (shipping a real public key
+   * as the placeholder) would authorize a keypair whose private half belongs to whoever
+   * generated it. A half-filled entry is simply not offered on the New Server page. Any
+   * NON-empty value is parsed in full, private-key refusal included.
+   */
+  publicKey: z
+    .string()
+    .transform((v) => v.trim())
+    .superRefine((value, ctx) => {
+      if (value === '') return
+      try {
+        normalizeUserPublicKey(value)
+      } catch (err) {
+        ctx.addIssue({
+          code: 'custom',
+          message: err instanceof InvalidPublicKeyError ? err.message : String(err),
+        })
+      }
+    }),
+})
+
+const sshSchema = section(
+  z.strictObject({
+    keys: z
+      .array(sshPublicKeySchema)
+      .default([])
+      // `ssh: { keys: }` with every entry commented out parses as null, and the operator who
+      // wrote that meant "none" — the same trap `registry.sources` documents.
+      .or(z.null().transform(() => [] as z.output<typeof sshPublicKeySchema>[]))
+      .refine((list) => new Set(list.map((k) => k.name)).size === list.length, {
+        error: 'two saved SSH keys share a name; names are how you tell them apart in the picker',
+      }),
+  }),
+)
+
 const configObject = z
   .strictObject({
     server: serverSchema,
     auth: authSchema,
     github: githubSchema,
+    ssh: sshSchema,
     providers: providersSchema,
     limits: limitsSchema,
     mcp: mcpSchema,
@@ -796,6 +874,9 @@ export type BootstrapConfig = Config['bootstrap']
 export type BootstrapOnFailure = BootstrapConfig['onFailure']
 export type ServerConfig = Config['server']
 export type GithubTokenEntry = Config['github']['tokens'][number]
+export type SshConfig = Config['ssh']
+/** One saved public key: the name it is chosen by, and the `authorized_keys` line itself. */
+export type SavedSshKey = SshConfig['keys'][number]
 export type ProvidersConfig = Config['providers']
 export type LimitsConfig = Config['limits']
 export type McpConfig = Config['mcp']

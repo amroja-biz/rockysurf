@@ -534,6 +534,13 @@ export function createApp(deps: AppDeps): CreatedApp {
         booted: currentConfig().preferences,
         ...(deps.configPath ? { configPath: deps.configPath } : {}),
       }),
+      /*
+       * The public keys saved in `ssh.keys` (issue #302), read through `currentConfig()` so a
+       * key added on the Settings page is offered on the very next New Server page load —
+       * `appliesAt: 'save'`, and nothing here captures the list at boot for it to go stale
+       * against (ADR-0017).
+       */
+      savedSshKeys: () => currentConfig().ssh.keys,
       offeringAllowlist: (providerId) => {
         const section: unknown = (currentConfig().providers as Record<string, unknown>)[providerId]
         if (typeof section !== 'object' || section === null) return undefined

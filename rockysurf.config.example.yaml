@@ -123,6 +123,25 @@ github:
   #   - owner: acme
   #     pat: "${ACME_PAT}"
 
+# Your own SSH public keys, saved by name so you stop fetching a .pub file every time you
+# create a server. The New Server page offers this list beside the box you can still paste
+# into; nothing here changes what a create does, and a box that already exists is unaffected.
+#
+# PUBLIC HALVES ONLY. A public key is published material — it is handed to your cloud provider
+# in the clear on every create and written into authorized_keys on the box — so it lives in this
+# file rather than in the encrypted store. Rocky Surf REFUSES a private key here and says so:
+# paste the file ending in .pub, never the one without it. This is also why nothing in this
+# block is masked on the settings page; you need to be able to read it back.
+#
+# Editable on the admin Settings page, which writes this same file. Saving there takes effect at
+# once — the next New Server page load offers the key, with no restart.
+# ssh:
+#   keys:
+#     - name: laptop
+#       publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample laptop"
+#     - name: work desktop
+#       publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAnother desktop"
+
 providers:
   # Bring your own cloud. Every provider is disabled until you turn it on, so a fresh install
   # cannot spend money by accident. Enable at least one before creating a server.

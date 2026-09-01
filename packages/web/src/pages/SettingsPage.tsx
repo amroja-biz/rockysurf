@@ -1655,6 +1655,29 @@ export function SettingsPage() {
       </>
     ),
 
+    /*
+      YOUR OWN SSH PUBLIC KEYS (issue #302), a card on its own tab — the `registry.sources`
+      shape, because the tab has exactly one thing on it and that thing is a list.
+
+      BOTH BOXES ARE PLAIN TEXT, INCLUDING THE KEY. `secret: true` would mask it, and masking a
+      public key would hide from the person the one value they need to be able to compare with
+      `cat ~/.ssh/id_ed25519.pub` — while implying Rocky Surf is keeping something for them that
+      it is not. The blank entry carries an EMPTY key rather than a plausible-looking example:
+      core refuses anything that is not a real public key, and shipping a real one as a
+      placeholder would authorize a keypair whose private half belongs to whoever generated it.
+    */
+    'ssh.keys': listSection(
+      ['ssh', 'keys'],
+      [
+        { name: 'name', label: 'Name' },
+        { name: 'publicKey', label: 'Public key' },
+      ],
+      (entry, i) => String(entry['name'] ?? `key ${i + 1}`),
+      { name: 'my-laptop', publicKey: '' },
+      'None yet. Add one and the New Server page will offer it — you can still paste a key there ' +
+        'without saving it here.',
+    ),
+
     /* Nested under `providers.byo`, so it is a second card on that tab rather than a tab of its
        own: enabling the provider and satisfying its one requirement are the same errand. */
     'providers.byo.hosts': listSection(

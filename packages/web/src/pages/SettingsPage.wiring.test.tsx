@@ -97,6 +97,15 @@ const FIELDS: SettingsField[] = (
     { path: 'providers.byo.hosts.*.identityFile', kind: 'string', writable: true },
     { path: 'limits.maxServers', kind: 'number', writable: true },
     { path: 'limits.createRatePerHour', kind: 'number', writable: true },
+    // Your own public keys, saved by name (issue #302). Plain strings, key included: masking a
+    // public key would hide the one value the operator has to be able to proof-read.
+    { path: 'ssh.keys.*.name', kind: 'string', writable: true },
+    {
+      path: 'ssh.keys.*.publicKey',
+      kind: 'string',
+      writable: true,
+      warning: 'The PUBLIC half only. Never paste a private key here.',
+    },
     { path: 'limits.spendCap', kind: 'group', writable: true },
     { path: 'limits.spendCap.amount', kind: 'number', writable: true },
     { path: 'limits.spendCap.currency', kind: 'string', writable: true },
@@ -133,6 +142,8 @@ const FIELDS: SettingsField[] = (
 const SECTIONS: SettingsSection[] = [
   { id: 'server', title: 'Server', help: 'Where Rocky Surf itself listens.' },
   { id: 'github', title: 'GitHub access tokens', help: 'Tokens for cloning private repositories.' },
+  { id: 'ssh', title: 'SSH public keys', help: 'Public keys you reuse, saved by name.' },
+  { id: 'ssh.keys', title: 'Your public keys', help: 'Each one is a name and the PUBLIC half of a keypair.' },
   { id: 'providers.hetzner', title: 'Hetzner', help: 'Servers at Hetzner.' },
   { id: 'providers.aws', title: 'AWS', help: 'EC2 instances in one region.' },
   { id: 'providers.azure', title: 'Azure', help: 'Virtual machines in one Azure region.' },
@@ -162,6 +173,7 @@ const VIEW: SettingsView = {
       aws: { enabled: false, sizes: ['t4g.small', 't4g.medium'] },
       byo: { enabled: false, hosts: [{ name: 'workshop', host: '10.0.0.9' }] },
     },
+    ssh: { keys: [{ name: 'laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop' }] },
     limits: { maxServers: 5 },
     registry: {
       enabled: true,
@@ -181,6 +193,7 @@ const VIEW: SettingsView = {
   sections: SECTIONS,
   lists: [
     { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
+    { path: 'ssh.keys', itemFields: ['name', 'publicKey'] },
     { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
     { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
   ],
@@ -1604,12 +1617,13 @@ describe('finding your way around the page', () => {
     renderPage()
     await loaded()
 
-    // Ten tabs for twelve sections: `providers.byo.hosts` is inside `providers.byo` and
-    // `registry.sources` inside `registry`, so each is a card on its parent's tab rather than a
-    // tab beside it.
+    // Eleven tabs for fourteen sections: `providers.byo.hosts` is inside `providers.byo`,
+    // `registry.sources` inside `registry` and `ssh.keys` inside `ssh`, so each is a card on
+    // its parent's tab rather than a tab beside it.
     expect(tabNames()).toEqual([
       'Server',
       'GitHub access tokens',
+      'SSH public keys',
       'Hetzner',
       'AWS',
       'Azure',
@@ -2132,5 +2146,61 @@ describe('pack sources', () => {
     expect((await onlySave()).changes).toEqual([
       { path: ['registry', 'sources', 0, 'url'], value: 'https://packs.example.com/my-pack.yaml' },
     ])
+  })
+})
+
+/**
+ * YOUR OWN SSH PUBLIC KEYS (issue #302).
+ *
+ * The list the New Server page's picker offers. Three things matter enough to pin: the key is
+ * drawn as a READABLE box rather than a masked one — it is published material, and masking it
+ * would hide the value the operator compares against `~/.ssh/*.pub` while implying Rocky Surf
+ * is keeping a secret for them; the warning about the private half reaches the screen; and Add
+ * appends an entry with an EMPTY key, because the alternative — a plausible-looking placeholder
+ * — would either be refused by core or, worse, be a real key somebody else holds the other half
+ * of.
+ */
+describe('saved SSH public keys', () => {
+  const panelOf = (id: string) => document.getElementById(`settings-panel-${id}`)!
+
+  it('draws the saved key on its own tab, readable, not masked', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    expect(control('ssh.keys.0.name').value).toBe('laptop')
+    expect(control('ssh.keys.0.publicKey').value).toBe('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop')
+  })
+
+  it('says beside the box that the private half must never go in it', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    expect(control('ssh.keys.0.publicKey').closest('.form-group')!.textContent).toContain('Never paste a private key')
+  })
+
+  it('adds an entry with no key in it, rather than a placeholder somebody holds', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add' }))
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['ssh', 'keys', 1], value: { name: 'my-laptop', publicKey: '' } },
+    ])
+  })
+
+  it('saves a pasted key against the entry it belongs to', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    const KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 desktop'
+    fireEvent.change(control('ssh.keys.0.publicKey'), { target: { value: KEY } })
+    save()
+
+    expect((await onlySave()).changes).toEqual([{ path: ['ssh', 'keys', 0, 'publicKey'], value: KEY }])
   })
 })
