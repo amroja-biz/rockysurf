@@ -100,7 +100,7 @@ describe('uptimeTicker', () => {
     const tick = createUptimeTick({
       db: opened.db,
       events,
-      spend: createSpendTracker(opened.db, LIMITS),
+      spend: createSpendTracker(opened.db, LIMITS, () => now),
       now: () => now,
     })
 
@@ -118,14 +118,14 @@ describe('uptimeTicker', () => {
 
   it('never credits time before the server started running', async () => {
     const base = new Date('2026-08-12T00:00:00Z')
+    let now = base
     // Watermark is set by a first tick; the server starts halfway through the next window.
     const tick = createUptimeTick({
       db: opened.db,
       events,
-      spend: createSpendTracker(opened.db, LIMITS),
+      spend: createSpendTracker(opened.db, LIMITS, () => now),
       now: () => now,
     })
-    let now = base
     await tick()
 
     const row = seedServer({ startedAt: new Date(base.getTime() + 30_000).toISOString() })
@@ -141,7 +141,7 @@ describe('uptimeTicker', () => {
     const tick = createUptimeTick({
       db: opened.db,
       events,
-      spend: createSpendTracker(opened.db, LIMITS),
+      spend: createSpendTracker(opened.db, LIMITS, () => now),
       now: () => now,
     })
 
@@ -171,7 +171,7 @@ describe('uptimeTicker', () => {
     const tick = createUptimeTick({
       db: opened.db,
       events,
-      spend: createSpendTracker(opened.db, LIMITS),
+      spend: createSpendTracker(opened.db, LIMITS, () => now),
       now: () => now,
     })
 
@@ -192,7 +192,7 @@ describe('spend cap', () => {
   it('blocks new creates once estimated spend reaches the cap, and lets them through below it', async () => {
     const base = new Date('2026-08-12T00:00:00Z')
     let now = base
-    const spend = createSpendTracker(opened.db, capped)
+    const spend = createSpendTracker(opened.db, capped, () => now)
     const checkLimits = createLimitsEnforcer({ db: opened.db, limits: capped, spend, now: () => now })
     const tick = createUptimeTick({ db: opened.db, events, spend, now: () => now })
 
@@ -231,7 +231,7 @@ describe('spend cap', () => {
     // mid-task on the strength of an estimate from bundled prices. Warn and block instead.
     const base = new Date('2026-08-12T00:00:00Z')
     let now = base
-    const spend = createSpendTracker(opened.db, capped)
+    const spend = createSpendTracker(opened.db, capped, () => now)
     const tick = createUptimeTick({ db: opened.db, events, spend, now: () => now })
     const row = seedServer({ startedAt: base.toISOString(), hourlyCostAmount: 100 })
 
@@ -248,7 +248,7 @@ describe('spend cap', () => {
     const received: unknown[] = []
     events.subscribe(userId, (payload) => received.push(payload))
 
-    const spend = createSpendTracker(opened.db, capped)
+    const spend = createSpendTracker(opened.db, capped, () => now)
     const tick = createUptimeTick({ db: opened.db, events, spend, now: () => now, log: () => {} })
     seedServer({ startedAt: base.toISOString(), hourlyCostAmount: 100 })
 
@@ -268,7 +268,7 @@ describe('spend cap', () => {
     // A EUR project and a USD account cannot be added together honestly (amendment B2).
     const base = new Date('2026-08-12T00:00:00Z')
     let now = base
-    const spend = createSpendTracker(opened.db, capped)
+    const spend = createSpendTracker(opened.db, capped, () => now)
     const tick = createUptimeTick({ db: opened.db, events, spend, now: () => now })
 
     seedServer({ startedAt: base.toISOString(), hourlyCostAmount: 100, hourlyCostCurrency: 'EUR' })
