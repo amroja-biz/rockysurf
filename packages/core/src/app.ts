@@ -41,6 +41,7 @@ import type { FetchLike } from './github/device-flow.js'
 import { narrowTokensToRepositories } from './git/token-matching.js'
 import { githubTokenScope } from './bootstrap/server-secrets.js'
 import { createServerRoutes } from './servers/routes.js'
+import { createNetworkRoutes } from './network/routes.js'
 import { createSettingsRoutes } from './settings/routes.js'
 import { createSetupRoutes } from './setup/routes.js'
 import { createEventsService, type EventsService } from './services/events.js'
@@ -590,6 +591,18 @@ export function createApp(deps: AppDeps): CreatedApp {
         // this process to adopt it, before it answers.
         ...(deps.configStore ? { reload: () => deps.configStore!.reload() } : {}),
       }),
+    )
+
+    /**
+     * Pushing `sshAllowedCidr` at the clouds that enforce it (issue #304).
+     *
+     * Mounted beside the settings routes and on the same condition, because it is the other half
+     * of the same promise: the save puts the value in force in this process, and this puts it in
+     * force at the firewall. Without a config file there is no list to push.
+     */
+    app.route(
+      '/',
+      createNetworkRoutes({ registry, inForce: currentConfig, configPath: deps.configPath }),
     )
   }
 

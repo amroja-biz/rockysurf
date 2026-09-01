@@ -815,6 +815,30 @@ describe('restart honesty', () => {
     expect(body.restartRequired.map((entry) => entry.path)).toEqual(['server.port'])
   })
 
+  /**
+   * The handover to the cloud push (issue #304).
+   *
+   * The save does NOT reach a cloud itself — a file write that has already succeeded must not be
+   * failable by a network timeout — so it names the clouds whose firewall is now behind, and the
+   * page makes the second call. These two tests pin the naming, which is the whole contract.
+   */
+  it('names the clouds whose SSH whitelist a save has just made stale', async () => {
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['providers', 'aws', 'sshAllowedCidr'], value: ['203.0.113.7/32', '198.51.100.0/24'] }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { networkSyncNeeded: string[] }
+    expect(body.networkSyncNeeded).toEqual(['aws'])
+  })
+
+  it('names no cloud when the save had nothing to do with SSH access', async () => {
+    const res = await save({ mtimeMs: mtime(), changes: [{ path: ['limits', 'maxServers'], value: 9 }] })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { networkSyncNeeded: string[] }
+    expect(body.networkSyncNeeded).toEqual([])
+  })
+
   it('does not call a comment-only hand edit a change of settings', async () => {
     writeFileSync(configPath, CONFIG_WITH_COMMENTS.replace('# Port for the web UI and API.', '# The port.'))
     expect((await readView()).drifted).toBe(false)

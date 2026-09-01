@@ -282,7 +282,9 @@ const awsProviderSchema = section(
      * section core could produce. Optional here so the provider's own error is what an
      * operator sees, in the provider's own words, rather than a duplicate rule drifting from it.
      */
-    sshAllowedCidr: z.string().trim().min(1).optional(),
+    sshAllowedCidr: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+      .optional(),
     /**
      * Required alongside `sshAllowedCidr: 0.0.0.0/0` — opening SSH to the internet is two
      * decisions, enforced by the provider's own schema. Missing from this section until
@@ -354,7 +356,9 @@ const azureProviderSchema = section(
      * AWS provider does. Optional at THIS level so the provider's own error is what an operator
      * sees, in the provider's own words, rather than a duplicate rule drifting from it.
      */
-    sshAllowedCidr: z.string().trim().min(1).optional(),
+    sshAllowedCidr: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+      .optional(),
 
     /**
      * Required alongside `sshAllowedCidr: 0.0.0.0/0` — the same two-decisions rule, enforced by
@@ -422,7 +426,9 @@ const gcpProviderSchema = section(
      */
     keyFile: z.string().trim().min(1).optional(),
     /** Who may reach SSH on the shared firewall rule. The provider REQUIRES it, with no default. */
-    sshAllowedCidr: z.string().trim().min(1).optional(),
+    sshAllowedCidr: z
+      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
+      .optional(),
     /** Required alongside `sshAllowedCidr: 0.0.0.0/0`. Opening SSH to the internet is two decisions. */
     allowAllCidr: z.boolean().optional(),
     /** Value of the `managed-by` label, and the prefix of every instance name. */
