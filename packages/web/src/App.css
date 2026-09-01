@@ -427,6 +427,34 @@ main > footer {
   padding: 1.5rem;
 }
 
+/* One cloud's status and inline auth-path instructions on the choose-your-clouds step (#280). */
+.wizard-cloud {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+}
+
+.wizard-instructions {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wizard-instructions code {
+  display: inline-block;
+  margin-top: 0.25rem;
+}
+
+.wizard-detected {
+  border: 1px solid var(--rs-green);
+  border-radius: var(--rs-radius);
+  padding: 0.75rem 1rem;
+  color: var(--rs-green-bright);
+}
+
 .login-page {
   max-width: 400px;
   padding-top: 12vh;

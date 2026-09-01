@@ -543,10 +543,18 @@ export function createApp(deps: AppDeps): CreatedApp {
       ...(deps.env ? { env: deps.env } : {}),
     }),
   )
-  // First-run wizard state and credential capture (rockysurf-hzi7.2).
+  // First-run wizard state, and its enable-a-cloud POST (rockysurf-hzi7.2, issue #280). The
+  // wizard collects no credentials; its one write is the same config-file edit the settings
+  // editor makes, so it takes the same file path and the same #264 reloader.
   app.route(
     '/',
-    createSetupRoutes({ config: currentConfig, registry, ...(deps.secretsStore ? { secrets: deps.secretsStore } : {}) }),
+    createSetupRoutes({
+      config: currentConfig,
+      registry,
+      ...(deps.configPath ? { configPath: deps.configPath } : {}),
+      ...(deps.env ? { env: deps.env } : {}),
+      ...(deps.configStore ? { reload: () => deps.configStore!.reload() } : {}),
+    }),
   )
   // The config-file editor (rockysurf-m29b). Admin-only, and it reads and writes the FILE —
   // config is configuration and never becomes data.

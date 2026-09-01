@@ -1,4 +1,4 @@
-import { configSchema, type Config, type SecretsStore } from '@rockysurf/core'
+import { configSchema, type Config } from '@rockysurf/core'
 import { describe, expect, it, vi } from 'vitest'
 import { composeRegistry } from './compose.js'
 
@@ -8,20 +8,16 @@ import { composeRegistry } from './compose.js'
  *
  * What matters here is that a MISCONFIGURED provider never stops the control plane from
  * starting — the operator needs the UI up in order to fix it — and that credential resolution
- * prefers the config file, which is the copy a human can see and roll back.
+ * prefers the config file, which is the copy a human can see and roll back, falling back to
+ * the provider's own environment variables (issue #280). Nothing is ever read from storage.
  */
 
 const config = (overrides: Record<string, unknown> = {}): Config =>
   configSchema.parse({ providers: overrides })
 
-/** A secrets store with only the one method composition uses. */
-function store(tokens: Record<string, string> = {}): SecretsStore {
-  return { getProviderToken: (id: string) => tokens[id] } as unknown as SecretsStore
-}
-
-function compose(cfg: Config, secrets: SecretsStore = store()) {
+function compose(cfg: Config, env: NodeJS.ProcessEnv = {}) {
   const log = vi.fn()
-  const result = composeRegistry({ config: cfg, secrets, log })
+  const result = composeRegistry({ config: cfg, env, log })
   return { ...result, log }
 }
 
@@ -34,26 +30,32 @@ describe('what ends up in the registry', () => {
     expect(notes).toContain('hetzner: ready')
   })
 
-  it('loads a provider whose credential the wizard put in the secrets store', () => {
-    // The state that was previously INEXPRESSIBLE: the config schema rejected `enabled`
-    // without a token, so a pasted credential could never be turned on.
-    const { registry, notes } = compose(
-      config({ hetzner: { enabled: true } }),
-      store({ hetzner: 'hz_from_store' }),
-    )
+  it('loads a provider whose credential is only in the environment (issue #280)', () => {
+    // The wizard's Hetzner path: enable the cloud, export the variable, restart. The config
+    // file holds `enabled: true` and nothing else, and the credential arrives ambiently.
+    const { registry, notes } = compose(config({ hetzner: { enabled: true } }), { HETZNER_TOKEN: 'hz_from_env' })
 
     expect(registry.ids()).toEqual(['hetzner'])
     expect(notes).toContain('hetzner: ready')
   })
 
-  it('prefers the config file over the store, so the file never lies', () => {
-    const getProviderToken = vi.fn(() => 'hz_from_store')
-    const secrets = { getProviderToken } as unknown as SecretsStore
+  it('accepts HCLOUD_TOKEN too — the variable hcloud’s own tooling uses', () => {
+    const { registry } = compose(config({ hetzner: { enabled: true } }), { HCLOUD_TOKEN: 'hz_from_env' })
+    expect(registry.ids()).toEqual(['hetzner'])
+  })
 
-    compose(config({ hetzner: { enabled: true, token: 'hz_from_config' } }), secrets)
+  it('prefers the config file over the environment, so the file never lies', () => {
+    // A value in the file is the one an operator can see, diff and roll back.
+    const { registry } = compose(config({ hetzner: { enabled: true, token: 'hz_from_config' } }), {
+      HETZNER_TOKEN: 'hz_from_env',
+    })
+    expect(registry.ids()).toEqual(['hetzner'])
+  })
 
-    // Not even read: a decrypt avoided, and the file stays authoritative when it speaks.
-    expect(getProviderToken).not.toHaveBeenCalled()
+  it('ignores a credential variable that is set but blank', () => {
+    const { registry, notes } = compose(config({ hetzner: { enabled: true } }), { HETZNER_TOKEN: '   ' })
+    expect(registry.ids()).toEqual(['fake'])
+    expect(notes.find((n) => n.startsWith('hetzner:'))).toContain('no credential found')
   })
 
   it('loads a feed-priced provider with pricing disabled — the extras are optional (gh #100)', () => {
@@ -248,7 +250,7 @@ describe('a misconfigured provider does not stop the boot', () => {
     expect(note).toContain('no credential found')
     // The message names BOTH places a credential can come from.
     expect(note).toContain('rockysurf.config.yaml')
-    expect(note).toContain('setup wizard')
+    expect(note).toContain('HETZNER_TOKEN')
   })
 
   it('reports a section its own provider schema rejects, and carries on', () => {
@@ -305,23 +307,12 @@ describe('a misconfigured provider does not stop the boot', () => {
     expect(registry.unavailable()).toEqual([])
   })
 
-  it('survives a secrets store that throws', () => {
-    const secrets = {
-      getProviderToken: () => {
-        throw new Error('master key unreadable')
-      },
-    } as unknown as SecretsStore
-
-    const { registry, notes } = compose(config({ hetzner: { enabled: true } }), secrets)
-    expect(registry.ids()).toEqual(['fake'])
-    expect(notes.find((n) => n.startsWith('hetzner:'))).toContain('no credential found')
-  })
 })
 
 describe('the no-cloud fallback', () => {
   it('offers the fake provider when nothing real is configured', () => {
     // What makes `npx rockysurf` usable on a machine with no cloud account: create a server,
-    // watch it boot, terminate it, THEN decide whether to paste a token.
+    // watch it boot, terminate it, THEN decide whether to hand it a cloud account.
     const { registry, notes } = compose(config())
     expect(registry.ids()).toEqual(['fake'])
     expect(notes.some((n) => n.startsWith('fake:'))).toBe(true)

@@ -6,13 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, openTestDatabase, type OpenedDatabase } from '../db/client.js'
 import { secrets } from '../db/schema.js'
 import { CURRENT_KEY_ID, KEY_BYTES, SecretDecryptionError } from './crypto.js'
-import {
-  createSecretsStore,
-  EnvProvidedCredentialError,
-  SECRET_KINDS,
-  type SecretsStore,
-  type ServerKeyMaterial,
-} from './store.js'
+import { createSecretsStore, SECRET_KINDS, type SecretsStore, type ServerKeyMaterial } from './store.js'
 
 const MASTER_KEY = randomBytes(KEY_BYTES)
 const SERVER_ID = 'srv-a1b2c3d4e5f6'
@@ -152,37 +146,12 @@ describe('typed helpers', () => {
   })
 })
 
-describe('environment-provided provider credentials', () => {
-  it('refuses to persist one while its variable is set', () => {
-    expect(() => store.putProviderToken('hetzner', 'tok', { HCLOUD_TOKEN: 'from-env' })).toThrow(
-      EnvProvidedCredentialError,
-    )
-    expect(() => store.putProviderToken('aws', 'tok', { AWS_PROFILE: 'sandbox' })).toThrow(EnvProvidedCredentialError)
-    expect(store.listSecretRefs({ kind: 'provider-token' })).toHaveLength(0)
-  })
-
-  it('persists a token pasted into the UI when the environment is silent', () => {
-    const meta = store.putProviderToken('hetzner', 'pasted-token', {})
-    expect(meta.ownerId).toBe('hetzner')
-    expect(store.getProviderToken('hetzner')).toBe('pasted-token')
-  })
-
-  it('ignores a variable that is set but blank', () => {
-    expect(() => store.putProviderToken('hetzner', 'tok', { HCLOUD_TOKEN: '  ' })).not.toThrow()
-  })
-
-  it('says which variable blocked it, without echoing either value', () => {
-    try {
-      store.putProviderToken('hetzner', 'super-secret-token', { HCLOUD_TOKEN: 'env-value' })
-      expect.unreachable('should have thrown')
-    } catch (err) {
-      const message = String(err)
-      expect(message).toContain('HCLOUD_TOKEN')
-      expect(message).not.toContain('super-secret-token')
-      expect(message).not.toContain('env-value')
-    }
-  })
-})
+/*
+ * There is deliberately no provider-credential test here (issue #280): the `provider-token`
+ * kind was removed with the wizard's credential box, so the store has nothing to refuse and
+ * nothing to persist. Cloud credentials come from the environment or the config file's
+ * `${VAR}` reference and never reach this module.
+ */
 
 describe('a database written with one key cannot be read with another', () => {
   it('fails authentication rather than returning garbage', () => {

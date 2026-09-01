@@ -13,11 +13,12 @@ people.
 **Before you start, decide which cloud it will drive.** Every provider is disabled until you
 enable it, so a fresh install cannot spend money by accident, and with none enabled it comes up
 on an in-memory provider — enough to create a fake server, watch it boot and terminate it before
-you paste a real token.
+you point it at a real cloud account. Rocky Surf stores no cloud credentials — each cloud
+authenticates through your own auth path, described in its row below.
 
 | | |
 |---|---|
-| **Hetzner** | The quickest start. Create a project, mint a read/write API token, paste it. No role to deploy and nothing to prepare — [`providers/hetzner.md`](providers/hetzner.md). |
+| **Hetzner** | The quickest start. Create a project, mint a read/write API token, and export it as `HETZNER_TOKEN` in the environment Rocky Surf starts from — it is never pasted anywhere. No role to deploy and nothing to prepare — [`providers/hetzner.md`](providers/hetzner.md). |
 | **AWS** | Uses the standard credential chain, never a key in the config file. Needs an IAM policy and an explicit `sshAllowedCidr` — [`providers/aws.md`](providers/aws.md). |
 | **Azure** | Credentials from your environment, a managed identity, or `az login` — never from the config file. Needs a resource group you create, a least-privilege role and an explicit `sshAllowedCidr` — [`providers/azure.md`](providers/azure.md). |
 | **GCP** | Uses Application Default Credentials — `gcloud auth application-default login`, a key file, or the metadata server — never a key in the config file. Needs a project and an explicit `sshAllowedCidr` — [`providers/gcp.md`](providers/gcp.md). |
@@ -41,9 +42,12 @@ password **once**:
 docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
-Open <http://127.0.0.1:3000>, sign in with that password, and the first-run wizard asks for a
-cloud credential. Paste a Hetzner token, then switch the provider on — in the config file, or on
-the Settings page, which applies it without a restart.
+Open <http://127.0.0.1:3000>, sign in with that password, and the first-run wizard asks which
+clouds you want — never for a credential. Pick a cloud and switch it on; the wizard shows that
+cloud's own auth path inline. For Hetzner that means exporting `HETZNER_TOKEN` where the
+container can see it and restarting — the wizard detects the token when you come back and
+finishes the step itself; AWS, Azure and GCP use their standard credential chains, with nothing
+to type at all.
 
 ### Where the data lives
 
@@ -98,6 +102,9 @@ ROCKYSURF_HOST_PORT=8080 docker compose up -d
 - **`ROCKYSURF_ADMIN_PASSWORD`** is passed through from your shell when set, so you can choose
   the password instead of reading it from the logs — or recover an installation whose password
   was lost, since it overwrites what is stored.
+- **`HETZNER_TOKEN`** (and `HCLOUD_TOKEN`) are passed through the same way, so the wizard's
+  Hetzner flow works in Docker: `HETZNER_TOKEN=... docker compose up -d` puts the token in the
+  container's environment, where Rocky Surf reads it at startup and stores it nowhere.
 
 ### Verifying a change to the packaging
 
@@ -106,8 +113,10 @@ node scripts/docker-smoke.mjs
 ```
 
 Builds the image under its own compose project and its own port, drives a real first run
-through to the wizard, stores a credential, restarts the container and reads the credential
-back. It tears its own stack down on every exit path and never touches a volume you are using.
+through to the wizard, switches a cloud on through the wizard's endpoint (and proves the
+endpoint refuses a credential), then restarts and recreates the container, checking that the
+enable, the admin password and the master key all survived. It tears its own stack down on
+every exit path and never touches a volume you are using.
 
 ## npx
 
@@ -123,7 +132,7 @@ npx rockysurf
 Requires Node 24 or newer; the binary checks and says so if not. Nothing else: with no config
 file anywhere it starts on defaults, says where a config file would go, and offers the
 in-memory provider — so you can create a server, watch it boot and terminate it before
-deciding whether to paste a cloud token.
+deciding whether to point it at a real cloud account.
 
 ### The commands
 

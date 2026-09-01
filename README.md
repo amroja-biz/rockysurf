@@ -4,8 +4,8 @@
 
 # Rocky Surf
 
-<!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → paste a
-     Hetzner token → pick the Claude Code pack → live install feed → ssh in → terminate. -->
+<!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → switch on
+     Hetzner in the wizard → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 
 **Are your coding agents telling you they need their own space?**
 

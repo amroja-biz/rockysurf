@@ -914,8 +914,8 @@ export async function getCosts(): Promise<CostsResponse> {
 
 /* ------------------------------------------------------------------------- first run */
 
-/** Where a provider's credential comes from, and therefore whether the UI may edit it. */
-export type CredentialSource = 'env' | 'config' | 'stored' | 'none'
+/** Where a provider's credential comes from. Informational: the wizard edits none of them. */
+export type CredentialSource = 'env' | 'config' | 'none'
 
 export interface ProviderSetupState {
   id: string
@@ -923,16 +923,16 @@ export interface ProviderSetupState {
   enabled: boolean
   configured: boolean
   source: CredentialSource
+  /** The environment variable currently supplying the credential, when `source` is `'env'`. */
+  envVar?: string
   /** Present in this process's registry, so it can actually be used. */
   loaded: boolean
-  /** Set when a pasted credential would be refused, and why. */
-  readOnlyReason?: string
   /** Why an enabled provider did not load, in the provider's own words. Implies `!loaded`. */
   unavailableReason?: string
 }
 
 export interface SetupState {
-  /** At least one provider is enabled, credentialed AND loaded. */
+  /** At least one provider is enabled AND loaded — the app can create servers. */
   complete: boolean
   /** No provider is enabled at all — the state the wizard exists for. */
   needsProvider: boolean
@@ -944,13 +944,15 @@ export async function getSetupState(): Promise<SetupState> {
 }
 
 /**
- * Hand core a provider credential. Core validates it against the provider BEFORE storing, so a
- * rejection here means the credential is bad — not that it was saved and will fail later.
+ * Switch a cloud on (issue #280). The one write the wizard makes: `providers.<id>.enabled` in
+ * the config file, which this process adopts before answering. NO CREDENTIAL EVER RIDES ALONG
+ * — the route refuses one by name — because every cloud authenticates through the user's own
+ * auth path: an environment variable for Hetzner, the standard chains for AWS, Azure and GCP.
  */
-export async function saveProviderCredential(providerId: string, token: string): Promise<SetupState> {
+export async function enableProvider(providerId: string): Promise<SetupState> {
   const { setup } = await request<{ ok: boolean; setup: SetupState }>(`/setup/providers/${providerId}`, {
     method: 'POST',
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({}),
   })
   return setup
 }

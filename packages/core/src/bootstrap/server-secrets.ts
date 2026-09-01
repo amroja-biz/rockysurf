@@ -123,7 +123,7 @@ export interface ServerSecretsOptions {
    * way — edit `rockysurf.config.yaml` or the `${GITHUB_PAT}` it interpolates, restart —
    * would leave the stale row shadowing the new value forever, with the config file reading
    * correctly and every clone still using the old token. This is the same reasoning
-   * `PROVIDER_CREDENTIAL_ENV` in `secrets/store.ts` is built on: a credential that arrives as
+   * `PROVIDER_CREDENTIAL_ENV` in `setup/state.ts` is built on: a credential that arrives as
    * configuration is configuration, and never becomes data. Nothing here writes to the
    * database, so there is no second copy to go stale and no refuse-to-persist rule needed to
    * keep one from appearing.

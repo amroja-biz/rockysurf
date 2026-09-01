@@ -39,6 +39,12 @@ services:
       # Optional. Overrides <dataDir>/secret.key, for operators who keep the master key in a
       # secret manager rather than in the volume.
       - ROCKYSURF_SECRET_KEY
+      # The Hetzner API token, passed through only when set on the host (issue #280). The
+      # first-run wizard's Hetzner path is "export the variable and restart", and the
+      # container's environment is where Rocky Surf reads it — it is never stored anywhere.
+      #   HETZNER_TOKEN=... docker compose up -d
+      - HETZNER_TOKEN
+      - HCLOUD_TOKEN
     healthcheck:
       # Inherited from the image; repeated here so `docker compose up --wait` and the smoke
       # test have a definition that does not depend on which image tag was built.

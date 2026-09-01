@@ -24,7 +24,6 @@ const PLAINTEXT_ACCESSORS = [
   'getRdpPassword',
   'getPackInputSecrets',
   'getServerEnvironmentSecrets',
-  'getProviderToken',
   'ensureSessionSigningKey',
 ]
 

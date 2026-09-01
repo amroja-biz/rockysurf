@@ -35,10 +35,7 @@ export {
 } from './master-key.js'
 
 export {
-  assertNotEnvProvided,
   createSecretsStore,
-  EnvProvidedCredentialError,
-  PROVIDER_CREDENTIAL_ENV,
   SECRET_KINDS,
   type SecretKind,
   type SecretMetadata,

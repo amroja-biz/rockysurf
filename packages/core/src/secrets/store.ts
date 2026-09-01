@@ -53,11 +53,21 @@ export const SECRET_KINDS = [
    * enforced only by hope.
    */
   'server-environment',
-  /** A provider credential pasted into the UI. NEVER one that came from the environment. */
-  'provider-token',
   /** Signs session cookies. Instance-level: one row, no owner. */
   'session-signing-key',
 ] as const
+
+/*
+ * WHAT IS DELIBERATELY NOT HERE: cloud provider credentials (issue #280).
+ *
+ * There used to be a `provider-token` kind for credentials pasted into the first-run wizard.
+ * The owner's ruling removed it — and the wizard's credential box with it — so that "Rocky Surf
+ * stores no cloud credentials" is unconditionally true. Cloud authentication comes from the
+ * user's own auth path: an environment variable for Hetzner (the config file may hold the
+ * variable's NAME as `${HETZNER_TOKEN}`, never its value), and the standard chains for AWS,
+ * Azure and GCP. Migration 0017 deleted any rows the old wizard had stored; they were already
+ * unread wherever the environment or the config file supplied the credential.
+ */
 
 export type SecretKind = (typeof SECRET_KINDS)[number]
 
@@ -90,44 +100,6 @@ export interface ServerKeyMaterial {
   hostKeyFingerprint: string
 }
 
-/**
- * Provider credentials that arrive through the environment are configuration, not data.
- *
- * They win at runtime, they are never written to the database, and `putProviderToken` refuses
- * to persist one while its variable is set. Persisting it would create a second copy with a
- * different lifetime: rotate the environment variable and the stale database row keeps being
- * offered to the provider, which fails in a way that looks like a credential problem at the
- * cloud rather than a stale row here.
- */
-export const PROVIDER_CREDENTIAL_ENV: Readonly<Record<string, readonly string[]>> = {
-  hetzner: ['HCLOUD_TOKEN', 'HETZNER_TOKEN'],
-  aws: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_PROFILE'],
-  // The same variables `DefaultAzureCredential` reads, which is what lets an installation
-  // already configured for other Azure tooling need nothing new. A managed identity supplies no
-  // variable at all, so an Azure control plane running on an Azure VM is credentialed with none
-  // of these set — which the setup state reports as "no credential" and is, for that path,
-  // simply wrong. It is the same shape as an AWS instance role, and is left alone for the same
-  // reason: the honest fix is asking the provider, not adding a fourth variable name here.
-  azure: ['AZURE_CLIENT_SECRET', 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID'],
-  // Application Default Credentials. Listed for the same reason the AWS variables are: when
-  // one of these is set it wins at runtime, so storing a credential here would be storing
-  // something nothing will ever read. Note that ADC's other paths — `gcloud auth
-  // application-default login`, the metadata server — set no variable at all, so a GCP
-  // installation can be fully credentialed while this reports nothing, exactly as an AWS
-  // installation using an SSO session does.
-  gcp: ['GOOGLE_APPLICATION_CREDENTIALS'],
-}
-
-export class EnvProvidedCredentialError extends Error {
-  constructor(providerId: string, variable: string) {
-    super(
-      `refusing to persist a ${providerId} credential while ${variable} is set: ` +
-        'environment-provided provider credentials are configuration and win at runtime',
-    )
-    this.name = 'EnvProvidedCredentialError'
-  }
-}
-
 export interface SecretsStore {
   putSecret(ref: SecretRef, value: string): SecretMetadata
   /** PLAINTEXT. Never return this from an HTTP handler. */
@@ -152,8 +124,6 @@ export interface SecretsStore {
   putServerEnvironmentSecrets(serverId: string, values: Record<string, string>): SecretMetadata | undefined
   /** PLAINTEXT. Never return this from an HTTP handler. `{}` when the server has none. */
   getServerEnvironmentSecrets(serverId: string): Record<string, string>
-  putProviderToken(providerId: string, token: string, env?: NodeJS.ProcessEnv): SecretMetadata
-  getProviderToken(providerId: string): string | undefined
   /** Returns the existing signing key, minting one on first call. */
   ensureSessionSigningKey(mint?: () => string): string
 }
@@ -356,15 +326,6 @@ export function createSecretsStore(db: Db, masterKey: Buffer): SecretsStore {
       return getSecretMap('server-environment', serverId)
     },
 
-    putProviderToken(providerId, token, env = process.env) {
-      assertNotEnvProvided(providerId, env)
-      return store.putSecret({ kind: 'provider-token', ownerId: providerId }, token)
-    },
-
-    getProviderToken(providerId) {
-      return store.getSecret({ kind: 'provider-token', ownerId: providerId })
-    },
-
     ensureSessionSigningKey(mint = defaultSigningKey) {
       const existing = store.getSecret({ kind: 'session-signing-key' })
       if (existing !== undefined) return existing
@@ -375,14 +336,6 @@ export function createSecretsStore(db: Db, masterKey: Buffer): SecretsStore {
   }
 
   return store
-}
-
-/** Throws when the environment already provides this provider's credential. */
-export function assertNotEnvProvided(providerId: string, env: NodeJS.ProcessEnv = process.env): void {
-  for (const variable of PROVIDER_CREDENTIAL_ENV[providerId] ?? []) {
-    const value = env[variable]
-    if (value !== undefined && value.trim() !== '') throw new EnvProvidedCredentialError(providerId, variable)
-  }
 }
 
 function defaultSigningKey(): string {

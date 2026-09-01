@@ -103,8 +103,8 @@ export function App() {
                 </ProtectedRoute>
               }
             />
-            {/* Admin-only (rockysurf-m29b): this page writes the config file, which holds the
-                provider credentials and decides what the MCP server is allowed to do. */}
+            {/* Admin-only (rockysurf-m29b): this page writes the config file, which names the
+                provider credential references and decides what the MCP server may do. */}
             <Route
               path="/settings"
               element={

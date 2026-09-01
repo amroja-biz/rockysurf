@@ -530,7 +530,7 @@ export const secrets = sqliteTable(
   'secrets',
   {
     id: text('id').primaryKey(),
-    /** What this secret is for: 'server-ssh-key', 'provider-token', 'github-token'. */
+    /** What this secret is for: 'server-ssh-key', 'github-token', 'rdp-password', … */
     kind: text('kind').notNull(),
     /** The entity it belongs to — a server id, a user id — for cascade cleanup. */
     ownerId: text('owner_id'),

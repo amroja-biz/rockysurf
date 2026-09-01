@@ -59,6 +59,9 @@ export { openDatabase, defaultDatabasePath, type Db, type OpenedDatabase } from 
 
 export { ProviderRegistry, createDefaultRegistry, type UnavailableProvider } from './providers/registry.js'
 export { makeFakeProvider, type FakeProvider, type FakeProviderOptions } from './providers/fake.js'
+// Which environment variables supply each provider's credential — the composition root's
+// fallback when the config field is empty, and the setup state's detection (issue #280).
+export { PROVIDER_CREDENTIAL_ENV } from './setup/state.js'
 
 /* ---------------------------------------------------------------------- configuration */
 

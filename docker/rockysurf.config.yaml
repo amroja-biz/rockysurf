@@ -16,7 +16,8 @@
 #  3. NO `${VAR}` REFERENCES. A missing variable is a hard startup error that names the
 #     variable (by design — see config/load.ts), which for a first `docker compose up` would
 #     mean a container that exits before anyone has seen the UI. The wizard is the way in
-#     instead: start, sign in, paste a token.
+#     instead: start, sign in, switch a cloud on — its credential arrives through the
+#     container's environment (issue #280), never through this file or the UI.
 
 server:
   port: 3000
@@ -32,9 +33,10 @@ auth:
   mode: local
 
 providers:
-  # Every provider off, so a fresh container cannot spend money by accident. Turn one on here
-  # after the wizard has stored its credential, then restart — the wizard's "Almost there"
-  # step says the same thing.
+  # Every provider off, so a fresh container cannot spend money by accident. The wizard's
+  # choose-your-clouds step flips these to true; for Hetzner, restart with HETZNER_TOKEN in
+  # the container's environment (docker-compose.yaml passes it through) and the provider
+  # loads — Rocky Surf stores no cloud credentials (issue #280).
   hetzner:
     enabled: false
     location: fsn1

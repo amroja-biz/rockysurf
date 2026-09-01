@@ -315,17 +315,17 @@ const hetznerProviderSchema = section(
       /** Optional allowlist of server types offered to users. Omit to offer everything. */
       sizes: z.array(z.string().trim().min(1)).nonempty().optional(),
     })
-    // NO enabled-implies-token REFINE (rockysurf-55fx.12).
+    // NO enabled-implies-token REFINE (rockysurf-55fx.12, reshaped by issue #280).
     //
     // It used to reject `enabled: true` without a token, which read as helpful and was
-    // actually a trap: the first-run wizard stores credentials in the ENCRYPTED SECRETS STORE,
-    // and the schema cannot see that store. So there was no legal way to express the state the
-    // wizard creates — "this provider is on, and its credential lives somewhere the config
-    // file does not name" — and a user who pasted a token could never enable the provider.
+    // actually a trap: the token may live only in the ENVIRONMENT (`HETZNER_TOKEN` /
+    // `HCLOUD_TOKEN`), which the schema cannot see. That is precisely the state the first-run
+    // wizard creates — "this provider is on, and its credential arrives ambiently at the next
+    // start" — so a schema-level check could only ever see half the picture.
     //
-    // Resolution now happens where both sources are visible: the composition root reads the
-    // config first, then the secrets store, and reports a MISSING credential at boot with a
-    // message naming both places. A schema-level check could only ever see half the picture.
+    // Resolution happens where both sources are visible: the composition root reads the
+    // config field first, then the environment variables, and reports a MISSING credential at
+    // boot with a message naming both places.
 )
 
 const azureProviderSchema = section(
