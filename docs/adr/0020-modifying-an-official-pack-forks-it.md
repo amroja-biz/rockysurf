@@ -67,26 +67,64 @@ mark goes with it, with no count to invalidate.
 
 A fork **inherits its parent's `imageUrl`**, with a small bright delta over the top right of the
 mark (owner's ruling). That is what makes a fork recognisable at a glance on the Personal tab
-rather than looking like an unrelated pack that happens to hold the same tools. The same delta
-appears on the parent's own card, saying a personal version of it exists and naming it — naming
-rather than asserting a bare relationship, so the claim is checkable and so a reused pack id cannot
-make the mark say something false.
+rather than looking like an unrelated pack that happens to hold the same tools.
 
-It is a mark on the icon and **not a second badge**: the card deliberately spends itself on the
-mark, the name and one badge (issue #192). It is decoration only. Nothing filters, disables or
-intercepts a click, so the Official tab stays pristine and every official pack stays exactly as
-selectable as before — and nothing is ever written to the official row, which the reconcile would
-erase anyway.
+**Two marks, not one mark twice.** They mean opposite things and therefore look different:
 
-**An exported fork carries no inherited artwork.** Provenance does not export — `derivedFromPackId`
-is not in `packSchema` and never was — so the delta cannot be drawn on the far side, and official
-artwork with no delta, on an installation that never forked anything, is a personal pack wearing a
-first-party face. That is ADR-0006's concern about who gets to look official, arriving by the back
-door. The recipient gets the monogram every from-scratch pack gets. The rule keys off the fork
-relationship rather than off the image, because by the time it reaches the row an image the
-operator chose is indistinguishable from an inherited one — and of the two possible mistakes,
-withholding an image someone picked is recoverable in a text editor while shipping borrowed
-official art is not.
+| | Says | Treatment |
+|---|---|---|
+| **Derivative** (on the fork) | "this pack is a copy of another, and the artwork it wears is that pack's" | solid, bright, **top right**, `∆` |
+| **Has copies** (on the parent) | "a personal version of this pack exists" — and it names it | outlined, muted, **bottom right**, `⧉` |
+
+The distinction is load-bearing rather than decorative. The derivative mark *qualifies the card it
+sits on*: the icon is borrowed, and the mark is what stops that being a lie. The other qualifies
+nothing about its card — the pack is exactly what it appears to be, somebody merely has a copy —
+and on an official pack it must never be read as "this was altered", because nothing alters an
+official pack. One treatment for both would collapse that distinction the moment anyone looked at
+an official card and saw the same badge a fork wears.
+
+**Opposite corners, so there is no precedence rule.** A pack forked from another that has since
+been forked again is both a derivative and a parent, and its card carries both marks at once.
+Putting them in fixed opposite corners means neither can hide the other, nothing has to decide
+which wins, and the two-mark case needs no code of its own. Recorded here because "which mark
+wins?" is a question that will otherwise be asked and answered twice.
+
+Both are marks on the icon and **not badges**: the card deliberately spends itself on the mark,
+the name and one badge (issue #192). Both are decoration. Nothing filters, disables or intercepts
+a click, so the Official tab stays pristine and every official pack stays exactly as selectable as
+before — and nothing is ever written to the official row, which the reconcile would erase anyway.
+
+**The invariant that defends the ruling: artwork-without-a-mark never occurs.** Inside the app the
+two always render together — a fork's inherited image is drawn by the same component that draws
+the delta over it, from the same `derivedFromPackId`, so there is no state in which one appears
+without the other. And nothing wearing borrowed artwork leaves the installation: the export strips
+it. Those two clauses are the whole guarantee, and each is worthless alone — in-app marking would
+not survive a shared file, and the export strip would be pointless if the in-app view could show
+borrowed art unmarked.
+
+**The export predicate is three conditions**, and each excludes a case that would otherwise be
+wrong:
+
+- **`derivedFromPackId` set** — the art was inherited *here*, by forking, rather than arriving in
+  the pack's own file. This is the case the ruling is about.
+- **not file-backed** — an official pack always exports its own artwork, because that export is
+  how an operator sends a pack upstream as a pull request (ADR-0004), and the file must be the
+  file that shipped.
+- **root-relative** — `/images/surge-packs/…` is served out of *this* installation's bundle. On the
+  far side it resolves to whatever that installation ships at the path, or to nothing, and either
+  way it arrives unmarked: a personal pack wearing a first-party face, which is ADR-0006's concern
+  about who gets to look official. An absolute `https://…` image is one its owner chose and can
+  serve, so it travels.
+
+The simpler "not file-backed and root-relative" was tried and is wrong: a pack **imported** from an
+official pack's export is exactly that, and stripping there breaks the pinned
+export/import/re-export round trip while preventing nothing — that art already travelled,
+legitimately, inside the file the recipient is holding. What must not travel is art *this*
+installation attached by forking, which only `derivedFromPackId` identifies.
+
+At export time the UI says so in one line: **"the parent's artwork stays on this installation; a
+shared copy gets its own mark."** The recipient gets the monogram every from-scratch pack gets, and
+can set their own image.
 
 ### "Add it to all packs" is one flag, not a loop over packs
 

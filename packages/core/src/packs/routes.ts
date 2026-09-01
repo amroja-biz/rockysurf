@@ -614,23 +614,35 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         displayOrder: pack.displayOrder,
         enabled: pack.enabled,
         /**
-         * A FORK EXPORTS NO ARTWORK (issue #295, owner's ruling).
+         * ARTWORK INHERITED BY FORKING DOES NOT LEAVE THIS INSTALLATION (issue #295).
          *
-         * On this installation a fork wears the official pack's image with a delta over it, so
-         * it reads as "your version of that pack" at a glance. Neither half of that survives
-         * the export: `derivedFromPackId` is provenance and provenance does not travel (it is
-         * not in `packSchema` and never was), so the delta cannot be drawn on the far side —
-         * and official artwork with no delta, on an installation that never forked anything, is
-         * a personal pack wearing a first-party face. That is ADR-0006's whole concern about
-         * who gets to look official. The recipient gets the monogram, which is what every pack
-         * built from scratch gets, and can set their own image.
+         * Three conditions, and dropping any one of them breaks something real:
          *
-         * This is why it keys off the fork relationship rather than off the image: an image the
-         * operator chose themselves is indistinguishable from an inherited one by the time it
-         * reaches this row, and of the two possible mistakes, withholding an image someone
-         * picked is recoverable in a text editor while shipping borrowed official art is not.
+         *  - `derivedFromPackId` — the art was inherited HERE, by forking, rather than arriving
+         *    in the pack's own file. This is the case the owner's ruling is about.
+         *  - not `sourceFile` — an official pack always exports its own artwork, because that
+         *    export is how an operator sends a pack upstream as a pull request (ADR-0004) and
+         *    the file must be the file that shipped.
+         *  - root-relative — `/images/surge-packs/…` is served out of THIS installation's
+         *    bundle. On the far side it resolves to whatever that installation ships at the
+         *    path, or to nothing, and either way it arrives unmarked: a personal pack wearing a
+         *    first-party face, which is ADR-0006's concern about who gets to look official.
+         *    An absolute `https://…` image is one its owner chose and can serve, so it travels.
+         *
+         * WHY NOT the simpler "not file-backed and root-relative": a pack IMPORTED from an
+         * official pack's export is exactly that — `sourceFile` is null and the artwork is
+         * root-relative — and stripping there would break the pinned export/import/re-export
+         * round trip while preventing nothing. That art already travelled, legitimately, inside
+         * the file the recipient is holding. What must not travel is art this installation
+         * attached by forking, which is what `derivedFromPackId` identifies and nothing else does.
+         *
+         * The invariant this defends: artwork-without-a-mark never occurs. In the app a fork's
+         * inherited art always renders under the delta, and art that would arrive somewhere with
+         * no delta to explain it does not leave.
          */
-        ...(pack.imageUrl && !pack.derivedFromPackId ? { imageUrl: pack.imageUrl } : {}),
+        ...(pack.imageUrl && !(pack.derivedFromPackId && !pack.sourceFile && pack.imageUrl.startsWith('/'))
+          ? { imageUrl: pack.imageUrl }
+          : {}),
         ...(pack.theme ? { theme: pack.theme } : {}),
         ...(pack.guide ? { guide: pack.guide } : {}),
         requiresRepos: pack.requiresRepos,

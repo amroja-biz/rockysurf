@@ -623,12 +623,15 @@ const POPUP_DELAY_MS = 1000
  */
 function PackCard({
   view,
-  mark,
+  derivativeMark,
+  copiesMark,
   onExport,
 }: {
   view: PackView
-  /** The delta's sentence, or undefined for no delta (issue #295). */
-  mark?: string
+  /** "This pack is a copy of another" - the delta's sentence (issue #295). */
+  derivativeMark?: string
+  /** "A personal version of this exists" - the other mark's sentence. */
+  copiesMark?: string
   onExport: (view: PackView) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
@@ -683,7 +686,11 @@ function PackCard({
     >
       <Link ref={link} to={`/packs/${view.packId}`} className="pack-card" data-testid={`pack-card-${view.packId}`}>
         <div className="pack-card-head">
-          <PackIcon pack={view} {...(mark ? { mark } : {})} />
+          <PackIcon
+            pack={view}
+            {...(derivativeMark ? { derivativeMark } : {})}
+            {...(copiesMark ? { copiesMark } : {})}
+          />
           <h3>{view.name}</h3>
           {/* Core's own three words key the styling and the testid, unchanged — see the file
               docblock. `badgeText` is only ever the word a person reads. */}
@@ -898,36 +905,41 @@ export function PacksPage(): React.JSX.Element {
     [publicPacks, adminPacksById, toolsById, isAdmin],
   )
   /**
-   * THE DELTA, both sides of it, derived here from the list the page already has (issue #295).
+   * THE TWO MARKS, derived here from the list the page already has (issue #295).
    *
-   * Two cards can carry it and they say two halves of one fact. A pack that IS a fork says what
-   * it began as. A pack that HAS forks says a personal version of it exists — and it names
-   * them, rather than asserting a bare "this was modified": naming the fork is what makes the
-   * mark checkable by the person reading it, and it is also the honest answer when a pack id
-   * has been reused by something unrelated since the fork was made.
+   * They are two facts, not one fact twice, and one card can carry both — a pack forked from
+   * another that somebody has since forked again is a derivative AND has a personal version.
+   * `PackIcon` puts them in opposite corners for exactly that reason.
    *
-   * ONE HOP. A fork of a fork points at its own parent and no further; nothing here walks a
-   * chain, and a chain is not a thing this feature claims to model.
+   * `copiesMarkFor` NAMES the fork rather than asserting a bare relationship. Naming it is what
+   * makes the claim checkable by whoever reads it, and it is also the honest answer when a pack
+   * id has been reused by something unrelated since the fork was made.
    *
-   * Deriving it in the browser is what makes it self-healing: delete a fork and its parent's
-   * mark goes with it on the next load, with no count to invalidate and no column to keep in
-   * step. A fork whose parent is no longer installed marks nothing — there is no card to mark —
-   * and keeps its own mark, which still names where it came from.
+   * ONE HOP. A fork of a fork points at its own parent and no further; nothing walks a chain.
+   *
+   * Deriving both in the browser is what makes them self-healing: delete a fork and its
+   * parent's mark goes with it on the next load, with no count to invalidate and no column to
+   * keep in step. A fork whose parent is no longer installed marks nothing — there is no card
+   * to mark — and keeps its own mark, which still names where it came from.
    */
   const forks = useMemo(() => forksByParent(views), [views])
-  const markFor = useCallback(
+  const copiesMarkFor = useCallback(
     (view: PackView): string | undefined => {
       const children = forks.get(view.packId)
-      if (children?.length) {
-        return children.length === 1
-          ? `Personal version: ${children[0]!.name}`
-          : `Personal versions: ${children.map((c) => c.name).join(', ')}`
-      }
+      if (!children?.length) return undefined
+      return children.length === 1
+        ? `Personal version: ${children[0]!.name}`
+        : `Personal versions: ${children.map((c) => c.name).join(', ')}`
+    },
+    [forks],
+  )
+  const derivativeMarkFor = useCallback(
+    (view: PackView): string | undefined => {
       if (!view.derivedFromPackId) return undefined
       const parent = views.find((v) => v.packId === view.derivedFromPackId)
       return `Your personal version of ${parent?.name ?? view.derivedFromPackId}`
     },
-    [forks, views],
+    [views],
   )
 
   const official = useMemo(() => views.filter((v) => v.provenance === 'official').sort(byOrder), [views])
@@ -1117,7 +1129,12 @@ export function PacksPage(): React.JSX.Element {
           <Link to="/packs">← All Surge Packs</Link>
         </p>
         <div className="pack-detail-header">
-          <PackIcon pack={view} size="large" {...(markFor(view) ? { mark: markFor(view)! } : {})} />
+          <PackIcon
+            pack={view}
+            size="large"
+            {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+            {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
+          />
           <div>
             <TrustBadge label={view.provenance} text={badgeText(view.provenance)} />
             {/* The origin sentence, which used to be on the card too (issue #192). One pack's
@@ -1207,6 +1224,15 @@ export function PacksPage(): React.JSX.Element {
                 Export
               </button>
             </p>
+            {/* Said BEFORE the download rather than discovered afterwards (issue #295). A fork
+                wears its parent's artwork here, under a delta that says whose it is; neither
+                travels, because on somebody else's installation there would be no delta to
+                explain the artwork. */}
+            {view.derivedFromPackId && view.imageUrl?.startsWith('/') && (
+              <p className="hint" data-testid="export-artwork-note">
+                The parent&apos;s artwork stays on this installation; a shared copy gets its own mark.
+              </p>
+            )}
           </section>
         )}
 
@@ -1287,7 +1313,8 @@ export function PacksPage(): React.JSX.Element {
               <PackCard
                 key={view.packId}
                 view={view}
-                {...(markFor(view) ? { mark: markFor(view)! } : {})}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
                 onExport={(v) => void downloadYaml(v)}
               />
             ))}
@@ -1354,7 +1381,8 @@ export function PacksPage(): React.JSX.Element {
                 <PackCard
                 key={view.packId}
                 view={view}
-                {...(markFor(view) ? { mark: markFor(view)! } : {})}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
                 onExport={(v) => void downloadYaml(v)}
               />
               ))}
@@ -1509,7 +1537,8 @@ export function PacksPage(): React.JSX.Element {
               <PackCard
                 key={view.packId}
                 view={view}
-                {...(markFor(view) ? { mark: markFor(view)! } : {})}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
                 onExport={(v) => void downloadYaml(v)}
               />
             ))}

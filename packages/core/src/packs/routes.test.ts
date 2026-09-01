@@ -905,6 +905,68 @@ describe('a personal pack that was forked from another (issue #295)', () => {
   })
 
   /**
+   * THE OTHER HALF OF THE PREDICATE, and the one it would be easy to break by keying the strip
+   * on the fork relationship instead. An official pack's export is how an operator sends a pack
+   * upstream as a pull request (ADR-0004), so it must be the file that shipped — artwork
+   * included. Stripping here would mean a contributed pack losing its image on the way to the
+   * repository.
+   */
+  it('keeps a file-backed pack\'s own artwork, because that export is a pull request', async () => {
+    const shipped = (await json(await send('GET', '/api/v1/admin/surge-packs', undefined, auth()))).find(
+      (p: any) => p.sourceFile && p.imageUrl,
+    )
+    expect(shipped, 'a shipped pack with artwork').toBeTruthy()
+
+    const yaml = await (
+      await send('GET', `/api/v1/admin/surge-packs/${shipped.packId}/export`, undefined, auth())
+    ).text()
+    expect(yaml).toContain('imageUrl')
+    expect(yaml).toContain(shipped.imageUrl)
+  })
+
+  /**
+   * A pack IMPORTED from an official pack's export keeps the artwork too, even though it is not
+   * file-backed and the path is root-relative. It was never forked here — the art arrived inside
+   * the file the operator was handed, so it has already travelled legitimately, and stripping it
+   * would break the export/import/re-export round trip while preventing nothing.
+   */
+  it("keeps artwork on a pack imported from an official pack's export", async () => {
+    const yaml = await (
+      await send('GET', '/api/v1/admin/surge-packs/open-claw/export', undefined, auth())
+    ).text()
+    expect(yaml).toContain('imageUrl')
+
+    await send('DELETE', '/api/v1/admin/surge-packs/open-claw', undefined, auth())
+    const imported = await json(await send('POST', '/api/v1/admin/surge-packs/import', { yaml }, auth()))
+    // No longer file-backed, and no parent: it was imported, not forked.
+    expect(imported.sourceFile).toBeNull()
+    expect(imported.derivedFromPackId).toBeUndefined()
+
+    const again = await (
+      await send('GET', '/api/v1/admin/surge-packs/open-claw/export', undefined, auth())
+    ).text()
+    expect(again).toContain('imageUrl')
+  })
+
+  /**
+   * A fork whose owner set their OWN artwork keeps it. The rule exists to stop borrowed
+   * first-party art travelling, not to take away an image somebody chose and can serve.
+   */
+  it('keeps a personal pack\'s own absolute-url artwork', async () => {
+    await send(
+      'POST',
+      '/api/v1/admin/surge-packs',
+      fork({ packId: 'my-own-art', imageUrl: 'https://example.test/mine.png' }),
+      auth(),
+    )
+
+    const yaml = await (
+      await send('GET', '/api/v1/admin/surge-packs/my-own-art/export', undefined, auth())
+    ).text()
+    expect(yaml).toContain('https://example.test/mine.png')
+  })
+
+  /**
    * The pack file format has never heard of this field, and `strictObject` is what makes that
    * a loud refusal rather than a silently dropped promise — the same guarantee #298 pinned for
    * `alwaysInstall` on the tool file. A pack file cannot import a parentage it invented.

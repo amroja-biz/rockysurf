@@ -1186,6 +1186,48 @@ describe('the modified mark', () => {
     expect(card.hasAttribute('aria-disabled')).toBe(false)
   })
 
+  /**
+   * THE TWO MARKS ARE DIFFERENT TREATMENTS, because they say opposite things. The delta
+   * qualifies the card it sits on ("the artwork here is borrowed"); the other qualifies nothing
+   * about its card, and on an official pack must never read as "this was altered".
+   */
+  it('gives the parent and the fork visually distinct marks', async () => {
+    withForks()
+    renderList()
+    const officialCard = await screen.findByTestId('pack-card-ai-coding-agents')
+    const parentMark = within(officialCard).getByLabelText('Personal version: Mine')
+    expect(parentMark.className).toContain('pack-icon-copies')
+    // Not the delta: an official pack was not altered and must not wear the derivative mark.
+    expect(parentMark.className).not.toContain('pack-icon-delta')
+
+    renderList({ tab: 'personal' })
+    const forkCard = await screen.findByTestId('pack-card-mine')
+    const forkMark = within(forkCard).getByLabelText('Your personal version of Claude Code')
+    expect(forkMark.className).toContain('pack-icon-delta')
+    expect(forkMark.className).not.toContain('pack-icon-copies')
+  })
+
+  /**
+   * A fork that has itself been forked is BOTH, and carries both marks — which is why they sit
+   * in opposite corners and need no precedence rule.
+   */
+  it('shows both marks on a fork that has itself been forked', async () => {
+    vi.mocked(api.listSurgePacks).mockResolvedValue([
+      officialPublic(),
+      localPublic({ derivedFromPackId: 'ai-coding-agents' }),
+      localPublic({ packId: 'mine-2', name: 'Mine Two', derivedFromPackId: 'mine' }),
+    ])
+    vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
+      officialAdmin(),
+      localAdmin({ derivedFromPackId: 'ai-coding-agents' }),
+      localAdmin({ packId: 'mine-2', name: 'Mine Two', derivedFromPackId: 'mine' }),
+    ])
+    renderList({ tab: 'personal' })
+    const middle = await screen.findByTestId('pack-card-mine')
+    expect(within(middle).getByLabelText('Your personal version of Claude Code')).toBeDefined()
+    expect(within(middle).getByLabelText('Personal version: Mine Two')).toBeDefined()
+  })
+
   it('marks a community pack that was forked too', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([
       registryPublic(),

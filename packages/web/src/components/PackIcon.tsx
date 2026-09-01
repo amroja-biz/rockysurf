@@ -53,20 +53,29 @@ export interface PackIconPack {
 }
 
 /**
- * A small bright delta over the top-right corner of a pack's mark (issue #295).
+ * TWO MARKS THAT MEAN OPPOSITE THINGS, and therefore look different (issue #295).
  *
- * WHAT IT MEANS depends on which card it is on, and both meanings are the same fact seen from
- * two sides: on an official pack it says a personal version of this pack exists; on that
- * personal version it says this began as the official pack whose face it is wearing. It never
- * means the official pack was altered — nothing alters an official pack — which is why the
- * caller passes the sentence to read rather than this component inventing one.
+ * They are not one fact seen from two sides — they are two facts, and a single card can carry
+ * both. A pack forked from another, which somebody has since forked again, is a derivative AND
+ * has a personal version of its own.
+ *
+ *  - `DerivativeMark` — the owner-ruled bright delta, TOP RIGHT. "This pack is a copy of
+ *    another, and the artwork it is wearing is that pack's." Solid and bright because it is the
+ *    one that qualifies what you are looking at: the icon is borrowed, and this says so.
+ *  - `CopiesMark` — a quieter outlined mark, BOTTOM RIGHT, with a different glyph. "A personal
+ *    version of this pack exists." It qualifies nothing about the card it sits on; the pack is
+ *    exactly what it appears to be. On an official pack it must never read as "this was
+ *    altered" — nothing alters an official pack.
+ *
+ * OPPOSITE CORNERS, so no precedence rule is needed and neither can hide the other. Both are
+ * decoration: nothing here filters, disables or intercepts a click, so an official pack with a
+ * fork stays exactly as selectable as one without. Each caller passes the sentence to read,
+ * because only the page knows which pack the mark is about.
  *
  * A MARK ON THE ICON, NOT A SECOND BADGE. The card deliberately spends itself on the mark, the
- * name and one badge (issue #192), and a second badge would be the beginning of the end of
- * that. Decoration only: nothing here filters, disables or intercepts a click, so an official
- * pack with a fork stays exactly as selectable as one without.
+ * name and one badge (issue #192).
  */
-function DeltaMark({ label }: { label: string }): React.JSX.Element {
+function DerivativeMark({ label }: { label: string }): React.JSX.Element {
   return (
     <span className="pack-icon-delta" role="img" aria-label={label} title={label}>
       ∆
@@ -74,30 +83,46 @@ function DeltaMark({ label }: { label: string }): React.JSX.Element {
   )
 }
 
+function CopiesMark({ label }: { label: string }): React.JSX.Element {
+  return (
+    <span className="pack-icon-copies" role="img" aria-label={label} title={label}>
+      ⧉
+    </span>
+  )
+}
+
 export function PackIcon({
   pack,
   size,
-  mark,
+  derivativeMark,
+  copiesMark,
 }: {
   pack: PackIconPack
   size?: 'large'
   /**
-   * The sentence the delta says, or undefined for no delta. Undefined renders exactly what
-   * this component rendered before the delta existed — no wrapper, same testids — so every
-   * unmarked call site is untouched.
+   * "This pack is a copy of another" — the bright delta, top right. Undefined for no delta.
    */
-  mark?: string
+  derivativeMark?: string
+  /**
+   * "A personal version of this pack exists" — the quieter outlined mark, bottom right.
+   * Independent of `derivativeMark`: a fork that has itself been forked shows both.
+   */
+  copiesMark?: string
 }): React.JSX.Element {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(pack.imageUrl) && !imageFailed
 
+  // No wrapper at all when there is nothing to position, so every unmarked call site renders
+  // exactly what it did before these marks existed — same element, same testids.
+  const marked = derivativeMark !== undefined || copiesMark !== undefined
   const withMark = (icon: React.JSX.Element): React.JSX.Element =>
-    mark === undefined ? (
+    !marked ? (
       icon
     ) : (
       <span className={`pack-icon-marked ${size === 'large' ? 'pack-icon-marked--large' : ''}`}>
         {icon}
-        <DeltaMark label={mark} />
+        {derivativeMark !== undefined && <DerivativeMark label={derivativeMark} />}
+        {copiesMark !== undefined && <CopiesMark label={copiesMark} />}
       </span>
     )
 

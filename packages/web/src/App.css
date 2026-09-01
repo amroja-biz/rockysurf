@@ -1436,6 +1436,40 @@ button.destructive:hover:not(:disabled),
   font-size: 1rem;
 }
 
+/* "A personal version of this pack exists" — the OTHER mark, and deliberately not the delta.
+   The two mean opposite things: the delta qualifies the card it sits on ("the artwork here is
+   borrowed"), while this one qualifies nothing about it — the pack is exactly what it appears
+   to be, and somebody has a copy. On an official pack it must never read as "this was altered".
+   So: outlined rather than solid, muted rather than bright, a different glyph, and the OPPOSITE
+   CORNER — which is also what lets a fork that has itself been forked wear both at once with no
+   precedence rule and no overlap. */
+.pack-icon-copies {
+  position: absolute;
+  bottom: -0.25rem;
+  right: -0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: var(--surface, #0f172a);
+  border: 1px solid #b0873c;
+  color: #d8ae5f;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.pack-icon-marked--large .pack-icon-copies {
+  bottom: -0.35rem;
+  right: -0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.95rem;
+}
+
 .theme-orange {
   background: #c9702a;
 }
