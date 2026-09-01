@@ -5,7 +5,13 @@
 Accepted — 2026-08-11. This ADR fixes the *shape*; `rockysurf-q5lm.2` writes the actual types
 and the capability matrix. Amended by ADR-0009 (2026-08-25): the "live pricing APIs are out of
 v0" exclusion is lifted for the AWS/Azure price *table* only, which is now served from a hosted
-feed rather than bundled; the SDK shape itself is unchanged.
+feed rather than bundled; the SDK shape itself is unchanged. **Amended by
+[ADR-0021](0021-ssh-access-is-pushed-on-save-not-only-on-provision.md) (2026-09-01):** amendment
+E11 below is the one this ADR said to revisit "if a second provider needs the same call", and
+three do — it arrives as `capabilities.managesSshAccess` plus `syncSshAccess()`, the first
+OPTIONAL method on the interface, which is a deliberate exception to A2's required-and-throwing
+precedent. Core still branches on the flag and never on the method's presence, so A2's central
+property is untouched.
 
 ## Context
 

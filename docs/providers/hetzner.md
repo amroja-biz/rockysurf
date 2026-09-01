@@ -136,6 +136,14 @@ prepare, which is why Hetzner is the quickest of the four clouds to start on —
 boxes are **exposed by default**, unlike the AWS, Azure and GCP providers, where you must name the
 CIDR allowed to reach SSH and startup fails if you do not.
 
+**So there is nothing to sync, either.** Issue #304 made `sshAllowedCidr` a list that Rocky Surf
+pushes to the cloud when you save it — reporting per cloud on the Settings page under "SSH access
+at the cloud", with a `Push SSH access to the clouds` button and `rockysurf network sync` for
+pushing on demand. None of that applies here: this provider declares no `managesSshAccess` capability, because it
+maintains no whitelist to bring into line. It is absent from the sync report rather than reported
+as a failure — there is nothing there to be wrong — and the Settings page shows no CIDR field for
+it, because there is no such setting on this provider at all.
+
 What stands between the box and the internet is therefore SSH itself, and it is set up to carry
 that weight: the rendered cloud-config sets `ssh_pwauth: false`, `lock_passwd: true` and
 `disable_root: true`, so there is no password to guess on any account and root cannot log in at

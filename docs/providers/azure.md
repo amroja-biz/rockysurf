@@ -439,18 +439,29 @@ unlikely.
 ## Who can reach SSH
 
 Rocky Surf creates **one** shared network security group (`rockysurf-ssh` by default) with a
-single inbound rule: TCP 22, from a CIDR **you specify**.
+single inbound rule: TCP 22, from the CIDRs **you specify**.
 
 ```yaml
 providers:
   azure:
-    sshAllowedCidr: 203.0.113.7/32     # required — no default
+    sshAllowedCidr:                    # required — no default
+      - 203.0.113.7/32                 # home
+      - 198.51.100.0/24                # the office
 ```
+
+**`sshAllowedCidr` is a list**, and a bare string is still read as a list of one, so an existing
+config file keeps working untouched. The list may not be empty — an empty list is refused by the
+schema rather than quietly meaning "nobody", which on a Standard-SKU public IP would mean a box
+nothing can reach. Exact duplicates are folded away; **overlapping ranges are deliberately left
+alone**, because `203.0.113.7/32` inside `198.51.100.0/24` means something to the person
+maintaining the file and collapsing them would make removing one of them do something other than
+what it says.
 
 There is no default, and startup reports the provider as unloaded with an explanation if you omit
 it. Same rule as [AWS](aws.md#who-can-reach-ssh), and the same reasoning: a firewall rule is a
 security decision that belongs somewhere reviewable, not inferred at runtime from whatever
-address the operator happened to have that morning.
+address the operator happened to have that morning. **That is unchanged** — nothing here
+discovers your address; you type the CIDR and Rocky Surf pushes what you typed.
 
 It matters slightly more here than on AWS. **An Azure Standard-SKU public IP is closed to inbound
 traffic by default** — Basic SKUs, which were open by default, were retired on 2025-09-30 — so
@@ -460,15 +471,74 @@ loud.
 Opening SSH to the whole internet takes **two** deliberate settings, not one typo:
 
 ```yaml
-    sshAllowedCidr: 0.0.0.0/0
+    sshAllowedCidr: [0.0.0.0/0]
     allowAllCidr: true                 # required to accept 0.0.0.0/0
 ```
+
+`0.0.0.0/0` **anywhere in the list** triggers that guard, not only a list whose single entry is
+`/0`. A list of five careful office ranges with a `/0` appended is open to the entire internet,
+and the four careful entries change nothing about that.
 
 **The rule is written as a child resource**, at
 `.../networkSecurityGroups/rockysurf-ssh/securityRules/rockysurf-ssh`, never by PUTting the whole
 security group. A PUT on a security group replaces its `securityRules` array, so writing the
 whole thing would silently delete every other rule you had added to it. If you share this group
-with anything else, your rules survive.
+with anything else, your rules survive. **That is as true of the on-save push below as it is of
+provision** — both write the same child path, from the same one function that builds the rule
+body, so the two cannot drift into writing different things.
+
+**One rule, two ARM spellings.** A security rule carries *either* `sourceAddressPrefix` (one
+value) *or* `sourceAddressPrefixes` (a list), and sending both is rejected outright — ARM will not
+pick one. So a single-CIDR list is written on the scalar key, exactly as every rule this provider
+has ever written, and a multi-entry list is written on the plural key. A one-CIDR installation's
+NSG therefore does not churn on upgrade. When reading the rule back, both keys are honoured,
+because the rule may have been written by an older Rocky Surf or edited in the portal, which
+switches to the plural key the moment you add a second entry.
+
+### The change reaches Azure on save
+
+Until issue #304, the only thing that ever wrote your CIDR to ARM was `provision()`. Azure
+recovered better than the other two clouds — the next provision PUTs the rule unconditionally, so
+the setting did take effect at the next launch — but "launch a server you did not want" was still
+the only way to get there.
+
+Saving the setting now pushes it, without provisioning anything. The save stays local and atomic
+(ADR-0017): the Settings page writes your file, this process adopts it, and *then*, if the save
+changed a CIDR list, a second and separate call goes out — `POST /api/v1/network/ssh-access/sync`
+— which is one PUT to the child path above. The per-cloud result renders on the Settings page
+under **SSH access at the cloud**; `rockysurf network sync` does the same from the CLI.
+
+A **`Push SSH access to the clouds`** button in the Settings page footer runs the same call on
+demand, without requiring unsaved edits. It matters less here than on
+[GCP](gcp.md#the-change-reaches-google-cloud-on-save) — this rule was rewritten on every provision
+even before #304, so it drifts from the file far less readily — but it is the way to confirm what
+the rule allows right now rather than infer it.
+
+**Azure is the simplest of the three, and the reason is structural.** The whole `rockysurf-ssh`
+rule belongs to Rocky Surf — it is not one entry in a list shared with your own rules, the way an
+AWS ingress range is — so writing it means the rule afterwards allows exactly your list, with no
+leftovers to report and no ownership arithmetic to do. Removing a CIDR here removes it; there is
+no second step, unlike [AWS](aws.md#who-can-reach-ssh).
+
+**No new Azure permission was needed.** `Microsoft.Network/networkSecurityGroups/securityRules/write`
+is already in the published role, because provision has always written this rule. `delete` on
+`networkSecurityGroups` is still deliberately withheld, and nothing on this path wants it.
+
+**If the network security group does not exist yet, the sync skips** and says so rather than
+creating it: a settings save must not create billable cloud objects in a subscription nobody has
+launched into. The group is created at the first launch, with your current list already on it.
+
+A missing **rule** on an existing group is a different case and is simply created — the PUT to
+the child path writes it whether or not it was there, which is what makes an operator who
+recreated the group, or who is upgrading from a release that predates the rule, land in a working
+state rather than a skipped one.
+
+An unreachable subscription is a bounded wait — **thirty seconds** — and then an honest "Azure did
+not answer, so Rocky Surf cannot say whether the rule now allows this; nothing was deleted",
+never a claim that it applied.
+
+**Removing a CIDR ends new SSH connections from that network as soon as the PUT lands.**
+Established sessions survive, and the boxes keep running. This is reachability, not data.
 
 It is attached to the **network interface**, not to the subnet, so Rocky Surf never changes the
 network configuration of a subnet you may share with other things.

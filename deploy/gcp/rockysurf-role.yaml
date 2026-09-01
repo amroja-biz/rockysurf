@@ -89,6 +89,22 @@ includedPermissions:
   # firewalls.create alone cannot create a rule, because the rule's `network` field carries its
   # own authorization annotation. There is no `firewalls.list` here on purpose — the provider
   # reads its own rule by name and never lists them.
+  #
+  # `compute.firewalls.update` was added by issue #304 and is the one permission this release
+  # asks for. It is DERIVED, not proven: rockysurf-ev41.8's real-cloud run predates it and no run
+  # has yet issued a `firewalls.patch` under this role. Note also that Google's permission names
+  # do not track its method names here — `patch` on a firewall is authorized by `.update`, and
+  # there is no `compute.firewalls.patch` to grant. Before it, `sourceRanges` was written at create time and never again: an operator
+  # who changed `sshAllowedCidr` had a firewall rule that went on enforcing the network they
+  # left, for the life of the rule, and no launch would fix it. The provider now issues
+  # `compute.firewalls.patch` — which is authorized by `.update` — against the one rule whose
+  # description matches the one Rocky Surf writes at create time, and against nothing else.
+  #
+  # There is STILL no `compute.firewalls.delete`, and that is not an oversight. The rule is
+  # shared by every box in the project (ADR-0003 D1 reports it as `ownership: 'shared'`), so
+  # deleting it cuts SSH to all of them at once, and delete-and-recreate as an update mechanism
+  # would do exactly that for a few seconds every time somebody saved a setting.
   - compute.firewalls.create
   - compute.firewalls.get
+  - compute.firewalls.update
   - compute.networks.updatePolicy
