@@ -83,14 +83,20 @@ const baselineKey = (month: string) => `jobs.spend.baseline.${month}`
  * The estimate is clamped at zero: rows can be deleted, which would otherwise make the total
  * go backwards and the month look negative.
  */
-export function createSpendTracker(db: Db, configured: Live<LimitsConfig>): SpendTracker {
+export function createSpendTracker(
+  db: Db,
+  configured: Live<LimitsConfig>,
+  /** Injected in tests, so the month the tracker baselines is the month the test simulates. */
+  now?: () => Date,
+): SpendTracker {
+  const clock = now ?? (() => new Date())
   /**
    * Read per use, not captured (issue #264): a spend cap saved on the Settings page has to
    * govern the next accrual and the next create, not the next restart.
    */
   const limits = () => readLive(configured)
   let current: SpendSnapshot = {
-    month: monthKey(new Date()),
+    month: monthKey(clock()),
     byCurrency: {},
     ...(limits().spendCap ? { cap: limits().spendCap } : {}),
     overCap: false,
@@ -119,8 +125,8 @@ export function createSpendTracker(db: Db, configured: Live<LimitsConfig>): Spen
     return { byCurrency, unpriced }
   }
 
-  function refresh(now = new Date()): SpendSnapshot {
-    const month = monthKey(now)
+  function refresh(at = clock()): SpendSnapshot {
+    const month = monthKey(at)
     const { byCurrency: lifetime, unpriced } = totals()
 
     const stored = getSetting(db, baselineKey(month))
@@ -147,7 +153,7 @@ export function createSpendTracker(db: Db, configured: Live<LimitsConfig>): Spen
       ...(cap ? { cap } : {}),
       overCap: cap ? spentInCapCurrency >= cap.amount : false,
       unpricedServers: unpriced,
-      computedAt: now.toISOString(),
+      computedAt: at.toISOString(),
     }
     return current
   }
