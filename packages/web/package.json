@@ -12,7 +12,8 @@
     "build": "tsc --noEmit && vite build && node ../../scripts/sync-web-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.4",
@@ -27,9 +28,11 @@
     "react-router": "^8.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.10.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",

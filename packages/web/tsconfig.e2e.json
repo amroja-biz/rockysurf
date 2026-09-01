@@ -1,0 +1,22 @@
+{
+  // The browser suite is Node code that happens to live in the web package: it spawns a process,
+  // writes a temp directory and reads a file back. It gets its own project rather than joining
+  // `tsconfig.json` because that one is the SPA's — `types: ["vite/client"]`, DOM libs, JSX — and
+  // widening it to carry Node's globals would let a `process.env` or a `node:fs` import into the
+  // shipped bundle's typecheck without anything complaining.
+  //
+  // `pnpm --filter @rockysurf/web typecheck` runs both, so this is covered by the Typecheck job
+  // that gates every merge — the browser job is not required yet, and a suite nothing typechecks
+  // rots between the runs that would have caught it.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

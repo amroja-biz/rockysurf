@@ -1,2 +1,10 @@
 dist/
 node_modules/
+
+# Playwright's output: failure screenshots and traces, and the HTML report. Anchored to the
+# package root rather than left bare, per `scripts/check-gitignore-anchors.mjs` — a pattern
+# with no leading slash matches a directory of that name at any depth, including under `src/`.
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright-artifacts/

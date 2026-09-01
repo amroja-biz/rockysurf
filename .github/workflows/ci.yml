@@ -233,3 +233,57 @@ jobs:
       # It drives the built binary, not the sources: the shipped article is the subject.
       - run: pnpm -r build
       - run: node scripts/e2e/byo-host.mjs
+
+  # THE BROWSER LAYER (issue #310). Two UI regressions shipped in one day — a settings section
+  # that rendered no controls at all, and a save-path interlock that disabled the button an
+  # operator reaches for — while Typecheck, Test and the real-HTTP API checks were green both
+  # times. None of them ever loaded the built SPA into a browser engine and clicked anything.
+  # This does: it boots the shipped binary against a temp config file on an OS-assigned port and
+  # drives the real pages, login form included. See `packages/web/e2e/control-plane.ts`.
+  #
+  # ALWAYS-RUN, AND DELIBERATELY NOT PATH-FILTERED — no `needs: scope`, no `if:`. The owner
+  # intends to make this a required check once it has baked for a few days, and a required check
+  # that is workflow- or job-level path-filtered never reports at all on the pull requests it
+  # skips, which deadlocks the merge forever
+  # (docs/memories/2026-08-31-branch-protection-and-pr-workflow.md). Adding a filter here later
+  # would look like a harmless optimisation and would break every merge.
+  #
+  # NOT part of `pnpm run check`: it needs a browser binary that `pnpm install` does not fetch,
+  # and a serial gate that fails on a clean checkout for an unexplained reason gets worked
+  # around rather than fixed. `pnpm run test:ui` is the local entry point.
+  ui:
+    name: UI (browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The suite spawns `packages/rockysurf/dist/bin.js` and the SPA that core serves is a build
+      # artifact, so this is the same fresh-clone requirement Typecheck and Test carry — and here
+      # it is doubly load-bearing, since an unbuilt SPA serves an index.html referencing assets
+      # that do not exist and every page renders blank.
+      - run: pnpm -r build
+      # Browsers are not in the lockfile: `@playwright/test` is the driver, the engine is a
+      # separate download. Chromium only — one engine is enough to catch a control that does not
+      # render, and three would triple the job for no coverage this suite is asking for.
+      - name: Install Chromium
+        working-directory: packages/web
+        run: npx playwright install --with-deps chromium
+      - run: pnpm run test:ui
+      # Screenshots, traces and the HTML report. A browser failure that happens on a runner and
+      # nowhere else is close to undebuggable without the trace, and `retain-on-failure` means
+      # there is nothing to upload when the job is green.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-browser-artifacts
+          path: |
+            packages/web/test-results
+            packages/web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7

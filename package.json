@@ -2,7 +2,7 @@
   "name": "rockysurf",
   "private": true,
   "type": "module",
-  "description": "Rocky Surf \u2014 self-hosted persistent cloud dev boxes for coding agents.",
+  "description": "Rocky Surf — self-hosted persistent cloud dev boxes for coding agents.",
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=24"
@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "node scripts/check-core-deps.mjs && node scripts/check-iam-policy.mjs && node scripts/check-azure-role.mjs && node scripts/check-gcp-role.mjs && node scripts/check-gitignore-anchors.mjs && node scripts/check-packs-bundle.mjs && node scripts/check-skills-index.mjs && node scripts/check-npx-closure.mjs && node scripts/check-size-table.mjs && node scripts/check-package-count.mjs && node scripts/e2e/audit-credentials-selftest.mjs && node --test scripts/refresh-prices.test.mjs",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test",
-    "check:pack-urls": "node scripts/check-pack-urls.mjs"
+    "check:pack-urls": "node scripts/check-pack-urls.mjs",
+    "test:ui": "pnpm --filter @rockysurf/web run test:ui"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
