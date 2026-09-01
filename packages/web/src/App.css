@@ -1364,6 +1364,112 @@ button.destructive:hover:not(:disabled),
   border-radius: 10px;
 }
 
+/* "Add to a pack…" (issue #295). One row per pack: the name on the left, the one action on the
+   right, so a column of packs reads as a column rather than as ragged text with buttons wherever
+   each name happened to end. */
+.add-to-pack-list {
+  list-style: none;
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+}
+
+.add-to-pack-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border, #26304a);
+}
+
+.add-to-pack-list li:last-child {
+  border-bottom: none;
+}
+
+.add-to-pack-list button {
+  flex-shrink: 0;
+}
+
+/* A forked pack, and the official pack it was forked from, both wear a small bright delta on
+   the top right of their mark (issue #295). The wrapper exists only when there is a delta to
+   position, so an unmarked icon keeps exactly the box it had before this class existed — see
+   `components/PackIcon.tsx`. `margin-right` moves onto the wrapper because the icon inside it
+   is no longer the element the layout sees. */
+.pack-icon-marked {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+.pack-icon-marked .pack-icon,
+.pack-icon-marked .pack-monogram {
+  margin-right: 0;
+}
+
+.pack-icon-delta {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: #22d3ee;
+  color: #05323a;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  /* Reads as ON the mark rather than beside it, at any pack artwork's colour. */
+  box-shadow: 0 0 0 2px var(--surface, #0f172a);
+  pointer-events: none;
+}
+
+.pack-icon-marked--large .pack-icon-delta {
+  top: -0.35rem;
+  right: -0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 1rem;
+}
+
+/* "A personal version of this pack exists" — the OTHER mark, and deliberately not the delta.
+   The two mean opposite things: the delta qualifies the card it sits on ("the artwork here is
+   borrowed"), while this one qualifies nothing about it — the pack is exactly what it appears
+   to be, and somebody has a copy. On an official pack it must never read as "this was altered".
+   So: outlined rather than solid, muted rather than bright, a different glyph, and the OPPOSITE
+   CORNER — which is also what lets a fork that has itself been forked wear both at once with no
+   precedence rule and no overlap. */
+.pack-icon-copies {
+  position: absolute;
+  bottom: -0.25rem;
+  right: -0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  background: var(--surface, #0f172a);
+  border: 1px solid #b0873c;
+  color: #d8ae5f;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.pack-icon-marked--large .pack-icon-copies {
+  bottom: -0.35rem;
+  right: -0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.95rem;
+}
+
 .theme-orange {
   background: #c9702a;
 }

@@ -10,6 +10,7 @@ import {
   listProviders,
   listSshKeys,
   listSurgePacks,
+  listTools,
   resolveRepositories,
   getSettings,
   saveSettings,
@@ -21,6 +22,7 @@ import {
   type RepositoryResolution,
   type SavedSshKey,
   type SurgePack,
+  type Tool,
 } from '../lib/api'
 import {
   archLabel,
@@ -358,6 +360,14 @@ export function CreateServerPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [unloadable, setUnloadable] = useState<ProviderSetupState[]>([])
   const [packs, setPacks] = useState<SurgePack[]>([])
+  /**
+   * The tools set to install on every box, whichever pack is chosen (issue #295).
+   *
+   * Read separately from the packs because that is what they are: not members of any pack, so
+   * no pack's own tool list mentions them. Without this the chooser below would list a pack's
+   * tools and quietly understate what the box is actually going to install.
+   */
+  const [alwaysInstalled, setAlwaysInstalled] = useState<Tool[]>([])
   /** What this installation has tokens for, offered as a picker below (rockysurf-mh8f). */
   const [scopes, setScopes] = useState<ConfiguredScope[]>([])
   const [loading, setLoading] = useState(true)
@@ -493,9 +503,12 @@ export function CreateServerPage() {
     let cancelled = false
     async function load() {
       try {
-        const [providerList, packList, setup, tokenScopes, savedKeys] = await Promise.all([
+        const [providerList, packList, everyBoxTools, setup, tokenScopes, savedKeys] = await Promise.all([
           listProviders(),
           listSurgePacks(),
+          // Advisory like the three below it: this line is a disclosure on the pack chooser,
+          // and a failed read must not stop somebody creating a server.
+          listTools().catch(() => []),
           // Advisory only, so a failure here must not take the form down with it: the page's
           // job is creating a server, and it can still do that without the diagnosis of a
           // provider that is already missing.
@@ -510,6 +523,7 @@ export function CreateServerPage() {
         if (cancelled) return
 
         setProviders(providerList)
+        setAlwaysInstalled(everyBoxTools.filter((t) => t.alwaysInstall))
         setScopes(tokenScopes)
         setSavedSshKeys(savedKeys)
         // Preselected when there is exactly one, on the same rule the provider list above uses:
@@ -667,6 +681,18 @@ export function CreateServerPage() {
   const requiresRdp = pack?.requiresRdp ?? false
   /** The same rule again, for the pack's own questions (issue #189). Empty means no section. */
   const packInputs = useMemo(() => pack?.inputs ?? [], [pack])
+
+  /**
+   * The always-install tools the chosen pack does NOT already list (issue #295).
+   *
+   * Subtracted rather than concatenated: a tool can be both in the pack and set to install
+   * everywhere, and naming it twice would read as two installs. The resolver dedupes the plan
+   * itself for the same reason.
+   */
+  const alsoInstalled = useMemo(() => {
+    const inPack = new Set((pack?.tools ?? []).map((t) => t.toolId))
+    return alwaysInstalled.filter((t) => !inPack.has(t.toolId))
+  }, [alwaysInstalled, pack])
 
   /**
    * The Environment textarea, read as `KEY=value` lines (issue #197).
@@ -1389,6 +1415,18 @@ export function CreateServerPage() {
                 ))}
               </div>
             </>
+          )}
+
+          {/* WHAT THE PACK DOES NOT SAY (issue #295). A box gets its pack's tools plus every
+              tool set to install on all of them, so a chooser that listed only the pack's own
+              would understate what is about to run as root on the machine. Anything the chosen
+              pack already lists is left out rather than counted twice. */}
+          {alsoInstalled.length > 0 && (
+            <p className="hint" data-testid="always-installed-note">
+              Also installed, whichever pack you pick:{' '}
+              <strong>{alsoInstalled.map((t) => t.name).join(', ')}</strong>. These are set to install
+              on every box you create.
+            </p>
           )}
         </fieldset>
 

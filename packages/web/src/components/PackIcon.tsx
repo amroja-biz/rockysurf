@@ -52,30 +52,100 @@ export interface PackIconPack {
   theme?: string
 }
 
-export function PackIcon({ pack, size }: { pack: PackIconPack; size?: 'large' }): React.JSX.Element {
+/**
+ * TWO MARKS THAT MEAN OPPOSITE THINGS, and therefore look different (issue #295).
+ *
+ * They are not one fact seen from two sides — they are two facts, and a single card can carry
+ * both. A pack forked from another, which somebody has since forked again, is a derivative AND
+ * has a personal version of its own.
+ *
+ *  - `DerivativeMark` — the owner-ruled bright delta, TOP RIGHT. "This pack is a copy of
+ *    another, and the artwork it is wearing is that pack's." Solid and bright because it is the
+ *    one that qualifies what you are looking at: the icon is borrowed, and this says so.
+ *  - `CopiesMark` — a quieter outlined mark, BOTTOM RIGHT, with a different glyph. "A personal
+ *    version of this pack exists." It qualifies nothing about the card it sits on; the pack is
+ *    exactly what it appears to be. On an official pack it must never read as "this was
+ *    altered" — nothing alters an official pack.
+ *
+ * OPPOSITE CORNERS, so no precedence rule is needed and neither can hide the other. Both are
+ * decoration: nothing here filters, disables or intercepts a click, so an official pack with a
+ * fork stays exactly as selectable as one without. Each caller passes the sentence to read,
+ * because only the page knows which pack the mark is about.
+ *
+ * A MARK ON THE ICON, NOT A SECOND BADGE. The card deliberately spends itself on the mark, the
+ * name and one badge (issue #192).
+ */
+function DerivativeMark({ label }: { label: string }): React.JSX.Element {
+  return (
+    <span className="pack-icon-delta" role="img" aria-label={label} title={label}>
+      ∆
+    </span>
+  )
+}
+
+function CopiesMark({ label }: { label: string }): React.JSX.Element {
+  return (
+    <span className="pack-icon-copies" role="img" aria-label={label} title={label}>
+      ⧉
+    </span>
+  )
+}
+
+export function PackIcon({
+  pack,
+  size,
+  derivativeMark,
+  copiesMark,
+}: {
+  pack: PackIconPack
+  size?: 'large'
+  /**
+   * "This pack is a copy of another" — the bright delta, top right. Undefined for no delta.
+   */
+  derivativeMark?: string
+  /**
+   * "A personal version of this pack exists" — the quieter outlined mark, bottom right.
+   * Independent of `derivativeMark`: a fork that has itself been forked shows both.
+   */
+  copiesMark?: string
+}): React.JSX.Element {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(pack.imageUrl) && !imageFailed
 
+  // No wrapper at all when there is nothing to position, so every unmarked call site renders
+  // exactly what it did before these marks existed — same element, same testids.
+  const marked = derivativeMark !== undefined || copiesMark !== undefined
+  const withMark = (icon: React.JSX.Element): React.JSX.Element =>
+    !marked ? (
+      icon
+    ) : (
+      <span className={`pack-icon-marked ${size === 'large' ? 'pack-icon-marked--large' : ''}`}>
+        {icon}
+        {derivativeMark !== undefined && <DerivativeMark label={derivativeMark} />}
+        {copiesMark !== undefined && <CopiesMark label={copiesMark} />}
+      </span>
+    )
+
   if (showImage) {
-    return (
+    return withMark(
       <img
         className={`pack-icon ${size === 'large' ? 'pack-icon--large' : ''}`}
         src={pack.imageUrl}
         alt=""
         loading="lazy"
         onError={() => setImageFailed(true)}
-      />
+      />,
     )
   }
 
   const theme = pack.theme && THEME_PATTERN.test(pack.theme) && THEME_ALLOWLIST.has(pack.theme) ? pack.theme : hashAccent(pack.packId)
 
-  return (
+  return withMark(
     <span
       className={`pack-monogram ${theme} ${size === 'large' ? 'pack-monogram--large' : ''}`}
       data-testid={`pack-monogram-${pack.packId}`}
     >
       {monogramOf(pack.name)}
-    </span>
+    </span>,
   )
 }

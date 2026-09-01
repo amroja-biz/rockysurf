@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openTestDatabase } from '../db/client.js'
-import { listPacks } from '../db/repositories/packs.js'
+import { getTool, listPacks, listTools, upsertTool } from '../db/repositories/packs.js'
 import { BUNDLED_PACKS_DIR, bundledPacksDir } from '../packs/bundled.js'
 import { resolvePacksDir, syncPacksAtBoot } from './packs.js'
 
@@ -148,5 +148,36 @@ describe('a boot with no checkout around it', () => {
     // A second boot must not multiply or drop anything.
     syncPacksAtBoot({ db, dataDir: data, cwd: tmp('nowhere'), log: () => {} })
     expect(listPacks(db)).toHaveLength(shipped)
+  })
+
+  /**
+   * "INSTALL THIS ON EVERY BOX" SURVIVES THE RECONCILE (issue #295).
+   *
+   * This is the one field of a file-backed tool an operator may set, and it is exactly the
+   * field the reconcile is most likely to eat: `syncPacksToDb` re-upserts every shipped tool
+   * from its YAML on every single start, and no file format carries `alwaysInstall` — it is
+   * installation state, not file content, and a shared file that promised "installs
+   * everywhere" would be making a promise about somebody else's machine.
+   *
+   * So `upsertTool` treats an omitted `alwaysInstall` as "leave it alone" rather than as
+   * false. Without that, the operator's choice would be silently reset at the next restart —
+   * silently being the word that matters: nothing would error, the tool would still be listed,
+   * and it would just stop arriving on new boxes.
+   */
+  it('keeps an operator\'s "install on every box" through a restart', () => {
+    const { db } = openTestDatabase()
+    const data = tmp('data')
+    syncPacksAtBoot({ db, dataDir: data, cwd: tmp('nowhere'), log: () => {} })
+
+    const shipped = listTools(db).find((t) => t.sourceFile)
+    expect(shipped, 'a shipped tool to mark').toBeTruthy()
+    upsertTool(db, { ...shipped!, alwaysInstall: true })
+    expect(getTool(db, shipped!.id)!.alwaysInstall).toBe(true)
+
+    // The next boot rewrites this row's name and scripts from its file, and must not touch this.
+    syncPacksAtBoot({ db, dataDir: data, cwd: tmp('nowhere'), log: () => {} })
+
+    expect(getTool(db, shipped!.id)!.alwaysInstall).toBe(true)
+    expect(getTool(db, shipped!.id)!.sourceFile).toBeTruthy()
   })
 })

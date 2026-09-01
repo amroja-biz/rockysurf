@@ -174,3 +174,110 @@ describe('topology', () => {
     expect(plan.mode).toBe('push')
   })
 })
+
+/**
+ * "Install this tool on every box", and the three ways a plan can be asked for (issue #295).
+ *
+ * The union lives in `resolvePack`, AFTER its three-way branch, and these are the three
+ * branches. A union written inside any one of them would be a rule with two holes in it, and
+ * the holes would be silent ones: the operator ticks "install on every box", creates a server
+ * the other way round, and simply does not get it.
+ */
+describe('alwaysInstall (issue #295)', () => {
+  const stepIds = (row: ServerRow): string[] =>
+    parseInstallPlan(getServer(db, row.id)!.installPlan!).steps.map((s) => s.id)
+
+  const everywhere = () =>
+    upsertTool(db, {
+      id: 'house-style',
+      name: 'House style',
+      description: 'every box gets this',
+      category: 'dev',
+      url: 'https://example.com',
+      installScript: 'true',
+      enabled: true,
+      installOrder: 50,
+      bootstrap: false,
+      runAs: 'rocky',
+      alwaysInstall: true,
+    })
+
+  it('reaches a plan built from a pack', () => {
+    everywhere()
+    const row = server({ packId: 'ai-coding-agents' })
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    expect(stepIds(row)).toContain('tool:house-style')
+    expect(stepIds(row)).toContain('tool:claude-code')
+  })
+
+  it('reaches a plan built from an explicit per-server tool selection', () => {
+    everywhere()
+    // The selection WINS over the pack's list — the pack is a default, not a floor — so this is
+    // the branch where a union written beside `pack.tools` would silently do nothing.
+    const row = server({ packId: 'ai-coding-agents', tools: ['claude-code'] })
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    expect(stepIds(row)).toContain('tool:house-style')
+  })
+
+  it('reaches a plan built with no pack at all', () => {
+    everywhere()
+    const row = server({})
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    expect(stepIds(row)).toContain('tool:house-style')
+  })
+
+  it('installs once when the pack already lists it', () => {
+    upsertTool(db, {
+      id: 'claude-code',
+      name: 'Claude Code',
+      description: 'the agent',
+      category: 'dev',
+      url: 'https://example.com',
+      installScript: 'npm i -g @anthropic-ai/claude-code',
+      enabled: true,
+      installOrder: 10,
+      bootstrap: false,
+      runAs: 'rocky',
+      alwaysInstall: true,
+    })
+    const row = server({ packId: 'ai-coding-agents' })
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    expect(stepIds(row).filter((id) => id === 'tool:claude-code')).toHaveLength(1)
+  })
+
+  it('does not install a disabled tool, even marked always-install', () => {
+    upsertTool(db, {
+      id: 'retired',
+      name: 'Retired',
+      description: 'switched off',
+      category: 'dev',
+      url: 'https://example.com',
+      installScript: 'true',
+      enabled: false,
+      installOrder: 50,
+      bootstrap: false,
+      runAs: 'rocky',
+      alwaysInstall: true,
+    })
+    const row = server({ packId: 'ai-coding-agents' })
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    expect(stepIds(row)).not.toContain('tool:retired')
+  })
+
+  /**
+   * THE SNAPSHOT IS THE PROMISE. The disclosure the UI shows says "every box you create from
+   * now on", and this is the half of that sentence the code has to keep: a server that already
+   * exists carries the plan it was created with, and flipping the flag afterwards does not
+   * reach back and change it.
+   */
+  it('does not change a plan that was already snapshotted', () => {
+    const row = server({ packId: 'ai-coding-agents' })
+    snapshotInstallPlan(db, row, { mode: 'push', branding: false })
+    const before = getServer(db, row.id)!.installPlan
+
+    everywhere()
+
+    expect(getServer(db, row.id)!.installPlan).toBe(before)
+    expect(stepIds(row)).not.toContain('tool:house-style')
+  })
+})

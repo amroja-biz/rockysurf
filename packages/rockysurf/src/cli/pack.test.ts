@@ -72,6 +72,35 @@ describe('rockysurf pack lint', () => {
     expect(io.err.join('\n')).toContain('unknown tool "nope"')
   })
 
+  /**
+   * THE FILE IS STILL THE WHOLE TRUTH (issue #295).
+   *
+   * `pack lint` and `pack check` read files and open no database — that is what lets a pack be
+   * smoke-tested in CI, on a machine that has no installation on it. Issue #295 added two
+   * columns, and the reason both live in the database and in NEITHER file format is exactly
+   * this property: a DB-side field that changed what a pack installs would be invisible here,
+   * and the composition these gates certify would no longer be the composition that runs.
+   *
+   * This is the test the rejected "overlay table" design would have failed. Adding tools to a
+   * file-backed pack from the database would have made `lint` and `check` certify a pack that
+   * no longer described what it installs, with no way for either to tell.
+   */
+  it('refuses the two fields that live only in a database', () => {
+    const withDerived = dirWith({
+      'a-pack.yaml': { version: 1, pack: { ...PACK, derivedFromPackId: 'other' }, tools: [TOOL] },
+    })
+    const derivedIo = capture()
+    expect(runPackCommand(['lint', withDerived], derivedIo.io)).toBe(1)
+    expect(derivedIo.err.join('\n')).toContain('derivedFromPackId')
+
+    const withAlways = dirWith({
+      'a-pack.yaml': { version: 1, pack: PACK, tools: [{ ...TOOL, alwaysInstall: true }] },
+    })
+    const alwaysIo = capture()
+    expect(runPackCommand(['lint', withAlways], alwaysIo.io)).toBe(1)
+    expect(alwaysIo.err.join('\n')).toContain('alwaysInstall')
+  })
+
   it('exits 1 on a directory with no pack files rather than reporting success', () => {
     // The commonest way to get a green check you have not earned is to point it at the wrong
     // path. A gate that congratulates you for that is worse than no gate: the shop would merge

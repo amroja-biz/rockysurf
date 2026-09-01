@@ -32,6 +32,15 @@ export interface UpsertToolInput {
   installOrder: number
   bootstrap: boolean
   runAs: string
+  /**
+   * "Install this on every box" (issue #295). Absent means LEAVE WHAT IS THERE, the same
+   * contract `registry` has on `UpsertPackInput` below, and for the same reason: the boot
+   * reconcile re-upserts every file-backed tool from its YAML on each start, and the file
+   * cannot carry this field — it is installation state, not file content. Setting it
+   * unconditionally would therefore reset an operator's choice on a shipped tool at every
+   * restart, silently. Passing `false` explicitly still clears it.
+   */
+  alwaysInstall?: boolean
   /** Null for a row created in the admin UI; a filename for one loaded from `packs/`. */
   sourceFile?: string | null
 }
@@ -57,6 +66,17 @@ export interface UpsertPackInput {
    */
   inputs?: PackInput[] | null
   sourceFile?: string | null
+  /**
+   * The pack this one was forked from (issue #295). Absent means LEAVE WHAT IS THERE, the
+   * same contract as `registry`.
+   *
+   * This is load-bearing rather than tidy. The admin pack PUT builds a whole row from the form
+   * and passes it here, so an unconditional assignment would erase the parent the first time
+   * someone added a tool to their own fork — and adding a tool to a fork is the entire point of
+   * issue #295. It is the `sshPublicKey`/`rdpPassword` scar in `servers/routes.ts` again: a
+   * full-row literal quietly dropping a column nobody remembered was on the row.
+   */
+  derivedFromPackId?: string | null
   /**
    * Registry provenance (rockysurf-arym.4), and note what it is NOT: `sourceFile`.
    *
@@ -111,6 +131,9 @@ export function upsertTool(db: Db, input: UpsertToolInput): ToolRow {
     ...input,
     setupScript: input.setupScript ?? null,
     sourceFile: input.sourceFile ?? null,
+    // A fresh row needs a value; an upsert of an existing one leaves the column alone unless
+    // the caller said otherwise (see the conditional spread below).
+    alwaysInstall: input.alwaysInstall ?? false,
     createdAt: now,
     updatedAt: now,
   }
@@ -133,6 +156,12 @@ export function upsertTool(db: Db, input: UpsertToolInput): ToolRow {
         bootstrap: values.bootstrap,
         runAs: values.runAs,
         sourceFile: values.sourceFile,
+        // `alwaysInstall` OMITTED means "leave it alone" — the reason this is a conditional
+        // spread and not a plain assignment. `syncPacksToDb` re-upserts every file-backed tool
+        // from its YAML on every boot and passes no such field, because no file format has
+        // one; assigning unconditionally would reset an operator's "install this everywhere"
+        // on every shipped tool at the next restart, with nothing to show what happened.
+        ...(input.alwaysInstall === undefined ? {} : { alwaysInstall: values.alwaysInstall }),
         updatedAt: now,
       },
     })
@@ -179,6 +208,7 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
     webPort: input.webPort ?? null,
     inputs: input.inputs?.length ? JSON.stringify(input.inputs) : null,
     sourceFile: input.sourceFile ?? null,
+    derivedFromPackId: input.derivedFromPackId ?? null,
     registrySource: input.registry?.source ?? null,
     registryUrl: input.registry?.url ?? null,
     registrySha256: input.registry?.sha256 ?? null,
@@ -206,6 +236,12 @@ export function upsertPack(db: Db, input: UpsertPackInput): Pack {
         webPort: values.webPort,
         inputs: values.inputs,
         sourceFile: values.sourceFile,
+        // Omitted means "leave the parent alone", for the reason spelled out on the field:
+        // the admin PUT sends a whole row, and a fork gaining a tool must not lose where it
+        // came from. Passing `null` explicitly still clears it.
+        ...(input.derivedFromPackId === undefined
+          ? {}
+          : { derivedFromPackId: values.derivedFromPackId }),
         // `registry` OMITTED means "leave the provenance alone", which is why these are spread
         // conditionally rather than always set. Every existing write path — the boot reconcile,
         // the admin editor, the YAML import — passes no `registry`, and an ordinary edit to an

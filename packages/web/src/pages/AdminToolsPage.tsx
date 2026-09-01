@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { AddToPackModal } from '../components/AddToPackModal'
 import { AppShell } from '../components/AppShell'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { InstallPreview } from '../components/InstallPreview'
@@ -36,6 +37,7 @@ export function AdminToolsPage() {
   const [previewPackId, setPreviewPackId] = useState<string>('')
   const [editing, setEditing] = useState<AdminTool | 'new' | null>(null)
   const [deleting, setDeleting] = useState<AdminTool | null>(null)
+  const [addingToPack, setAddingToPack] = useState<AdminTool | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -169,6 +171,11 @@ export function AdminToolsPage() {
                     <span className="tool-name">{tool.name}</span>
                     {!tool.enabled && <span className="badge">disabled</span>}
                     {tool.bootstrap && <span className="badge">runtime-guaranteed</span>}
+                    {tool.alwaysInstall && (
+                      <span className="badge" data-testid={`always-install-badge-${tool.toolId}`}>
+                        every box
+                      </span>
+                    )}
                   </td>
                   <td>{tool.category}</td>
                   <td>{tool.runAs}</td>
@@ -188,9 +195,20 @@ export function AdminToolsPage() {
                     <button data-testid={`export-${tool.toolId}`} onClick={() => void downloadYaml(tool)}>
                       Export
                     </button>
+                    {/* OFFERED ON EVERY ROW, file-backed included (issue #295). Where a tool
+                        gets installed is not part of its file — an official tool can be added
+                        to a pack of yours, and can be set to install everywhere, without any of
+                        that touching the YAML the next boot reloads. */}
+                    <button
+                      data-testid={`add-to-pack-${tool.toolId}`}
+                      onClick={() => setAddingToPack(tool)}
+                    >
+                      Add to a pack…
+                    </button>
                     {isFileBacked(tool) ? (
                       <small data-testid={`readonly-hint-${tool.toolId}`}>
-                        Read-only — edit <code>{tool.sourceFile}</code> and restart
+                        Its definition is read-only — edit <code>{tool.sourceFile}</code> and restart.
+                        Where it installs is still yours to set.
                       </small>
                     ) : (
                       <>
@@ -273,13 +291,28 @@ export function AdminToolsPage() {
           onClose={() => setEditing(null)}
         />
       )}
+      {addingToPack && (
+        <AddToPackModal
+          tool={addingToPack}
+          packs={packs}
+          onSaved={refresh}
+          onClose={() => setAddingToPack(null)}
+        />
+      )}
       {deleting && (
         <ConfirmModal
           title={`Delete ${deleting.name}?`}
           message={
-            deleting.sourceFile
-              ? `This tool comes from packs/${deleting.sourceFile}. Deleting it here removes the row until the next restart, which loads it back from the file.`
-              : 'This removes the tool. Packs still using it will refuse to delete it.'
+            /* THE IN-USE GUARD CANNOT SEE `alwaysInstall` (issue #295). Core refuses to delete a
+               tool a pack lists, by scanning `packs.tools` — and an always-install tool is on
+               every box precisely without any pack listing it, so that check passes and the
+               delete goes through. The warning is the only thing standing between the operator
+               and quietly ending an install they set up deliberately. */
+            deleting.alwaysInstall
+              ? `${deleting.name} is installed on every box you create. Deleting it stops that: servers you create afterwards will not have it. Servers that already exist are not affected.`
+              : deleting.sourceFile
+                ? `This tool comes from packs/${deleting.sourceFile}. Deleting it here removes the row until the next restart, which loads it back from the file.`
+                : 'This removes the tool. Packs still using it will refuse to delete it.'
           }
           confirmLabel="Delete"
           isDestructive

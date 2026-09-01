@@ -31,6 +31,7 @@ import {
   type PackInput,
   type SurgePackTool,
 } from '../lib/api'
+import { carryFromSource, forkNameFor, forksByParent, suggestNewPackId } from '../lib/derive-pack'
 import { SHOP_URL } from '../lib/links'
 
 /**
@@ -114,6 +115,8 @@ interface PackView {
   webPort?: number
   /** What the pack asks the user for at create time (issue #189). Public list only. */
   inputs?: PackInput[]
+  /** The pack this one was forked from (issue #295). Drives the delta on both cards. */
+  derivedFromPackId?: string
   displayOrder: number
   /** Admin only: where this pack came from, in more detail than the badge carries. */
   origin?: string
@@ -236,6 +239,7 @@ function buildViews(
       desktop: p.desktop,
       webPort: p.webPort,
       inputs: p.inputs,
+      derivedFromPackId: p.derivedFromPackId,
       displayOrder: p.displayOrder,
       origin: isAdmin && admin ? originOf(admin) : undefined,
       sourceFile: admin?.sourceFile ?? null,
@@ -261,6 +265,7 @@ function buildViews(
           requiresRdp: p.requiresRdp,
           desktop: p.desktop,
           webPort: p.webPort,
+          derivedFromPackId: p.derivedFromPackId,
           displayOrder: p.displayOrder,
           origin: originOf(p),
           sourceFile: p.sourceFile ?? null,
@@ -284,20 +289,8 @@ function badgeText(provenance: 'official' | 'registry' | 'local'): string {
   return provenance === 'registry' ? 'community' : provenance === 'local' ? 'personal' : provenance
 }
 
-/**
- * A `packId` that is not `taken`, for "start from an existing pack" (issue #204). `-copy`, then
- * `-copy-2`, `-copy-3`… — the same source can be copied more than once in one sitting without
- * the second attempt silently colliding with the first.
- */
-function suggestNewPackId(sourceId: string, taken: ReadonlySet<string>): string {
-  let candidate = `${sourceId}-copy`
-  let n = 2
-  while (taken.has(candidate)) {
-    candidate = `${sourceId}-copy-${n}`
-    n += 1
-  }
-  return candidate
-}
+/* `suggestNewPackId`, `forkNameFor` and `carryFromSource` moved to `lib/derive-pack.ts` when
+ * "Add to a pack…" became a second door onto forking (issue #295). */
 
 function behaviourChips(
   view: Pick<PackView, 'requiresRepos' | 'requiresRdp' | 'desktop' | 'webPort' | 'inputs'>,
@@ -371,12 +364,23 @@ const toForm = (pack: AdminSurgePack): PackFormState => ({
 function SurgePackFormModal({
   initial,
   seed,
+  carry,
   tools,
   onCancel,
   onSaved,
 }: {
   initial: AdminSurgePack | null
   seed?: PackFormState
+  /**
+   * Fields a fork inherits that this form has no control for — the parent id, and the artwork,
+   * theme, guide and inputs that come with it (issue #295, `lib/derive-pack.ts`).
+   *
+   * Applied on CREATE only. They are not editable here and not part of `PackFormState`, so
+   * threading them through the form's own state would mean inventing controls for them; this
+   * carries them past the form instead, which is what "the fork keeps its parent's face" needs
+   * and nothing more.
+   */
+  carry?: Partial<AdminSurgePack>
   tools: AdminTool[]
   onCancel: () => void
   onSaved: () => void
@@ -404,7 +408,12 @@ function SurgePackFormModal({
         ...(form.webPort ? { webPort: Number(form.webPort) } : {}),
       }
       if (initial) await updateAdminSurgePack(initial.packId, payload)
-      else await createAdminSurgePack({ ...payload, ...(form.packId ? { packId: form.packId } : {}) })
+      else
+        await createAdminSurgePack({
+          ...payload,
+          ...(carry ?? {}),
+          ...(form.packId ? { packId: form.packId } : {}),
+        })
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the Surge Pack')
@@ -614,9 +623,15 @@ const POPUP_DELAY_MS = 1000
  */
 function PackCard({
   view,
+  derivativeMark,
+  copiesMark,
   onExport,
 }: {
   view: PackView
+  /** "This pack is a copy of another" - the delta's sentence (issue #295). */
+  derivativeMark?: string
+  /** "A personal version of this exists" - the other mark's sentence. */
+  copiesMark?: string
   onExport: (view: PackView) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
@@ -671,7 +686,11 @@ function PackCard({
     >
       <Link ref={link} to={`/packs/${view.packId}`} className="pack-card" data-testid={`pack-card-${view.packId}`}>
         <div className="pack-card-head">
-          <PackIcon pack={view} />
+          <PackIcon
+            pack={view}
+            {...(derivativeMark ? { derivativeMark } : {})}
+            {...(copiesMark ? { copiesMark } : {})}
+          />
           <h3>{view.name}</h3>
           {/* Core's own three words key the styling and the testid, unchanged — see the file
               docblock. `badgeText` is only ever the word a person reads. */}
@@ -742,8 +761,11 @@ function StartFromExistingPanel({
   const seed = useMemo(() => {
     if (!source) return null
     const taken = new Set(packs.map((p) => p.packId))
-    return { ...toForm(source), packId: suggestNewPackId(sourceId, taken), name: `${source.name} (copy)` }
+    return { ...toForm(source), packId: suggestNewPackId(sourceId, taken), name: forkNameFor(source) }
   }, [source, sourceId, packs])
+
+  /** The parent id and the face that goes with it — see `lib/derive-pack.ts`. */
+  const carry = useMemo(() => (source ? carryFromSource(source) : undefined), [source])
 
   return (
     <div className="pack-from-existing" data-testid="pack-from-existing-panel">
@@ -761,7 +783,15 @@ function StartFromExistingPanel({
       {seed ? (
         // `key`, so choosing a different source remounts the form onto the new seed rather than
         // keeping whatever the previous source's edits left in state.
-        <SurgePackFormModal key={sourceId} initial={null} seed={seed} tools={tools} onCancel={onCancel} onSaved={onSaved} />
+        <SurgePackFormModal
+          key={sourceId}
+          initial={null}
+          seed={seed}
+          {...(carry ? { carry } : {})}
+          tools={tools}
+          onCancel={onCancel}
+          onSaved={onSaved}
+        />
       ) : (
         <p role="alert">That pack could not be read.</p>
       )}
@@ -874,6 +904,44 @@ export function PacksPage(): React.JSX.Element {
     () => buildViews(publicPacks, adminPacksById, toolsById, isAdmin),
     [publicPacks, adminPacksById, toolsById, isAdmin],
   )
+  /**
+   * THE TWO MARKS, derived here from the list the page already has (issue #295).
+   *
+   * They are two facts, not one fact twice, and one card can carry both — a pack forked from
+   * another that somebody has since forked again is a derivative AND has a personal version.
+   * `PackIcon` puts them in opposite corners for exactly that reason.
+   *
+   * `copiesMarkFor` NAMES the fork rather than asserting a bare relationship. Naming it is what
+   * makes the claim checkable by whoever reads it, and it is also the honest answer when a pack
+   * id has been reused by something unrelated since the fork was made.
+   *
+   * ONE HOP. A fork of a fork points at its own parent and no further; nothing walks a chain.
+   *
+   * Deriving both in the browser is what makes them self-healing: delete a fork and its
+   * parent's mark goes with it on the next load, with no count to invalidate and no column to
+   * keep in step. A fork whose parent is no longer installed marks nothing — there is no card
+   * to mark — and keeps its own mark, which still names where it came from.
+   */
+  const forks = useMemo(() => forksByParent(views), [views])
+  const copiesMarkFor = useCallback(
+    (view: PackView): string | undefined => {
+      const children = forks.get(view.packId)
+      if (!children?.length) return undefined
+      return children.length === 1
+        ? `Personal version: ${children[0]!.name}`
+        : `Personal versions: ${children.map((c) => c.name).join(', ')}`
+    },
+    [forks],
+  )
+  const derivativeMarkFor = useCallback(
+    (view: PackView): string | undefined => {
+      if (!view.derivedFromPackId) return undefined
+      const parent = views.find((v) => v.packId === view.derivedFromPackId)
+      return `Your personal version of ${parent?.name ?? view.derivedFromPackId}`
+    },
+    [views],
+  )
+
   const official = useMemo(() => views.filter((v) => v.provenance === 'official').sort(byOrder), [views])
   const communityInstalled = useMemo(() => views.filter((v) => v.provenance === 'registry').sort(byOrder), [views])
   const personal = useMemo(() => views.filter((v) => v.provenance === 'local').sort(byOrder), [views])
@@ -1061,13 +1129,36 @@ export function PacksPage(): React.JSX.Element {
           <Link to="/packs">← All Surge Packs</Link>
         </p>
         <div className="pack-detail-header">
-          <PackIcon pack={view} size="large" />
+          <PackIcon
+            pack={view}
+            size="large"
+            {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+            {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
+          />
           <div>
             <TrustBadge label={view.provenance} text={badgeText(view.provenance)} />
             {/* The origin sentence, which used to be on the card too (issue #192). One pack's
                 page is where "where did this come from, exactly" gets asked; a grid is not.
                 `origin` is only ever built from the admin read, so no role check here. */}
             {view.origin && <p className="muted">{view.origin}</p>}
+            {/* Where a fork began (issue #295), spelled out here rather than left to the delta's
+                tooltip — this IS the page for "where did this come from". The parent is named
+                even when it is no longer installed: the id is still the truth, and a pack that
+                has left the release is exactly when someone needs to be told what happened. */}
+            {view.derivedFromPackId && (
+              <p className="muted" data-testid="pack-derived-from">
+                Started from{' '}
+                {views.find((v) => v.packId === view.derivedFromPackId) ? (
+                  <Link to={`/packs/${view.derivedFromPackId}`}>{view.derivedFromPackId}</Link>
+                ) : (
+                  <>
+                    <code>{view.derivedFromPackId}</code>, which is no longer installed
+                  </>
+                )}
+                . It is a copy: nothing here changes when that pack does, except the tools&apos; own
+                scripts, which it references rather than copies.
+              </p>
+            )}
             {!view.enabled && <p className="hint">Disabled — hidden from the New Server form.</p>}
           </div>
         </div>
@@ -1133,6 +1224,15 @@ export function PacksPage(): React.JSX.Element {
                 Export
               </button>
             </p>
+            {/* Said BEFORE the download rather than discovered afterwards (issue #295). A fork
+                wears its parent's artwork here, under a delta that says whose it is; neither
+                travels, because on somebody else's installation there would be no delta to
+                explain the artwork. */}
+            {view.derivedFromPackId && view.imageUrl?.startsWith('/') && (
+              <p className="hint" data-testid="export-artwork-note">
+                The parent&apos;s artwork stays on this installation; a shared copy gets its own mark.
+              </p>
+            )}
           </section>
         )}
 
@@ -1210,7 +1310,13 @@ export function PacksPage(): React.JSX.Element {
         ) : (
           <ul className="pack-grid">
             {official.map((view) => (
-              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
+              <PackCard
+                key={view.packId}
+                view={view}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
+                onExport={(v) => void downloadYaml(v)}
+              />
             ))}
           </ul>
         )}
@@ -1272,7 +1378,13 @@ export function PacksPage(): React.JSX.Element {
           ) : (
             <ul className="pack-grid">
               {communityInstalled.map((view) => (
-                <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
+                <PackCard
+                key={view.packId}
+                view={view}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
+                onExport={(v) => void downloadYaml(v)}
+              />
               ))}
             </ul>
           ))}
@@ -1422,7 +1534,13 @@ export function PacksPage(): React.JSX.Element {
         ) : (
           <ul className="pack-grid">
             {personal.map((view) => (
-              <PackCard key={view.packId} view={view} onExport={(v) => void downloadYaml(v)} />
+              <PackCard
+                key={view.packId}
+                view={view}
+                {...(derivativeMarkFor(view) ? { derivativeMark: derivativeMarkFor(view)! } : {})}
+                {...(copiesMarkFor(view) ? { copiesMark: copiesMarkFor(view)! } : {})}
+                onExport={(v) => void downloadYaml(v)}
+              />
             ))}
           </ul>
         )}

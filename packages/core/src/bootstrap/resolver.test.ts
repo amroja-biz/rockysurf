@@ -39,6 +39,8 @@ const NOW = '2026-08-12T00:00:00.000Z'
 const tool = (over: Partial<ToolRow> & { id: string }): ToolRow => ({
   name: over.id,
   description: 'a tool',
+  // The resolver never reads it — the union happens in `resolvePack`, before this (issue #295).
+  alwaysInstall: false,
   category: 'base',
   url: 'https://example.com',
   installScript: `install ${over.id}\n`,
