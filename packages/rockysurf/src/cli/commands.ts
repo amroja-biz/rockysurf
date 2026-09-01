@@ -544,6 +544,46 @@ export async function stopCommand(deps: CliDeps, name: string): Promise<number> 
   return 0
 }
 
+/* ---------------------------------------------------------------------- network sync */
+
+/** One cloud's outcome, as core reports it. */
+interface SshAccessSyncReport {
+  provider: string
+  status: 'updated' | 'unchanged' | 'skipped' | 'failed'
+  applied: string[]
+  reported: string[]
+  detail: string
+}
+
+/**
+ * Push `sshAllowedCidr` at the clouds that enforce it, without launching anything (issue #304).
+ *
+ * The terminal is where this problem is usually FELT — an `ssh` that hangs after the operator
+ * moved networks — so it is a command as well as a button. It edits nothing: the list comes from
+ * the config file, which is the only place a firewall rule is allowed to be decided.
+ *
+ * Exit code 1 when any cloud failed, so a script can tell. A `skipped` cloud is not a failure:
+ * it means there is nothing to update yet, and that is a normal state.
+ */
+export async function networkSyncCommand(deps: CliDeps): Promise<number> {
+  const reports = unwrap<SshAccessSyncReport[]>(
+    await deps.client.post('/api/v1/network/ssh-access/sync'),
+    'synced',
+  )
+
+  if (reports.length === 0) {
+    deps.err('No configured cloud maintains an SSH whitelist, so there was nothing to push.')
+    return 0
+  }
+
+  for (const report of reports) {
+    deps.out(`${report.provider}: ${report.status}`)
+    if (report.detail) deps.out(`  ${report.detail}`)
+  }
+
+  return reports.some((report) => report.status === 'failed') ? 1 : 0
+}
+
 /* -------------------------------------------------------------------------------- ssh */
 
 /**

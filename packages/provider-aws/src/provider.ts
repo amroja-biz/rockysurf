@@ -31,8 +31,9 @@ import {
   type ProviderData,
   type ProvisionResult,
   type ProvisionSpec,
+  type SshAccessSyncResult,
 } from '@rockysurf/provider-sdk'
-import { resolveSshCidr, type AwsProviderConfig } from './config.js'
+import { resolveSshCidrs, type AwsProviderConfig } from './config.js'
 import { awsErrorCode, isNotFound, mapAwsError } from './errors.js'
 import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { buildOfferings } from './offerings.js'
@@ -50,6 +51,21 @@ import { buildOfferings } from './offerings.js'
  * (`spike/recordings/aws-lifecycle.txt`), onto the frozen SDK.
  */
 
+/**
+ * The description stamped on every ingress range this provider authorizes — and the ONLY thing
+ * that makes a range safe to remove later.
+ *
+ * A shared security group is not ours alone: an operator may have added their office range by
+ * hand, and an older Rocky Surf authorized ranges before this release existed. Removing one of
+ * those because it is absent from the config file would be the product deleting access it never
+ * created and cannot explain. So the stamp is the proof of authorship, `syncSshAccess()` will
+ * only ever revoke a range carrying it, and everything else is reported to the operator with the
+ * command that would remove it.
+ *
+ * Changing this string orphans every range a previous release stamped. Don't.
+ */
+const SSH_RULE_DESCRIPTION = 'rockysurf sshAllowedCidr'
+
 const CAPABILITIES: ProviderCapabilities = {
   stop: true,
   /** A new public IPv4 on every start, absent an Elastic IP — which we deliberately do not allocate. */
@@ -58,6 +74,8 @@ const CAPABILITIES: ProviderCapabilities = {
   /** EC2's hard limit, measured on the RAW bytes before base64. */
   userDataMaxBytes: 16384,
   generatesUserData: true,
+  /** One shared security group per region, and `syncSshAccess()` brings it in line on demand. */
+  managesSshAccess: true,
 }
 
 /**
@@ -151,7 +169,6 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
   const amiCache = new Map<Architecture, { imageId: string; rootDeviceName: string }>()
   let defaultVpc: { vpcId: string; subnetId: string } | undefined
   let sharedSgId: string | undefined
-  let ingressEnsured = false
 
   async function send<T>(what: string, run: () => Promise<T>): Promise<T> {
     try {
@@ -279,32 +296,70 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     }
     if (!sharedSgId) throw new ProviderError('unknown', `could not create or find ${config.securityGroupName}`)
 
-    if (!ingressEnsured) {
-      const cidr = resolveSshCidr(config)
+    // Every configured CIDR, every provision. This used to sit behind an `ingressEnsured` latch
+    // that was set for the LIFETIME OF THE PROCESS, which meant a `sshAllowedCidr` corrected on
+    // the Settings page did not reach EC2 even on the next launch — only after a restart. The
+    // call is idempotent and a duplicate is the success case, so the latch bought one skipped
+    // API call per boot and cost the operator the fix they had just made (issue #304).
+    //
+    // Provision is ADDITIVE and stays that way: it never revokes. Widening access is a safe thing
+    // to do while someone is waiting for a box to come up; narrowing it is not, and belongs to
+    // the explicit, itemized `syncSshAccess()` path where the operator has asked for it.
+    await authorizeSshRanges(sharedSgId, resolveSshCidrs(config))
+
+    return sharedSgId
+  }
+
+  /**
+   * Authorize each CIDR, treating "already there" as success.
+   *
+   * One call per range rather than one call carrying all of them: EC2 rejects the WHOLE request
+   * with `InvalidPermission.Duplicate` if any single range in it is already authorized, so a
+   * batch would mean one pre-existing entry silently prevented every new one from landing.
+   */
+  async function authorizeSshRanges(groupId: string, cidrs: readonly string[]): Promise<string[]> {
+    const authorized: string[] = []
+    for (const cidr of cidrs) {
       try {
         await ec2.send(
           new AuthorizeSecurityGroupIngressCommand({
-            GroupId: sharedSgId,
+            GroupId: groupId,
             IpPermissions: [
               {
                 IpProtocol: 'tcp',
                 FromPort: 22,
                 ToPort: 22,
-                IpRanges: [{ CidrIp: cidr, Description: 'rockysurf sshAllowedCidr' }],
+                IpRanges: [{ CidrIp: cidr, Description: SSH_RULE_DESCRIPTION }],
               },
             ],
           }),
         )
+        authorized.push(cidr)
       } catch (err) {
-        // Already authorized — from a previous boot, or another process — is the success case.
+        // Already authorized — by a previous boot, another process, or the operator — is success.
+        // Note this also means a hand-added range KEEPS the operator's own description rather
+        // than acquiring ours, which is why `syncSshAccess()` can still tell the two apart.
         if (awsErrorCode(err) !== 'InvalidPermission.Duplicate') {
           throw mapAwsError(err, 'ec2:AuthorizeSecurityGroupIngress')
         }
       }
-      ingressEnsured = true
     }
+    return authorized
+  }
 
-    return sharedSgId
+  /** Every port-22 IPv4 range currently on the shared group, with whatever description it carries. */
+  async function describeSshRanges(groupId: string): Promise<Map<string, string | undefined>> {
+    const described = await send('ec2:DescribeSecurityGroups', () =>
+      ec2.send(new DescribeSecurityGroupsCommand({ GroupIds: [groupId] })),
+    )
+    const ranges = new Map<string, string | undefined>()
+    for (const permission of described.SecurityGroups?.[0]?.IpPermissions ?? []) {
+      if (permission.IpProtocol !== 'tcp' || permission.FromPort !== 22 || permission.ToPort !== 22) continue
+      for (const range of permission.IpRanges ?? []) {
+        if (range.CidrIp) ranges.set(range.CidrIp, range.Description)
+      }
+    }
+    return ranges
   }
 
   function viewOf(instance: Instance): InstanceView {
@@ -603,6 +658,73 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
       await send(`ec2:StartInstances ${instanceId}`, () =>
         ec2.send(new StartInstancesCommand({ InstanceIds: [instanceId] })),
       )
+    },
+
+    /**
+     * Bring the shared group in line with `sshAllowedCidr`, without provisioning anything.
+     *
+     * The call issue #304 exists for. Before it, the only thing that ever wrote this operator's
+     * CIDR to EC2 was a launch, so "I moved house" was fixed by starting a box nobody wanted.
+     *
+     * Authorize-before-revoke is deliberate and load-bearing: if the second half fails the
+     * operator is left with MORE access than they started with, never less. A sync that died
+     * halfway through the other order could lock them out of every box in the account.
+     */
+    async syncSshAccess(): Promise<SshAccessSyncResult> {
+      const desired = resolveSshCidrs(config)
+      const { vpcId } = await resolveDefaultVpc()
+      const groupId = sharedSgId ?? (await findSharedSg(vpcId))
+
+      if (!groupId) {
+        return {
+          status: 'skipped',
+          applied: [],
+          reported: [],
+          detail:
+            `No ${config.securityGroupName} security group exists in ${region} yet, so there is ` +
+            'nothing to update. Rocky Surf creates it at the first launch, with these CIDRs ' +
+            'already in it.',
+        }
+      }
+      sharedSgId = groupId
+
+      const actual = await describeSshRanges(groupId)
+      const missing = desired.filter((cidr) => !actual.has(cidr))
+      const authorized = await authorizeSshRanges(groupId, missing)
+
+      // Anything on the group the config no longer names, split by who authorized it.
+      const extra = [...actual.entries()].filter(([cidr]) => !desired.includes(cidr))
+      const ours = extra.filter(([, description]) => description === SSH_RULE_DESCRIPTION).map(([cidr]) => cidr)
+      const theirs = extra.filter(([, description]) => description !== SSH_RULE_DESCRIPTION).map(([cidr]) => cidr)
+
+      const notes: string[] = []
+      if (ours.length > 0) {
+        notes.push(
+          `${ours.length} range(s) Rocky Surf authorized earlier are still on ` +
+            `${config.securityGroupName} and are no longer in your list: ${ours.join(', ')}. ` +
+            'They have been left alone — keep them by adding them back to sshAllowedCidr, or ' +
+            'remove them deliberately.',
+        )
+      }
+      if (theirs.length > 0) {
+        notes.push(
+          `${theirs.join(', ')} is still authorized on ${config.securityGroupName}. Rocky Surf ` +
+            'did not create that rule and will not remove it. To remove it yourself, run: ' +
+            `aws ec2 revoke-security-group-ingress --group-id ${groupId} --protocol tcp ` +
+            `--port 22 --cidr ${theirs[0] ?? ''} --region ${region}`,
+        )
+      }
+
+      return {
+        status: authorized.length > 0 ? 'updated' : 'unchanged',
+        applied: desired,
+        reported: [...ours, ...theirs],
+        detail:
+          (authorized.length > 0
+            ? `Authorized ${authorized.join(', ')} on ${config.securityGroupName}.`
+            : `${config.securityGroupName} already allowed ${desired.join(', ')}.`) +
+          (notes.length > 0 ? ' ' + notes.join(' ') : ''),
+      }
     },
   }
 

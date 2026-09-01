@@ -336,7 +336,7 @@ rather than disappearing: `docker-compose.yaml` publishes on the host's loopback
 ### AWS
 
 One shared security group per region (`rockysurf-ssh`), created on first provision and reused.
-Its only ingress rule is **TCP 22 from a CIDR you specify**. Two guards make that deliberate
+Its only ingress rules are **TCP 22 from the CIDRs you specify**. Two guards make that deliberate
 (`packages/provider-aws/src/config.ts`):
 
 - `sshAllowedCidr` has **no default**, and the AWS provider refuses to load without it — the
@@ -347,7 +347,16 @@ Its only ingress rule is **TCP 22 from a CIDR you specify**. Two guards make tha
   breaks silently when the operator's network changes and hides the decision inside runtime
   behaviour where nobody reviews it.
 - `0.0.0.0/0` additionally requires `allowAllCidr: true`. Opening SSH to the internet is two
-  deliberate acts, not one typo.
+  deliberate acts, not one typo. The value is a **list**, and `/0` anywhere in it trips the same
+  guard — a list of careful office ranges with a `/0` appended is open to the whole internet.
+
+**The no-runtime-discovery rule above is unchanged, and worth restating because issue #304 moved
+everything around it.** Rocky Surf now pushes `sshAllowedCidr` to AWS, Azure and Google Cloud when
+the operator saves it, instead of only at the next launch (ADR-0021). Nothing in that path
+discovers an address: there is still no call to a "what is my IP" service, no reading of the
+caller's own source address, and no inference from the network Rocky Surf happens to be on. The
+operator types the CIDR, it lands in the config file where it can be diffed and reviewed, and
+what gets pushed is exactly what they typed.
 
 Instances are launched with **IMDSv2 required** (`HttpTokens: 'required'`) and a metadata hop
 limit of **1**. These boxes run agent-authored code: IMDSv1 lets anything that can forge a GET

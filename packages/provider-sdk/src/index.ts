@@ -37,6 +37,14 @@ export { RESOURCE_OWNERSHIPS, type ManagedResource, type ResourceOwnership } fro
 
 export { ARCHITECTURES, type Architecture, type Offering, type Price } from './offering.js'
 
+export { normalizeSshCidrs, opensSshToTheInternet } from './ssh-cidr.js'
+
+export {
+  SSH_ACCESS_SYNC_STATUSES,
+  type SshAccessSyncResult,
+  type SshAccessSyncStatus,
+} from './ssh-access.js'
+
 export {
   assertHostnameSafeId,
   isHostnameSafeId,

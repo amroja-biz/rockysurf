@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gcpConfigSchema, regionOf, resolveSshCidr } from './config.js'
+import { gcpConfigSchema, regionOf, resolveSshCidrs } from './config.js'
 
 const valid = { projectId: 'demo-project', sshAllowedCidr: '203.0.113.7/32' }
 
@@ -46,7 +46,7 @@ describe('the SSH ingress rule', () => {
       sshAllowedCidr: '0.0.0.0/0',
       allowAllCidr: true,
     })
-    expect(resolveSshCidr(twice)).toBe('0.0.0.0/0')
+    expect(resolveSshCidrs(twice)).toEqual(['0.0.0.0/0'])
   })
 
   it('rejects a CIDR that is not one', () => {
@@ -80,7 +80,9 @@ describe('defaults', () => {
   it('produces a complete, usable configuration from the two required answers', () => {
     expect(gcpConfigSchema.parse(valid)).toEqual({
       projectId: 'demo-project',
-      sshAllowedCidr: '203.0.113.7/32',
+      // A LIST, even when the operator wrote one string (issue #304). The schema normalizes on
+      // the way in so nothing downstream has to handle both shapes.
+      sshAllowedCidr: ['203.0.113.7/32'],
       allowAllCidr: false,
       zone: 'us-central1-a',
       managedBy: 'rockysurf',

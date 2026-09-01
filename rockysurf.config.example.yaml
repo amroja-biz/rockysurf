@@ -190,7 +190,21 @@ providers:
     # Your own address, from `curl -s https://checkip.amazonaws.com`, as a /32:
     # sshAllowedCidr: "203.0.113.7/32"
     #
-    # Opening SSH to the whole internet takes both lines, deliberately:
+    # A LIST is accepted too, which is what to use when you work from more than one place —
+    # home and the office, rather than reaching for 0.0.0.0/0 because only one fits:
+    # sshAllowedCidr:
+    #   - "203.0.113.7/32"
+    #   - "198.51.100.0/24"
+    #
+    # Saving this on the Settings page pushes it to the cloud straight away: the security group
+    # is updated there and then, with no server launch (issue #304). Editing this FILE by hand
+    # still applies at the next start, like everything else here.
+    #
+    # Removing an entry ends new SSH connections from that network. Rocky Surf reports ranges it
+    # did not create rather than removing them, and hands you the command that would.
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately — and ANY entry being
+    # 0.0.0.0/0 is what triggers the second line, not just a list with nothing else in it:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 
@@ -224,7 +238,14 @@ providers:
     #
     # sshAllowedCidr: "203.0.113.7/32"
     #
-    # Opening SSH to the whole internet takes both lines, deliberately:
+    # A list is accepted here too, and saving on the Settings page pushes it to the cloud
+    # immediately, with no server launch:
+    # sshAllowedCidr:
+    #   - "203.0.113.7/32"
+    #   - "198.51.100.0/24"
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately — any entry being
+    # 0.0.0.0/0 is what triggers the second:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 
@@ -262,7 +283,14 @@ providers:
     #
     # sshAllowedCidr: "203.0.113.7/32"
     #
-    # Opening SSH to the whole internet takes both lines, deliberately:
+    # A list is accepted here too, and saving on the Settings page pushes it to the cloud
+    # immediately, with no server launch:
+    # sshAllowedCidr:
+    #   - "203.0.113.7/32"
+    #   - "198.51.100.0/24"
+    #
+    # Opening SSH to the whole internet takes both lines, deliberately — any entry being
+    # 0.0.0.0/0 is what triggers the second:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 

@@ -169,12 +169,43 @@ export function HelpPage() {
         </p>
         <p>
           <strong>AWS, Azure and Google Cloud will not start without <code>sshAllowedCidr</code></strong>{' '}
-          — which network may reach SSH on your boxes. There is no default and none is inferred;
-          enabling one of them without it drops that provider at startup, and the boot log and the
-          New Server page both say which. <code>0.0.0.0/0</code> is refused unless{' '}
+          — which networks may reach SSH on your boxes. It is a <strong>list</strong> of CIDRs, so
+          home and the office can both work; a single value is still read as a list of one, and an
+          empty list is refused. There is no default and none is inferred; enabling one of them
+          without it drops that provider at startup, and the boot log and the New Server page both
+          say which. <code>0.0.0.0/0</code> <em>anywhere</em> in the list is refused unless{' '}
           <code>allowAllCidr: true</code> sits beside it, because opening SSH to the internet is
           two decisions. Hetzner has no such key: a Hetzner server is reachable the moment it
           boots, and there is no firewall object for Rocky Surf to own.
+        </p>
+        <p>
+          <strong>Saving <code>sshAllowedCidr</code> pushes it to the cloud straight away</strong> —
+          you do not have to launch a server for it to take effect, which is what used to be
+          required. Settings writes your file, this process adopts it, and then a second call
+          updates the security group, the network security group rule or the firewall rule. Each
+          cloud&rsquo;s answer appears on the Settings page under <strong>SSH access at the cloud</strong>.
+          It never launches or touches an instance, and it applies to AWS, Azure and Google Cloud
+          only — Hetzner has no whitelist to sync.
+        </p>
+        <p>
+          <strong>
+            The <code>Push SSH access to the clouds</code> button at the foot of Settings does the
+            same on demand
+          </strong>{' '}
+          — and it is not the same errand as saving. A save pushes only what the save changed, and
+          a cloud can drift while your file never does: Google Cloud&rsquo;s firewall rule read{' '}
+          <code>sshAllowedCidr</code> once, when it was created, and ignored it from then on. No
+          save would catch that, so the button is the repair. It needs no unsaved edits and pushes
+          every cloud at once; <code>rockysurf network sync</code> is the CLI equivalent.
+        </p>
+        <p>
+          <strong>Adding a CIDR takes effect everywhere; removing one does not, yet.</strong> On
+          Azure the rule is rewritten whole, so a removal lands. On AWS and Google Cloud a range
+          you delete is <em>reported</em> rather than removed — Rocky Surf only takes away access
+          it can prove it granted, and what is already there may be the network you are reading
+          this from — so the report hands you the exact{' '}
+          <code>aws ec2 revoke-security-group-ingress</code> or{' '}
+          <code>gcloud compute firewall-rules update</code> command that finishes the job.
         </p>
         <p>
           Three of the five ship a <strong>deployable least-privilege role</strong>, and the role
@@ -233,7 +264,7 @@ export function HelpPage() {
         </p>
         <p>
           <strong>Config:</strong> <code>enabled</code> and <code>sshAllowedCidr</code>{' '}
-          (required); <code>region</code> defaults <code>us-east-1</code>. Optional:{' '}
+          (required, a list); <code>region</code> defaults <code>us-east-1</code>. Optional:{' '}
           <code>profile</code>, and <code>sizes</code> as an allowlist.
         </p>
         <p>
@@ -282,7 +313,7 @@ export function HelpPage() {
         </p>
         <p>
           <strong>Config:</strong> <code>enabled</code>, <code>subscriptionId</code>,{' '}
-          <code>resourceGroup</code> and <code>sshAllowedCidr</code> (required);{' '}
+          <code>resourceGroup</code> and <code>sshAllowedCidr</code> (required, a list);{' '}
           <code>location</code> defaults <code>eastus</code>. Optional: <code>sizes</code>.
         </p>
         <p>
@@ -322,7 +353,7 @@ export function HelpPage() {
         </pre>
         <p>
           <strong>Config:</strong> <code>enabled</code>, <code>projectId</code> and{' '}
-          <code>sshAllowedCidr</code> (required); <code>zone</code> defaults{' '}
+          <code>sshAllowedCidr</code> (required, a list); <code>zone</code> defaults{' '}
           <code>us-central1-a</code>. <code>projectId</code> is never inferred, because a Google
           credential can be valid for many projects and names none of them — a guess would create
           billable machines in a project you did not pick. The zone default is not{' '}

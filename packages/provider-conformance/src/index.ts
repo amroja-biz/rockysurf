@@ -77,6 +77,34 @@ export function assertProviderShape(provider: ComputeProvider): void {
   check(Number.isInteger(caps.userDataMaxBytes) && caps.userDataMaxBytes >= 0, 'userDataMaxBytes must be >= 0')
   check(typeof caps.generatesUserData === 'boolean', 'capabilities.generatesUserData must be a boolean')
 
+  /**
+   * `managesSshAccess` and `syncSshAccess()` are ONE claim, checked in both directions (ADR-0021).
+   *
+   * Deliberately NOT in the required-methods list above: this is the first OPTIONAL method on the
+   * interface, because a required one is a breaking change for every provider written outside this
+   * repository, while a capability nobody declares costs them nothing. That freedom is exactly why
+   * the two halves need pinning together — an optional method is the shape that can silently drift
+   * out of agreement with its flag.
+   *
+   * Both directions matter. A provider declaring the flag without the method is a crash the first
+   * time an operator saves a CIDR. A provider implementing the method without the flag is worse in
+   * a quieter way: core branches on the FLAG and never on `typeof provider.syncSshAccess`, so the
+   * method is simply never called — the provider looks like it maintains a whitelist, and silently
+   * does not.
+   */
+  if (caps.managesSshAccess === true) {
+    check(
+      typeof provider.syncSshAccess === 'function',
+      'capabilities.managesSshAccess is true, so the provider must implement syncSshAccess()',
+    )
+  } else {
+    check(
+      provider.syncSshAccess === undefined,
+      'provider implements syncSshAccess() without declaring capabilities.managesSshAccess — core ' +
+        'branches on the flag, so the method would never be called',
+    )
+  }
+
   // A provider that cannot deliver user-data cannot place a host key before first contact.
   if (!caps.generatesUserData) {
     check(!caps.canInjectHostKeys, 'canInjectHostKeys requires generatesUserData')

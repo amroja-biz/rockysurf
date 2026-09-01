@@ -20,6 +20,7 @@ import {
   ApiError,
   downloadSshKey,
   getServer,
+  getSshPath,
   listSurgePacks,
   startServer,
   stopServer,
@@ -27,6 +28,7 @@ import {
   updateServer,
   type ProvisioningStep,
   type Server,
+  type SshPathReport,
   type SurgePack,
 } from '../lib/api'
 import {
@@ -63,6 +65,9 @@ export function ServerDetailPage() {
   const [pending, setPending] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<'stop' | 'terminate' | null>(null)
   const [editing, setEditing] = useState(false)
+  /** The SSH-path diagnosis (issue #304), or null while it is unknown — see `checkSshPath`. */
+  const [sshPath, setSshPath] = useState<SshPathReport | null>(null)
+  const [probing, setProbing] = useState(false)
   const { byId: capabilities, providers } = useProviderCapabilities()
 
   const refresh = useCallback(async () => {
@@ -82,6 +87,35 @@ export function ServerDetailPage() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  /**
+   * Can this box be reached on its SSH port, and if not, what is likely in the way (issue #304).
+   *
+   * ONCE PER MOUNT, AND ONCE PER BUTTON PRESS. Not on an interval, not on the servers list — a
+   * probe per card would fan a single diagnostic question into one TCP connect per box on every
+   * dashboard load. The dependency is `serverId` alone, deliberately: a status change, a live
+   * event or a metadata edit must not re-dial the box. The operator who has just switched
+   * networks re-runs it with the button beside the ssh command, which is the moment they know
+   * something changed and the product does not.
+   *
+   * A failure here is silence. Core answers 404 for a row this user does not own and this page
+   * is perfectly useful with no diagnosis at all, so an unreachable or older core leaves the
+   * advisory unrendered rather than putting an error where a diagnosis should be.
+   */
+  const checkSshPath = useCallback(async () => {
+    setProbing(true)
+    try {
+      setSshPath(await getSshPath(serverId))
+    } catch {
+      setSshPath(null)
+    } finally {
+      setProbing(false)
+    }
+  }, [serverId])
+
+  useEffect(() => {
+    void checkSshPath()
+  }, [checkSshPath])
 
   /**
    * The stop/start affordance (rockysurf-4t8y).
@@ -257,6 +291,13 @@ export function ServerDetailPage() {
           changedAt={server.ipChangedAt}
         />
       )}
+
+      {/* Above the facts it qualifies, like the two notices inside the summary below: a box
+          nobody can reach is the first thing to say about it, and it is as true of a `failed`
+          row whose bootstrap could never connect — where the advisory comes from core's own
+          record rather than from a live probe — as it is of a running one. Renders nothing when
+          core had nothing honest to say, which is most of the time (issue #304). */}
+      {sshPath && <SshPathAdvisory report={sshPath} providerName={providerName} />}
 
       <section className="server-summary">
         <Lamp status={server.status} transition={transition.pending} />
@@ -473,6 +514,20 @@ export function ServerDetailPage() {
           <pre>
             <code>{sshCommand}</code>
           </pre>
+          {/*
+            THE BUTTON EXISTS BECAUSE THE ANSWER GOES STALE THE MOMENT SOMEBODY MOVES (issue
+            #304). The check on mount is one TCP connection per page load and nothing more —
+            there is no interval and no probe on the servers list — so an operator who has just
+            joined a different network needs a way to ask again without reloading and without
+            waiting for a poller that does not exist. It is beside the ssh command deliberately:
+            this is the button for the moment the command above hangs and says nothing.
+          */}
+          <p className="hint ssh-path-check">
+            <button type="button" onClick={() => void checkSshPath()} disabled={probing}>
+              {probing ? 'Testing…' : 'Test SSH path'}
+            </button>{' '}
+            <span data-testid="ssh-path-result">{probeSummary(sshPath)}</span>
+          </p>
           {server.suppliedSshKey ? (
             <>
               <p className="hint" data-testid="supplied-key-hint">
@@ -763,6 +818,117 @@ export function ServerDetailPage() {
         />
       )}
     </AppShell>
+  )
+}
+
+/**
+ * What the SSH-path check found, in one line, beside the ssh command (issue #304).
+ *
+ * Deliberately flat prose about a TCP connection and nothing more: the probe completes a
+ * handshake and drops it, so "answered" is the only claim it can make and the only one made
+ * here. It never says the operator can log in — a key can still be wrong on a port that answers.
+ */
+function probeSummary(report: SshPathReport | null): string {
+  if (!report) return ''
+  const { probe } = report
+  switch (probe.result) {
+    case 'open':
+      return `Port ${probe.port} answered. The path from the machine Rocky Surf runs on to this box is open.`
+    case 'refused':
+      return `Port ${probe.port} refused the connection — packets are getting through, but nothing is listening there.`
+    case 'filtered':
+      return `Nothing answered on port ${probe.port}. No refusal came back either — the path appears filtered.`
+    case 'unreachable':
+      return `Port ${probe.port} could not be reached at all: the network refused to route to it.`
+    case 'error':
+      return `The check could not be made${probe.detail ? ` (${probe.detail})` : ''}.`
+    default:
+      return probe.detail ?? 'Not checked.'
+  }
+}
+
+/**
+ * The diagnosis an operator whose laptop has moved has been reaching on their own (issue #304).
+ *
+ * THE ISSUE'S OWN WORDS: automatic detection of the operator's address is optional and
+ * deliberately absent, and "the diagnosis is" what makes this worth fixing. So this component
+ * says what was observed, says plainly what it usually means, and points at the one setting that
+ * fixes it — and it never proposes a value, because Rocky Surf does not know the operator's
+ * address and is never going to look it up. That ban is old and load-bearing: an earlier
+ * prototype discovered the address from a "what is my IP" service and was removed on purpose, so
+ * `curl -4 ifconfig.me` below is written as something the OPERATOR runs. Nothing in this product
+ * calls it, and a test in `provider-aws` greps the provider sources to keep it that way.
+ *
+ * THE STRONGEST CLAIM MADE HERE is the one the owner wrote: *the path from this machine to the
+ * box appears filtered*. Not "your address changed", not "you are on a new network" — core saw a
+ * TCP connection get no answer, from the machine it happens to be running on, and that is all
+ * that is asserted.
+ *
+ * It renders nothing at all unless core sent an advisory, and core sends one only when the
+ * evidence supports it: an authentication failure or a host-key mismatch is proof the packets
+ * ARRIVED, and "check your firewall" said to someone in that situation would send them to widen
+ * the rule protecting a box that runs agent-authored code and holds a git token.
+ */
+function SshPathAdvisory({ report, providerName }: { report: SshPathReport; providerName?: string }) {
+  const advisory = report.advisory
+  if (!advisory) return null
+  const cloud = providerName ?? 'this cloud'
+
+  /*
+   * It borrows `historical-notice`'s look — bordered, muted, above the facts it qualifies —
+   * rather than bringing a stylesheet of its own, because that class is already exactly "a
+   * paragraph of prose in a box, said before the numbers". `ssh-path-advisory` rides alongside
+   * it so this block can be given its own treatment later without hunting for the element.
+   */
+  const shell = 'ssh-path-advisory historical-notice'
+
+  if (advisory.kind === 'refused') {
+    return (
+      <aside className={shell} role="status" data-testid="ssh-path-advisory">
+        <p>
+          <strong>Port {report.probe.port} refused the connection.</strong> Packets are reaching this box and being
+          answered, so this is not a firewall or a whitelist problem — sshd is not listening on that port. It may still
+          be starting, or it may have moved.
+        </p>
+      </aside>
+    )
+  }
+
+  return (
+    <aside className={shell} role="status" data-testid="ssh-path-advisory">
+      <p>
+        <strong>The path from this machine to the box appears filtered.</strong>{' '}
+        {advisory.source === 'probe'
+          ? `Rocky Surf opened a TCP connection to port ${report.probe.port} and nothing came back — no answer, and no refusal either.`
+          : 'The last SSH attempt Rocky Surf recorded got no answer at all — nothing refused it, and nothing offered a host key.'}{' '}
+        That is what a firewall dropping packets looks like from the outside.
+      </p>
+      {advisory.whitelistManaged ? (
+        <>
+          <p>
+            On {cloud} the SSH whitelist is the firewall Rocky Surf manages, and it allows exactly the networks you put
+            in it. If yours has changed since this box was launched — a new office, a cafe, a fresh lease from your ISP —
+            the address in the whitelist is no longer yours, and every box on {cloud} is unreachable the same way.
+          </p>
+          <p>
+            Find your current address — run <code>curl -4 ifconfig.me</code>, or read it off any &ldquo;what is my
+            IP&rdquo; page — and add it to the SSH whitelist for {cloud} in <Link to="/settings">Settings</Link>. Saving
+            pushes the new rule to the cloud straight away; you do not have to launch a server for it to take effect,
+            and the addresses already in the list stay.
+          </p>
+          <p className="hint">
+            Rocky Surf never looks your address up itself, by design: what the firewall allows stays your decision,
+            written into the config file where it can be reviewed. This check ran from the machine Rocky Surf is running
+            on — if that is not the machine you SSH from, the two paths can differ.
+          </p>
+        </>
+      ) : (
+        <p>
+          Rocky Surf does not manage an SSH whitelist on {cloud}, so there is no setting here that would open this up.
+          Look at whatever firewall sits in front of this box, and at the network you are on.
+        </p>
+      )}
+    </aside>
   )
 }
 

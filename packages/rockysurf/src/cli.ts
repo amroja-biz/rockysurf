@@ -19,6 +19,7 @@ import {
   offeringsCommand,
   rdpPasswordFlag,
   sshCommand,
+  networkSyncCommand,
   sshConfigCommand,
   stopCommand,
   type CliDeps,
@@ -109,6 +110,11 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     name: 'offerings',
     summary: 'list what each configured cloud sells, and what it costs',
     run: (a) => runClientCommand('offerings', a),
+  },
+  {
+    name: 'network',
+    summary: 'push sshAllowedCidr to the clouds now, without launching a server',
+    run: (a) => runClientCommand('network', a),
   },
   {
     name: 'pack',
@@ -413,6 +419,10 @@ async function runClientCommand(command: string, argv: string[]): Promise<number
       }
       case 'ssh-config':
         return await sshConfigCommand(deps, { write: argv.includes('--write') })
+      case 'network':
+        // One subcommand today. Named rather than bare so `network <something-else>` says what
+        // it should have said instead of quietly syncing.
+        return argv[0] === 'sync' ? await networkSyncCommand(deps) : usage('network sync')
       case 'offerings':
         return await offeringsCommand(deps, {
           ...(flagValue(argv, '--provider') ? { provider: flagValue(argv, '--provider')! } : {}),

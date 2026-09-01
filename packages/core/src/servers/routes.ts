@@ -33,6 +33,14 @@ import {
 } from './lifecycle.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import { allowedOfferings, describeCatalogue, resolveSize } from './offerings.js'
+import {
+  assessSshPath,
+  classifyRecordedSshFailure,
+  probeReason,
+  probeSshPath,
+  PROBE_TIMEOUT_MS,
+  type ProbeOutcome,
+} from './ssh-path.js'
 import type { Context } from 'hono'
 
 /**
@@ -1002,6 +1010,61 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     try {
       const { row, syncError } = await lifecycle.get(c.get('user').id, c.req.param('serverId'))
       return success(c, present(row, deps, syncError))
+    } catch (err) {
+      return fail(c, err)
+    }
+  })
+
+  /**
+   * Can this box be reached on its SSH port, and if not, is the whitelist the likely reason?
+   *
+   * ISSUE #304. The diagnosis, which is what the issue says makes it worth fixing: an operator
+   * whose network moved loses SSH to every box on a cloud that enforces `sshAllowedCidr`, and
+   * the symptom is an `ssh` that hangs and says nothing. This route is the product finally
+   * saying the thing that used to have to be worked out from silence. The verdict's rules — and
+   * every reason it stays quiet instead — are in `ssh-path.ts`; the sentences the operator reads
+   * are in the SPA.
+   *
+   * ITS OWN ROUTE, NOT A FIELD ON `GET /servers/:id`. That row is fetched on a schedule by every
+   * open tab — the transition poller nudges it, the dashboard lists it — and a TCP connect
+   * folded into it would become a probe on a timer, then a probe per card on the servers list.
+   * A separate route is what makes "once per mount, and again when the operator asks" the
+   * literal shape of the traffic rather than a convention someone has to keep.
+   *
+   * The row comes from `lifecycle.get`, so ownership is enforced exactly as it is on the read
+   * beside it (a server this user does not have is a 404, not a probe) and — the reason worth
+   * stating — the address is SYNCED from the provider first. Dialling a stale address and
+   * reporting silence would be inventing a filtered path out of a box that has simply moved.
+   */
+  routes.get('/api/v1/servers/:serverId/ssh-path', async (c) => {
+    try {
+      const { row } = await lifecycle.get(c.get('user').id, c.req.param('serverId'))
+      const port = row.sshPort ?? DEFAULT_SSH_PORT
+      const skip = probeReason(row)
+
+      const probe: ProbeOutcome = skip
+        ? { result: 'not-attempted', port, elapsedMs: 0, detail: skip }
+        : await probeSshPath({ host: row.publicIp!, port, timeoutMs: PROBE_TIMEOUT_MS })
+
+      return success(
+        c,
+        assessSshPath({
+          probe,
+          recorded: classifyRecordedSshFailure(row),
+          /**
+           * THE CAPABILITY, NEVER THE PROVIDER ID. `managesSshAccess` is what says a cloud has
+           * an SSH whitelist Rocky Surf maintains and can push (ADR-0021). Hetzner declares
+           * nothing and creates no firewall object, so a filtered path there is somebody else's
+           * network and this answers `false` — which is what stops the page pointing its owner
+           * at a setting that would do nothing for them. A provider missing from the registry
+           * entirely (disabled since this row was created) answers `false` for the same reason:
+           * core has nothing it could offer to push.
+           */
+          whitelistManaged: registry.has(row.provider)
+            ? registry.get(row.provider).capabilities.managesSshAccess === true
+            : false,
+        }),
+      )
     } catch (err) {
       return fail(c, err)
     }

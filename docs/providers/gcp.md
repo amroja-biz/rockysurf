@@ -128,7 +128,7 @@ committed to a repository.
 
 ## The custom role
 
-Rocky Surf needs **22 permissions**. Here they are, and this list is the whole of it:
+Rocky Surf needs **23 permissions**. Here they are, and this list is the whole of it:
 
 ```yaml
 title: Rocky Surf Dev Box Manager
@@ -158,6 +158,7 @@ includedPermissions:
   - compute.globalOperations.get
   - compute.firewalls.create
   - compute.firewalls.get
+  - compute.firewalls.update
   - compute.networks.updatePolicy
 ```
 
@@ -211,7 +212,7 @@ own identity, means no key exists to leak.
 
 ## What each permission is for
 
-The provider makes **eleven** distinct API calls. These are all of them.
+The provider makes **twelve** distinct API calls. These are all of them.
 
 | Call | Permissions | Why it is needed |
 |---|---|---|
@@ -226,8 +227,9 @@ The provider makes **eleven** distinct API calls. These are all of them.
 | `globalOperations.get` | `compute.globalOperations.get` | Waiting for a *firewall* operation to finish. |
 | `firewalls.get` | `compute.firewalls.get` | Finding the shared SSH rule, and reporting it to the reconciler. |
 | `firewalls.insert` | `compute.firewalls.create`, `compute.networks.updatePolicy` | Creating that rule, on first launch only. |
+| `firewalls.patch` | `compute.firewalls.update` | Rewriting that rule's `sourceRanges` when you change `sshAllowedCidr`, without launching anything. Only ever against a rule whose description matches the one Rocky Surf writes at create time. |
 
-### Four things that trip people up
+### Five things that trip people up
 
 **`instances.insert` checks nine permissions, not one.** Every field you populate in the request
 body carries its own authorization annotation, so setting `metadata`, `tags` and `labels` on the
@@ -240,6 +242,12 @@ with a `PERMISSION_DENIED` naming a method you never called.
 `compute.firewalls.create` alone **cannot create a firewall rule**: the rule's `network` field
 carries its own annotation, and without this permission the call is refused. It reads like a
 permission to modify the VPC and is in fact the permission to attach a rule to it.
+
+**`compute.firewalls.update` authorizes a `patch`, and it is the only write this release
+added.** Google's permission names do not line up one-to-one with its method names here: the
+provider calls `firewalls.patch`, and `patch` on a firewall is checked against
+`compute.firewalls.update`. There is no separate `compute.firewalls.patch` to grant, and looking
+for one is the fastest way to conclude the list is wrong.
 
 **Both operation permissions are required, and they are easy to confuse.** Instance operations
 are *zonal*; firewall operations are *global*. Grant only `compute.zoneOperations.get` and
@@ -261,34 +269,135 @@ name it composed itself from its own prefix, and `listManaged()` filters on its 
 
 **`compute.firewalls.create` is project-wide.** A rule that does not exist yet has no attributes
 to condition on. If you want it tighter, create the rule yourself — one `tcp:22` ingress from
-your CIDR to the target tag `rockysurf-ssh` — and drop `firewalls.create` and
-`networks.updatePolicy` from the role entirely. Rocky Surf adopts an existing rule with the
-configured name and never modifies it.
+your CIDR to the target tag `rockysurf-ssh` — and drop `firewalls.create`,
+`firewalls.update` and `networks.updatePolicy` from the role entirely.
+
+**A rule Rocky Surf did not write is still never modified**, and that is now a narrower promise
+than it used to be, so it is worth stating exactly. Rocky Surf adopts an existing rule with the
+configured name, and it will only ever `patch` a rule whose **description** matches the string it
+writes on its own rules at create time. The name alone proves nothing — `rockysurf-ssh` is
+configuration, and you may have created or repurposed a rule under it — so a rule carrying any
+other description (or none) is reported back to you untouched, along with the `gcloud` command
+that would change it, rather than being edited on the strength of a name collision. If you
+hand-made the rule as described above, you are in exactly that case: Rocky Surf reads it, uses
+it, and leaves it alone.
 
 ---
 
 ## Who can reach SSH
 
 Rocky Surf creates **one** shared firewall rule (`rockysurf-ssh` by default) allowing TCP 22
-from a CIDR **you specify**, to instances carrying the matching network tag. Every box it
+from the CIDRs **you specify**, to instances carrying the matching network tag. Every box it
 creates carries that tag; nothing else in your project is affected.
 
 ```yaml
 providers:
   gcp:
-    sshAllowedCidr: 203.0.113.7/32     # required — no default
+    sshAllowedCidr:                    # required — no default
+      - 203.0.113.7/32                 # home
+      - 198.51.100.0/24                # the office
 ```
+
+**`sshAllowedCidr` is a list**, and a bare string is still read as a list of one, so an existing
+config file keeps working untouched. The list may not be empty — an empty list is refused by the
+schema rather than quietly meaning "nobody", which would produce a rule allowing nothing and a
+box nobody can reach. Exact duplicates are folded away; **overlapping ranges are deliberately
+left alone**, because `203.0.113.7/32` inside `198.51.100.0/24` means something to the person
+maintaining the file (the wide one is the office, the narrow one is that laptop) and collapsing
+them would make removing one of them do something other than what it says.
 
 There is no default, and startup fails with an explanation if you omit it. A firewall rule is a
 security decision that belongs in a file you can diff and review, not one inferred at runtime
-from whatever network you happen to be on today.
+from whatever network you happen to be on today. That has not changed — see
+[SECURITY.md](../../SECURITY.md); nothing here discovers your address for you.
 
 Opening SSH to the whole internet takes **two** deliberate settings, not one typo:
 
 ```yaml
-    sshAllowedCidr: 0.0.0.0/0
+    sshAllowedCidr: [0.0.0.0/0]
     allowAllCidr: true                 # required to accept 0.0.0.0/0
 ```
+
+`0.0.0.0/0` **anywhere in the list** triggers that guard, not only a list whose single entry is
+`/0`. A list of five careful office ranges with a `/0` appended is open to the entire internet,
+and the four careful entries change nothing about that.
+
+### The change reaches Google Cloud on save
+
+**This is the part of this page that used to be wrong, and the reason issue #304 exists.**
+`sourceRanges` was written when the rule was created and never again. A changed `sshAllowedCidr`
+therefore had no effect for the life of the rule — not on the next launch, not after a restart —
+and the only fix was `gcloud compute firewall-rules update` by hand. GCP was the worst of the
+three clouds on this: AWS and Azure at least picked the setting up at the next provision.
+
+Now, saving the setting pushes it. The save itself stays local and atomic (ADR-0017): the
+Settings page writes your file, this process adopts it, and *then*, if the save changed a CIDR
+list, a second and separate call goes out — `POST /api/v1/network/ssh-access/sync` — which is
+what talks to Compute Engine. The per-cloud result renders on the Settings page under **SSH
+access at the cloud**, so you can see what each cloud said. `rockysurf network sync` does the same
+from the CLI. Nothing on this path launches, starts or touches an instance.
+
+**There is also a button — `Push SSH access to the clouds`, in the Settings page footer — and on
+this cloud it is the one you are most likely to need.** A save only pushes what the save changed,
+and the state this page has been in for every installation is a cloud that drifted while the
+config file stayed exactly as it was: the firewall rule read `sshAllowedCidr` once, at create
+time, and has ignored it ever since. Nothing in a save fixes that, because nothing about it is a
+change. The button does not require unsaved edits, pushes every cloud that maintains a whitelist
+in one press, and reports into the same block.
+
+What the sync does, precisely:
+
+- It reads the rule by name, and **checks the description** against the one Rocky Surf writes at
+  create time. That string is the ownership marker: a name is configuration and proves nothing
+  about who created the rule, and a description Rocky Surf wrote does. A rule carrying anything
+  else is left **exactly as found** and the sync reports **failed** — not "skipped", because you
+  asked for your list to be in force and it is not, and nothing Rocky Surf can do will change
+  that. The report names what the rule currently allows and gives you the `gcloud` command that
+  would apply your list yourself.
+- It issues `compute.firewalls.patch`, sending **only `sourceRanges`**. A patch body carrying the
+  whole rule would re-assert the network, the target tags and the ports as a side effect of
+  changing who may connect. **Never a delete, and never a delete-and-recreate**: the rule is
+  shared by every box in the project, so the seconds between the two halves of a recreate are
+  seconds in which nobody can reach anything — including you, if the recreate then fails.
+- **It widens only. It does not yet narrow.** The ranges it writes are your list *plus* anything
+  already on the rule that your list no longer names. Those extras are **kept** and reported to
+  you with the `gcloud` command that removes them. See the next block — this is the most
+  important thing on this page to get right in your head.
+- If the rule does not exist yet, the sync **skips** and says so, rather than creating it. A
+  settings save must not create cloud objects in a project nobody has launched into; the rule is
+  created at the first launch, with your current list already in it.
+- If Compute Engine refuses with a 403, that is a **failed** result naming the missing permission
+  and carrying the exact remediation — the `gcloud compute firewall-rules update` command that
+  does the same thing under your own credentials. A 403 here almost always means the custom role
+  predates this release and is missing `compute.firewalls.update`; re-run
+  `./deploy/gcp/setup.sh --project=…`, which updates the role in place.
+- If Compute Engine does not answer within **30 seconds**, the result is **failed** and says
+  Rocky Surf cannot tell you whether the patch landed. It does not claim success it cannot
+  support, and it deletes nothing.
+
+**Adding a CIDR works today. Removing one does not.** This is a deliberate limitation of this
+release and it is stated here rather than discovered later: a CIDR you delete from
+`sshAllowedCidr` stays on the firewall rule until you remove it yourself, and the sync report
+hands you the command:
+
+```bash
+gcloud compute firewall-rules update rockysurf-ssh \
+  --source-ranges=203.0.113.7/32 --project=my-project-123456
+```
+
+The reason is that this rule's `sourceRanges` were frozen at create time for the whole life of
+the release before this one, so what is on the rule is very often the CIDRs of an *older* config —
+quite possibly the network you are sitting on while you read this. Patching to exactly your list
+would drop those in one call, and the first thing an operator does with this feature is save it
+from a network that may be reachable only because of them. Converging to exactly the list is
+deferred until you have been offered keep-or-remove and picked one; see
+[ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md). It is the same
+report-don't-revoke stance [AWS](aws.md#who-can-reach-ssh) takes on a range it cannot prove it
+authorized.
+
+Once you have removed a range, **new SSH connections from that network stop as soon as the change
+lands.** Established sessions survive — a firewall rule is evaluated on connection setup — and the
+boxes keep running. This is reachability, not data.
 
 **Worth knowing about your default VPC.** A project's auto-created `default` network usually
 ships with Google's own `default-allow-ssh` rule, which opens port 22 to `0.0.0.0/0` for *every*
@@ -661,10 +770,27 @@ re-apply each provider's billing granularity (AWS/GCP per-second, Hetzner hourly
 **No `iam.*` at all** — no service account creation, no `actAs`, no key management. The boxes
 carry no Google Cloud identity.
 
-**No `compute.firewalls.delete` or `compute.firewalls.update`.** Rocky Surf creates its shared
-rule once and never modifies or removes it. Widening who may reach SSH means editing your config
-and recreating the rule yourself — a firewall change is not something an application should do
-to itself on a restart.
+**Still no `compute.firewalls.delete`.** Rocky Surf never removes its shared rule, and never
+removes anybody else's. The rule is shared by every box in the project, so deleting it cuts SSH
+to all of them at once — which is also why delete-and-recreate was rejected as a way to change
+it, even though it would have needed one fewer permission than the patch does.
+
+**`compute.firewalls.update` is granted, and the promise around it has been narrowed rather than
+dropped** (issue #304). The original reasoning still holds and is unchanged: *a firewall change
+is not something an application should do to itself on a restart*, and Rocky Surf does not. It
+does not reconcile, it has no loop that compares the rule to anything, and starting or restarting
+the process changes no firewall.
+
+What it now does is change the rule when **you** ask it to, and only then: saving
+`sshAllowedCidr` on the Settings page, pressing `Push SSH access to the clouds` there, or running
+`rockysurf network sync`. That is one operator
+action producing one `firewalls.patch` against one rule, and only when that rule is missing a
+range your list names — and it exists because the alternative was worse
+than the permission. Before this, `sourceRanges` was written at create time and never again, so an
+operator who moved networks had a rule that went on allowing the network they had left — for the
+life of the rule, with no launch and no restart that would fix it. The only remedy was
+`gcloud compute firewall-rules update` by hand, which is the same API call, made by the same
+person, with the permission granted to a human instead of to the product.
 
 **No `compute.instances.setServiceAccount`, no `compute.addresses.*`.** No identity on the
 boxes, and no reserved static addresses: an external IP is ephemeral, which is why
@@ -690,7 +816,12 @@ block says which.
 architectures: `e2-small` and `e2-micro` on amd64, `t2a-standard-1` on arm64, in `us-central1-a`
 — the default zone, and one of the eight with T2A stock. The permission list
 above is *sufficient* — a box launched under it, which is the check the AWS policy failed the
-first time it was tried for real. The shared SSH firewall rule was created and maintained,
+first time it was tried for real. **One permission is outside that evidence**:
+`compute.firewalls.update` was added on 2026-09-01 by issue #304, after this run, and no run has
+yet issued a `firewalls.patch` under the published role. It is derived from the Compute Engine
+REST reference's authorization annotation for that method, the same way the whole list was before
+this run turned it from derived into checked, and `capability-matrix.md` carries it daggered for
+the same reason. The shared SSH firewall rule was created and maintained,
 including on a first launch in a project that had never had one, which is the only launch that
 exercises `firewalls.create` and `compute.networks.updatePolicy`. Bootstrap was pushed over SSH,
 so the SSH path is verified by the boxes having reached ready at all. Terminate left **zero

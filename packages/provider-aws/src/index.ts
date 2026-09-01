@@ -10,7 +10,7 @@ import { makeAwsProvider } from './provider.js'
  * calls when it chooses to — not as a side effect of construction.
  */
 
-export { awsConfigSchema, resolveSshCidr, type AwsProviderConfig } from './config.js'
+export { awsConfigSchema, resolveSshCidrs, type AwsProviderConfig } from './config.js'
 export { awsErrorCode, isNotFound, mapAwsError } from './errors.js'
 export { buildOfferings, OFFERING_IDS } from './offerings.js'
 export { parsePriceFeedDoc, PriceFeedClient, type PriceFeedDoc } from './feed.js'

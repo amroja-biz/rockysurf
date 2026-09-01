@@ -352,14 +352,24 @@ audit that walks instances, and that quietly bills forever. Rocky Surf reads
 
 ## Who can reach SSH
 
-Rocky Surf creates **one** shared security group (`rockysurf-ssh` by default) with a single
-inbound rule: TCP 22, from a CIDR **you specify**.
+Rocky Surf creates **one** shared security group (`rockysurf-ssh` by default) whose inbound
+rules are TCP 22 from the CIDRs **you specify**, and nothing else.
 
 ```yaml
 providers:
   aws:
-    sshAllowedCidr: 203.0.113.7/32     # required — no default
+    sshAllowedCidr:                    # required — no default
+      - 203.0.113.7/32                 # home
+      - 198.51.100.0/24                # the office
 ```
+
+**`sshAllowedCidr` is a list**, and a bare string is still read as a list of one, so an existing
+config file keeps working untouched. The list may not be empty — an empty list is refused by the
+schema rather than quietly meaning "nobody", which would produce a security group nobody can get
+through. Exact duplicates are folded away; **overlapping ranges are deliberately left alone**,
+because `203.0.113.7/32` inside `198.51.100.0/24` means something to the person maintaining the
+file (the wide one is the office, the narrow one is that laptop) and collapsing them would make
+removing one of them do something other than what it says.
 
 There is no default, and startup fails with an explanation if you omit it. That is deliberate.
 An earlier prototype discovered the operator's address at runtime by calling an external
@@ -367,17 +377,79 @@ An earlier prototype discovered the operator's address at runtime by calling an 
 continuously: it breaks silently the moment your network changes, it makes a third party's
 availability decide your firewall rule, and it hides a security decision inside runtime
 behaviour where no reviewer ever sees it. In a config file it is written down, diffable, and
-reviewable.
+reviewable. **That ruling is unchanged.** Nothing on this page discovers an address for you: you
+type the CIDR, it lands in your file, and Rocky Surf pushes what you typed.
 
 Opening SSH to the whole internet takes **two** deliberate settings, not one typo:
 
 ```yaml
-    sshAllowedCidr: 0.0.0.0/0
+    sshAllowedCidr: [0.0.0.0/0]
     allowAllCidr: true                 # required to accept 0.0.0.0/0
 ```
 
+`0.0.0.0/0` **anywhere in the list** triggers that guard, not only a list whose single entry is
+`/0`. A list of five careful office ranges with a `/0` appended is open to the entire internet,
+and the four careful entries change nothing about that.
+
 These boxes run agent-authored code and hold your git credentials. A `/0` that arrives by
 accident is the difference between a dev box and an incident, so it cannot arrive by accident.
+
+### The change reaches EC2 on save
+
+Until issue #304, the only thing that ever wrote your CIDR to EC2 was `provision()` — so editing
+the setting fixed your file and left the security group exactly as it was, and the way to fix
+your SSH was to launch a server you did not want. Worse, the authorize call sat behind a latch
+set for the lifetime of the process, so a corrected CIDR did not reach EC2 **even on the next
+launch**; it took a restart. The latch is gone, and provision now authorizes every configured
+CIDR on every provision.
+
+Saving the setting also pushes it, without provisioning anything. The save stays local and
+atomic (ADR-0017): the Settings page writes your file, this process adopts it, and *then*, if the
+save changed a CIDR list, a second and separate call goes out —
+`POST /api/v1/network/ssh-access/sync`. The per-cloud result renders on the Settings page under
+**SSH access at the cloud**, which is where you find out whether an earlier save actually landed.
+A **`Push SSH access to the clouds`** button in the Settings page footer runs the same call on
+demand, without requiring unsaved edits — which is what you want when the group drifted and your
+file did not. `rockysurf network sync` is the CLI equivalent.
+
+**Rocky Surf adds and reports; it does not revoke.** This is the part worth reading carefully,
+because it is the one place where the three clouds' behaviour differs in a way you can see.
+
+- Every CIDR in your list that is not already authorized is authorized, one call per range —
+  EC2 rejects a whole request containing one duplicate, so a batch would mean one pre-existing
+  entry silently blocking every new one.
+- Anything on the group that your list no longer names is **left in place and reported**. There is
+  no `ec2:RevokeSecurityGroupIngress` in the published policy and Rocky Surf makes no such call.
+- The report tells the two kinds of leftover apart, using the description Rocky Surf stamps on
+  every range it authorizes (`rockysurf sshAllowedCidr`). A range carrying that stamp is one an
+  earlier Rocky Surf added, and you are told which, so you can put it back in the list or remove
+  it deliberately. A range **without** it was added by you, by your own tooling, or by a release
+  older than the stamp, and removing it silently would be the product deleting access it did not
+  create and cannot explain.
+- For anything it will not remove, you get the exact command:
+
+```bash
+aws ec2 revoke-security-group-ingress \
+  --group-id sg-0123456789abcdef0 --protocol tcp --port 22 \
+  --cidr 198.51.100.0/24 --region us-east-1
+```
+
+**So a CIDR you delete from the list is still authorized on EC2 until you run that.** That is
+stated here rather than hidden. Removing a range is currently a two-step operation on AWS and on
+[GCP](gcp.md#the-change-reaches-google-cloud-on-save), which keeps its extras for the same
+reason, and a one-step operation only on [Azure](azure.md#who-can-reach-ssh), where the whole rule
+is Rocky Surf's own and is rewritten wholesale every time. Converging the group to exactly your
+list — revoking the stamped extras — is deliberately not in this release; see
+[ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md).
+
+**No new IAM permission was needed for any of this.** `ec2:DescribeSecurityGroups` and
+`ec2:AuthorizeSecurityGroupIngress` were already in the published policy, because provision has
+always needed them, and nothing revokes. If you have an older role, it already grants everything
+this path uses.
+
+**Removing a CIDR ends new SSH connections from that network as soon as the revoke lands.**
+Established sessions survive — a security group is evaluated on connection setup — and the boxes
+keep running. This is reachability, not data.
 
 Rocky Surf does **not** create EC2 key pairs. SSH keys are generated per server, the public half
 is injected through cloud-init, and the private half stays encrypted in Rocky Surf's own store.

@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted — 2026-08-31. Issue #264. Reverses the "read once, at startup" premise that
+Accepted — 2026-08-31. Issue #264. **Amended by
+[ADR-0021](0021-ssh-access-is-pushed-on-save-not-only-on-provision.md) (2026-09-01):** the risk
+note below — that a mislabelled `'save'` is "a bug in the consumer, not a reason to relabel" — is
+applied to `sshAllowedCidr`, whose consumer is a cloud object outside this process. The label
+stays `'save'` and the consumer was fixed; the push is a separate bounded call and adoption never
+depends on it, which is what keeps this ADR's all-or-nothing rule intact. Reverses the
+"read once, at startup" premise that
 [ADR-0005](0005-config-file-resolution.md) established for `rockysurf.config.yaml` and that
 `config/live-preferences.ts` (issue #124) carved its single exception out of; ADR-0005's
 resolution order — which file is read — is untouched.

@@ -13,6 +13,8 @@ import {
   getSettings,
   listProviders,
   saveSettings,
+  syncSshAccess,
+  type SshAccessSyncReport,
   type GithubConnection,
   type ProviderInfo,
   type SecretView,
@@ -310,6 +312,11 @@ export function SettingsPage() {
     change?: SettingsChange
     confirm?: () => void | Promise<void>
   } | null>(null)
+  /** What the last push of the SSH whitelist did, per cloud (issue #304). */
+  const [syncReports, setSyncReports] = useState<SshAccessSyncReport[] | null>(null)
+  const [pushing, setPushing] = useState(false)
+  /** The half-typed CIDR in each cloud's Add box, keyed by field path (issue #304). */
+  const [cidrDrafts, setCidrDrafts] = useState<Record<string, string>>({})
   const [connection, setConnection] = useState<GithubConnection | null>(null)
   /**
    * The loaded clouds and what each of them sells, for the saved-type pickers (issue #212).
@@ -528,6 +535,16 @@ export function SettingsPage() {
             : `Saved. ${names} needs a restart before it takes effect.`,
         )
       } else toast.success('Saved, and applied — no restart needed')
+
+      /**
+       * AND THEN PUSH IT AT THE CLOUD (issue #304).
+       *
+       * A second call rather than part of the save, so a cloud that is slow or unreachable
+       * cannot fail a file write that has already succeeded. Core says which clouds went stale;
+       * it says nothing when the reload did not apply, because pushing then would send the list
+       * the operator had before this save.
+       */
+      if (result.networkSyncNeeded?.length) await pushSshAccess('Saved, but could not push the SSH rule')
       return true
     } catch (err) {
       if (err instanceof ApiError) {
@@ -1087,6 +1104,159 @@ export function SettingsPage() {
     )
   }
 
+  /**
+   * The networks allowed to reach SSH on one cloud (issue #304).
+   *
+   * A hand-written control rather than the generic `stringList` fallback, because this list is
+   * the one setting on the page where REMOVING an entry is itself a request to change a firewall:
+   * the operator is not editing a preference, they are ending SSH from a network. The generic
+   * renderer says "this page has no editor for a setting of this shape", which was the honest
+   * answer while nothing pushed the value anywhere and is the wrong one now.
+   *
+   * ONE function taking a cloud, not three blocks. Every provider that maintains a whitelist gets
+   * the same control, for the same reason the field inventory drives the rest of the page.
+   *
+   * Two rules are enforced here rather than left to the save to reject:
+   * - the LAST entry cannot be removed, because an empty list means SSH reachable from nowhere
+   *   and the operator almost certainly meant to add the replacement first;
+   * - `0.0.0.0/0` is confirmed before it is added, and then needs `allowAllCidr` as well — the
+   *   two-act guard the providers have always had, which until now had no control on this page
+   *   at all, so the one procedure the docs describe could not be carried out here.
+   */
+  function cidrListField(cloud: string, label: string): ReactNode {
+    const path = ['providers', cloud, 'sshAllowedCidr']
+    const key = path.join('.')
+    const spec = specs.get(key)
+    if (!spec) return null
+
+    const savedRaw = valueAt(values, path) ?? valueAt(defaults, path)
+    // Tolerates the pre-#304 scalar in an operator's file: one CIDR is a list of one.
+    const saved = savedRaw === undefined ? [] : Array.isArray(savedRaw) ? (savedRaw as string[]) : [String(savedRaw)]
+    const pending = (edits[key]?.value as string[] | undefined) ?? saved
+    const draft = cidrDrafts[key] ?? ''
+    const setList = (next: string[]) => setEdit(path, { path, value: next })
+
+    function addDraft() {
+      const value = draft.trim()
+      if (value === '' || pending.includes(value)) return
+      const commit = () => {
+        setList([...pending, value])
+        setCidrDrafts((drafts) => ({ ...drafts, [key]: '' }))
+      }
+      if (value === '0.0.0.0/0') {
+        setPendingRemoval({
+          title: 'Open SSH to the whole internet?',
+          label: value,
+          message:
+            '0.0.0.0/0 means every address on the internet may reach SSH on every box this cloud ' +
+            'creates. These boxes run agent-authored code and hold your git token. You will also ' +
+            'have to tick "Allow all CIDR" below before this can be saved.',
+          confirmLabel: 'Add 0.0.0.0/0',
+          confirm: commit,
+        })
+        return
+      }
+      commit()
+    }
+
+    const lastOne = pending.length === 1
+
+    return (
+      <div className="form-group" data-field={key}>
+        <fieldset aria-describedby={helpId(key, key)}>
+          <legend>{label}</legend>
+          {helpFor(key, key)}
+          {pending.length === 0 ? (
+            <p className="hint">
+              None set. SSH would be unreachable from anywhere — add the network you connect from.
+            </p>
+          ) : (
+            <ul className="settings-cidr-list">
+              {pending.map((cidr) => (
+                <li key={cidr}>
+                  <code>{cidr}</code>
+                  <button
+                    type="button"
+                    className="link-button"
+                    disabled={lastOne}
+                    title={
+                      lastOne
+                        ? 'SSH would be unreachable from anywhere — add the replacement first.'
+                        : undefined
+                    }
+                    onClick={() =>
+                      setPendingRemoval({
+                        title: 'Remove this network?',
+                        label: cidr,
+                        message:
+                          `Removing ${cidr} immediately ends new SSH connections from that ` +
+                          'network; existing sessions survive. It is pushed to the cloud when you save.',
+                        confirm: () => setList(pending.filter((entry) => entry !== cidr)),
+                      })
+                    }
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="settings-cidr-add">
+            <input
+              type="text"
+              aria-label={`Add a network for ${cloud}`}
+              placeholder="203.0.113.7/32"
+              value={draft}
+              onChange={(e) => setCidrDrafts((drafts) => ({ ...drafts, [key]: e.target.value }))}
+            />
+            <button type="button" onClick={addDraft} disabled={draft.trim() === ''}>
+              Add
+            </button>
+          </div>
+        </fieldset>
+        {spec.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        {fieldErrors[key] && <p className="error">{fieldErrors[key]}</p>}
+        {/*
+          The second act, shown only once the dangerous value is actually in the list — a
+          permanent checkbox offering to open SSH to the internet is an invitation, and this is
+          not one. It is an ordinary boolean field, so its help and warning come from core.
+        */}
+        {pending.includes('0.0.0.0/0') && boolField(['providers', cloud, 'allowAllCidr'], 'Allow all CIDR')}
+      </div>
+    )
+  }
+
+  /**
+   * Push the whitelist at the clouds, and keep what each of them said (issue #304).
+   *
+   * Shared by the save and by the button beneath it, because they are the same errand arriving
+   * from two directions. The BUTTON is not redundant: the save only pushes what the save
+   * changed, and the state this issue was reported from is a cloud that drifted while the config
+   * file stayed exactly as it was — a GCP firewall rule whose `sourceRanges` were frozen at
+   * create time and have ignored the setting ever since. Nothing in a save would fix that,
+   * because nothing about it is a change.
+   */
+  async function pushSshAccess(failurePrefix = 'Could not push the SSH rule'): Promise<void> {
+    setPushing(true)
+    setSyncReports(null)
+    try {
+      const { synced } = await syncSshAccess()
+      setSyncReports(synced)
+      const failed = synced.filter((report) => report.status === 'failed')
+      if (failed.length > 0) {
+        toast.error(`Could not update SSH access on ${failed.map((report) => report.provider).join(', ')}.`)
+      } else if (synced.some((report) => report.status === 'updated')) {
+        toast.success('SSH access updated at the cloud.')
+      } else if (synced.length > 0) {
+        toast.success('The clouds already allowed exactly these networks.')
+      }
+    } catch (err) {
+      toast.error(`${failurePrefix}: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setPushing(false)
+    }
+  }
+
   /* -------------------------------------------------------------- the unified token list */
 
   const rawTokens = (valueAt(values, ['github', 'tokens']) as RawTokenEntry[] | undefined) ?? []
@@ -1579,6 +1749,20 @@ export function SettingsPage() {
   draw('mcp.scopes')
 
   /**
+   * The SSH whitelist and its second act, for every cloud that has one (issue #304).
+   *
+   * Both halves enter the ledger by hand, and `allowAllCidr` does so even when it is not on
+   * screen. That is the `group` doctrine applied to a pair that is not a `group`: the CIDR list
+   * OWNS the checkbox, and a block written and removed whole must not have its hidden half
+   * reappear at the bottom of the tab as a leftover — which is a permanent, unexplained offer to
+   * open SSH to the internet, sitting away from the list that gives it its meaning.
+   */
+  for (const cloud of ['aws', 'azure', 'gcp']) {
+    draw(`providers.${cloud}.sshAllowedCidr`)
+    draw(`providers.${cloud}.allowAllCidr`)
+  }
+
+  /**
    * THE HAND-WRITTEN BLOCKS, keyed by the section id core gave them.
    *
    * Contents only: the card, its heading and its place among the tabs are the panel's job below,
@@ -1678,7 +1862,7 @@ export function SettingsPage() {
         {boolField(['providers', 'aws', 'enabled'], 'Enabled')}
         {textField(['providers', 'aws', 'region'], 'Region')}
         {textField(['providers', 'aws', 'profile'], 'Profile')}
-        {textField(['providers', 'aws', 'sshAllowedCidr'], 'SSH allowed from')}
+        {cidrListField('aws', 'SSH allowed from')}
         {readOnlyField(['providers', 'aws', 'sizes'], 'Offered instance types')}
       </>
     ),
@@ -1694,7 +1878,7 @@ export function SettingsPage() {
         {textField(['providers', 'azure', 'subscriptionId'], 'Subscription id')}
         {textField(['providers', 'azure', 'resourceGroup'], 'Resource group')}
         {textField(['providers', 'azure', 'location'], 'Location')}
-        {textField(['providers', 'azure', 'sshAllowedCidr'], 'SSH allowed from')}
+        {cidrListField('azure', 'SSH allowed from')}
         {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
       </>
     ),
@@ -1709,7 +1893,7 @@ export function SettingsPage() {
         */}
         {textField(['providers', 'gcp', 'projectId'], 'Project id')}
         {textField(['providers', 'gcp', 'zone'], 'Zone')}
-        {textField(['providers', 'gcp', 'sshAllowedCidr'], 'SSH allowed from')}
+        {cidrListField('gcp', 'SSH allowed from')}
         {readOnlyField(['providers', 'gcp', 'sizes'], 'Offered machine types')}
       </>
     ),
@@ -2006,6 +2190,24 @@ export function SettingsPage() {
       ))}
 
       {formError && <p className="error">{formError}</p>}
+      {/*
+        What the push actually did, per cloud (issue #304) — kept on the page rather than left to
+        a toast, because `detail` carries remediation (a gcloud or aws command) that an operator
+        has to be able to read twice and copy.
+      */}
+      {syncReports && syncReports.length > 0 && (
+        <div className="settings-sync-report">
+          <h3>SSH access at the cloud</h3>
+          <ul>
+            {syncReports.map((report) => (
+              <li key={report.provider} data-sync-provider={report.provider} data-sync-status={report.status}>
+                <strong>{report.provider}</strong>: {report.status}
+                {report.detail ? ` — ${report.detail}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -2088,6 +2290,14 @@ export function SettingsPage() {
           </button>
           <button type="button" className="btn-secondary" disabled={!anyDirty || saving} onClick={() => setEdits({})}>
             Discard changes
+          </button>
+          {/*
+            The repair for a cloud that drifted without the file changing (issue #304) — which is
+            the state GCP has been in for every installation, since its firewall rule only ever
+            read `sshAllowedCidr` at create time.
+          */}
+          <button type="button" className="btn-secondary" disabled={pushing || saving} onClick={() => pushSshAccess()}>
+            {pushing ? 'Pushing…' : 'Push SSH access to the clouds'}
           </button>
           {/*
             THE STANDING SENTENCE UNDER THE SAVE BUTTON (issue #264).

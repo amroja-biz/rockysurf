@@ -483,15 +483,31 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   },
   {
     path: 'providers.aws.sshAllowedCidr',
-    kind: 'string',
+    kind: 'stringList',
     writable: true,
     appliesAt: 'save',
     help:
-      'Which network may reach SSH on the boxes AWS creates here, as a CIDR — your own address as a ' +
-      '/32 is the usual answer. Required whenever AWS is enabled, with no default on purpose.',
+      'Which networks may reach SSH on the boxes AWS creates here, as CIDRs — your own address as ' +
+      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
+      'Required whenever AWS is enabled, with no default on purpose. Saving pushes the change to ' +
+      'AWS straight away; you do not have to launch a server for it to take effect.',
     warning:
-      'This is a firewall rule: it decides which network may reach SSH on every box AWS creates ' +
-      'here. Your own address as a /32 is the usual answer.',
+      'This is a firewall rule: it decides which networks may reach SSH on every box AWS creates ' +
+      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
+      'sessions survive.',
+  },
+  {
+    path: 'providers.aws.allowAllCidr',
+    kind: 'boolean',
+    writable: true,
+    appliesAt: 'save',
+    help:
+      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
+      'decisions, not one typo, so the CIDR alone is refused without this.',
+    warning:
+      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
+      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
+      'in front of them.',
   },
   {
     path: 'providers.aws.sizes',
@@ -540,15 +556,31 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   },
   {
     path: 'providers.azure.sshAllowedCidr',
-    kind: 'string',
+    kind: 'stringList',
     writable: true,
     appliesAt: 'save',
     help:
-      'Which network may reach SSH on the boxes Azure creates here, as a CIDR — your own address as ' +
-      'a /32 is the usual answer. Required whenever Azure is enabled, with no default on purpose.',
+      'Which networks may reach SSH on the boxes Azure creates here, as CIDRs — your own address as ' +
+      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
+      'Required whenever Azure is enabled, with no default on purpose. Saving pushes the change to ' +
+      'Azure straight away; you do not have to launch a server for it to take effect.',
     warning:
-      'This is a firewall rule: it decides which network may reach SSH on every box Azure creates ' +
-      'here. Your own address as a /32 is the usual answer.',
+      'This is a firewall rule: it decides which networks may reach SSH on every box Azure creates ' +
+      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
+      'sessions survive.',
+  },
+  {
+    path: 'providers.azure.allowAllCidr',
+    kind: 'boolean',
+    writable: true,
+    appliesAt: 'save',
+    help:
+      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
+      'decisions, not one typo, so the CIDR alone is refused without this.',
+    warning:
+      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
+      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
+      'in front of them.',
   },
   {
     path: 'providers.azure.sizes',
@@ -593,15 +625,31 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   },
   {
     path: 'providers.gcp.sshAllowedCidr',
-    kind: 'string',
+    kind: 'stringList',
     writable: true,
     appliesAt: 'save',
     help:
-      'Which network may reach SSH on the boxes GCP creates here, as a CIDR — your own address as ' +
-      'a /32 is the usual answer. Required whenever GCP is enabled, with no default on purpose.',
+      'Which networks may reach SSH on the boxes GCP creates here, as CIDRs — your own address as ' +
+      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
+      'Required whenever GCP is enabled, with no default on purpose. Saving pushes the change to ' +
+      'GCP straight away; you do not have to launch a server for it to take effect.',
     warning:
-      'This is a firewall rule: it decides which network may reach SSH on every box GCP creates ' +
-      'here. Your own address as a /32 is the usual answer.',
+      'This is a firewall rule: it decides which networks may reach SSH on every box GCP creates ' +
+      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
+      'sessions survive.',
+  },
+  {
+    path: 'providers.gcp.allowAllCidr',
+    kind: 'boolean',
+    writable: true,
+    appliesAt: 'save',
+    help:
+      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
+      'decisions, not one typo, so the CIDR alone is refused without this.',
+    warning:
+      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
+      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
+      'in front of them.',
   },
   {
     path: 'providers.gcp.sizes',

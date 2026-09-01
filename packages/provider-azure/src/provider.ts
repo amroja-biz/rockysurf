@@ -13,9 +13,10 @@ import {
   type ProviderData,
   type ProvisionResult,
   type ProvisionSpec,
+  type SshAccessSyncResult,
 } from '@rockysurf/provider-sdk'
 import { API_VERSIONS, ArmApi, resourceGroupPath, resourcePath } from './api.js'
-import { resolveSshCidr, type AzureProviderConfig } from './config.js'
+import { resolveSshCidrs, type AzureProviderConfig } from './config.js'
 import { PriceFeedClient, type PriceFeedDoc } from './feed.js'
 import { CredentialChain, type CredentialChainOptions } from './credentials.js'
 import { azureCodeOf, isNotFound } from './errors.js'
@@ -26,6 +27,7 @@ import type {
   ArmPublicIpAddress,
   ArmResource,
   ArmResourceSku,
+  ArmSecurityRule,
   ArmVirtualMachine,
   ArmVirtualNetwork,
  ArmUsage,
@@ -62,6 +64,118 @@ const SERVER_ID_TAG = 'server-id'
  * so the key is written where a later call can read it back and tell a replay from a collision.
  */
 const IDEMPOTENCY_TAG = 'idempotency-key'
+
+/**
+ * The name of the one security rule this provider owns, and its description.
+ *
+ * Both are stable strings on purpose. The NAME is the child path a write goes to, so changing it
+ * would leave the old rule in place, still allowing whatever it last allowed, while a second rule
+ * appeared beside it. The DESCRIPTION is how a human reading the NSG in the portal can tell which
+ * rule Rocky Surf maintains and which ones are theirs — the same job AWS's ingress stamp does,
+ * minus the ownership arithmetic, because on Azure the whole rule is ours rather than one entry
+ * in a shared list.
+ */
+const SSH_RULE_NAME = 'rockysurf-ssh'
+const SSH_RULE_DESCRIPTION = 'rockysurf sshAllowedCidr'
+
+/**
+ * ARM's two ways of saying "these sources", exactly one of which may be present.
+ *
+ * A security rule carries EITHER `sourceAddressPrefix` (one value) OR `sourceAddressPrefixes` (a
+ * list). Sending both is rejected outright — ARM will not pick one — so this decides which key
+ * the rule body gets rather than emitting the list form unconditionally. The single-entry case is
+ * kept on the scalar key because that is what every rule this provider has ever written looks
+ * like, and rewriting a one-CIDR rule into the list form on upgrade would churn every existing
+ * installation's NSG for no change in what it allows.
+ */
+function sourceAddressFields(cidrs: readonly string[]): Record<string, unknown> {
+  const only = cidrs[0]
+  return cidrs.length === 1 && only !== undefined ? { sourceAddressPrefix: only } : { sourceAddressPrefixes: [...cidrs] }
+}
+
+/**
+ * The rule body, built in ONE place so `ensureNetwork()` and `syncSshAccess()` cannot diverge.
+ *
+ * They write the same resource by the same path, and the failure mode of two literals is that a
+ * sync quietly resets a field a provision had set (or the reverse) — a priority, a port, the
+ * direction — while both look correct in isolation.
+ */
+function sshRuleBody(cidrs: readonly string[]): Record<string, unknown> {
+  return {
+    properties: {
+      description: SSH_RULE_DESCRIPTION,
+      protocol: 'Tcp',
+      ...sourceAddressFields(cidrs),
+      sourcePortRange: '*',
+      destinationAddressPrefix: '*',
+      destinationPortRange: '22',
+      access: 'Allow',
+      direction: 'Inbound',
+      // Well above Azure's own defaults (which start at 65000) and clear of the 100-299 band
+      // operators conventionally keep for their own rules.
+      priority: 300,
+    },
+  }
+}
+
+/**
+ * The sources a rule ARM returned actually allows, whichever key it used.
+ *
+ * Read through both keys rather than the one this provider would have written, because the rule
+ * may have been written by an older Rocky Surf (scalar only) or edited in the portal (which
+ * switches to the plural key the moment a second entry is added).
+ */
+function sourcesOf(rule: ArmSshRule | undefined): string[] {
+  const properties = rule?.properties
+  if (!properties) return []
+  const plural = properties.sourceAddressPrefixes
+  if (plural && plural.length > 0) return [...plural]
+  return properties.sourceAddressPrefix ? [properties.sourceAddressPrefix] : []
+}
+
+/**
+ * The security rule as ARM RETURNS it, which carries one key `ArmSecurityRule` does not model.
+ *
+ * `sourceAddressPrefixes` only appears on a rule that names more than one source, and until this
+ * release nothing here could write one. Narrowed locally rather than widened in `types.ts`
+ * because this is the only reader of it.
+ */
+type ArmSshRule = ArmSecurityRule & { properties?: { sourceAddressPrefixes?: string[] } }
+
+/**
+ * How long a settings save waits for ARM before giving up on it.
+ *
+ * `syncSshAccess()` is called from a page an operator is sitting in front of, and it can be one
+ * of several providers being synced at once — so an unreachable subscription must cost that
+ * operator a bounded wait and an honest message, not a request that never returns. Thirty seconds
+ * is comfortably longer than the two round trips this makes even with `ArmApi`'s retries, and
+ * short enough that a human is still there to read the answer.
+ */
+const SSH_SYNC_DEADLINE_MS = 30_000
+
+/**
+ * Run `work`, and answer with `onExpiry()` if it has not finished in `ms`.
+ *
+ * The abandoned call is NOT cancelled, and that is deliberate rather than a limitation worked
+ * around: a PUT already in flight may well land, and aborting it mid-flight would leave the rule
+ * in a state nobody can describe. So the deadline bounds what the CALLER waits for, and the
+ * result it returns says only what this provider can honestly claim — which after a timeout is
+ * "I do not know", never "applied".
+ *
+ * `Promise.race` attaches a handler to `work` either way, so a rejection arriving after the
+ * deadline is absorbed rather than surfacing as an unhandled rejection.
+ */
+async function withDeadline<T>(ms: number, work: () => Promise<T>, onExpiry: () => T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onExpiry()), ms)
+  })
+  try {
+    return await Promise.race([work(), expiry])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 /**
  * Capabilities. Two of these are measured against Azure's documentation rather than against
@@ -108,6 +222,11 @@ const CAPABILITIES: ProviderCapabilities = {
    */
   userDataMaxBytes: 49_152,
   generatesUserData: true,
+  /**
+   * One shared NSG per resource group, whose `rockysurf-ssh` rule decides who may reach port 22,
+   * and `syncSshAccess()` rewrites that rule on demand without provisioning anything.
+   */
+  managesSshAccess: true,
 }
 
 /**
@@ -237,6 +356,14 @@ export interface AzureProviderOptions {
   priceFeed?: { get(): Promise<PriceFeedDoc | null> }
   /** Where one-line operational warnings go. Defaults to `console.warn`. */
   log?: (message: string) => void
+  /**
+   * How long `syncSshAccess()` waits for ARM. Injected by tests; production uses the constant.
+   *
+   * Overridable because a deadline nothing can shorten is a deadline no test can prove exists,
+   * and this one is the difference between an operator seeing an honest failure and a settings
+   * save that never returns.
+   */
+  sshSyncDeadlineMs?: number
 }
 
 /** How long a quota read is believed. `currentValue` moves with every create, including ours. */
@@ -272,6 +399,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
 
   const grace = options.absenceGrace ?? DESCRIBE_ABSENCE_GRACE
   const sleep = options.sleep ?? defaultSleep
+  const deadlineMs = options.sshSyncDeadlineMs ?? SSH_SYNC_DEADLINE_MS
 
   /**
    * Instances this provider has observed running, which is what keeps the propagation grace
@@ -305,6 +433,16 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     resourcePath(subscriptionId, resourceGroup, 'Microsoft.Network/networkInterfaces', name)
   const pipPath = (name: string) =>
     resourcePath(subscriptionId, resourceGroup, 'Microsoft.Network/publicIPAddresses', name)
+  const nsgPath = () =>
+    resourcePath(subscriptionId, resourceGroup, 'Microsoft.Network/networkSecurityGroups', config.nsgName)
+  /**
+   * The CHILD path, and the only path anything here ever writes the SSH rule to.
+   *
+   * Hoisted beside the other path builders rather than derived twice, because the difference
+   * between this string and the one it is built from is the difference between updating one rule
+   * and replacing every rule on the group — see `ensureNetwork()` and `syncSshAccess()`.
+   */
+  const sshRulePath = () => `${nsgPath()}/securityRules/${SSH_RULE_NAME}`
 
   const names = (serverId: string) => ({
     vm: serverId,
@@ -456,22 +594,16 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
       subnetId = created.id
     }
 
-    const nsgPath = resourcePath(
-      subscriptionId,
-      resourceGroup,
-      'Microsoft.Network/networkSecurityGroups',
-      config.nsgName,
-    )
     let nsg: ArmNetworkSecurityGroup | undefined
     try {
-      nsg = await api.call<ArmNetworkSecurityGroup>('GET', nsgPath, API_VERSIONS.network)
+      nsg = await api.call<ArmNetworkSecurityGroup>('GET', nsgPath(), API_VERSIONS.network)
     } catch (err) {
       if (!isNotFound(err)) throw err
     }
     if (nsg) assertSameRegion(nsg, config.nsgName, 'network security group')
 
     if (!nsg) {
-      nsg = await api.call<ArmNetworkSecurityGroup>('PUT', nsgPath, API_VERSIONS.network, {
+      nsg = await api.call<ArmNetworkSecurityGroup>('PUT', nsgPath(), API_VERSIONS.network, {
         location,
         tags,
         properties: {},
@@ -482,21 +614,11 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
     // The SSH rule, written every time so a changed `sshAllowedCidr` takes effect on the next
     // provision rather than silently applying only to a fresh installation. It comes from
     // CONFIGURATION, never from a runtime lookup of the caller's own address — see config.ts.
-    await api.call<unknown>('PUT', `${nsgPath}/securityRules/rockysurf-ssh`, API_VERSIONS.network, {
-      properties: {
-        description: 'rockysurf sshAllowedCidr',
-        protocol: 'Tcp',
-        sourceAddressPrefix: resolveSshCidr(config),
-        sourcePortRange: '*',
-        destinationAddressPrefix: '*',
-        destinationPortRange: '22',
-        access: 'Allow',
-        direction: 'Inbound',
-        // Well above Azure's own defaults (which start at 65000) and clear of the 100-299 band
-        // operators conventionally keep for their own rules.
-        priority: 300,
-      },
-    })
+    //
+    // As of issue #304 that setting is a LIST, and the body carries every entry: the operator who
+    // needs this is the one who works from two places, and a rule that could hold only the most
+    // recently typed network made "add the cafe" mean "lose the office".
+    await api.call<unknown>('PUT', sshRulePath(), API_VERSIONS.network, sshRuleBody(resolveSshCidrs(config)))
 
     if (!subnetId || !nsgId) {
       throw new ProviderError('unknown', `could not resolve ${config.vnetName}/${config.subnetName} or ${config.nsgName}`)
@@ -1000,6 +1122,98 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
       await api.call<unknown>('POST', `${vmPath(vmName)}/start`, API_VERSIONS.compute, {})
       // The address survives a deallocate (ipStableAcrossStop: true), so unlike EC2 there is
       // nothing for core to re-read afterwards.
+    },
+
+    /**
+     * Bring the `rockysurf-ssh` rule in line with `sshAllowedCidr`, without provisioning anything.
+     *
+     * The call issue #304 exists for. Before it, the only thing that ever wrote this operator's
+     * CIDRs to Azure was a launch, so "I moved house" was fixed by starting a box nobody wanted.
+     *
+     * AZURE IS THE SIMPLE ONE OF THE THREE, and the reason is the shape of the object rather than
+     * anything this function does. The rule is a resource of its own, the PUT that writes it
+     * replaces its source set wholesale, and `ensureNetwork()` has always written the whole rule
+     * on every provision — so the prefixes on it are, as of the last launch, exactly what the
+     * config said. There is no accumulation to adopt the way there is on EC2 (which only ever
+     * added ranges) or on GCE (which froze `sourceRanges` at create time), and so `reported` here
+     * is empty: there is nothing on this object that Rocky Surf found and deliberately left alone.
+     *
+     * It is also why the authorize-before-revoke rule the other two obey by ORDERING is satisfied
+     * here by ARM: one PUT carries the whole set, so there is no window in which the operator has
+     * less access than they started with. A PUT that fails changes nothing at all.
+     */
+    async syncSshAccess(): Promise<SshAccessSyncResult> {
+      const desired = resolveSshCidrs(config)
+
+      return await withDeadline<SshAccessSyncResult>(
+        deadlineMs,
+        async () => {
+          // Does the NSG exist? A settings save MUST NOT create it. Creating an NSG here would
+          // put a billable object into the subscription of an operator who has only ever opened
+          // the Settings page, and Azure charges for the resources this one goes on to imply.
+          //
+          // Deliberately NOT `assertSameRegion()`: whichever region this NSG is in, it is the
+          // object enforcing SSH for the boxes attached to it, and pushing the operator's list at
+          // it is right. Refusing a sync over a region mismatch would leave the enforcing rule
+          // stale precisely when the operator is trying to fix their access.
+          try {
+            await api.call<ArmNetworkSecurityGroup>('GET', nsgPath(), API_VERSIONS.network)
+          } catch (err) {
+            if (!isNotFound(err)) throw err
+            return {
+              status: 'skipped',
+              applied: [],
+              reported: [],
+              detail:
+                `No ${config.nsgName} network security group exists in the ${resourceGroup} ` +
+                'resource group yet, so there is nothing to update. Rocky Surf creates it at the ' +
+                'first launch, with these CIDRs already in it.',
+            }
+          }
+
+          // What the rule allows NOW, which is the only way to tell an operator whether their
+          // earlier save actually landed. A 404 here is not a failure: the NSG can exist without
+          // our rule on it (an operator recreated the group, or an older install predates it).
+          let existing: string[] = []
+          try {
+            existing = sourcesOf(await api.call<ArmSshRule>('GET', sshRulePath(), API_VERSIONS.network))
+          } catch (err) {
+            if (!isNotFound(err)) throw err
+          }
+
+          // THE CHILD PATH, never `nsgPath()`. A PUT on the security group replaces its
+          // `securityRules` array and would silently delete every rule the operator added to it
+          // (docs/providers/azure.md, "Who can reach SSH"). One rule is ours; the group is not.
+          await api.call<unknown>('PUT', sshRulePath(), API_VERSIONS.network, sshRuleBody(desired))
+
+          const removed = existing.filter((cidr) => !desired.includes(cidr))
+          const added = desired.filter((cidr) => !existing.includes(cidr))
+          const changed = added.length > 0 || removed.length > 0
+
+          return {
+            status: changed ? 'updated' : 'unchanged',
+            applied: desired,
+            // Always empty here, and the paragraph above says why. Azure's rule is written whole
+            // every time, so there is never a stamped-by-us leftover to offer the operator.
+            reported: [],
+            detail: changed
+              ? `${config.nsgName} now allows ${desired.join(', ')} on port 22.` +
+                (removed.length > 0
+                  ? ` ${removed.join(', ')} no longer appears in sshAllowedCidr and was removed from the rule.`
+                  : '')
+              : `${config.nsgName} already allowed ${desired.join(', ')} on port 22.`,
+          }
+        },
+        () => ({
+          status: 'failed',
+          applied: [],
+          reported: [],
+          detail:
+            `Azure did not answer within ${Math.round(deadlineMs / 1000)}s, so Rocky Surf cannot ` +
+            `say whether ${config.nsgName} now allows ${desired.join(', ')}. Nothing was deleted. ` +
+            'Check the subscription is reachable and save again.',
+        }),
+      )
     },
   }
 

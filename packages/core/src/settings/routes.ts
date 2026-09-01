@@ -408,11 +408,43 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
       restartRequired,
       /** Why nothing could be applied, when that is the case. */
       ...(outcome.blocked ? { reloadBlocked: outcome.blocked } : {}),
+      /**
+       * Clouds whose SSH whitelist this save has just made stale, for the SPA to push (issue #304).
+       *
+       * THIS ROUTE DELIBERATELY DOES NOT PUSH IT ITSELF. A settings save is a cheap, local,
+       * non-throwing operation — write the file, adopt it, answer — and ADR-0017 leans on that:
+       * adoption is all-or-nothing and nothing may become half-applied. Reaching three cloud APIs
+       * from inside it would put a save's success at the mercy of a network timeout and make the
+       * one transaction the ADR designed as atomic into a partial one. So the save says what is
+       * now out of date, and `POST /api/v1/network/ssh-access/sync` does the pushing, where a
+       * per-cloud failure is a per-cloud failure and nothing else.
+       *
+       * Empty when the reload did not apply: the registry is still holding the PREVIOUS config,
+       * so a sync now would push the CIDRs the operator had before this save rather than the ones
+       * they just approved — which is exactly the silent widening this feature must never do.
+       */
+      networkSyncNeeded: outcome.applied ? providersNeedingNetworkSync(saved) : [],
       ...view(),
     })
   })
 
   return routes
+}
+
+/**
+ * Which provider sections in this save changed the networks allowed to reach SSH.
+ *
+ * Derived from the saved PATHS rather than from a list of cloud ids, so a provider added later
+ * is covered by having a `sshAllowedCidr` at all — the same reason the field inventory drives
+ * the page instead of a hand-written block per cloud.
+ */
+function providersNeedingNetworkSync(savedPaths: readonly string[]): string[] {
+  const ids = new Set<string>()
+  for (const path of savedPaths) {
+    const match = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(path)
+    if (match?.[1]) ids.add(match[1])
+  }
+  return [...ids]
 }
 
 /**

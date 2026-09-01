@@ -1,3 +1,4 @@
+import { normalizeSshCidrs, opensSshToTheInternet } from '@rockysurf/provider-sdk'
 import { z } from 'zod'
 
 /**
@@ -19,6 +20,18 @@ import { z } from 'zod'
 
 /** An IPv4 CIDR block: four octets and a prefix length. */
 const CIDR_V4 = /^(\d{1,3}\.){3}\d{1,3}\/(3[0-2]|[12]?\d)$/
+
+/**
+ * One entry in `sshAllowedCidr`.
+ *
+ * Split out from the list because issue #304 made the setting a list and every entry has to
+ * satisfy the same rule the single value used to: a literal IPv4 CIDR, so the operator's intent
+ * is legible to anyone reading the file.
+ */
+const sshCidrEntry = z
+  .string()
+  .trim()
+  .regex(CIDR_V4, { error: 'sshAllowedCidr must be an IPv4 CIDR block, e.g. 203.0.113.7/32' })
 
 /**
  * A GCE zone: a region id with a single-letter suffix, e.g. `us-central1-a`.
@@ -118,9 +131,14 @@ export const gcpConfigSchema = z
      * a look.
      */
     sshAllowedCidr: z
-      .string()
-      .trim()
-      .regex(CIDR_V4, { error: 'sshAllowedCidr must be an IPv4 CIDR block, e.g. 203.0.113.7/32' })
+      .union([sshCidrEntry, z.array(sshCidrEntry)])
+      .transform(normalizeSshCidrs)
+      .refine((cidrs) => cidrs.length > 0, {
+        error:
+          'sshAllowedCidr must name at least one network. An empty list would leave SSH reachable ' +
+          'from nowhere, which is never what an edit to this setting intends — add the replacement ' +
+          'before removing the last entry.',
+      })
       .optional(),
 
     /**
@@ -227,16 +245,27 @@ export const gcpConfigSchema = z
       'sshAllowedCidr is required: state which network may reach SSH, e.g. "203.0.113.7/32". ' +
       'To open SSH to the whole internet, set allowAllCidr: true as well — deliberately.',
   })
-  .refine((config) => !(config.sshAllowedCidr === '0.0.0.0/0' && !config.allowAllCidr), {
-    path: ['sshAllowedCidr'],
-    error: '0.0.0.0/0 additionally requires allowAllCidr: true. Opening SSH to the internet is two decisions, not one.',
-  })
+  .refine(
+    (config) => !(config.sshAllowedCidr !== undefined && opensSshToTheInternet(config.sshAllowedCidr) && !config.allowAllCidr),
+    {
+      path: ['sshAllowedCidr'],
+      error:
+        '0.0.0.0/0 additionally requires allowAllCidr: true. Opening SSH to the internet is two decisions, not one. ' +
+        'ANY entry in the list being 0.0.0.0/0 opens SSH to the whole internet — the other entries do not narrow it.',
+    },
+  )
 
 export type GcpProviderConfig = z.infer<typeof gcpConfigSchema>
 
-/** The CIDR the shared firewall rule will actually authorize, after both guards have passed. */
-export function resolveSshCidr(config: GcpProviderConfig): string {
-  return config.sshAllowedCidr ?? '0.0.0.0/0'
+/**
+ * The CIDRs the shared firewall rule will actually authorize, after both guards have passed.
+ *
+ * The `?? ['0.0.0.0/0']` is not a default for the setting — the schema refuses a config that
+ * omits `sshAllowedCidr` unless `allowAllCidr: true` is present, so the only way to reach this
+ * branch is to have asked for the whole internet, twice, in writing.
+ */
+export function resolveSshCidrs(config: GcpProviderConfig): string[] {
+  return config.sshAllowedCidr ?? ['0.0.0.0/0']
 }
 
 /**

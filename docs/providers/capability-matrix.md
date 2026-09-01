@@ -21,6 +21,7 @@ and the two real-cloud capstone transcripts beside it.
 | `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
+| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
@@ -36,6 +37,16 @@ rather than disappeared.
 documentation rather than an observation. Daggers are per value rather than per column, because a
 run can settle some values in a column while never exercising the others, and that is exactly
 what happened to `gcp`.
+
+**`managesSshAccess` is daggered in all three columns that declare it**, and it will stay that
+way until a real-cloud run pushes a CIDR. It arrived with issue #304 and **no part of it has
+touched real cloud infrastructure**: no security group was described, no NSG rule was PUT, and no
+firewall rule was patched outside the test doubles. The flag itself is a claim about the provider
+(does it maintain a whitelist Rocky Surf can bring into line?) rather than about the cloud, so it
+is not the kind of value a run could contradict — but the calls behind it are exactly the kind, and
+GCP's `firewalls.patch` is a permission nobody has yet exercised under the published role. Carrying
+these three as measured because the rest of their columns are is precisely the drift the daggers
+exist to prevent (`rockysurf-eanp`). The dagger comes off when a run has carried it.
 
 **`azure`.** Built without an Azure subscription, then **run against real Azure on 2026-08-26**
 (`rockysurf-ihtq.8`). That run took the full lifecycle — create, bootstrap, SSH, stop, start,
@@ -273,6 +284,36 @@ What cloud-init would have done before boot, the BYO provider does over SSH at c
 create the account core connects as, write `authorized_keys` (appending, never truncating — the
 operator's own access is in that file), and grant passwordless sudo, which the bootstrap agent
 needs to install anything. Everything after that point is the ordinary push bootstrap.
+
+### `managesSshAccess` — does the provider own a whitelist Rocky Surf can push to?
+
+**`true` on `aws`, `azure` and `gcp`; absent — which is the answer `false` — on `hetzner` and
+`byo`.** Optional, added by issue #304 and recorded in
+[ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md).
+
+It answers one question: is there a cloud object whose contents are `sshAllowedCidr`, which Rocky
+Surf can rewrite **without provisioning anything**? Three clouds have one — a shared security
+group, a shared NSG's `rockysurf-ssh` rule, a shared firewall rule — and the flag is what lets
+`POST /api/v1/network/ssh-access/sync` push the operator's list at every cloud that has one —
+after a save that changed a list, from the Settings page's `Push SSH access to the clouds` button,
+or from `rockysurf network sync` — instead of only at the next launch. The button is not
+redundant with the save: a cloud can drift while the file does not, which is the state GCP has
+been in for every installation, and no save would catch it. What each provider then does with the list differs and the flag deliberately does not say:
+Azure rewrites its rule whole, while AWS and GCP widen only and report what they will not remove.
+
+`hetzner` declares nothing because it has no whitelist at all: a Hetzner server is reachable the
+moment it boots, there is no firewall object to create or adopt, and there is no `sshAllowedCidr`
+setting on that provider to push. It is therefore **absent from the sync report**, not reported as
+a failure — there is nothing there to be wrong. `byo` declares nothing because the machine is
+already the operator's and its network is already whatever they made it.
+
+**This is the first OPTIONAL method on the interface**, and the flag is what makes it safe:
+`syncSshAccess()` exists only on the providers that set this, and core calls it through
+`capabilities.managesSshAccess` and never `typeof provider.syncSshAccess === 'function'`. That is
+ADR-0003 A2's rule — core branches on flags, never on shape — kept intact while departing from
+A2's other half, the required-and-throwing method. The reasoning for the departure is in ADR-0021:
+a required method is a breaking change for a provider written outside this repository, and a
+capability nobody declares costs them nothing.
 
 ### `simulatedInstances` — is there a machine at the address this provider reports?
 
