@@ -17,10 +17,9 @@
   session closed twenty issues with a team of worktree-isolated agents — triage by component,
   model per issue, a shared brief, four concurrent, ≤12-line reports, and what to do when
   GitHub Actions is down.
-- [plain-spoken-pr-comments](2026-08-30-plain-spoken-pr-comments.md): owner ruling (#251):
-  every agent-opened PR gets a plain-spoken comment — what it does, what merging changes, what
-  the human must do, what it costs — and required setup ships as a run-one-script, never as
-  copy/paste steps.
+- [plain-spoken-pr-comments](2026-08-30-plain-spoken-pr-comments.md): [active] Every agent PR gets a plain-language comment for the human administrator; written for the owner-as-merger — an explicit binary "what you must do",
+  no optional setup commands, no operator trivia, no warning-shaped reassurance; action items
+  become issues, not paragraphs; required setup ships as a run-one-script.
 - [setup-scripts-verify-what-they-claimed](2026-08-31-setup-scripts-verify-what-they-claimed.md):
   issue #270 — the Azure nightly's federated credential was fixed and still missing, because the
   step that made it had an `else` branch that carried on. A wiring step gets no fallback, and the
@@ -87,3 +86,6 @@
 - [run-pack-url-checker](2026-09-01-run-pack-url-checker.md): [active] Run `pnpm run check:pack-urls`
   periodically and whenever creating a new official surge pack; it's deliberately non-gating, so it
   only helps if actually run — treat failures as leads, not automatic reds.
+- [ui-browser-check-graduation](2026-09-01-ui-browser-check-graduation.md): [active] The `UI (browser)`
+  Playwright job is always-run but not yet a required check; issue #315 tracks adding it to the
+  protect-main ruleset on/after 2026-09-05 if it has behaved — the agent side owns this reminder.
