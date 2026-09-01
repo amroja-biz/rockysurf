@@ -44,6 +44,32 @@ pushed importing a module it did not contain. Every visible signal said fine. An
 patterns in a per-package `.gitignore` to where the generated thing actually is — `/packs/`, not
 `packs/`.
 
+### The same gate, roughly a third quicker again
+
+`pnpm run check:parallel` runs exactly the work `pnpm run check` runs and reaches the same
+verdict, but builds once and then runs the lint, every package's typecheck and every package's
+test suite as concurrent processes instead of one after another. Measured on a twelve-core
+machine over three alternating runs on a clean tree: **93-97s for `pnpm -r build && pnpm run
+check`, 58-60s for `pnpm run check:parallel`.** Both gates time themselves, so run them on the
+machine you actually have rather than trusting those numbers.
+
+Use it as the pre-push gate. `pnpm run check` stays the reference: **if the two ever disagree,
+the serial one is right and the parallel one has a bug.** Say so in an issue rather than working
+around it.
+
+Two things about it are worth knowing:
+
+- **It sizes itself to your machine.** Concurrency comes from `os.availableParallelism()` less a
+  small reserve, temp directories come from `mkdtemp`, and each shard gets its own `TMPDIR` so
+  suites that write scratch files cannot land on each other. Nothing about it is tuned to one
+  laptop — `node scripts/check-parallel.mjs --list` prints the plan it derived for yours.
+- **A short quarantine list runs serially at the end.** These are tests whose assertions are
+  about elapsed wall-clock time — a real HTTP round trip inside a fixed `waitFor` budget — and
+  running twelve processes at once is the one thing that genuinely changes that. They still run,
+  still count, and still turn the gate red. The list is in `scripts/check-parallel.mjs` and every
+  entry names the timing dependency that put it there. It is not a skip list, and "it was flaky"
+  is not a reason to add to it.
+
 ### The checks `pnpm run check` does not run
 
 These gates are outside the serial gate, each because it needs something `pnpm run check` cannot
@@ -298,8 +324,9 @@ put a secret, credential, IP address, or account ID in either one.
   what.
 - Anything that changes behaviour a document describes changes that document in the same pull
   request.
-- Run `pnpm run check` before pushing. If a package you did not touch is failing, say so
-  explicitly rather than silently working around it.
+- Run the gate before pushing — `pnpm run check:parallel` is the same work in appreciably less
+  time, and `pnpm run check` is the reference if the two ever disagree. If a package you did not
+  touch is failing, say so explicitly rather than silently working around it.
 - A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/`, `.agents/skills/`
   or `.pass-along/` runs typecheck, the unit tests, the secret scan and the browser suite, and
   nothing else. `UI (browser)` runs on **every** pull request regardless of paths — it is the

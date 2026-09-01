@@ -1,7 +1,7 @@
 ---
 KEY: pnpm-sdk-build-race
 DATE: 2026-08-21
-UPDATED: 2026-08-21
+UPDATED: 2026-09-01
 STATUS: active
 SOURCE: bd remember, migrated 2026-08-21
 ---
@@ -35,3 +35,24 @@ uncommitted source isn't something tooling alone can fully rule out.
 **For new packages:** a test-only package that resolves its dependencies from *source* rather than
 `dist/` is immune to this whole class of issue by construction. `provider-conformance` does this
 deliberately — see the comment in its `package.json`.
+
+## Amended 2026-09-01 (#307): a third failure mode the rename does not cover
+
+Everything above is about **readers of `dist/`**, and for them the atomic rename is a complete
+answer. It is not an answer for anything that **enumerates the repository**, because the scratch
+directories are real directories for the length of a compile:
+
+3. A walk of the source tree descends into `dist.build/` (or `dist.prev/`), collects paths, and
+   then throws `ENOENT` on reading one — because the build renamed the tree into place underneath
+   it. Nothing is wrong with the repository; the file it wanted still exists, under `dist/`.
+
+This showed up when `pnpm run check:parallel` began running package suites concurrently on
+purpose. `packages/core/src/ssh/routes.test.ts` walks the whole repository to prove
+`StrictHostKeyChecking=no` appears nowhere executable, and
+`packages/rockysurf/vitest.global-setup.ts` rebuilds the binary before that package's suite — so
+the walker met the builder. The skip list had `dist` but not the two transient names beside it.
+
+**The rule:** anything that walks the repository skips `dist.build` and `dist.prev` as well as
+`dist`. They are not merely uninteresting, like `node_modules`; they are *ephemeral*, and reading
+them is a race by construction. Both names are fixed on purpose (`scripts/build-package.mjs`
+explains why) so they can be skipped by name.
