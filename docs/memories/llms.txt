@@ -84,3 +84,6 @@
 - [surge-pack-image-budget](2026-09-01-surge-pack-image-budget.md): [active] Surge pack images are
   256×256 PNGs and the set must stay under the 512 KB bundle-assets test budget; resize with
   `sips -Z 256` before committing, and never fix a red test by raising the limit.
+- [run-pack-url-checker](2026-09-01-run-pack-url-checker.md): [active] Run `pnpm run check:pack-urls`
+  periodically and whenever creating a new official surge pack; it's deliberately non-gating, so it
+  only helps if actually run — treat failures as leads, not automatic reds.
