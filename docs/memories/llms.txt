@@ -81,3 +81,6 @@
   on rockysurf and rockysurf-shop (protect-main rulesets); the exact branch→PR→auto-merge commands,
   which four checks are required and why path-filtered jobs must never be, and the shop index bot's
   deploy-key bypass.
+- [surge-pack-image-budget](2026-09-01-surge-pack-image-budget.md): [active] Surge pack images are
+  256×256 PNGs and the set must stay under the 512 KB bundle-assets test budget; resize with
+  `sips -Z 256` before committing, and never fix a red test by raising the limit.
