@@ -30,6 +30,37 @@ function client(overrides: Partial<CoreClient> = {}): CoreClient {
 
 const ctx = (scopes: McpScope[], c: CoreClient = client()) => ({ client: c, scopes })
 
+/**
+ * A control plane that REMEMBERS WHAT IT WAS ASKED FOR (#277).
+ *
+ * `client()` above answers every path with the same canned object, which is exactly the shape
+ * that cannot see a wrong route: `stop_server` retargeted at `/terminate` returns the same
+ * `{ server: … }`, so every assertion downstream of it still holds while the default-scope,
+ * "reversible, disk preserved" tool destroys machines. This one records instead, so the tests
+ * below can assert the URL rather than only the reply.
+ *
+ * `routes` maps a path to what a GET of it returns; anything unlisted gets the canned server,
+ * as before. Costs are always answered, because every tool appends cost context.
+ */
+function recording(routes: Record<string, unknown> = {}) {
+  const gets: string[] = []
+  const posts: Array<{ path: string; body: unknown }> = []
+  const c = client({
+    get: (async (path: string) => {
+      gets.push(path)
+      if (path === '/api/v1/costs') return COSTS
+      return path in routes ? routes[path] : { server: {} }
+    }) as CoreClient['get'],
+    post: (async (path: string, body?: unknown) => {
+      posts.push({ path, body })
+      return { server: { serverId: 'srv-abc' } }
+    }) as CoreClient['post'],
+  })
+  /** Every path this tool asked for that was not the cost sidecar. */
+  const reads = () => gets.filter((p) => p !== '/api/v1/costs')
+  return { client: c, gets, posts, reads }
+}
+
 describe('scopes', () => {
   it('advertises only the tools this installation granted', () => {
     // A tool an agent cannot call should not be dangled in front of it.
@@ -77,6 +108,80 @@ describe('scopes', () => {
     const names = visibleTools(['read', 'stop']).map((t) => t.name)
     expect(names).not.toContain('create_server')
     expect(names).not.toContain('terminate_server')
+  })
+})
+
+/**
+ * THE ROUTE EACH TOOL CALLS, PINNED (#277).
+ *
+ * This file's tools are a translation layer, so the translation IS the behaviour — and until
+ * these tests existed the whole of it was unasserted for every tool but create. The mutation
+ * that survived the suite: swap `/stop` for `/terminate` in `stop_server` and nothing goes red,
+ * because the stub answers any path with the same canned server. `stop` is one of only two
+ * actions the DEFAULT scope set grants an agent, so that mutation ships an installation whose
+ * "pause spend, disk preserved" button destroys machines.
+ *
+ * Each assertion below is the whole call list, not a `toContain`: a tool that posts to the right
+ * route AND a second one is also wrong, and that is the shape a copy-paste edit produces.
+ */
+describe('the route each tool calls', () => {
+  it('stop_server posts to the stop route, and to nothing else', async () => {
+    const { client: c, posts } = recording()
+    await runTool('stop_server', { server_id: 'srv-9f2c1d3b4a5e' }, ctx(['stop'], c))
+    expect(posts).toEqual([{ path: '/api/v1/servers/srv-9f2c1d3b4a5e/stop', body: undefined }])
+  })
+
+  it('terminate_server posts to the terminate route, and to nothing else', async () => {
+    const { client: c, posts } = recording()
+    await runTool('terminate_server', { server_id: 'srv-9f2c1d3b4a5e' }, ctx(['terminate'], c))
+    expect(posts).toEqual([{ path: '/api/v1/servers/srv-9f2c1d3b4a5e/terminate', body: undefined }])
+  })
+
+  it('create_server posts to the collection route', async () => {
+    const { client: c, posts } = recording()
+    await runTool('create_server', { size: 'small' }, ctx(['create'], c))
+    expect(posts.map((p) => p.path)).toEqual(['/api/v1/servers'])
+  })
+
+  it('list_offerings reads the provider catalogue route', async () => {
+    // The tool's whole job is to serve back what `/api/v1/providers` narrows; pointed anywhere
+    // else it would answer with something the create path never agreed to.
+    const { client: c, reads } = recording({ '/api/v1/providers': [] })
+    await runTool('list_offerings', {}, ctx(['read'], c))
+    expect(reads()).toEqual(['/api/v1/providers'])
+  })
+
+  it('list_servers asks for terminated rows only when the agent did', async () => {
+    // snake_case argument, camelCase query string — the same translation `createAnyway` gets,
+    // and unpinned it could send `include_terminated=true`, which core ignores silently.
+    const { client: c, reads } = recording({ '/api/v1/servers': [] })
+    await runTool('list_servers', {}, ctx(['read'], c))
+    expect(reads()).toEqual(['/api/v1/servers'])
+
+    const withTerminated = recording({ '/api/v1/servers?includeTerminated=true': [] })
+    await runTool('list_servers', { include_terminated: true }, ctx(['read'], withTerminated.client))
+    expect(withTerminated.reads()).toEqual(['/api/v1/servers?includeTerminated=true'])
+  })
+
+  it('get_server and get_ssh_command read the server the agent named', async () => {
+    // Not a formality: the stub used to answer every path with the same record, so a tool that
+    // fetched `srv-one` while the agent asked about `srv-two` looked correct — the asserted ssh
+    // command is built from the id in the ARGUMENTS, and only the address comes from the reply.
+    // Two servers with two addresses is what tells them apart.
+    const two = {
+      '/api/v1/servers/srv-one': { server: { publicIp: '10.0.0.1', sshUser: 'rocky', status: 'running' } },
+      '/api/v1/servers/srv-two': { server: { publicIp: '10.0.0.2', sshUser: 'rocky', status: 'running' } },
+    }
+    const forGet = recording(two)
+    await runTool('get_server', { server_id: 'srv-two' }, ctx(['read'], forGet.client))
+    expect(forGet.reads()).toEqual(['/api/v1/servers/srv-two'])
+
+    const forSsh = recording(two)
+    const result = (await runTool('get_ssh_command', { server_id: 'srv-two' }, ctx(['read'], forSsh.client))) as {
+      command: string
+    }
+    expect(forSsh.reads()).toEqual(['/api/v1/servers/srv-two'])
+    expect(result.command).toBe('ssh -i ~/.rockysurf/keys/srv-two.pem rocky@10.0.0.2')
   })
 })
 
@@ -503,6 +608,156 @@ describe('the spend cap, against a real control plane', () => {
       // Spend is still measured and reported; there is simply nothing configured to refuse.
       expect(second.spend.monthToDateByCurrency['USD']).toBeCloseTo(0.01, 4)
       expect(second.spend.cap).toBeNull()
+    } finally {
+      await booted.close()
+    }
+  })
+})
+
+/**
+ * STOP AND TERMINATE, AGAINST A REAL CONTROL PLANE (#277).
+ *
+ * The recording stub above pins the URL string. This pins what the URL DOES — the tools are
+ * driven against a real booted core, real routes, a real lifecycle, and the assertion is the
+ * row's status afterwards. It is the leg that would still fail if core renamed a route, or if
+ * `/stop` and `/terminate` were ever wired to the same handler: a suite that only compares a
+ * string to a string agrees with itself.
+ *
+ * `create` and `list` already had this treatment; these two are the pair that did not, and one
+ * of them is in the default scope set.
+ */
+describe('stop and terminate, against a real control plane', () => {
+  const dirs: string[] = []
+
+  afterAll(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function bootCore() {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-mcp-lifecycle-'))
+    dirs.push(dir)
+    const configPath = join(dir, 'rockysurf.config.yaml')
+    writeFileSync(configPath, `server:\n  dataDir: ${join(dir, 'data')}\nlimits:\n  maxServers: 5\n`)
+
+    const booted = await boot({
+      argv: ['--config', configPath],
+      listen: false,
+      announce: () => {},
+      log: () => {},
+      providers: () => new ProviderRegistry([makeFakeProvider()]),
+    })
+    const [admin] = booted.db.sqlite.prepare('SELECT id FROM users WHERE is_admin = 1 LIMIT 1').all() as { id: string }[]
+    const { token } = issueSession(booted.db.db, admin!.id)
+    const client = createCoreClient({
+      baseUrl: 'http://core.test',
+      token,
+      fetchImpl: ((input: string, init?: RequestInit) => booted.app.request(input, init)) as unknown as typeof fetch,
+    })
+    return { booted, client }
+  }
+
+  const SCOPES: McpScope[] = ['read', 'create', 'stop', 'terminate']
+
+  const statusOf = (booted: Awaited<ReturnType<typeof bootCore>>['booted'], serverId: string) =>
+    (booted.db.sqlite.prepare('SELECT status FROM servers WHERE id = ?').get(serverId) as { status: string }).status
+
+  /**
+   * The one fabricated fact, and the same one the cap tests fabricate: core promotes a row to
+   * `running` when its on-box bootstrap reports ready, and no box is booting here. Everything
+   * after this line is the product's own — stop refuses a row that is not `running`.
+   */
+  function reportsReady(booted: Awaited<ReturnType<typeof bootCore>>['booted'], serverId: string): void {
+    booted.db.sqlite
+      .prepare("UPDATE servers SET status = 'running', provisioning_step = 'ready' WHERE id = ?")
+      .run(serverId)
+  }
+
+  async function createRunning(
+    booted: Awaited<ReturnType<typeof bootCore>>['booted'],
+    client: CoreClient,
+    name: string,
+  ): Promise<string> {
+    const created = (await runTool('create_server', { size: 'small', name }, { client, scopes: SCOPES })) as {
+      server: { serverId: string }
+    }
+    reportsReady(booted, created.server.serverId)
+    return created.server.serverId
+  }
+
+  it('stop_server stops the box and preserves it, which is what its description promises', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const serverId = await createRunning(booted, client, 'to-stop')
+
+      const stopped = (await runTool('stop_server', { server_id: serverId }, { client, scopes: SCOPES })) as {
+        server: { serverId: string; status: string }
+      }
+
+      // Stopped, not destroyed. A `stop_server` pointed at `/terminate` reaches this line with
+      // `terminated` — the whole reason this test exists.
+      expect(stopped.server.serverId).toBe(serverId)
+      expect(stopped.server.status).toBe('stopped')
+      expect(statusOf(booted, serverId)).toBe('stopped')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('stops the box the agent named and leaves the other one running', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const target = await createRunning(booted, client, 'target')
+      const bystander = await createRunning(booted, client, 'bystander')
+
+      await runTool('stop_server', { server_id: target }, { client, scopes: SCOPES })
+
+      expect(statusOf(booted, target)).toBe('stopped')
+      expect(statusOf(booted, bystander)).toBe('running')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('terminate_server destroys the box, and says so twice without a conflict', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const serverId = await createRunning(booted, client, 'to-terminate')
+
+      const terminated = (await runTool('terminate_server', { server_id: serverId }, { client, scopes: SCOPES })) as {
+        server: { status: string }
+      }
+      expect(terminated.server.status).toBe('terminated')
+      expect(statusOf(booted, serverId)).toBe('terminated')
+
+      // The description promises a retry is safe. An agent that lost a response retries, and a
+      // 409 there would send it looking for a machine that no longer exists.
+      const again = (await runTool('terminate_server', { server_id: serverId }, { client, scopes: SCOPES })) as {
+        server: { status: string }
+      }
+      expect(again.server.status).toBe('terminated')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it("passes core's refusal back when the box is in no state to be stopped", async () => {
+    const { booted, client } = await bootCore()
+    try {
+      // Still provisioning: never marked ready, so core refuses rather than stopping a box
+      // mid-bootstrap. The agent needs the reason, not "request failed".
+      const created = (await runTool('create_server', { size: 'small' }, { client, scopes: SCOPES })) as {
+        server: { serverId: string }
+      }
+      const error = (await runTool('stop_server', { server_id: created.server.serverId }, {
+        client,
+        scopes: SCOPES,
+      }).catch((e: unknown) => e)) as Error
+
+      const payload = JSON.parse(error.message) as Record<string, unknown>
+      expect(payload['refused']).toBe(true)
+      expect(String(payload['message'])).toContain('not running')
+      // And the box was left alone rather than half-acted-on.
+      expect(statusOf(booted, created.server.serverId)).toBe('provisioning')
     } finally {
       await booted.close()
     }
