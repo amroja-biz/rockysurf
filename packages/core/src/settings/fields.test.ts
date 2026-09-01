@@ -140,6 +140,44 @@ describe('the inventory is internally consistent', () => {
       }
     }
   })
+
+  /**
+   * THE ADD BUTTON'S VALUE HAS TO PARSE (issue #302 follow-up).
+   *
+   * `blank` is what the page writes into the file the moment somebody presses Add, so a blank
+   * the schema refuses is an Add button that cannot be used — discovered by the operator, on
+   * their own config file, as a failed save. It is a claim about `config/schema.ts`, so it is
+   * checked against `config/schema.ts` rather than eyeballed.
+   */
+  it('offers a new-entry shape the config schema actually accepts', () => {
+    for (const list of SETTINGS_LISTS) {
+      if (!list.blank) continue
+      const segments = list.path.split('.')
+      // The document that has this one list, with the blank as its only entry.
+      const document = segments.reduceRight<unknown>((inner, key) => ({ [key]: inner }), [list.blank])
+      expect(
+        () => configSchema.parse(document),
+        `${list.path}'s blank is not a value the schema accepts, so its Add button writes an unsaveable entry`,
+      ).not.toThrow()
+    }
+  })
+
+  it('names an item field that exists as the label for every list', () => {
+    for (const list of SETTINGS_LISTS) {
+      const label = list.labelField ?? list.itemFields[0]!
+      expect(list.itemFields, `${list.path}'s labelField names no item field`).toContain(label)
+      expect(list.empty.length, `${list.path} has no sentence for when it is empty`).toBeGreaterThan(24)
+    }
+  })
+
+  /**
+   * Only `github.tokens` may decline to be added to, and it has to keep earning that: a list
+   * without a blank has no Add button on the page, which is a dead end unless something else
+   * on that section collects the entry instead.
+   */
+  it('lets only the token list opt out of a generic Add', () => {
+    expect(SETTINGS_LISTS.filter((l) => !l.blank).map((l) => l.path)).toEqual(['github.tokens'])
+  })
 })
 
 /**

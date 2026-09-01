@@ -6,6 +6,21 @@ Accepted — 2026-09-01. Issue #302. Applies [ADR-0017](0017-settings-apply-on-s
 save-and-it-applies contract to a new config block, and adds nothing to the create path
 [ADR-0008](0008-supplied-key-retires-managed-key.md) froze.
 
+**Amended 2026-09-01, same day, after PR #303 shipped a broken editor.** Clause 1 said this
+list reused the Settings page's existing list machinery. There was no such machinery: `view.lists`
+was served by core and *never read by the page*, and every list on that page existed only because
+somebody had hand-written a block for it, keyed by section id. The `ssh.keys` card worked in
+tests — which populated the list — and, on the owner's install, drew its two section headings
+from core's inventory and no controls at all: two boxes of prose and no way to add a key.
+
+The amendment makes the original claim true rather than working around it. The page now renders
+**any list core declares** from `view.lists`, `SETTINGS_LISTS` gains the `blank`/`labelField`/
+`empty` a generic renderer needs (the new-entry shape is a claim about the schema, so it belongs
+to core and is parsed through `configSchema` in `fields.test.ts`), `ssh.keys` has **no**
+hand-written block so the generic path is exercised by the product rather than only by a test,
+and a card that would draw a heading and nothing else now says so instead of implying an editor
+that is not there. See "The editor that was not there", below.
+
 ## Context
 
 The New Server page has taken a pasted SSH public key since the rewrite: one textarea, one
@@ -116,6 +131,30 @@ on one line.
 - **Risk:** the picker silently stops being wired up, leaving an empty menu everywhere.
   **Mitigation:** `servers/saved-ssh-keys.test.ts` drives the real `createApp` rather than the
   handler, which is the whole-boot rule in `CONTRIBUTING.md`.
+
+## The editor that was not there
+
+The failure is worth writing down, because the tests that missed it were not weak — they were
+pointed at the wrong state.
+
+`SettingsPage.tsx` draws a list from a hand-written entry in one `handWritten` record keyed by
+section id. `view.lists` — core's declaration of which paths are lists and what an entry is made
+of — was served from the day the editor was built and read by nothing. So the page's contract was
+really "core may add a FIELD and it renders (`humanize` says so in its own comment); core may add
+a LIST and it renders only if somebody also edits this file". Nothing said that out loud, and the
+`ssh.keys` PR claimed the opposite in its own description.
+
+Three things then lined up. The section headings and their help come from core over the wire, so
+the tab looked populated. Every field the section covers is a `*` pattern, and `*` paths are
+excluded from `leftovers` — correctly, since a pattern is a shape and not a setting — so the
+fallback that catches an unknown FIELD could not catch this. And the wiring test seeded the list
+with an entry, so it exercised the one state in which a missing Add button is invisible: the
+entries rendered from the hand-written block, and an empty list — the state every installation
+starts in — was never asked about.
+
+The fix is the generic renderer. The guard is three tests: the empty list and the absent `ssh:`
+block, a list core declares that the page has never heard of, and a sweep of every tab asserting
+that no card is help text with no controls. That last one fails on the shipped page.
 
 ## Deliberately unresolved
 
