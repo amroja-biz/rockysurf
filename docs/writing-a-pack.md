@@ -528,7 +528,7 @@ before assuming a bare install does what this section says.
 
 ### 2. GitHub release assets only: the pin and the digest stay
 
-`beads`, `agent-deck`, `beads-viewer`, `dolt` and `gt` are pinned to a tag and verified against a
+`beads`, `beads-viewer`, `dolt` and `gt` are pinned to a tag and verified against a
 `sha256`, and **they must stay that way.** This is not an oversight for somebody to tidy up
 later, so read this paragraph before you "fix" one of them.
 

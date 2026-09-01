@@ -22,7 +22,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - agent-deck
     - beads-viewer
     - dolt
     - claude-code
