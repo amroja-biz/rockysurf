@@ -444,8 +444,8 @@ informed choice rather than a hidden one.
 
 ## The MCP server: threat model
 
-The MCP server (`rockysurf mcp`) lets a coding agent create, inspect, stop and destroy servers
-that cost real money. It is the highest-blast-radius feature in v0.1. The accurate claim is
+The MCP server (`rockysurf mcp`) lets a coding agent create, inspect, stop, start and destroy
+servers that cost real money. It is the highest-blast-radius feature in v0.1. The accurate claim is
 "budget-capped", **not** "sandboxed".
 
 ### Setting it up, and where the security decision actually is
@@ -499,8 +499,19 @@ granted — an attacker can destroy every server in this installation and spend 
 configured monthly cap creating new ones, at no more than `createRatePerHour` per hour. It
 cannot read any stored secret, cannot obtain an SSH private key, cannot reach a cloud account
 beyond what the configured provider credential allows, and cannot exceed those limits by any
-MCP-shaped route.** With the default scopes (`read`, `stop`), it can list servers and stop them
-— reversible, disk preserved — and nothing else.
+MCP-shaped route.** With the default scopes (`read`, `stop`), it can list servers, stop them —
+reversible, disk preserved — and start them again, and nothing else.
+
+**What `start` adds to the default scopes, stated plainly (#278).** An agent holding `read` and
+`stop` can restart a box a human deliberately stopped, and hourly billing resumes. It is bounded
+by the fleet that already exists — starting creates nothing and cannot exceed `limits.maxServers`
+— but it is **not** bounded by `limits.spendCap`, which core enforces on the create path only
+(`checkLimits` is called from `lifecycle.create` and nowhere else). The spend is still measured,
+and every MCP result carries the cap reading, so an agent over its cap can see that it is; it is
+not refused by one. The scope is `stop` rather than a fourth knob because stop and start are one
+action's two halves: the permission to pause spend is the permission to resume what it paused,
+and an operator who granted `stop` had until now given an agent a box it could switch off and not
+back on.
 
 Everything below it is why each half of that statement holds.
 
@@ -544,8 +555,9 @@ someone into setting; config is where an operator reviews it.
 
 | Tool | Scope | Reversible? |
 |---|---|---|
-| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings` | `read` | reads only |
-| `stop_server` | `stop` | yes — disk preserved, start it again |
+| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs` | `read` | reads only |
+| `stop_server` | `stop` | yes — disk preserved, `start_server` brings it back |
+| `start_server` | `stop` | yes — `stop_server` pauses it again; resumes hourly billing |
 | `create_server` | `create` | spends money until stopped or terminated |
 | `terminate_server` | `terminate` | **no** — the disk goes with it |
 

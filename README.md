@@ -206,7 +206,8 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,
 no multi-tenancy. `rockysurf mcp` exposes the lifecycle as MCP tools, so an agent can create,
-inspect, stop and destroy its own boxes (`create` and `terminate` are separate opt-in scopes).
+inspect, stop, start and destroy its own boxes (`create` and `terminate` are separate opt-in
+scopes).
 
 ## License
 

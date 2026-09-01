@@ -92,8 +92,9 @@ export function HelpPage() {
             <p>
               Nothing in that JSON grants a permission. What the agent may do comes from{' '}
               <code>mcp.scopes</code> in your config file, and defaults to <code>[read, stop]</code>{' '}
-              — <code>create</code> and <code>terminate</code> are separate opt-ins, because making
-              a box costs money and destroying one costs work.
+              — <code>stop</code> lets an agent both pause a box and start it again, while{' '}
+              <code>create</code> and <code>terminate</code> are separate opt-ins, because making a
+              box costs money and destroying one costs work.
             </p>
           </div>
           <div>
