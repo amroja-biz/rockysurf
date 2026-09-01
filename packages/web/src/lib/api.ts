@@ -670,6 +670,27 @@ export async function listProviders(): Promise<ProviderInfo[]> {
   return request<ProviderInfo[]>('/providers')
 }
 
+/**
+ * One SSH public key saved by name in Settings (issue #302).
+ *
+ * `publicKey` is the whole `authorized_keys` line, not a reference to one, and the create form
+ * posts it in the same `sshPublicKey` field a pasted key goes in — the picker is a way to fill
+ * that box, not a second way to authorize a key. Nothing here is secret: a public key is handed
+ * to a cloud provider in the clear on every create.
+ *
+ * NOT ridden along with `listProviders` the way `tierPreferences` is, because it is not a
+ * property of a cloud: the same keys are offered whichever provider is selected, and hanging
+ * them off each provider would mean the page holding four copies of one list.
+ */
+export interface SavedSshKey {
+  name: string
+  publicKey: string
+}
+
+export async function listSshKeys(): Promise<SavedSshKey[]> {
+  return request<SavedSshKey[]>('/ssh-keys')
+}
+
 /* ------------------------------------------------------------------------ packs & tools */
 
 export interface SurgePackTool {

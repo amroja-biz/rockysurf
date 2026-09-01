@@ -35,6 +35,15 @@ refuses to store them, rather than merely abstaining:
 - **The admin password.** Only its scrypt hash is stored.
 - **The master key itself**, when supplied as `ROCKYSURF_SECRET_KEY` — nothing is written to
   disk in that case.
+- **Your own SSH private keys.** `ssh.keys` in the config file saves PUBLIC halves by name, so
+  the New Server page can offer them (issue #302). A public key is published material — it is
+  handed to your cloud provider in the clear on every create and written into `authorized_keys`
+  on the box — so it is stored in the config file in plain text, deliberately, and is not
+  encrypted, not masked on the settings page, and not a secret kind above. The parser
+  `packages/core/src/ssh/public-key.ts` **refuses** anything containing `PRIVATE KEY`, at the
+  settings save and at create time both, so the config file cannot come to hold the other half
+  by accident. This adds no credential-storage path: a public key authenticates nobody and
+  unlocks nothing.
 
 ## Reporting a vulnerability
 

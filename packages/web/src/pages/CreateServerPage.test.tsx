@@ -128,6 +128,10 @@ beforeEach(() => {
   // The picker's endpoint (rockysurf-mh8f). Empty by default, which is the "nothing configured"
   // installation — and the state in which this page must look exactly as it did before.
   vi.spyOn(api, 'listConfiguredScopes').mockResolvedValue([])
+  // The saved-key picker's endpoint (issue #302). Empty by default, which is the installation
+  // that has never saved a key — and the state in which the SSH fieldset must look and behave
+  // exactly as it did before the picker existed.
+  vi.spyOn(api, 'listSshKeys').mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -2073,5 +2077,122 @@ describe('an environment the creator types (issue #197)', () => {
     renderPage()
     await screen.findByLabelText(/startup script/i)
     expect(screen.getByText(/put passwords and tokens in Environment above/i)).toBeTruthy()
+  })
+})
+
+/**
+ * THE SAVED PUBLIC KEYS (issue #302).
+ *
+ * The feature is a convenience over a field that already worked, so the first thing pinned here
+ * is that the field still works — untouched, on an installation with nothing saved, which is
+ * every installation until somebody saves something. The rest is the picker: what it offers,
+ * what it puts on the wire (the key, never the name), and its refusal of the private half.
+ */
+describe('choosing a saved SSH public key', () => {
+  const LAPTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'
+  const DESKTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8PPVoO7JVYqvvUEvFI0pOx1WLQO0k desktop'
+
+  const chooseOwnKey = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByRole('radio', { name: /use my own public key/i })
+    await user.click(screen.getByRole('radio', { name: /use my own public key/i }))
+  }
+
+  it('shows no picker at all when nothing has been saved', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    // Not an empty menu, and not a control whose only message is "you have not used this yet":
+    // the fieldset is exactly what it was before this feature existed.
+    expect(screen.queryByLabelText(/^public key$/i)).toBeNull()
+    expect(screen.getByLabelText(/ssh public key/i)).toBeTruthy()
+  })
+
+  it('offers the saved keys by name, and preselects the only one', async () => {
+    vi.mocked(api.listSshKeys).mockResolvedValue([{ name: 'laptop', publicKey: LAPTOP }])
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    const picker = (await screen.findByLabelText(/^public key$/i)) as HTMLSelectElement
+    expect(picker.value).toBe('laptop')
+    // One saved key is not a choice, so the paste box gets out of the way.
+    expect(screen.queryByLabelText(/ssh public key/i)).toBeNull()
+  })
+
+  it('sends the KEY, not the name it was chosen by', async () => {
+    vi.mocked(api.listSshKeys).mockResolvedValue([{ name: 'laptop', publicKey: LAPTOP }])
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+    await screen.findByLabelText(/^public key$/i)
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    // Core stores the `authorized_keys` line on the row, so a create is answerable to the key it
+    // authorized rather than to a Settings entry somebody may edit tomorrow.
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].sshPublicKey).toBe(LAPTOP)
+  })
+
+  it('preselects nothing when there are several, and sends the one picked', async () => {
+    vi.mocked(api.listSshKeys).mockResolvedValue([
+      { name: 'laptop', publicKey: LAPTOP },
+      { name: 'desktop', publicKey: DESKTOP },
+    ])
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    // Picking the first for them would authorize a key they never looked at.
+    const picker = (await screen.findByLabelText(/^public key$/i)) as HTMLSelectElement
+    expect(picker.value).toBe('')
+    await user.selectOptions(picker, 'desktop')
+
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].sshPublicKey).toBe(DESKTOP)
+  })
+
+  it('still lets a key be pasted, with saved keys on offer', async () => {
+    vi.mocked(api.listSshKeys).mockResolvedValue([{ name: 'laptop', publicKey: LAPTOP }])
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    await user.selectOptions(await screen.findByLabelText(/^public key$/i), '')
+    await user.type(screen.getByLabelText(/ssh public key/i), DESKTOP)
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].sshPublicKey).toBe(DESKTOP)
+  })
+
+  it('refuses a PRIVATE key before it reaches the network, and says to rotate it', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    await user.type(screen.getByLabelText(/ssh public key/i), '-----BEGIN OPENSSH PRIVATE KEY----- b3Bl')
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    expect(await screen.findByText(/PRIVATE key/)).toBeTruthy()
+    expect(screen.getByText(/rotate the key you just copied/i)).toBeTruthy()
+    expect(api.createServer).not.toHaveBeenCalled()
+  })
+
+  it('carries on with the paste box when the saved keys cannot be read', async () => {
+    // Advisory, like the repository picker's scopes: a failed read costs the convenience, not
+    // the form.
+    vi.mocked(api.listSshKeys).mockRejectedValue(new Error('nope'))
+    const user = userEvent.setup()
+    renderPage()
+    await chooseOwnKey(user)
+
+    expect(screen.queryByLabelText(/^public key$/i)).toBeNull()
+    await user.type(screen.getByLabelText(/ssh public key/i), LAPTOP)
+    await user.click(screen.getByRole('button', { name: /create server/i }))
+
+    await waitFor(() => expect(api.createServer).toHaveBeenCalled())
+    expect(vi.mocked(api.createServer).mock.calls[0]?.[0].sshPublicKey).toBe(LAPTOP)
   })
 })

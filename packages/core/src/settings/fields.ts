@@ -378,6 +378,44 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
       'above is the narrowest thing that works here.',
   },
 
+  /* ------------------------------------------------------------------------------ ssh */
+  /**
+   * YOUR OWN SSH PUBLIC KEYS, SAVED BY NAME (issue #302).
+   *
+   * A list, so the page draws it as a card with Add and Remove — the same machinery
+   * `registry.sources` and `providers.byo.hosts` use, and the reason no line of
+   * `SettingsPage.tsx` changed to add this. Both fields are plain strings: a public key is
+   * published material, `kind: 'secret'` would be a lie about what it is, and the redaction
+   * that classification triggers would hide from an operator the one value they need to be
+   * able to proof-read against `~/.ssh/*.pub`.
+   *
+   * `SECRET_KEY_NAME` already leaves `sshPublicKey` alone and says why in its own comment, so
+   * the backstop agrees with the classification rather than fighting it.
+   */
+  {
+    path: 'ssh.keys.*.name',
+    kind: 'string',
+    writable: true,
+    appliesAt: 'save',
+    help:
+      'What you will call this public key when the New Server page offers it — `laptop`, ' +
+      '`work desktop`, `yubikey`. It is a label for you, and nothing on a box ever sees it.',
+  },
+  {
+    path: 'ssh.keys.*.publicKey',
+    kind: 'string',
+    writable: true,
+    appliesAt: 'save',
+    help:
+      'The PUBLIC key itself: one line, the whole contents of a `.pub` file — run ' +
+      '`cat ~/.ssh/id_ed25519.pub` and paste what it prints. It must start with `ssh-ed25519`, ' +
+      '`ssh-rsa` or `ecdsa-sha2-…`.',
+    warning:
+      'The PUBLIC half only. Never paste a private key here — the file WITHOUT `.pub`, whose ' +
+      'contents say `PRIVATE KEY`. Rocky Surf refuses one and will not save it, but a private key ' +
+      'that has been copied out of `~/.ssh` should be rotated whether or not anything stored it.',
+  },
+
   /* ----------------------------------------------------------------------- providers */
   {
     path: 'providers.hetzner.enabled',
@@ -804,6 +842,25 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'which covers everything else. Every entry is instance-wide: scoping one narrows what it is ' +
       'used FOR, not who receives it.',
   },
+  /**
+   * A TAB, with its keys as a card on it — the nesting `registry`/`registry.sources` uses, for
+   * the same reason: there is one subject here, and the list is what the subject consists of.
+   */
+  {
+    id: 'ssh',
+    title: 'SSH public keys',
+    help:
+      'Public keys you reuse, saved by name so the New Server page can offer them instead of you ' +
+      'fetching a `.pub` file every time. Saving one here changes nothing on any box that already ' +
+      'exists, and you can still paste a key on the New Server page without saving it.',
+  },
+  {
+    id: 'ssh.keys',
+    title: 'Your public keys',
+    help:
+      'Each one is a name and the PUBLIC half of a keypair — never the private half. Removing a key ' +
+      'here does not remove it from boxes it was already authorized on; those you change over SSH.',
+  },
   {
     id: 'providers.hetzner',
     title: 'Hetzner',
@@ -911,6 +968,7 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
  */
 export const SETTINGS_LISTS: readonly { path: string; itemFields: readonly string[] }[] = [
   { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'] },
+  { path: 'ssh.keys', itemFields: ['name', 'publicKey'] },
   { path: 'providers.byo.hosts', itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'] },
   { path: 'registry.sources', itemFields: ['name', 'url', 'trust'] },
 ] as const

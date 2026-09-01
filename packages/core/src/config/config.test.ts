@@ -1166,3 +1166,74 @@ preferences:
     expect(config.preferences.tiers.gcp.large).toBe('c4a-standard-4')
   })
 })
+
+/**
+ * SAVED SSH PUBLIC KEYS (issue #302).
+ *
+ * The list is a convenience, but its validator is not: this is the file's own refusal of a
+ * private key, which is the mistake the feature makes easy to make. It runs the same parser the
+ * create path runs, so a key that saves here is a key that launches.
+ */
+describe('saved SSH public keys (issue #302)', () => {
+  const LAPTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'
+
+  it('defaults to an empty list, so an installation that never used it is unaffected', () => {
+    expect(configSchema.parse({}).ssh.keys).toEqual([])
+  })
+
+  it('reads a name and a public key', () => {
+    const config = parseConfig(`ssh:\n  keys:\n    - name: laptop\n      publicKey: "${LAPTOP}"\n`, 'test.yaml', {})
+    expect(config.ssh.keys).toEqual([{ name: 'laptop', publicKey: LAPTOP }])
+  })
+
+  it('accepts the section written bare, with every key commented out', () => {
+    // The `section()` trap and the `keys:`-parses-as-null trap, both of which mean "none".
+    expect(parseConfig('ssh:\n', 'test.yaml', {}).ssh.keys).toEqual([])
+    expect(parseConfig('ssh:\n  keys:\n', 'test.yaml', {}).ssh.keys).toEqual([])
+  })
+
+  it('REFUSES A PRIVATE KEY, and the file says which half to paste instead', () => {
+    let message = ''
+    try {
+      parseConfig(
+        'ssh:\n  keys:\n    - name: oops\n      publicKey: "-----BEGIN OPENSSH PRIVATE KEY----- b3Bl"\n',
+        'test.yaml',
+        {},
+      )
+    } catch (err) {
+      message = (err as Error).message
+    }
+    expect(message).toMatch(/PRIVATE key/)
+    expect(message).toMatch(/\.pub/)
+    expect(message).toMatch(/ssh\.keys/)
+  })
+
+  it('refuses a key that is not a public key at all', () => {
+    expect(() => parseConfig('ssh:\n  keys:\n    - name: x\n      publicKey: "hello"\n', 'test.yaml', {})).toThrow(
+      ConfigError,
+    )
+  })
+
+  it('accepts an entry with no key typed in yet, because that is what Add writes', () => {
+    // The Settings page's Add button writes a blank entry before anyone types into it. A schema
+    // that refused one would make Add itself unsaveable; the New Server page skips these.
+    const config = parseConfig('ssh:\n  keys:\n    - name: not yet\n      publicKey: ""\n', 'test.yaml', {})
+    expect(config.ssh.keys[0]!.publicKey).toBe('')
+  })
+
+  it('refuses two keys sharing a name, since the name is how you pick one', () => {
+    expect(() =>
+      parseConfig(
+        `ssh:\n  keys:\n    - name: laptop\n      publicKey: "${LAPTOP}"\n    - name: laptop\n      publicKey: "${LAPTOP}"\n`,
+        'test.yaml',
+        {},
+      ),
+    ).toThrow(ConfigError)
+  })
+
+  it('refuses a key with an unknown field rather than ignoring it', () => {
+    expect(() =>
+      parseConfig(`ssh:\n  keys:\n    - name: laptop\n      privateKey: "${LAPTOP}"\n`, 'test.yaml', {}),
+    ).toThrow(ConfigError)
+  })
+})

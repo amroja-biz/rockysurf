@@ -289,6 +289,19 @@ export interface ServerRoutesDeps {
    * describes — the check would exist and never run.
    */
   checkTools?: (ids: string[]) => string | undefined
+  /**
+   * The public keys the operator saved by name in `ssh.keys` (issue #302).
+   *
+   * A FUNCTION, on the same discipline as `offeringAllowlist` and `tierPreference` above: the
+   * answer lives in the config file, which is re-read on every settings save (ADR-0017), so a
+   * key saved a moment ago has to be offered on the next page load without a restart — and the
+   * route must not grow the ability to read the config itself.
+   *
+   * Absent means "this installation has no saved-key list", which the route reports as an empty
+   * list. That is the honest answer for an app built without the hook: the picker simply has
+   * nothing to offer, and the paste box — which never depended on this — still works.
+   */
+  savedSshKeys?: () => readonly { name: string; publicKey: string }[]
 }
 
 /**
@@ -562,6 +575,32 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     )
     return success(c, providers)
   })
+
+  /**
+   * THE SAVED PUBLIC KEYS, for the New Server page's picker (issue #302).
+   *
+   * Beside `/api/v1/providers` rather than in `ssh/routes.ts`, and both halves of that are
+   * deliberate. This is the create form's option source, which is what that neighbour is; and
+   * `ssh/routes.ts` is the one file exempted from the custody rule in
+   * `secrets/route-inventory.test.ts`, so a route with nothing to do with key material has no
+   * business inside the exemption. It is also mounted unconditionally, where the SSH routes are
+   * mounted only when a secrets store exists — a picker that vanished with the secrets store
+   * would be a mystery for whoever hit it.
+   *
+   * NOT ADMIN-ONLY, and it does not need to be: a public key is published material, it is handed
+   * to a cloud provider in the clear on every create, and the person reading this route is the
+   * person about to be offered these keys on the form below it. Half-filled entries — a name
+   * added in Settings with no key typed in yet — are dropped here rather than offered as a
+   * choice that would fail at submit.
+   */
+  routes.get('/api/v1/ssh-keys', (c) =>
+    success(
+      c,
+      (deps.savedSshKeys?.() ?? [])
+        .filter((key) => key.publicKey.trim() !== '')
+        .map((key) => ({ name: key.name, publicKey: key.publicKey })),
+    ),
+  )
 
   routes.get('/api/v1/servers', async (c) => {
     try {

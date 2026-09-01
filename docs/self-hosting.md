@@ -194,8 +194,9 @@ into the CLI by any other route.
 Whichever way you started it, the web UI edits that same config file — the one an editor would
 open, comments and all — one section at a time: a column of tabs beside the form where the
 window is wide enough for one, the same tabs as a strip above it where it is not. The tabs are
-the file's own blocks — Server, GitHub access tokens, one per cloud provider, Your own machines,
-Limits, Preferences, MCP — and the open one is in the URL, so `/settings?section=providers.aws`
+the file's own blocks — Server, GitHub access tokens, SSH public keys, one per cloud provider,
+Your own machines, Limits, Preferences, MCP — and the open one is in the URL, so
+`/settings?section=providers.aws`
 is a link straight to the AWS settings and a reload comes back to the section you were on.
 
 What you type is held until you press **Save to the file**, wherever on the page you typed it.
@@ -465,6 +466,30 @@ rather than of Rocky Surf:
 not create — and the UI hides those buttons rather than offering them and failing.
 
 ## SSH access on a new server
+
+### Saving the keys you reuse
+
+If you authorize the same laptop on every box, save it once instead. The Settings page's **SSH
+public keys** tab keeps a list of name-and-key pairs, and the create form's "Use my own public
+key" option then offers that list — pick `laptop` rather than going to find
+`~/.ssh/id_ed25519.pub` again. One saved key is preselected; with several you choose, because
+preselecting one would authorize a key you had not looked at.
+
+**Pasting still works, and nothing about it changed.** "Paste a different public key…" is always
+in the list, it is the default whenever there is more than one saved key, and an installation
+that has saved none never sees a picker at all. What goes on the wire is the same either way:
+the key itself, never the name it was chosen by, so a server is answerable to the key it actually
+authorized and editing the list later cannot rewrite the history of a box.
+
+**Public halves only, and this is enforced rather than requested.** Both the settings save and
+the create form refuse anything containing `PRIVATE KEY`, by name, before they complain about
+anything else — the mistake is a predictable one and "that is not a valid key" would be a useless
+thing to say about it. Saved keys live in `ssh.keys` in the config file in plain text, because a
+public key is published material and encrypting a copy of it would be theatre; see the inventory
+in [`SECURITY.md`](../SECURITY.md#what-is-stored-and-what-is-never-stored). Saving one takes
+effect at once — the next New Server page offers it, with no restart.
+
+Removing a key here changes nothing on a box it was already authorized on; that you do over SSH.
 
 The create form's "Use my own public key" option pastes your key onto the box — but it does not
 replace Rocky Surf's own generated key, it joins it, at first. Push-mode bootstrap installs

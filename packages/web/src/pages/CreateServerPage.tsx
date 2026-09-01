@@ -8,6 +8,7 @@ import {
   getSetupState,
   listConfiguredScopes,
   listProviders,
+  listSshKeys,
   listSurgePacks,
   resolveRepositories,
   getSettings,
@@ -18,6 +19,7 @@ import {
   type ProviderInfo,
   type ProviderSetupState,
   type RepositoryResolution,
+  type SavedSshKey,
   type SurgePack,
 } from '../lib/api'
 import {
@@ -390,6 +392,20 @@ export function CreateServerPage() {
   const [repoInput, setRepoInput] = useState('')
   const [sshKeyOption, setSshKeyOption] = useState<'generate' | 'provide'>('generate')
   const [sshPublicKey, setSshPublicKey] = useState('')
+  /**
+   * The public keys saved in Settings (issue #302), and which one is chosen.
+   *
+   * ADVISORY, like the token scopes above: the paste box has never needed this list and still
+   * does not, so a failed read costs the convenience and not the form.
+   *
+   * `savedKeyName` is `''` for "paste one instead", which is also what an installation with no
+   * saved keys is permanently in — the picker does not render at all there, and the fieldset is
+   * exactly what it was before this feature. The chosen key is resolved to its LINE at submit;
+   * the name never goes on the wire, because core stores the key and not a reference to one,
+   * and a name that outlived the key it pointed at would be a box authorized against nothing.
+   */
+  const [savedSshKeys, setSavedSshKeys] = useState<SavedSshKey[]>([])
+  const [savedKeyName, setSavedKeyName] = useState('')
   const [rdpPassword, setRdpPassword] = useState('')
   const [rdpPasswordConfirm, setRdpPasswordConfirm] = useState('')
   /**
@@ -477,7 +493,7 @@ export function CreateServerPage() {
     let cancelled = false
     async function load() {
       try {
-        const [providerList, packList, setup, tokenScopes] = await Promise.all([
+        const [providerList, packList, setup, tokenScopes, savedKeys] = await Promise.all([
           listProviders(),
           listSurgePacks(),
           // Advisory only, so a failure here must not take the form down with it: the page's
@@ -487,11 +503,19 @@ export function CreateServerPage() {
           // Also advisory, and for the same reason: the repository field is free text with or
           // without the picker, so a failed read costs a convenience and not the form.
           listConfiguredScopes().catch(() => []),
+          // Advisory for the third time (issue #302): the saved-key picker is a shortcut past
+          // the paste box, and the paste box works whether or not this read did.
+          listSshKeys().catch(() => []),
         ])
         if (cancelled) return
 
         setProviders(providerList)
         setScopes(tokenScopes)
+        setSavedSshKeys(savedKeys)
+        // Preselected when there is exactly one, on the same rule the provider list above uses:
+        // a menu with one item is not a choice. With several the person picks, because picking
+        // the first would authorize a key they did not look at.
+        if (savedKeys.length === 1) setSavedKeyName(savedKeys[0]!.name)
         setUnloadable((setup?.providers ?? []).filter((p) => p.enabled && !p.loaded))
         // Preselected ONLY when there is no choice to make. With several clouds loaded the
         // user picks one; the old `providerList[0]` was how a server silently landed on
@@ -533,6 +557,23 @@ export function CreateServerPage() {
 
   const provider = useMemo(() => providers.find((p) => p.id === providerId), [providers, providerId])
   const pack = useMemo(() => packs.find((p) => p.packId === packId), [packs, packId])
+
+  /**
+   * THE PUBLIC KEY THIS CREATE WILL AUTHORIZE — one value, whichever way it was supplied.
+   *
+   * The picker and the paste box are two ways to fill one field, not two fields, so everything
+   * downstream (the validation below, the submit, core, the box) sees a single string and has
+   * no idea which control produced it. That is what keeps a pasted key working exactly as it
+   * did: nothing was inserted into its path.
+   *
+   * A saved name that no longer matches anything — the key was removed in Settings in another
+   * tab while this form was open — resolves to `''` and is refused by the validation, rather
+   * than silently falling back to the paste box's contents or to no key at all.
+   */
+  const chosenPublicKey = useMemo(() => {
+    if (savedKeyName === '') return sshPublicKey.trim()
+    return savedSshKeys.find((k) => k.name === savedKeyName)?.publicKey ?? ''
+  }, [savedKeyName, savedSshKeys, sshPublicKey])
 
   /**
    * The two shelves (rockysurf-jn71). The same partition the admin Pack Shop already performs —
@@ -836,7 +877,24 @@ export function CreateServerPage() {
      * is malformed should not cost a round trip.
      */
     if (environment.errors.length > 0) return environment.errors[0]!
-    if (sshKeyOption === 'provide' && !sshPublicKey.trim()) return 'Paste your SSH public key, or let Rocky Surf generate one'
+    if (sshKeyOption === 'provide' && !chosenPublicKey) {
+      // Two ways to be empty, and they need different sentences: nothing pasted, or a saved key
+      // chosen that has since been removed in Settings.
+      return savedKeyName === ''
+        ? 'Paste your SSH public key, or let Rocky Surf generate one'
+        : `The saved public key "${savedKeyName}" is no longer in Settings — choose another, or paste one`
+    }
+    /*
+     * THE WRONG HALF OF THE KEYPAIR, caught in the browser (issue #302).
+     *
+     * Core refuses it too, and core's refusal is the one that matters — this is the same
+     * belt-and-braces the pack inputs above get. But a private key that has been pasted into a
+     * form has already left `~/.ssh`, and the sooner somebody is told to stop and rotate it the
+     * better; a round trip to find out is a round trip that puts it in one more request log.
+     */
+    if (sshKeyOption === 'provide' && /PRIVATE KEY/i.test(chosenPublicKey)) {
+      return 'That is a PRIVATE key. Paste the PUBLIC half instead — the file ending in .pub — and rotate the key you just copied.'
+    }
     return null
   }
 
@@ -881,7 +939,10 @@ export function CreateServerPage() {
         // pack declares: the box clones for any pack (issue #178).
         ...(repositories.length > 0 ? { repositories } : {}),
         ...(createAnyway ? { createAnyway: true } : {}),
-        ...(sshKeyOption === 'provide' ? { sshPublicKey: sshPublicKey.trim() } : {}),
+        // The KEY, never the name it was chosen by (issue #302): core stores the
+        // `authorized_keys` line on the row, so a create is answerable to the key it actually
+        // authorized rather than to a Settings entry that may be edited or removed later.
+        ...(sshKeyOption === 'provide' ? { sshPublicKey: chosenPublicKey } : {}),
         ...(requiresRdp ? { rdpPassword } : {}),
         // Trimmed, and omitted entirely when there is nothing but whitespace: an empty textarea
         // is not a request to run anything, and a `userScriptRunAs` with no script is a 400
@@ -1664,13 +1725,49 @@ export function CreateServerPage() {
           </label>
           {sshKeyOption === 'provide' && (
             <>
-              <textarea
-                aria-label="SSH public key"
-                rows={3}
-                value={sshPublicKey}
-                onChange={(e) => setSshPublicKey(e.target.value)}
-                placeholder="ssh-ed25519 AAAA… you@laptop"
-              />
+              {/*
+                THE SAVED KEYS (issue #302), and only when there are some.
+
+                An installation that has never saved one sees exactly the form it saw before —
+                no empty menu, no control whose only message is "you have not used this yet",
+                which is the rule `fields.ts` states for the Settings page and which applies
+                just as well here.
+
+                The picker WRITES NOTHING into the textarea below, and the textarea is hidden
+                while a saved key is selected. Copying the key into the box would invite an edit
+                that silently detaches it from the name above it; two controls that can disagree
+                about one value is how a person authorizes a key they did not mean to.
+              */}
+              {savedSshKeys.length > 0 && (
+                <div className="form-group">
+                  <label htmlFor="savedSshKey">Public key</label>
+                  <select
+                    id="savedSshKey"
+                    value={savedKeyName}
+                    onChange={(e) => setSavedKeyName(e.target.value)}
+                  >
+                    {savedSshKeys.map((key) => (
+                      <option key={key.name} value={key.name}>
+                        {key.name}
+                      </option>
+                    ))}
+                    <option value="">Paste a different public key…</option>
+                  </select>
+                  <p className="hint">
+                    Saved on the <Link to="/settings?section=ssh">Settings page</Link>. Public keys only — Rocky Surf
+                    never stores a private key.
+                  </p>
+                </div>
+              )}
+              {savedKeyName === '' && (
+                <textarea
+                  aria-label="SSH public key"
+                  rows={3}
+                  value={sshPublicKey}
+                  onChange={(e) => setSshPublicKey(e.target.value)}
+                  placeholder="ssh-ed25519 AAAA… you@laptop"
+                />
+              )}
               {/* Issue #41: the create form used to present these two options as mutually
                   exclusive. They are not — Rocky Surf's key is appended, never substituted,
                   because push-mode bootstrap installs everything over its own SSH connection.

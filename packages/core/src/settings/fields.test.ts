@@ -282,6 +282,8 @@ describe('every setting on the page explains itself', () => {
     expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
       'server',
       'github',
+      'ssh',
+      'ssh.keys',
       'providers.hetzner',
       'providers.aws',
       'providers.azure',

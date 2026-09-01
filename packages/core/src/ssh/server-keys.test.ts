@@ -200,6 +200,38 @@ describe('a user-supplied public key', () => {
     expect(() => normalizeUserPublicKey(`${USER_KEY}\r\nssh-ed25519 AAAA evil`)).toThrow(/single line/)
   })
 
+  /**
+   * THE WRONG HALF OF THE KEYPAIR (issue #302).
+   *
+   * Every other check here would refuse a private key too — it is multi-line, and `-----BEGIN`
+   * is not a key type — but they would refuse it with "public key must be a single line", which
+   * reads as a formatting complaint and invites the person to strip the newlines out and try
+   * their private key again on one line. So this refusal comes FIRST and says what is wrong,
+   * and these assertions are what stop a later edit from reordering the checks and quietly
+   * turning the sentence back into a formatting complaint.
+   */
+  it('refuses a PRIVATE key by name, before any check that would blame the formatting', () => {
+    const OPENSSH_PRIVATE = [
+      '-----BEGIN OPENSSH PRIVATE KEY-----',
+      'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gt',
+      '-----END OPENSSH PRIVATE KEY-----',
+    ].join('\n')
+
+    for (const wrong of [
+      OPENSSH_PRIVATE,
+      '-----BEGIN RSA PRIVATE KEY-----\nMIIEow==\n-----END RSA PRIVATE KEY-----',
+      '-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIFHDBO\n-----END ENCRYPTED PRIVATE KEY-----',
+      // Newlines stripped — the state the "single line" complaint would have talked somebody into.
+      OPENSSH_PRIVATE.replace(/\n/g, ' '),
+    ]) {
+      expect(() => normalizeUserPublicKey(wrong)).toThrow(InvalidPublicKeyError)
+      expect(() => normalizeUserPublicKey(wrong)).toThrow(/PRIVATE key/)
+      // It has to say what to do instead, not only what went wrong.
+      expect(() => normalizeUserPublicKey(wrong)).toThrow(/\.pub/)
+      expect(() => normalizeUserPublicKey(wrong)).not.toThrow(/single line/)
+    }
+  })
+
   it('refuses a key whose body disagrees with its declared type', () => {
     // An RSA blob wearing an ed25519 label: sshd would silently ignore the entry, so the user
     // would believe they had access and discover otherwise at the worst moment.
