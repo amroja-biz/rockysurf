@@ -1,7 +1,7 @@
 import { startStubServer, type StubServer } from '../test-server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../contexts/AuthContext'
@@ -91,6 +91,15 @@ let accepted: string[]
 let reads: number
 /** Every metadata PATCH body the stub received, in order (issue #46). */
 let patched: Array<Record<string, unknown>>
+/**
+ * What core answers on `/ssh-path`, and how many times it was asked (issue #304).
+ *
+ * The default is the answer for the row above — still provisioning, so core dials nothing and
+ * has nothing to say. Every test that does not care about the diagnosis therefore sees exactly
+ * what it saw before this existed: no advisory, and one quiet request on mount.
+ */
+let sshPathBody: Record<string, unknown>
+let sshPathProbes: number
 
 beforeEach(async () => {
   streams = []
@@ -99,8 +108,23 @@ beforeEach(async () => {
   accepted = []
   reads = 0
   patched = []
+  sshPathProbes = 0
+  sshPathBody = {
+    probe: { result: 'not-attempted', port: 22, elapsedMs: 0, detail: 'not probed: this server is provisioning' },
+    recorded: 'none',
+    whitelistManaged: true,
+    advisory: null,
+  }
   stub = await startStubServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost')
+
+    // Before the row matcher below, which is an exact path compare — this one hangs off it.
+    if (url.pathname === `/api/v1/servers/${SERVER_ID}/ssh-path`) {
+      sshPathProbes++
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(sshPathBody))
+      return
+    }
 
     if (url.pathname === '/api/v1/auth/me') {
       res.writeHead(200, { 'content-type': 'application/json' })
@@ -943,5 +967,154 @@ describe('the configuration a box was built with', () => {
     await screen.findByText('Configuration')
     expect(screen.queryByTestId('pack-inputs')).toBeNull()
     expect(screen.getByTestId('server-environment')).toBeTruthy()
+  })
+})
+
+/**
+ * The SSH-path diagnosis (issue #304).
+ *
+ * The report this exists for: a laptop moves — home to office, office to a cafe — and every box
+ * on AWS, Azure and GCP goes unreachable, with nothing in the product saying so. The operator
+ * gets an `ssh` that hangs and prints nothing, and has to reach "my address changed and the
+ * security group still names the old one" entirely on their own.
+ *
+ * What is asserted below is mostly the RESTRAINT. Core decides whether there is anything honest
+ * to say and this page renders it; an advisory that told everyone with a broken session to go
+ * and widen a firewall rule would be worse than no advisory at all, so the cases where nothing
+ * is rendered — an authentication failure, a refusal, a cloud with no whitelist — carry as much
+ * weight here as the case where something is.
+ */
+describe('the SSH-path diagnosis (issue #304)', () => {
+  /** A running box, which is the only state core will actually dial. */
+  const running = { ...SERVER, status: 'running', publicIp: '203.0.113.7' }
+
+  const filtered = (whitelistManaged: boolean, source: 'probe' | 'record' = 'probe') => ({
+    probe: { result: 'filtered', port: 22, elapsedMs: 4000, detail: 'no answer within 4000ms' },
+    recorded: source === 'record' ? 'no-answer' : 'none',
+    whitelistManaged,
+    advisory: { kind: 'filtered', source, whitelistManaged },
+  })
+
+  it('asks core once when the page mounts, and not again as the box changes underneath it', async () => {
+    row = { ...running }
+    renderPage()
+    await screen.findByRole('heading', { name: 'Connect' })
+    await waitFor(() => expect(sshPathProbes).toBe(1))
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+
+    // A live event re-reads the ROW. It must not re-dial the box: one probe per mount is the
+    // whole contract, and a probe that follows the event stream is a probe on a timer.
+    await broadcastUntil({ type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.8' }, () =>
+      expect(screen.getByText('203.0.113.8')).toBeTruthy(),
+    )
+    expect(sshPathProbes).toBe(1)
+  })
+
+  it('says nothing at all when the port answers', async () => {
+    row = { ...running }
+    sshPathBody = {
+      probe: { result: 'open', port: 22, elapsedMs: 40 },
+      recorded: 'none',
+      whitelistManaged: true,
+      advisory: null,
+    }
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Connect' })
+    await waitFor(() => expect(screen.getByTestId('ssh-path-result').textContent).toContain('Port 22 answered'))
+    expect(screen.queryByTestId('ssh-path-advisory')).toBeNull()
+  })
+
+  it('names what was seen, what it means, and how to find your own address', async () => {
+    row = { ...running }
+    sshPathBody = filtered(true)
+    renderPage()
+
+    const advisory = await screen.findByTestId('ssh-path-advisory')
+    // The owner's wording, and the strongest claim anything here is allowed to make: core saw
+    // silence from the machine it runs on. Never "your address changed".
+    expect(advisory.textContent).toContain('The path from this machine to the box appears filtered.')
+    expect(advisory.textContent).toContain('no answer, and no refusal either')
+    // The fix, and the fact that makes it worth doing from Settings rather than by hand.
+    expect(advisory.textContent).toContain('SSH whitelist')
+    expect(advisory.textContent).toContain('Saving pushes the new rule to the cloud straight away')
+    // Scoped to the advisory: the app shell has a Settings link of its own, and the point
+    // here is that the diagnosis carries the operator to the field, not that the nav exists.
+    expect(within(advisory).getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
+    // Something the OPERATOR runs. The product never calls a "what is my IP" service and this
+    // page is the only place the suggestion is allowed to live.
+    expect(advisory.textContent).toContain('curl -4 ifconfig.me')
+    expect(advisory.textContent).toContain('Rocky Surf never looks your address up itself')
+  })
+
+  it('does not point at a whitelist on a cloud that has none', async () => {
+    // Hetzner creates no firewall object at all, so the same silence must not become the same
+    // advice: there is nothing in Settings that would open this up.
+    row = { ...running }
+    sshPathBody = filtered(false)
+    renderPage()
+
+    const advisory = await screen.findByTestId('ssh-path-advisory')
+    expect(advisory.textContent).toContain('The path from this machine to the box appears filtered.')
+    expect(advisory.textContent).toContain('does not manage an SSH whitelist')
+    expect(advisory.textContent).not.toContain('ifconfig.me')
+    expect(within(advisory).queryByRole('link', { name: 'Settings' })).toBeNull()
+  })
+
+  it('says a refusal is not the firewall, because packets are arriving', async () => {
+    row = { ...running }
+    sshPathBody = {
+      probe: { result: 'refused', port: 22, elapsedMs: 12, detail: 'ECONNREFUSED' },
+      recorded: 'none',
+      whitelistManaged: true,
+      advisory: { kind: 'refused', source: 'probe', whitelistManaged: true },
+    }
+    renderPage()
+
+    const advisory = await screen.findByTestId('ssh-path-advisory')
+    expect(advisory.textContent).toContain('refused the connection')
+    expect(advisory.textContent).toContain('not a firewall or a whitelist problem')
+    expect(advisory.textContent).not.toContain('ifconfig.me')
+  })
+
+  it('explains a failed row whose bootstrap never got an answer, where there is nothing left to dial', async () => {
+    // The case the operator most needs explained and the one no live probe can reach: the box
+    // never came up, so core answers from what it wrote down at the time.
+    row = {
+      ...SERVER,
+      status: 'failed',
+      errorMessage:
+        'bootstrap failed after 3 attempts: Error: SSH never became ready on 203.0.113.7 after 12 attempts: Timed out while waiting for handshake',
+    }
+    sshPathBody = {
+      ...filtered(true, 'record'),
+      probe: { result: 'not-attempted', port: 22, elapsedMs: 0, detail: 'not probed: this server is failed' },
+    }
+    renderPage()
+
+    const advisory = await screen.findByTestId('ssh-path-advisory')
+    expect(advisory.textContent).toContain('The last SSH attempt Rocky Surf recorded got no answer at all')
+    expect(advisory.textContent).toContain('curl -4 ifconfig.me')
+  })
+
+  it('asks again when the operator presses Test SSH path, which is the point of the button', async () => {
+    row = { ...running }
+    sshPathBody = {
+      probe: { result: 'open', port: 22, elapsedMs: 40 },
+      recorded: 'none',
+      whitelistManaged: true,
+      advisory: null,
+    }
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('ssh-path-result').textContent).toContain('Port 22 answered'))
+
+    // The operator has just joined a different network; nothing on the page knows that.
+    sshPathBody = filtered(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Test SSH path' }))
+
+    await waitFor(() => expect(sshPathProbes).toBe(2))
+    expect((await screen.findByTestId('ssh-path-advisory')).textContent).toContain(
+      'The path from this machine to the box appears filtered.',
+    )
   })
 })

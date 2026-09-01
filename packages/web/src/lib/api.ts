@@ -1151,6 +1151,33 @@ export interface SettingsSaveResult extends SettingsView {
   restartRequired: { path: string; reason: string }[]
   /** Present when core could not adopt the file at all — the sentence says why. */
   reloadBlocked?: string
+  /**
+   * Clouds whose SSH whitelist this save made stale, for the page to push (issue #304).
+   *
+   * The save deliberately does not push it itself — see `core/src/network/routes.ts`. Empty when
+   * the reload did not apply, because syncing then would send the list the operator had BEFORE
+   * this save.
+   */
+  networkSyncNeeded?: string[]
+}
+
+/** One cloud's outcome from pushing the SSH whitelist (issue #304). */
+export interface SshAccessSyncReport {
+  provider: string
+  status: 'updated' | 'unchanged' | 'skipped' | 'failed'
+  applied: string[]
+  reported: string[]
+  detail: string
+}
+
+/**
+ * Push `sshAllowedCidr` at the clouds that enforce it, now, without launching anything.
+ *
+ * Separate from the save on purpose: a firewall call that times out must not be able to fail a
+ * file write that already succeeded.
+ */
+export async function syncSshAccess(): Promise<{ synced: SshAccessSyncReport[] }> {
+  return request<{ synced: SshAccessSyncReport[] }>('/network/ssh-access/sync', { method: 'POST' })
 }
 
 export async function saveSettings(mtimeMs: number | null, changes: SettingsChange[]): Promise<SettingsSaveResult> {
@@ -1396,4 +1423,51 @@ export async function installRegistryPack(sourceName: string, packId: string): P
     `/admin/pack-registry/${encodeURIComponent(sourceName)}/${encodeURIComponent(packId)}/install`,
     { method: 'POST' },
   )
+}
+
+/* ------------------------------------------------------------------ the SSH path (issue #304) */
+
+/**
+ * What one TCP connection from the machine Rocky Surf runs on did, or why none was made.
+ *
+ * `filtered` is silence for the whole budget — the shape of a firewall dropping packets — and
+ * `refused` is a reset, which is proof the opposite: packets are arriving and being answered.
+ * Keeping them apart is the entire diagnostic value of the probe.
+ */
+export type SshProbeResult = 'open' | 'refused' | 'filtered' | 'unreachable' | 'error' | 'not-attempted'
+
+export interface SshProbe {
+  result: SshProbeResult
+  port: number
+  elapsedMs: number
+  /** A system error code, or the reason nothing was dialled. Never an address. */
+  detail?: string
+}
+
+/** How core classified the last SSH failure it had already written down. */
+export type RecordedSshFailure = 'no-answer' | 'refused' | 'auth' | 'host-key' | 'none'
+
+export interface SshPathReport {
+  probe: SshProbe
+  recorded: RecordedSshFailure
+  /** Whether THIS cloud has an SSH whitelist Rocky Surf maintains and can push. */
+  whitelistManaged: boolean
+  /**
+   * Null means core has nothing honest to say, which is the answer most of the time — an
+   * authentication failure or a host-key mismatch is proof the path is open, and an advisory
+   * there would send someone to widen a firewall rule that was never the problem.
+   */
+  advisory: { kind: 'filtered' | 'refused'; source: 'probe' | 'record'; whitelistManaged: boolean } | null
+}
+
+/**
+ * Ask core whether this box's SSH port can be reached, and what its own record says (issue #304).
+ *
+ * ITS OWN CALL, MADE ONCE PER PAGE MOUNT AND ONCE PER BUTTON PRESS. It is deliberately not part
+ * of `getServer`: that row is re-read on a timer by every open tab and listed once per card on
+ * the dashboard, and folding a TCP connect into it would turn one diagnostic probe into a fan of
+ * them on a schedule.
+ */
+export async function getSshPath(serverId: string): Promise<SshPathReport> {
+  return request<SshPathReport>(`/servers/${serverId}/ssh-path`)
 }

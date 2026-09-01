@@ -74,18 +74,36 @@ const FIELDS: SettingsField[] = (
     { path: 'providers.aws.enabled', kind: 'boolean', writable: true },
     { path: 'providers.aws.region', kind: 'string', writable: true },
     { path: 'providers.aws.profile', kind: 'string', writable: true },
-    { path: 'providers.aws.sshAllowedCidr', kind: 'string', writable: true },
+    {
+      path: 'providers.aws.sshAllowedCidr',
+      kind: 'stringList',
+      writable: true,
+      warning: 'Removing a CIDR immediately ends new SSH connections from that network; existing sessions survive.',
+    },
+    { path: 'providers.aws.allowAllCidr', kind: 'boolean', writable: true },
     { path: 'providers.aws.sizes', kind: 'stringList', writable: false, reason: 'An allowlist of instance types, edited in the file.' },
     { path: 'providers.azure.enabled', kind: 'boolean', writable: true },
     { path: 'providers.azure.subscriptionId', kind: 'string', writable: true },
     { path: 'providers.azure.resourceGroup', kind: 'string', writable: true },
     { path: 'providers.azure.location', kind: 'string', writable: true },
-    { path: 'providers.azure.sshAllowedCidr', kind: 'string', writable: true },
+    {
+      path: 'providers.azure.sshAllowedCidr',
+      kind: 'stringList',
+      writable: true,
+      warning: 'Removing a CIDR immediately ends new SSH connections from that network; existing sessions survive.',
+    },
+    { path: 'providers.azure.allowAllCidr', kind: 'boolean', writable: true },
     { path: 'providers.azure.sizes', kind: 'stringList', writable: false, reason: 'An allowlist of VM sizes, edited in the file.' },
     { path: 'providers.gcp.enabled', kind: 'boolean', writable: true },
     { path: 'providers.gcp.projectId', kind: 'string', writable: true },
     { path: 'providers.gcp.zone', kind: 'string', writable: true },
-    { path: 'providers.gcp.sshAllowedCidr', kind: 'string', writable: true },
+    {
+      path: 'providers.gcp.sshAllowedCidr',
+      kind: 'stringList',
+      writable: true,
+      warning: 'Removing a CIDR immediately ends new SSH connections from that network; existing sessions survive.',
+    },
+    { path: 'providers.gcp.allowAllCidr', kind: 'boolean', writable: true },
     { path: 'providers.gcp.sizes', kind: 'stringList', writable: false, reason: 'An allowlist of machine types, edited in the file.' },
     { path: 'providers.byo.enabled', kind: 'boolean', writable: true },
     { path: 'providers.byo.identityFile', kind: 'string', writable: true },
@@ -268,6 +286,9 @@ let served: SettingsView
  * free-text boxes they have always been, and nothing else on the page changes.
  */
 let catalogues: unknown[]
+/** Every push of the SSH whitelist the page made, and what core answered (issue #304). */
+let syncCalls: number
+let syncResponse: { synced: unknown[] }
 
 beforeEach(async () => {
   saves = []
@@ -277,6 +298,10 @@ beforeEach(async () => {
   githubConnection = { ...CONNECTION_DISCONNECTED }
   githubDisconnects = 0
   catalogues = []
+  syncCalls = 0
+  syncResponse = {
+    synced: [{ provider: 'aws', status: 'updated', applied: ['203.0.113.7/32'], reported: [], detail: 'Authorized 203.0.113.7/32.' }],
+  }
   setAuthToken('test-token')
 
   stub = await startStubServer((req, res) => {
@@ -310,6 +335,13 @@ beforeEach(async () => {
     if (url.pathname === '/api/v1/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
       res.write(`event: connected\ndata: ${JSON.stringify({ userId: USER.id })}\n\n`)
+      return
+    }
+
+    if (url.pathname === '/api/v1/network/ssh-access/sync' && req.method === 'POST') {
+      syncCalls += 1
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(syncResponse))
       return
     }
 
@@ -357,6 +389,15 @@ beforeEach(async () => {
             saved: true,
             applied: saved.filter((path) => specOf(path)?.appliesAt !== 'restart'),
             restartRequired,
+            // Core names the clouds whose whitelist this save left behind (issue #304).
+            networkSyncNeeded: [
+              ...new Set(
+                saved.flatMap((path) => {
+                  const match = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(path)
+                  return match?.[1] ? [match[1]] : []
+                }),
+              ),
+            ],
             ...served,
             drifted: restartRequired.length > 0,
             pendingRestart: restartRequired,
@@ -2376,5 +2417,185 @@ describe('saved SSH public keys', () => {
     open('SSH public keys')
 
     expect(within(panelOf('ssh')).getByRole('button', { name: 'Add' })).toBeTruthy()
+  })
+})
+
+
+/**
+ * The SSH whitelist editor (issue #304).
+ *
+ * Rendered rather than reasoned about: the incident this repository had on the very day this
+ * shipped was a settings section that looked populated — heading, help text — and had no working
+ * control in it at all, because `SETTINGS_LISTS` was declared and read by nothing. So these
+ * tests drive the actual DOM the operator gets.
+ */
+describe('the SSH whitelist editor', () => {
+  const AWS = 'AWS'
+  const cidrBlock = () => document.querySelector('[data-field="providers.aws.sshAllowedCidr"]') as HTMLElement
+
+  function withCidrs(cidrs: string[] | string) {
+    served.values.providers = {
+      ...(served.values.providers as Record<string, unknown>),
+      aws: { enabled: true, region: 'us-east-1', sshAllowedCidr: cidrs },
+    }
+  }
+
+  it('draws one removable entry per network, plus a box to add another', async () => {
+    withCidrs(['203.0.113.7/32', '198.51.100.0/24'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    const block = within(cidrBlock())
+    expect(block.getByText('203.0.113.7/32')).toBeTruthy()
+    expect(block.getByText('198.51.100.0/24')).toBeTruthy()
+    expect(block.getAllByRole('button', { name: 'Remove' })).toHaveLength(2)
+    expect(block.getByRole('button', { name: 'Add' })).toBeTruthy()
+  })
+
+  it('still draws a pre-#304 single CIDR, because an existing file says one string', async () => {
+    withCidrs('203.0.113.7/32')
+    renderPage()
+    await loaded()
+    open(AWS)
+    expect(within(cidrBlock()).getByText('203.0.113.7/32')).toBeTruthy()
+  })
+
+  /** An empty list means SSH reachable from nowhere, and is almost never what was meant. */
+  it('will not remove the last network, and says why', async () => {
+    withCidrs(['203.0.113.7/32'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    const remove = within(cidrBlock()).getByRole('button', { name: 'Remove' }) as HTMLButtonElement
+    expect(remove.disabled).toBe(true)
+    expect(remove.title).toMatch(/add the replacement first/)
+  })
+
+  it('warns what removing a network actually does before doing it', async () => {
+    withCidrs(['203.0.113.7/32', '198.51.100.0/24'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    fireEvent.click(within(cidrBlock()).getAllByRole('button', { name: 'Remove' })[1]!)
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/immediately ends new SSH connections from that network/)
+    expect(dialog.textContent).toMatch(/existing sessions survive/)
+  })
+
+  it('adds a typed network to the list', async () => {
+    withCidrs(['203.0.113.7/32'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    const block = within(cidrBlock())
+    fireEvent.change(block.getByLabelText('Add a network for aws'), { target: { value: '198.51.100.0/24' } })
+    fireEvent.click(block.getByRole('button', { name: 'Add' }))
+    expect(within(cidrBlock()).getByText('198.51.100.0/24')).toBeTruthy()
+  })
+
+  /**
+   * The two-act guard, which until now had NO control on this page at all: `allowAllCidr` was
+   * absent from the field inventory, so the save route refused any request naming it and the one
+   * procedure SECURITY.md and the provider docs describe could not be carried out here.
+   */
+  it('confirms 0.0.0.0/0 before adding it, then asks for the second act', async () => {
+    withCidrs(['203.0.113.7/32'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    expect(document.getElementById('providers.aws.allowAllCidr')).toBeNull()
+
+    fireEvent.change(within(cidrBlock()).getByLabelText('Add a network for aws'), {
+      target: { value: '0.0.0.0/0' },
+    })
+    fireEvent.click(within(cidrBlock()).getByRole('button', { name: 'Add' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/every address on the internet/i)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add 0.0.0.0/0' }))
+
+    await waitFor(() => expect(within(cidrBlock()).getByText('0.0.0.0/0')).toBeTruthy())
+    // And only now does the second act appear.
+    expect(document.getElementById('providers.aws.allowAllCidr')).toBeTruthy()
+  })
+})
+
+
+describe('pushing the SSH whitelist at the clouds (issue #304)', () => {
+  const AWS = 'AWS'
+  const pushButton = () => screen.getByRole('button', { name: 'Push SSH access to the clouds' })
+
+  function withCidrs(cidrs: string[]) {
+    served.values.providers = {
+      ...(served.values.providers as Record<string, unknown>),
+      aws: { enabled: true, region: 'us-east-1', sshAllowedCidr: cidrs },
+    }
+  }
+
+  it('pushes automatically after a save that changed a list, and shows what each cloud did', async () => {
+    withCidrs(['203.0.113.7/32'])
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    const block = within(document.querySelector('[data-field="providers.aws.sshAllowedCidr"]') as HTMLElement)
+    fireEvent.change(block.getByLabelText('Add a network for aws'), { target: { value: '198.51.100.0/24' } })
+    fireEvent.click(block.getByRole('button', { name: 'Add' }))
+    save()
+
+    await waitFor(() => expect(syncCalls).toBe(1))
+    expect(await screen.findByText('SSH access at the cloud')).toBeTruthy()
+    expect(document.body.textContent).toContain('Authorized 203.0.113.7/32.')
+  })
+
+  it('does not push after a save that had nothing to do with SSH access', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.change(control('limits.maxServers'), { target: { value: '9' } })
+    save()
+
+    await waitFor(() => expect(saves).toHaveLength(1))
+    expect(syncCalls).toBe(0)
+  })
+
+  /**
+   * The repair path. A cloud can be wrong while the file is right — GCP's firewall rule only
+   * ever read `sshAllowedCidr` at create time — and no save would ever fix that, because
+   * nothing about it is a change. So the button does not wait for one.
+   */
+  it('pushes on demand, with nothing edited', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.click(pushButton())
+
+    await waitFor(() => expect(syncCalls).toBe(1))
+    expect(saves).toHaveLength(0)
+    expect(await screen.findByText('SSH access at the cloud')).toBeTruthy()
+  })
+
+  it('names the cloud that refused, and keeps its remediation on the page', async () => {
+    syncResponse = {
+      synced: [
+        {
+          provider: 'gcp',
+          status: 'failed',
+          applied: [],
+          reported: [],
+          detail: 'compute.firewalls.update is missing. Run: gcloud compute firewall-rules update rockysurf-ssh --source-ranges=203.0.113.7/32',
+        },
+      ],
+    }
+    renderPage()
+    await loaded()
+    fireEvent.click(pushButton())
+
+    await waitFor(() => expect(syncCalls).toBe(1))
+    // The command has to survive on the page — a toast is not something you can copy from twice.
+    expect(await screen.findByText(/gcloud compute firewall-rules update/)).toBeTruthy()
   })
 })

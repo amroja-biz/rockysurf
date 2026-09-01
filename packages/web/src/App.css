@@ -3385,3 +3385,79 @@ main.help section > pre {
   max-height: 20rem;
   overflow-y: auto;
 }
+
+/* The SSH whitelist editor (issue #304).
+ *
+ * A list of firewall entries, each removable, plus the Add box. Deliberately plain: the words
+ * around it are doing the work — this is the one control on the page where clicking Remove ends
+ * SSH from a network — so the styling stays out of their way. */
+.settings-cidr-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.settings-cidr-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 4px;
+}
+
+.settings-cidr-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.settings-cidr-add input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* What the push did, per cloud. Sits with the save's own errors because it is part of the same
+ * answer to "did that work?", and it stays put because `detail` carries commands to copy. */
+.settings-sync-report {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+}
+
+.settings-sync-report h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.settings-sync-report ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.settings-sync-report li[data-sync-status='failed'] {
+  color: var(--danger, #b42318);
+}
+
+/* The SSH reachability advisory (issue #304).
+ *
+ * Rides on `.historical-notice` — bordered, muted, said above the facts it qualifies — and adds
+ * only an accent, because this is prose about a box that may be unreachable rather than an error
+ * about one that is broken. Deliberately not red: the usual cause is that the operator moved
+ * networks, which is an ordinary Tuesday and not a fault. */
+.ssh-path-advisory {
+  border-left: 3px solid var(--rs-accent, var(--rs-border));
+}
+
+.ssh-path-advisory p + p {
+  margin-top: 0.5rem;
+}
+
+.ssh-path-advisory code {
+  white-space: nowrap;
+}
