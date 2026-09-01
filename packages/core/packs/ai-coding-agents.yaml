@@ -362,7 +362,9 @@ tools:
     name: Beads
     description: Git-native task tracking CLI
     category: base
-    url: https://github.com/steveyegge/beads
+    # The canonical name, for the same reason the download URL below uses it: steveyegge/beads
+    # is a rename redirect, and a redirect is a thing that can be turned off.
+    url: https://github.com/gastownhall/beads
     installOrder: 30
     runAs: rocky
     bootstrap: false
