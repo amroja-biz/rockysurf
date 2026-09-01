@@ -46,8 +46,9 @@ patterns in a per-package `.gitignore` to where the generated thing actually is 
 
 ### The checks `pnpm run check` does not run
 
-Three gates are CI-only, each because it needs something a `pnpm run check` cannot assume — a
-Docker daemon, or a `gitleaks` binary. All three are runnable locally when you have those.
+These gates are outside the serial gate, each because it needs something `pnpm run check` cannot
+assume — a Docker daemon, a `gitleaks` binary, a browser engine. All of them are runnable
+locally when you have those.
 
 | check | command | what it needs |
 |---|---|---|
@@ -56,6 +57,58 @@ Docker daemon, or a `gitleaks` binary. All three are runnable locally when you h
 | BYO lifecycle | `node scripts/e2e/byo-host.mjs` | Docker, and `127.0.0.1:22` free |
 | release tarballs | `node scripts/verify-tarballs.mjs` | ~30s, packs and npm-installs |
 | secret scan | `gitleaks git . --config .gitleaks.toml` | the `gitleaks` binary |
+| browser UI | `pnpm run test:ui` | a built workspace and Chromium — see below |
+
+### The browser suite — `pnpm run test:ui`
+
+**Run it for any change under `packages/web/`.** It is the only layer that loads the built SPA
+into a real browser and clicks what an operator clicks.
+
+```bash
+pnpm -r build                                     # required: it drives the shipped binary
+pnpm --filter @rockysurf/web exec playwright install chromium    # once per machine
+pnpm run test:ui
+```
+
+It exists because of a specific, expensive failure. Two UI regressions shipped in one day —
+a settings section that rendered two headings and no controls at all, and a save-path interlock
+that disabled the button an operator reaches for at exactly the moment they reach for it — with
+unit tests, component tests and real-HTTP API verification green both times. The gap was
+structural rather than a missing case: a list that renders nothing still renders, a disabled
+button is still in the DOM, and nothing in the gate had ever driven a rendered page.
+
+**What it boots.** Each Playwright worker starts a real `rockysurf` from
+`packages/rockysurf/dist/bin.js`, against its own `mkdtemp` directory holding its own
+`config.yaml`, database and master key, on a port the OS assigns. `HOME` is redirected into that
+directory too, because `~/.rockysurf/config.yaml` is the second place the binary looks. Nothing
+touches your own installation, and there are no machine-specific constants — it runs on a
+laptop already serving Rocky Surf on 3000, and on several CI workers at once.
+
+**The admin password is generated per run** and dies with the temp directory; there is no
+credential in this repository. The suite drives the real login form rather than injecting a
+cookie, because the login page is UI too and it is the first UI anybody meets. To sign in to a
+test instance yourself while debugging, export `ROCKYSURF_UI_TEST_PASSWORD` and run it headed:
+
+```bash
+ROCKYSURF_UI_TEST_PASSWORD=whatever pnpm run test:ui -- --headed --debug
+```
+
+**It is not part of `pnpm run check`**, deliberately: it needs a browser binary that
+`pnpm install` does not fetch, and a serial gate that fails on a clean checkout for a reason the
+error does not explain gets worked around rather than fixed. It is its own CI job,
+**`UI (browser)`**, which is always-run on pull requests and never path-filtered — a required
+check that is path-filtered never reports on the pull requests it skips, which deadlocks the
+merge forever (see
+[`docs/memories/2026-08-31-branch-protection-and-pr-workflow.md`](docs/memories/2026-08-31-branch-protection-and-pr-workflow.md)).
+
+**A test marked `test.fail()` is a reproduction, not a broken test.** Playwright runs it and the
+suite is green only while it fails, which is how a bug is pinned before its fix exists. When the
+fix lands the test starts passing, Playwright reports "expected to fail but passed", and the job
+goes red on purpose — that is the signal to delete the `test.fail()` line and leave an ordinary
+regression test behind.
+
+Failure screenshots and traces land in `packages/web/test-results/` (gitignored) and CI uploads
+them as `ui-browser-artifacts`.
 
 **The pack smoke test runs each pack twice in one container and deletes the resume journal in
 between.** That deletion is the test. The on-box agent is contracted to skip any step already
@@ -126,7 +179,12 @@ patterns to copy — the app-level wiring test and the boot-level one. Test at t
 the seam involves configuration, secrets or the filesystem; four app-level tests once stayed
 green while every real boot was broken.
 
-Two other habits worth adopting:
+**A change to a page gets a browser test, not only a component test.** The seam a component test
+cannot see is the browser itself: whether the control is on screen, whether it is enabled,
+whether clicking it changed the file. `packages/web/e2e/` is that layer and `pnpm run test:ui`
+runs it — see "The browser suite" below for what it boots and why it is not in `pnpm run check`.
+
+Three other habits worth adopting:
 
 - **Assert against evidence, not intent.** The capability matrix documents what was measured on
   real infrastructure and says plainly which column has never been pointed at a rack. Keep it
@@ -243,8 +301,11 @@ put a secret, credential, IP address, or account ID in either one.
 - Run `pnpm run check` before pushing. If a package you did not touch is failing, say so
   explicitly rather than silently working around it.
 - A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/`, `.agents/skills/`
-  or `.pass-along/` runs typecheck, the unit tests and the secret scan, and nothing else; release
-  tarballs, the BYO lifecycle, the structural lint and Pack smoke wait for the push to `main`,
+  or `.pass-along/` runs typecheck, the unit tests, the secret scan and the browser suite, and
+  nothing else. `UI (browser)` runs on **every** pull request regardless of paths — it is the
+  layer a UI-only change most needs, and a job that will become a required check must never be
+  path-filtered. Release tarballs, the BYO lifecycle, the structural lint and Pack smoke wait
+  for the push to `main`,
   which always runs everything. Pack smoke runs on a pull request only when it touches what runs
   on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile
   or its own workflow file — and a pull request that changes only pack files tests just those

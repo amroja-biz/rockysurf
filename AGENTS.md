@@ -28,6 +28,19 @@ Both directories are committed to this public repository and are world-readable:
 secret, credential, IP address, account ID, or other private infrastructure detail into either
 one.
 
+## Verifying a UI change
+
+**Any pull request that touches `packages/web/` must run `pnpm run test:ui`** — the browser
+suite in `packages/web/e2e/`, which boots the real binary and drives the real pages. It needs a
+built workspace and Chromium; [`CONTRIBUTING.md`](CONTRIBUTING.md) has the two setup lines.
+
+**"Verified" is not a word to use about a UI change on the strength of unit or component tests.**
+Two regressions shipped in one day with every other layer green — a settings section that
+rendered no controls at all, and a save button an interlock had disabled — because a list that
+renders nothing still renders and a disabled button is still in the DOM. A claim that a page
+works is backed by this suite or by a browser click-through you actually performed, and by
+nothing else. If you did neither, say what you did instead.
+
 ## Everything else
 
 - Architecture decisions: [`docs/adr/`](docs/adr/), indexed at `docs/adr/llms.txt`.
