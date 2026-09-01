@@ -99,11 +99,12 @@ export function HelpPage() {
           <div>
             <h3>Agent Skills</h3>
             <p>
-              The repository ships two skills a compatible coding agent started in a checkout
-              picks up with no install step: <code>create-surge-pack</code> interviews you and writes a
-              pack that passes the real smoke harness, and <code>adding-providers</code> covers
-              switching on a cloud or adding one Rocky Surf does not have yet. Outside a checkout,
-              copy one in:
+              The repository ships skills a compatible coding agent started in a checkout picks up
+              with no install step: <code>create-surge-pack</code> interviews you and writes a pack
+              that passes the real smoke harness, <code>register-a-tool</code> does the same for a
+              single tool you want to reuse or send someone, and <code>adding-providers</code>{' '}
+              covers switching on a cloud or adding one Rocky Surf does not have yet. Outside a
+              checkout, copy one in:
             </p>
             <pre>
               <code>cp -r .agents/skills/create-surge-pack ~/.agents/skills/</code>

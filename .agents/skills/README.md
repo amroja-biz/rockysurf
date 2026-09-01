@@ -11,6 +11,7 @@ add, and a skill is how their own agent learns to do it properly.
 | Skill | Use it when |
 |---|---|
 | [`create-surge-pack`](create-surge-pack/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
+| [`register-a-tool`](register-a-tool/) | You want to register ONE tool — reusable across packs, exportable as a file you can send someone — rather than author a whole pack |
 | [`adding-providers`](adding-providers/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet |
 | [`rockysurf-design`](rockysurf-design/) | You are changing the web UI, or making a mock, slide, or asset that should look like Rocky Surf — the tokens, the voice rules, every component's props contract, the specimen cards, a click-through of the app and the two etched screens (`ui_kits/`), and the etched skin's rollout order (`handoff/README.md`), and the designer's rendered guide to the applied system (`design-guide.html.txt`) |
 
@@ -38,11 +39,11 @@ packs from your own projects, install it personally once.
 
 ## What they need to do their job
 
-Both skills verify their work with this repository's real harnesses rather than a weaker
-substitute of their own, so both will ask for a checkout with `pnpm install && pnpm -r build` run
-once. `create-surge-pack` also needs Docker, for the run-twice smoke test. Either can write the
-file without those; neither can honestly tell you it works, and both are written to say so rather
-than guess.
+These skills verify their work with this repository's real harnesses rather than a weaker
+substitute of their own, so they will ask for a checkout with `pnpm install && pnpm -r build` run
+once. `create-surge-pack` and `register-a-tool` also need Docker, for the run-twice smoke test.
+Any of them can write the file without those; none can honestly tell you it works, and all are
+written to say so rather than guess.
 
 ## Adding a skill here
 

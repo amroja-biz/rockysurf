@@ -211,6 +211,32 @@ export const packFileSchema = z.strictObject({
   tools: z.array(toolSchema),
 })
 
+/**
+ * A TOOL FILE: one or more tool definitions with no pack around them (issue #289, ADR-0018).
+ *
+ * The unit people actually want to share is often a single tool — "here is how I install my
+ * linter" — and until now the only shareable artefact was a whole pack. This is that unit, and
+ * it is a SIBLING of `packFileSchema` rather than a loosening of it: `pack` stays required
+ * there, so nothing that reads a pack file has to learn that its pack might be absent.
+ *
+ * `tools` reuses `toolSchema` VERBATIM. A tool is the same thing whether a pack file or a tool
+ * file carries it, and two spellings of one entity is how they start disagreeing. That also
+ * means a tool can be lifted from a pack file into a tool file and back with no translation.
+ *
+ * `bootstrap` therefore stays IN the format for that interop, but `parseToolFile` rejects
+ * `bootstrap: true` — see the reserved-field rule in `lint.ts`. Nothing else may appear:
+ * `strictObject` is what makes an unknown key (a future `alwaysInstall`, issue #295) a loud
+ * error on import rather than a silently dropped promise.
+ */
+export const toolFileSchema = z.strictObject({
+  /** Matches the pack file's own literal, so the two formats version together. */
+  version: z.literal(1),
+  tools: z
+    .array(toolSchema)
+    .min(1, { error: 'a tool file with no tools shares nothing' }),
+})
+
 export type ToolDefinition = z.infer<typeof toolSchema>
 export type PackDefinition = z.infer<typeof packSchema>
 export type PackFile = z.infer<typeof packFileSchema>
+export type ToolFile = z.infer<typeof toolFileSchema>

@@ -16,7 +16,7 @@ import type { ToolRow } from '../db/schema.js'
 import { badRequest, conflict, created, forbidden, noContent, notFound, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import { describePack } from './disclosure.js'
-import { parsePackFile, renderPackFile } from './loader.js'
+import { parsePackFile, parseToolFile, renderPackFile, renderToolFile } from './loader.js'
 import type { RegistryClient } from './registry.js'
 import { sha256Text } from './registry-index.js'
 import { fetchPublicText } from './safe-fetch.js'
@@ -202,6 +202,37 @@ const importBody = z
   .union([z.strictObject({ yaml: z.string().min(1) }), z.strictObject({ url: z.url() })])
   .describe('either the file contents or a URL to fetch them from')
 
+/**
+ * Tool import takes the file contents and nothing else — no `url` arm (issue #289).
+ *
+ * Not an oversight and not symmetry for its own sake: see the route, which explains why a URL
+ * import with no provenance columns to record it in would repeat issue #88.
+ */
+const importToolsBody = z
+  .strictObject({ yaml: z.string().min(1) })
+  .describe('the contents of a tool file')
+
+/**
+ * A database row back to the frozen tool shape.
+ *
+ * The columns and the format agree field for field except in their spelling of the id and in
+ * SQLite's nullable columns, which the format spells as absent. `renderToolFile` drops
+ * `sourceFile`, so it is deliberately not carried here.
+ */
+const toolDefinitionOf = (t: ToolRow): ToolDefinition => ({
+  toolId: t.id,
+  name: t.name,
+  description: t.description,
+  category: t.category as 'agent' | 'base',
+  url: t.url,
+  installScript: t.installScript,
+  ...(t.setupScript ? { setupScript: t.setupScript } : {}),
+  enabled: t.enabled,
+  installOrder: t.installOrder,
+  bootstrap: t.bootstrap,
+  runAs: t.runAs as 'root' | 'rocky',
+})
+
 /** Ported from the legacy handlers: a name becomes an id when the caller does not supply one. */
 function slugify(name: string): string {
   return name
@@ -310,6 +341,80 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     }
     deleteTool(db, id)
     return noContent(c)
+  })
+
+  /* ------------------------------------------------- admin: sharing one tool (issue #289) */
+
+  /**
+   * EXPORT ONE TOOL as a tool file (ADR-0018).
+   *
+   * Any tool exports, file-backed ones included: a shipped tool is exactly what somebody wants
+   * to hand a colleague who is not running this installation, and the bytes are already public
+   * in the repository. What does NOT travel is `sourceFile` — `renderToolFile` strips it,
+   * because provenance is this installation's fact about its own disk.
+   */
+  routes.get('/api/v1/admin/tools/:toolId/export', (c) => {
+    const tool = getTool(db, c.req.param('toolId'))
+    if (!tool) return notFound(c, 'Tool not found')
+
+    const yaml = renderToolFile([toolDefinitionOf(tool)])
+    c.header('content-type', 'application/yaml; charset=utf-8')
+    c.header('content-disposition', `attachment; filename="${tool.id}.yaml"`)
+    return c.body(yaml)
+  })
+
+  /**
+   * IMPORT TOOLS from a pasted or uploaded tool file.
+   *
+   * PASTE ONLY — there is deliberately no `{ url }` here, unlike the pack import. A pack
+   * records where a URL import came from (`registrySource`/`registryUrl`/`registrySha256`,
+   * ADR-0006 and issue #88); the `tools` table has no such columns, so a URL import would
+   * install root-running shell while being able to say nothing truthful about its origin. That
+   * is the exact problem #88 fixed for packs, and adding the columns is its own change.
+   *
+   * A file-backed id is refused rather than overwritten. The boot reconcile owns those rows, so
+   * an import that "won" would be silently undone at the next restart — a 409 that explains
+   * itself is the honest answer.
+   */
+  routes.post('/api/v1/admin/tools/import', validate('json', importToolsBody), (c) => {
+    const { yaml } = c.req.valid('json')
+
+    const { file, issues } = parseToolFile('imported.yaml', yaml)
+    if (!file || issues.length > 0) {
+      return badRequest(
+        c,
+        'Invalid tool file',
+        issues.map((i) => ({ path: i.file, message: i.message })),
+      )
+    }
+
+    const fileBacked = file.tools.filter((t) => getTool(db, t.toolId)?.sourceFile)
+    if (fileBacked.length > 0) {
+      return conflict(
+        c,
+        `Cannot replace tools that come from a pack file: ${fileBacked.map((t) => t.toolId).join(', ')}`,
+      )
+    }
+
+    const imported = file.tools.map((tool) =>
+      upsertTool(db, {
+        id: tool.toolId,
+        name: tool.name,
+        description: tool.description,
+        category: tool.category,
+        url: tool.url,
+        installScript: tool.installScript,
+        setupScript: tool.setupScript ?? null,
+        enabled: tool.enabled,
+        installOrder: tool.installOrder,
+        bootstrap: tool.bootstrap,
+        runAs: tool.runAs,
+        // Imported, not loaded from a file — null is what keeps the boot reconcile off it.
+        sourceFile: null,
+      }),
+    )
+
+    return created(c, imported.map(adminTool))
   })
 
   /* ------------------------------------------------------------------- admin: packs */
@@ -440,22 +545,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         ...(pack.webPort != null ? { webPort: pack.webPort } : {}),
         ...(pack.inputs?.length ? { inputs: pack.inputs } : {}),
       },
-      pack.tools.map((id) => {
-        const t = byId.get(id)!
-        return {
-          toolId: t.id,
-          name: t.name,
-          description: t.description,
-          category: t.category as 'agent' | 'base',
-          url: t.url,
-          installScript: t.installScript,
-          ...(t.setupScript ? { setupScript: t.setupScript } : {}),
-          enabled: t.enabled,
-          installOrder: t.installOrder,
-          bootstrap: t.bootstrap,
-          runAs: t.runAs as 'root' | 'rocky',
-        }
-      }),
+      pack.tools.map((id) => toolDefinitionOf(byId.get(id)!)),
     )
 
     c.header('content-type', 'application/yaml; charset=utf-8')

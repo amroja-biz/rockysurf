@@ -1535,6 +1535,18 @@ details > summary:hover {
   font-size: 0.75rem;
 }
 
+/* The Tools page splits Personal from Official (issue #289), the same two words the packs page
+   uses. Spacing only — the tables inside are unchanged. */
+.tools-section + .tools-section {
+  margin-top: 2rem;
+}
+
+.tools-section-blurb {
+  color: var(--rs-muted);
+  font-size: 0.8125rem;
+  margin: 0 0 0.75rem;
+}
+
 /* ── Tables ────────────────────────────────────────────────────────────────────────────
    Legacy `.admin-table`. Costs and the pack admin use a bare `<table>`, the tools admin uses
    `.tools-table`, and both want the same thing. */

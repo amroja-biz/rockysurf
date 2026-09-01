@@ -113,12 +113,30 @@ afterEach(async () => {
 })
 
 describe('the tools table', () => {
-  it('lists tools in the order they install, not the order the API returned them', async () => {
+  /**
+   * Two tables since issue #289 — Personal first, then Official — so the ordering assertion is
+   * per section. Install order still governs WITHIN a section; the split is about provenance,
+   * which is the one thing that decides whether the next boot rewrites the row.
+   */
+  const idsIn = (table: HTMLElement) =>
+    within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row).getByText(/^[a-z-]+$/, { selector: 'code' }).textContent)
+
+  it('lists tools in the order they install, within each section', async () => {
     renderPage()
-    const rows = await screen.findAllByRole('row')
-    // Header first, then curl(10) git(10) switched-off(20) hand-rolled(30) claude-code(40).
-    const ids = rows.slice(1).map((row) => within(row).getByText(/^[a-z-]+$/, { selector: 'code' }).textContent)
-    expect(ids).toEqual(['curl', 'git', 'switched-off', 'hand-rolled', 'claude-code'])
+    const [personal, official] = await screen.findAllByRole('table')
+    // Personal: switched-off(20) then hand-rolled(30).
+    expect(idsIn(personal!)).toEqual(['switched-off', 'hand-rolled'])
+    // Official: curl(10) git(10) claude-code(40).
+    expect(idsIn(official!)).toEqual(['curl', 'git', 'claude-code'])
+  })
+
+  it('separates tools registered here from tools loaded out of pack files', async () => {
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Personal' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Official' })).toBeDefined()
   })
 
   it('badges file-backed tools with their source file, and database rows as such', async () => {
@@ -186,8 +204,8 @@ describe('editing a script', () => {
     // here would vanish on the next restart. Read-only with the file named beats an editor
     // that discards what someone typed.
     renderPage()
-    const table = await screen.findByRole('table')
-    const row = within(table).getByText('claude-code', { selector: 'code' }).closest('tr')!
+    const tables = await screen.findAllByRole('table')
+    const row = within(tables[1]!).getByText('claude-code', { selector: 'code' }).closest('tr')!
 
     expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull()
     expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull()
@@ -199,9 +217,27 @@ describe('editing a script', () => {
 
   it('still edits a row created in the database', async () => {
     renderPage()
-    const table = await screen.findByRole('table')
-    const row = within(table).getByText('hand-rolled', { selector: 'code' }).closest('tr')!
+    const tables = await screen.findAllByRole('table')
+    const row = within(tables[0]!).getByText('hand-rolled', { selector: 'code' }).closest('tr')!
     expect(within(row).getByRole('button', { name: 'Edit' })).toBeDefined()
     expect(within(row).getByText('database')).toBeDefined()
+  })
+
+  /**
+   * Sharing one tool (issue #289). Export is on EVERY row — a shipped tool is exactly what an
+   * operator wants to send to somebody not running this installation — while Edit and Delete
+   * stay off the file-backed ones, because those the next boot rewrites.
+   */
+  it('offers Export on personal and file-backed rows alike', async () => {
+    renderPage()
+    expect(await screen.findByTestId('export-hand-rolled')).toBeDefined()
+    expect(screen.getByTestId('export-claude-code')).toBeDefined()
+  })
+
+  it('offers an import control that takes a file, and no URL box', async () => {
+    renderPage()
+    expect(await screen.findByLabelText('Import a tool file')).toBeDefined()
+    // A URL import would install root shell with nothing recorded about where it came from.
+    expect(screen.queryByLabelText(/url/i)).toBeNull()
   })
 })
