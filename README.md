@@ -103,8 +103,8 @@ tools: [ … ]
 ```
 
 It's just a list of tools and install scripts. You can read the whole file in a pull request
-before trusting it, and you watch the install feed while your box is built from it. Ten ship in
-[`packs/`](packs/), covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town and others.
+before trusting it, and you watch the install feed while your box is built from it. Eleven ship
+in [`packs/`](packs/), covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others.
 
 Each pack carries a `guide`, shown once the box is running. No credential of yours reaches a box
 during bootstrap, so the guide is where a pack tells you how to sign the agents in.
