@@ -68,10 +68,25 @@ describe('scopes', () => {
       'get_server',
       'get_ssh_command',
       'list_offerings',
+      'list_packs',
       'list_servers',
     ])
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).toContain('stop_server')
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).not.toContain('create_server')
+  })
+
+  it('grants start with stop, so an agent can resume what it paused', () => {
+    // The scope decision of #278, asserted rather than left to the reader: stop and start are
+    // one action's two halves, and an agent that can pause spend can undo the pause. An
+    // installation that granted `stop` alone got a box it could switch off and not on.
+    expect(visibleTools(['read', 'stop']).map((t) => t.name)).toContain('start_server')
+    expect(visibleTools(['read']).map((t) => t.name)).not.toContain('start_server')
+  })
+
+  it('refuses start without the stop scope', async () => {
+    await expect(runTool('start_server', { server_id: 'srv-a' }, ctx(['read', 'create']))).rejects.toThrow(
+      ScopeDeniedError,
+    )
   })
 
   it('refuses terminate without the terminate scope, even when create is granted', async () => {
@@ -135,6 +150,21 @@ describe('the route each tool calls', () => {
     const { client: c, posts } = recording()
     await runTool('terminate_server', { server_id: 'srv-9f2c1d3b4a5e' }, ctx(['terminate'], c))
     expect(posts).toEqual([{ path: '/api/v1/servers/srv-9f2c1d3b4a5e/terminate', body: undefined }])
+  })
+
+  it('start_server posts to the start route, and to nothing else', async () => {
+    // The pair's other half (#278), pinned the same way rather than inheriting the gap #277
+    // closed: a start wired to `/stop` is a tool that switches boxes off when asked to switch
+    // them on, and the stub would have answered both identically.
+    const { client: c, posts } = recording()
+    await runTool('start_server', { server_id: 'srv-9f2c1d3b4a5e' }, ctx(['stop'], c))
+    expect(posts).toEqual([{ path: '/api/v1/servers/srv-9f2c1d3b4a5e/start', body: undefined }])
+  })
+
+  it('list_packs reads the surge-pack route', async () => {
+    const { client: c, reads } = recording({ '/api/v1/surge-packs': [] })
+    await runTool('list_packs', {}, ctx(['read'], c))
+    expect(reads()).toEqual(['/api/v1/surge-packs'])
   })
 
   it('create_server posts to the collection route', async () => {
@@ -626,7 +656,7 @@ describe('the spend cap, against a real control plane', () => {
  * `create` and `list` already had this treatment; these two are the pair that did not, and one
  * of them is in the default scope set.
  */
-describe('stop and terminate, against a real control plane', () => {
+describe('stop, start and terminate, against a real control plane', () => {
   const dirs: string[] = []
 
   afterAll(() => {
@@ -713,6 +743,126 @@ describe('stop and terminate, against a real control plane', () => {
 
       expect(statusOf(booted, target)).toBe('stopped')
       expect(statusOf(booted, bystander)).toBe('running')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  /**
+   * THE ROUND TRIP (#278), which is the claim `start_server` exists to make good on.
+   *
+   * `stop_server` has always described its stop as reversible. Until now the reversal was a
+   * human in the web UI, so an agent that paused a box overnight could not get it back. Asserted
+   * against a real core rather than a stub, because "reversible" is a fact about the lifecycle:
+   * a start that posts to the right URL and leaves the row stopped has kept none of the promise.
+   */
+  it('start_server brings back a box that stop_server stopped', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const serverId = await createRunning(booted, client, 'round-trip')
+
+      await runTool('stop_server', { server_id: serverId }, { client, scopes: SCOPES })
+      expect(statusOf(booted, serverId)).toBe('stopped')
+
+      const started = (await runTool('start_server', { server_id: serverId }, { client, scopes: SCOPES })) as {
+        server: { serverId: string; status: string }
+      }
+      expect(started.server.serverId).toBe(serverId)
+      expect(started.server.status).toBe('running')
+      expect(statusOf(booted, serverId)).toBe('running')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('start_server is refused on a box that is already running, with core\'s own reason', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const serverId = await createRunning(booted, client, 'already-up')
+
+      const error = (await runTool('start_server', { server_id: serverId }, { client, scopes: SCOPES }).catch(
+        (e: unknown) => e,
+      )) as Error
+      const payload = JSON.parse(error.message) as Record<string, unknown>
+      expect(payload['refused']).toBe(true)
+      expect(String(payload['message'])).toContain('not stopped')
+      expect(statusOf(booted, serverId)).toBe('running')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('starts the box the agent named and leaves the other one stopped', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const target = await createRunning(booted, client, 'resume-me')
+      const bystander = await createRunning(booted, client, 'leave-me')
+      await runTool('stop_server', { server_id: target }, { client, scopes: SCOPES })
+      await runTool('stop_server', { server_id: bystander }, { client, scopes: SCOPES })
+
+      await runTool('start_server', { server_id: target }, { client, scopes: SCOPES })
+
+      expect(statusOf(booted, target)).toBe('running')
+      expect(statusOf(booted, bystander)).toBe('stopped')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  /**
+   * The scope decision of #278, against the real thing: `stop` grants both halves, and neither
+   * half leaks into the read-only default an operator might mistake for one.
+   */
+  it('lets the default scope set pause and resume, and nothing more', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const serverId = await createRunning(booted, client, 'default-scopes')
+      const DEFAULT: McpScope[] = ['read', 'stop']
+
+      await runTool('stop_server', { server_id: serverId }, { client, scopes: DEFAULT })
+      await runTool('start_server', { server_id: serverId }, { client, scopes: DEFAULT })
+      expect(statusOf(booted, serverId)).toBe('running')
+
+      // Still no flamethrower, and still no chequebook.
+      await expect(
+        runTool('terminate_server', { server_id: serverId }, { client, scopes: DEFAULT }),
+      ).rejects.toThrow(ScopeDeniedError)
+      await expect(runTool('create_server', { size: 'small' }, { client, scopes: DEFAULT })).rejects.toThrow(
+        ScopeDeniedError,
+      )
+      expect(statusOf(booted, serverId)).toBe('running')
+    } finally {
+      await booted.close()
+    }
+  })
+
+  /**
+   * `list_packs` against core's REAL projection (#278).
+   *
+   * The tool narrows `/api/v1/surge-packs` rather than passing it through, which makes it a
+   * second projection — and a second projection is a thing that can drift from the first. The
+   * stubbed tests above prove the narrowing does what it says; this one proves it is narrowing
+   * the object core actually sends, from the packs that ship in the tarball.
+   */
+  it('list_packs answers with the packs a real control plane offers', async () => {
+    const { booted, client } = await bootCore()
+    try {
+      const { packs } = (await runTool('list_packs', {}, { client, scopes: ['read'] as McpScope[] })) as {
+        packs: Array<{ packId: string; name: string; requiresRdp: boolean; tools: Array<{ toolId: string }> }>
+      }
+      expect(packs.length).toBeGreaterThan(0)
+
+      // Every id here is one `create_server` would accept, which is the whole point of the tool.
+      const fromCore = (await client.get('/api/v1/surge-packs')) as Array<{ packId: string }>
+      expect(packs.map((p) => p.packId)).toEqual(fromCore.map((p) => p.packId))
+
+      // And the field the create path reads before refusing survived the narrowing — the same
+      // field `create_server` already fetches from this route to decide whether to refuse.
+      for (const pack of packs) {
+        expect(typeof pack.requiresRdp).toBe('boolean')
+        expect(pack.name.length).toBeGreaterThan(0)
+      }
+      expect(packs.some((p) => p.tools.length > 0)).toBe(true)
     } finally {
       await booted.close()
     }
@@ -910,16 +1060,19 @@ describe('create_server can express architecture', () => {
 })
 
 describe('the tool surface', () => {
-  it('is the six tools the bead names plus list_offerings, each with a scope', () => {
-    // `list_offerings` is the seventh, added by rockysurf-oeay: `create_server.offering_id` was
+  it('is the six tools the bead names plus three added since, each with a scope', () => {
+    // `list_offerings` was the seventh, added by rockysurf-oeay: `create_server.offering_id` was
     // advertised with no way to learn its values, which made the parameter usable only by an
-    // agent a human had already briefed.
+    // agent a human had already briefed. `list_packs` is the same argument applied to
+    // `pack_id`, and `start_server` is the half of stop/start that was missing — both #278.
     expect(MCP_TOOLS.map((t) => t.name).sort()).toEqual([
       'create_server',
       'get_server',
       'get_ssh_command',
       'list_offerings',
+      'list_packs',
       'list_servers',
+      'start_server',
       'stop_server',
       'terminate_server',
     ])
@@ -996,6 +1149,108 @@ describe('list_offerings', () => {
     }
     expect(result.error).toContain('nope')
     expect(result.configured).toEqual(['fake', 'other'])
+  })
+})
+
+/**
+ * `list_packs` (#278).
+ *
+ * `create_server.pack_id` was advertised with no way to learn its values — `list_offerings`'
+ * argument, applied to the other un-enumerated id. What this tool has to get right is the
+ * narrowing: `/api/v1/surge-packs` serves a FORM, and the fields that decide whether a create
+ * succeeds are mixed in with the fields that decide how a card looks.
+ */
+describe('list_packs', () => {
+  const PACKS = [
+    {
+      packId: 'desktop-pack',
+      name: 'Desktop Pack',
+      // Everything on this line and the next three is the SPA's, not an agent's.
+      displayOrder: 10,
+      enabled: true,
+      imageUrl: '/images/surge-packs/desktop-pack.png',
+      theme: { accent: '#0f172a' },
+      guide: 'Tunnel the desktop over SSH, point your client at localhost:3389, and sign in.',
+      requiresRepos: false,
+      requiresRdp: true,
+      desktop: 'xfce',
+      webPort: 8080,
+      inputs: [
+        { name: 'API_KEY', label: 'API key', description: 'from your provider console', required: true, secret: true },
+        { name: 'REGION', label: 'Region', required: false, secret: false, default: 'frankfurt-1' },
+      ],
+      tools: [
+        { toolId: 'curl', name: 'curl', description: 'transfers data from a URL', category: 'base', url: 'https://curl.se' },
+      ],
+      provenance: 'official',
+    },
+    {
+      packId: 'plain',
+      name: 'Plain',
+      displayOrder: 20,
+      enabled: true,
+      requiresRepos: true,
+      requiresRdp: false,
+      tools: [],
+      provenance: 'local',
+    },
+  ]
+  const packsClient = () => client({ get: (async () => PACKS) as CoreClient['get'] })
+
+  type ListedPack = {
+    packId: string
+    name: string
+    tools: Array<{ toolId: string; name: string }>
+    requiresRdp: boolean
+    requiresRepos: boolean
+    inputs?: Array<{ name: string; required: boolean; secret: boolean }>
+  }
+  const list = async () =>
+    ((await runTool('list_packs', {}, ctx(['read'], packsClient()))) as { packs: ListedPack[] }).packs
+
+  it('is readable with the read scope alone, and names every installable pack', async () => {
+    // Read scope for the same reason `list_offerings` has it: this spends nothing, changes
+    // nothing, and tells an agent what the operator already chose to install.
+    expect((await list()).map((p) => p.packId)).toEqual(['desktop-pack', 'plain'])
+  })
+
+  it('says which pack will refuse a create without a desktop password', async () => {
+    // The bonus the issue asks for: an agent learns it must ask the human for a password
+    // BEFORE the create, instead of learning it from the refusal.
+    const [desktop, plain] = await list()
+    expect(desktop!.requiresRdp).toBe(true)
+    expect(plain!.requiresRdp).toBe(false)
+    expect(plain!.requiresRepos).toBe(true)
+  })
+
+  it('says what each pack installs, by id and name', async () => {
+    expect((await list())[0]!.tools).toEqual([{ toolId: 'curl', name: 'curl' }])
+  })
+
+  it('carries the questions a pack asks, and never an answer', async () => {
+    const inputs = (await list())[0]!.inputs!
+    expect(inputs).toEqual([
+      { name: 'API_KEY', label: 'API key', required: true, secret: true },
+      { name: 'REGION', label: 'Region', required: false, secret: false },
+    ])
+    // `default` is a value a pack author wrote into a public file, not a secret — it is dropped
+    // because it is form-filling, and dropping it keeps this projection a list of questions.
+    expect(JSON.stringify(await list())).not.toContain('frankfurt-1')
+  })
+
+  it('omits inputs entirely for a pack that asks for nothing', async () => {
+    // Presence means something: "asks for nothing" and "asked and got nothing" are different.
+    expect((await list())[1]).not.toHaveProperty('inputs')
+  })
+
+  it('leaves the form payload behind rather than spending the agent\'s context on it', async () => {
+    // Display order, a theme, an image URL and a post-install guide are what a card is drawn
+    // from. None of them changes which pack an agent picks, and all of them would ride along
+    // on every call.
+    const keys = Object.keys((await list())[0]!)
+    for (const formOnly of ['displayOrder', 'enabled', 'imageUrl', 'theme', 'guide', 'provenance']) {
+      expect(keys).not.toContain(formOnly)
+    }
   })
 })
 

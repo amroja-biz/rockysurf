@@ -773,7 +773,9 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
       'client does, so reconnect it (in Claude Code, restart the session) to pick this up.',
     help:
       'What an MCP client connected to this instance may do on your behalf. `read` and `stop` are ' +
-      'the default pair; the other two are granted deliberately.',
+      'the default pair — `stop` covers starting a stopped box again as well as stopping a ' +
+      'running one, because pausing spend and resuming it are one decision; the other two are ' +
+      'granted deliberately.',
     warning:
       'What an MCP client may do on your behalf. `create` spends money and `terminate` destroys a ' +
       'box an agent may be mid-task on; neither is recoverable by undo.',

@@ -54,6 +54,24 @@ export interface ProviderCatalogue {
   offeringsError?: string
 }
 
+/**
+ * One surge pack, as `GET /api/v1/surge-packs` reports it (#278).
+ *
+ * Declared as the shape this file READS, like `ProviderCatalogue` above and for the same
+ * reason — core is not importable from here. Only the fields `list_packs` passes on are
+ * named; the route sends more.
+ */
+export interface PublicPackRow {
+  packId: string
+  name: string
+  tools?: Array<{ toolId: string; name: string }>
+  requiresRepos?: boolean
+  requiresRdp?: boolean
+  desktop?: string
+  webPort?: number
+  inputs?: Array<{ name: string; label: string; required?: boolean; secret?: boolean }>
+}
+
 export interface McpToolDefinition {
   name: string
   title: string
@@ -193,6 +211,72 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   },
 
   {
+    /**
+     * THE PACK CATALOGUE, and it is `list_offerings`' argument applied a second time (#278).
+     *
+     * `create_server.pack_id` was advertised with no way to learn its values — exactly what
+     * rockysurf-oeay said about `offering_id`: a parameter usable only by an agent a human had
+     * already briefed. The MCP server has been calling this very route internally since
+     * rockysurf-kvkr, to decide whether a create needs a desktop password; it simply never
+     * told the agent what it saw.
+     *
+     * Read scope, and the risk assessment is `list_offerings`' in full: it spends nothing,
+     * changes nothing, and discloses what an operator has already chosen to install.
+     *
+     * NARROWED, WHERE `list_offerings` PASSES CORE'S OBJECT THROUGH, and the difference is
+     * deliberate rather than an inconsistency. `/api/v1/providers` serves the create path's own
+     * vocabulary — ids and prices — so passing it on is the safest thing that can be done with
+     * it. `/api/v1/surge-packs` serves a FORM: display order, a theme, an image URL and a
+     * post-install guide written for whoever logs into the box. None of that helps an agent
+     * choose a pack, and all of it lands in the agent's context on every call. What is kept is
+     * what a create is decided by — the id, the name, what gets installed, and the three things
+     * that make a create fail if they are not read first.
+     */
+    name: 'list_packs',
+    title: 'List the surge packs that can be installed on a new server',
+    description:
+      'The surge packs this installation offers, with what each one installs. Use it to pick a ' +
+      'pack_id for create_server. Three fields decide whether a create will be refused, and ' +
+      'reading them first is the point of this tool: requiresRdp means create_server needs an ' +
+      'rdp_password, so ask the human for one BEFORE creating rather than learning it from the ' +
+      'refusal; requiresRepos means the box expects at least one repository; and a pack that ' +
+      'lists inputs is asking whoever creates the server for those values — create_server ' +
+      'cannot send them, so a pack with a required input has to be created from the web UI. ' +
+      'Anything absent from this list cannot be installed.',
+    scope: 'read',
+    inputSchema: z.strictObject({}),
+    run: async (_args, { client }) => {
+      const packs = await client.get<PublicPackRow[]>('/api/v1/surge-packs')
+      return {
+        packs: packs.map((pack) => ({
+          packId: pack.packId,
+          name: pack.name,
+          // Ids and names only. A tool's description, category and URL are the Pack Shop's
+          // copy, and an agent choosing between packs is choosing between these two words.
+          tools: (pack.tools ?? []).map((tool) => ({ toolId: tool.toolId, name: tool.name })),
+          requiresRepos: pack.requiresRepos === true,
+          requiresRdp: pack.requiresRdp === true,
+          ...(pack.desktop ? { desktop: pack.desktop } : {}),
+          ...(pack.webPort ? { webPort: pack.webPort } : {}),
+          // The QUESTION, never an answer — `default` is dropped along with the rest of the
+          // form payload, and a secret input has none by schema. Present only when the pack
+          // asks for something, so the field's presence means something.
+          ...(pack.inputs?.length
+            ? {
+                inputs: pack.inputs.map((input) => ({
+                  name: input.name,
+                  label: input.label,
+                  required: input.required === true,
+                  secret: input.secret === true,
+                })),
+              }
+            : {}),
+        })),
+      }
+    },
+  },
+
+  {
     name: 'get_server',
     title: 'Get a server',
     description: 'Full detail for one server, including provisioning progress and cost so far.',
@@ -247,12 +331,57 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: 'stop_server',
     title: 'Stop a server',
     description:
-      'Stop a running server, preserving its disk. Reversible — start it again from the web UI. ' +
-      'Stopping is the cheap way to pause spend without losing work.',
+      'Stop a running server, preserving its disk. Reversible — start_server brings it back as ' +
+      'it was, and so does the web UI. Stopping is the cheap way to pause spend without losing ' +
+      'work.',
     scope: 'stop',
     inputSchema: serverIdSchema,
     run: async (args, { client }) => {
       const server = await client.post<unknown>(`/api/v1/servers/${String(args['server_id'])}/stop`)
+      return { server, ...(await costContext(client)) }
+    },
+  },
+
+  {
+    /**
+     * THE OTHER HALF OF `stop_server` (#278).
+     *
+     * `stop_server`'s own description called the stop reversible — "start it again from the web
+     * UI" — which is an accurate sentence and a broken loop: an agent that stopped a box
+     * overnight to save money had to wake a human to get it back. The route has existed since
+     * before the MCP server did (`POST /api/v1/servers/:serverId/start`) and already serves the
+     * SPA and the CLI; this is the same thin translation `stop_server` is.
+     *
+     * THE SCOPE IS `stop`, WHICH IS A DECISION AND NOT AN OVERSIGHT. Three options were on the
+     * table — `stop`, `create`, or a new `start` scope — and `stop` makes the pair symmetric:
+     * the scope that lets an agent pause spend is the scope that lets it resume what it paused.
+     * `create` would have read as "resuming is initiating", which is a different claim about a
+     * machine that already exists, already counts against `limits.maxServers`, and was
+     * authorised by whoever created it. A new scope would be a fourth knob for an operator to
+     * reason about, buying separation between two halves of one action.
+     *
+     * WHAT THAT WIDENS, STATED PLAINLY, because SECURITY.md's blast-radius paragraph has to
+     * stay true: an agent holding the DEFAULT scopes can now restart a box a human deliberately
+     * stopped, and hourly billing resumes. It is bounded by the fleet that already exists — this
+     * creates nothing — but it is not bounded by `limits.spendCap`, which core enforces on the
+     * create path only (`checkLimits` is called from `lifecycle.create` and nowhere else). The
+     * spend is still MEASURED, and every result here carries the cap reading, so an agent over
+     * its cap can see that it is; it is not refused by one.
+     */
+    name: 'start_server',
+    title: 'Start a stopped server',
+    description:
+      'Start a server that was stopped, with its disk exactly as it was left — the other half ' +
+      'of stop_server, so a box paused to save money can be resumed without waking a human. ' +
+      'Hourly billing resumes. Refused, with a reason, unless the server is stopped: a box ' +
+      'that is still stopping, or already coming up, has to settle first. Starting does not ' +
+      'create anything, so it cannot exceed the server limit — but note that the monthly spend ' +
+      'cap refuses creates, not starts, so check the spend context on this result rather than ' +
+      'assuming a cap will stop you.',
+    scope: 'stop',
+    inputSchema: serverIdSchema,
+    run: async (args, { client }) => {
+      const server = await client.post<unknown>(`/api/v1/servers/${String(args['server_id'])}/start`)
       return { server, ...(await costContext(client)) }
     },
   },
