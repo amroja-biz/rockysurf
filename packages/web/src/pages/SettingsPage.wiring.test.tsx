@@ -1342,7 +1342,20 @@ describe('what the page sends', () => {
     expect((await onlySave()).changes).toEqual([{ path: ['providers', 'byo', 'hosts', 0], unset: true }])
   })
 
-  it('will not add or remove a list entry while THAT list has unsaved edits', async () => {
+  /**
+   * REMOVING waits for a clean list; ADDING does not (issue #302, third attempt).
+   *
+   * This test used to require BOTH to be disabled. The hazard it names is real and is only
+   * Remove's: an index is how an entry is identified, so removing entry 1 renumbers its
+   * successors and would misapply a pending edit to entry 2. Appending at the END renumbers
+   * nothing, so a pending edit means afterwards exactly what it meant before.
+   *
+   * Disabling Add was also the bug an owner actually hit: having typed into a new entry, the
+   * obvious button is the one directly beneath it, and it was greyed out saying "save or discard
+   * your other changes" — an instruction to do the thing it looked like it was refusing to do,
+   * with the button that really saves in the page footer.
+   */
+  it('guards Remove while THAT list has unsaved edits, and leaves Add alone', async () => {
     renderPage()
     await loaded()
 
@@ -1352,12 +1365,15 @@ describe('what the page sends', () => {
     open('Your own machines')
     expect(screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled')).toBe(false)
 
-    // An edit to an entry IS the hazard: a removal renumbers its successors.
     fireEvent.change(control('providers.byo.hosts.0.name'), { target: { value: 'renamed' } })
-    for (const name of ['Add', 'Remove']) {
-      const button = screen.getByRole('button', { name })
-      expect(button.hasAttribute('disabled'), `${name} should be disabled while this list has edits`).toBe(true)
-    }
+    expect(
+      screen.getByRole('button', { name: 'Remove' }).hasAttribute('disabled'),
+      'Remove should wait, because removing an entry renumbers the rest',
+    ).toBe(true)
+    expect(
+      screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled'),
+      'Add appends at the end and renumbers nothing, so it must stay usable',
+    ).toBe(false)
     expect(saves).toHaveLength(0)
   })
 })
@@ -2406,6 +2422,87 @@ describe('saved SSH public keys', () => {
     expect((await onlySave()).changes).toEqual([
       { path: ['ssh', 'keys', 0], value: { name: 'my-laptop', publicKey: '' } },
     ])
+  })
+
+  /**
+   * THE SAVE BUTTON, WHICH IS THE WHOLE POINT (issue #302, third attempt).
+   *
+   * Every earlier test here asserted what the page SENT once a save happened. None asserted
+   * that the save was reachable — so a page on which the footer button was greyed out, or the
+   * button beside the entry refused to work, passed them all while an operator sat in front of
+   * it unable to store a key.
+   */
+  it('ENABLES Save as soon as a list entry is validly edited', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    const saveButton = screen.getByRole('button', { name: 'Save to the file' })
+    expect(saveButton).toHaveProperty('disabled', true) // nothing typed yet
+
+    fireEvent.change(control('ssh.keys.0.name'), { target: { value: 'rockysurf' } })
+    expect(saveButton).toHaveProperty('disabled', false)
+
+    // A real key as `cat ~/.ssh/id_ed25519.pub` prints it — WITH the trailing comment.
+    fireEvent.change(control('ssh.keys.0.publicKey'), {
+      target: { value: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX jbdamask@example.com' },
+    })
+    expect(saveButton).toHaveProperty('disabled', false)
+  })
+
+  /**
+   * ADD IS NOT BLOCKED BY A PENDING EDIT, and this is the control the owner was actually
+   * looking at: having typed into a new entry, the obvious button is the one under it, and it
+   * was disabled with "save or discard your other changes" — an instruction to do the very
+   * thing it appeared to be refusing. Removing still waits, because removing renumbers.
+   */
+  it('keeps Add usable while the list has unsaved edits, and only guards Remove', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.change(control('ssh.keys.0.name'), { target: { value: 'rockysurf' } })
+
+    const panel = panelOf('ssh')
+    expect(within(panel).getByRole('button', { name: 'Add' })).toHaveProperty('disabled', false)
+    const remove = within(panel).getByRole('button', { name: 'Remove' })
+    expect(remove).toHaveProperty('disabled', true)
+    expect(remove.getAttribute('title')).toContain('renumbers')
+  })
+
+  /**
+   * A SECOND ENTRY, which the constant placeholder made impossible: `blank` always carried the
+   * same name, every one of these schemas requires the label to be unique, so core refused the
+   * second Add with "two saved SSH keys share a name" — forever. A list of your SSH keys that
+   * cannot hold two keys is not a list.
+   */
+  it('numbers a new entry so a second Add is not refused as a duplicate', async () => {
+    // An entry already carrying the placeholder name — the state one press of Add leaves.
+    served.values['ssh'] = { keys: [{ name: 'my-laptop', publicKey: '' }] }
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add' }))
+
+    expect((await onlySave()).changes).toEqual([
+      { path: ['ssh', 'keys', 1], value: { name: 'my-laptop 2', publicKey: '' } },
+    ])
+  })
+
+  /**
+   * The card heading follows the BOX, not the file. It used to read the saved value, so a card
+   * you had just renamed contradicted the Name field under it — the page disagreeing with
+   * itself about which entry you were looking at.
+   */
+  it('titles the card with what is typed, not with what was last saved', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    expect(panelOf('ssh').querySelector('.settings-entry h3')!.textContent).toBe('laptop')
+    fireEvent.change(control('ssh.keys.0.name'), { target: { value: 'rockysurf' } })
+    expect(panelOf('ssh').querySelector('.settings-entry h3')!.textContent).toBe('rockysurf')
   })
 
   it('offers a way to add the first key when the file has no ssh block at all', async () => {

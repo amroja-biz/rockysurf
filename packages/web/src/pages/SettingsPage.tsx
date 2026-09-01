@@ -1604,51 +1604,104 @@ export function SettingsPage() {
     /** Absent means this list is not added to here — its entries still render. */
     blank: Record<string, unknown> | undefined,
     empty: string,
+    /** The item field a card is titled by — also the one a new entry must not collide on. */
+    labelField?: string,
   ): ReactNode {
     const entries = (valueAt(values, path) as Record<string, unknown>[] | undefined) ?? []
     const prefix = `${path.join('.')}.`
-    // Only THIS list's pending edits block a structural change to it — an unsaved port has no
-    // bearing on which entry index 2 refers to.
-    const blocked = Object.keys(edits).some((key) => key.startsWith(prefix))
-      ? 'Save or discard your other changes to this list first'
+
+    /**
+     * REMOVING renumbers; APPENDING does not — so only Remove waits for a clean list.
+     *
+     * The interlock used to cover both, and its reason only ever applied to one of them: an
+     * index is how an entry is named, so combining "remove entry 1" with "change entry 2's
+     * name" would apply the second edit to whichever entry slid into that slot. Appending at
+     * the END moves nothing, and a pending edit to entry 0 means exactly what it did before.
+     *
+     * Disabling Add was not merely unnecessary, it was the whole failure people hit: having
+     * typed into a brand-new entry, the obvious button to press is the one directly under it,
+     * and it was greyed out telling them to "save or discard your other changes" — while the
+     * button that actually saves sits in the page footer. The instruction described the fix for
+     * a problem they did not have, and it read as a refusal to save what they had just typed.
+     */
+    const listDirty = Object.keys(edits).some((key) => key.startsWith(prefix))
+    const blockedRemove = listDirty
+      ? 'Save or discard your changes to this list first — removing an entry renumbers the rest'
       : undefined
+
+    /**
+     * A NEW ENTRY MUST NOT COLLIDE WITH ONE THAT IS ALREADY THERE.
+     *
+     * `blank` is a constant, and the schemas behind these lists require the label to be unique
+     * — `ssh.keys` ("two saved SSH keys share a name"), `registry.sources`, and the BYO hosts.
+     * So pressing Add twice sent the same name twice and core refused the SECOND one, every
+     * time, forever: a list you could never get a second entry into, which for a list of your
+     * SSH keys is the entire point of it. Numbering the new one is what a person would have
+     * done by hand.
+     */
+    const uniqueBlank = (): Record<string, unknown> | undefined => {
+      if (!blank) return undefined
+      const field = labelField ?? fields[0]?.name
+      if (!field) return blank
+      const proposed = blank[field]
+      if (typeof proposed !== 'string') return blank
+      const taken = new Set(entries.map((entry) => String(entry[field] ?? '')))
+      if (!taken.has(proposed)) return blank
+      let n = 2
+      while (taken.has(`${proposed} ${n}`)) n += 1
+      return { ...blank, [field]: `${proposed} ${n}` }
+    }
 
     // The section wrapper and the header belong to the panel that draws this list, so a list is
     // a section's CONTENTS here — the same shape every other block below has.
     return (
       <>
         {entries.length === 0 && <p className="hint">{empty}</p>}
-        {entries.map((entry, index) => (
-          <div className="settings-entry" key={index}>
-            <h3>{itemLabel(entry, index)}</h3>
-            {fields.map((f) =>
-              f.secret
-                ? secretField([...path, index, f.name], f.label, f.example ?? 'A_VARIABLE_NAME')
-                : textField([...path, index, f.name], f.label, f.name === 'port' ? 'number' : 'text'),
-            )}
-            <button
-              type="button"
-              className="destructive"
-              disabled={Boolean(blocked) || saving}
-              title={blocked}
-              onClick={() =>
-                setPendingRemoval({
-                  label: itemLabel(entry, index),
-                  change: { path: [...path, index], unset: true },
-                })
-              }
-            >
-              Remove
-            </button>
-          </div>
-        ))}
+        {entries.map((entry, index) => {
+          /*
+            THE HEADING FOLLOWS THE BOX, not the file (issue #302 follow-up).
+
+            `entry` is the SAVED value, so a card you had just renamed kept its old title while
+            the Name box under it showed the new one — the page contradicting itself about which
+            entry you were looking at, which is exactly how it looked to somebody who could not
+            tell whether their typing had registered at all.
+          */
+          const live = { ...entry }
+          for (const f of fields) {
+            const pending = edits[keyOf([...path, index, f.name])]
+            if (pending && !pending.unset && typeof pending.value === 'string') live[f.name] = pending.value
+          }
+          return (
+            <div className="settings-entry" key={index}>
+              <h3>{itemLabel(live, index)}</h3>
+              {fields.map((f) =>
+                f.secret
+                  ? secretField([...path, index, f.name], f.label, f.example ?? 'A_VARIABLE_NAME')
+                  : textField([...path, index, f.name], f.label, f.name === 'port' ? 'number' : 'text'),
+              )}
+              <button
+                type="button"
+                className="destructive"
+                disabled={Boolean(blockedRemove) || saving}
+                title={blockedRemove}
+                onClick={() =>
+                  setPendingRemoval({
+                    label: itemLabel(live, index),
+                    change: { path: [...path, index], unset: true },
+                  })
+                }
+              >
+                Remove
+              </button>
+            </div>
+          )
+        })}
         {blank && (
           <button
             type="button"
             className="btn-secondary"
-            disabled={Boolean(blocked) || saving}
-            title={blocked}
-            onClick={() => void submit([{ path: [...path, entries.length], value: blank }], [])}
+            disabled={saving}
+            onClick={() => void submit([{ path: [...path, entries.length], value: uniqueBlank() }], [])}
           >
             Add
           </button>
@@ -1706,9 +1759,10 @@ export function SettingsPage() {
     return listSection(
       id.split('.'),
       fields,
-      (entry, index) => String(entry[labelField] ?? `${noun} ${index + 1}`),
+      (entry, index) => String(entry[labelField] || `${noun} ${index + 1}`),
       list.blank,
       list.empty,
+      labelField,
     )
   }
 
@@ -1926,9 +1980,10 @@ export function SettingsPage() {
         { name: 'fingerprint', label: 'Host key fingerprint' },
         { name: 'identityFile', label: 'Private key path' },
       ],
-      (entry, i) => String(entry['name'] ?? `host ${i + 1}`),
+      (entry, i) => String(entry['name'] || `host ${i + 1}`),
       { name: 'change-me', host: '10.0.0.1' },
       'None yet. Enabling this provider requires at least one host.',
+      'name',
     ),
 
     limits: (
@@ -2006,10 +2061,11 @@ export function SettingsPage() {
         { name: 'url', label: 'URL' },
         { name: 'trust', label: 'Your label for it' },
       ],
-      (entry, i) => String(entry['name'] ?? `source ${i + 1}`),
+      (entry, i) => String(entry['name'] || `source ${i + 1}`),
       { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
       "None yet. Add one to browse somebody else's packs — or your own, published as a single " +
         'YAML file at an https URL.',
+      'name',
     ),
 
     mcp: (
