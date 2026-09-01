@@ -1075,6 +1075,26 @@ shows them **every script, verbatim**, along with which steps run as root and ev
 scripts fetch, before they consent. Write your scripts as though someone will read them line by
 line, because the interface is built so that they can.
 
+### The link check, which is deliberately not a gate
+
+Neither check above ever loads a tool's `url`. `pack lint` proves it is a string; `pack check`
+exercises only the URLs your scripts actually fetch. But `url` is the tool's home page on the
+consent screen — the link a person follows to see what they are about to install — so a URL that
+rots is invisible to both gates and visible to everybody else.
+
+```bash
+pnpm run check:pack-urls        # this repository's packs/; needs the network
+```
+
+It grades each link `DEAD` (gone — fix it), `MOVED` (a GitHub rename redirect still carrying it;
+write the canonical name, because a redirect can be switched off) or `BLOCKED` (the host refuses
+scripted requests, which is not a failure and never fails the run).
+
+It is **not** in `pnpm run lint` and not in CI, on purpose: whether a third-party marketing site
+answers today is not a property of the pull request in front of it, and a gate that fails for
+reasons no contributor caused only teaches people to re-run it. Run it before a release, and when
+you add a pack.
+
 ### Your own pack, on your own instance
 
 Not every pack is for anybody else. Three ways to get one onto a running Rocky Surf, none of
