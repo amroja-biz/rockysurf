@@ -1,26 +1,24 @@
 /**
- * The shared logic behind the two SSH-rule cleanups issue #320 asks for:
+ * The shared logic behind the nightly's SSH-rule cleanup (issue #320):
  *
  *   scripts/e2e/aws-ssh-sweep.mjs   the nightly's own after-the-fact cleanup, run under the CI
  *                                   operator identity on every path including cancellation.
- *   scripts/aws-ssh-cleanup.mjs     the one-time cleanup an owner runs by hand against the live
- *                                   shared group to clear the backlog of stale runner IPs.
  *
  * WHY THIS EXISTS AT ALL. The nightly resolves the GitHub-hosted runner's public IP at run time and
  * writes it into `sshAllowedCidr` so the run can SSH the box it provisions (scripts/e2e/lifecycle.mjs).
  * Those runners live in Azure and every run gets a FRESH IP, and AWS provisioning is additive by
  * design ("provision never revokes" — the anti-lockout rule). So every nightly deposits at least one
- * `/32` into the shared `rockysurf-ssh` group and nothing ever takes it out. At 60 rules — AWS's
- * default inbound ceiling — the next authorize fails, which surfaces either as the nightly going red
- * or, worse, as a real user's Settings save silently failing to reach AWS.
+ * `/32` into its dedicated `rockysurf-nightly-ssh` group (scripts/e2e/aws-ci-ssh-sg.mjs) and nothing
+ * ever takes it out. At 60 rules — AWS's default inbound ceiling — the next authorize fails, which
+ * would surface as the nightly going red.
  *
  * THE ONE RULE THAT MAKES REMOVAL SAFE is the same one the provider itself uses: the description
  * stamp. `@rockysurf/provider-aws` writes `SSH_RULE_DESCRIPTION` on every range it authorizes, and
  * that stamp is the ONLY proof that Rocky Surf — not an operator at their console — created a rule.
- * The cleanup here revokes only stamped ranges, and only those a caller has not listed in `keep`;
- * everything else is reported and left exactly where it is. An operator's hand-added office range
- * carries their own description (or none), never ours, so it is never a candidate. See the long
- * comment on that constant in packages/provider-aws/src/provider.ts.
+ * The cleanup here revokes only stamped ranges; everything else is reported and left exactly where
+ * it is. An operator's hand-added office range carries their own description (or none), never ours,
+ * so it is never a candidate. See the long comment on that constant in
+ * packages/provider-aws/src/provider.ts.
  *
  * COORDINATION WITH #309. Issue #309 gives the PRODUCT a confirmed, itemized revoke on the published
  * provider role — removing a CIDR from the Settings list takes cloud effect. That is a different
@@ -40,33 +38,24 @@
  *
  * @param {object} args
  * @param {Array<{ cidr: string, description?: string }>} args.ranges  the group's port-22 IPv4 ranges.
- * @param {readonly string[]} [args.keep]  CIDRs to preserve even when stamped — the caller's live
- *   config. The anti-lockout guarantee: a CIDR the user still wants is never a candidate, no matter
- *   who stamped it. The nightly passes nothing here (its only stamped rules are ephemeral runner
- *   IPs); the one-time owner cleanup passes the CIDRs in the operator's live `sshAllowedCidr`.
  * @param {string} args.ruleDescription  the ownership stamp — `SSH_RULE_DESCRIPTION` from the
  *   provider package. Passed in rather than hardcoded so the two never drift.
- * @returns {{ revoke: string[], kept: string[], foreign: Array<{ cidr: string, description: string }> }}
- *   `revoke` — stamped and not kept, safe to remove. `kept` — stamped but in `keep`, preserved.
- *   `foreign` — not our stamp, reported and never touched.
+ * @returns {{ revoke: string[], foreign: Array<{ cidr: string, description: string }> }}
+ *   `revoke` — carries our stamp, safe to remove. `foreign` — not our stamp, reported and never
+ *   touched. The nightly's only stamped rules are the ephemeral runner IPs it authorized this run
+ *   and by contract never took back, so every stamped range on the CI group is a candidate.
  */
-export function planSshSweep({ ranges, keep = [], ruleDescription }) {
+export function planSshSweep({ ranges, ruleDescription }) {
   if (!ruleDescription) throw new Error('planSshSweep requires the ownership stamp (ruleDescription)')
-  const keepSet = new Set(keep)
   const revoke = []
-  const kept = []
   const foreign = []
   for (const range of ranges) {
     const cidr = range.cidr
     if (!cidr) continue
-    if (range.description === ruleDescription) {
-      if (keepSet.has(cidr)) kept.push(cidr)
-      else revoke.push(cidr)
-    } else {
-      foreign.push({ cidr, description: range.description ?? '' })
-    }
+    if (range.description === ruleDescription) revoke.push(cidr)
+    else foreign.push({ cidr, description: range.description ?? '' })
   }
-  return { revoke, kept, foreign }
+  return { revoke, foreign }
 }
 
 /**

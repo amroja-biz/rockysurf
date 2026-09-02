@@ -624,12 +624,12 @@ jobs:
             exit 1
           fi
 
-      # THE SSH-RULE SWEEP (gh issue #320). The lifecycle authorizes the runner's fresh public IP on
-      # the shared rockysurf-ssh group so it can SSH the box, and by the "provision never revokes"
-      # anti-lockout contract nothing ever removes it — so the group climbed to 59/60 and the next
-      # authorize would have failed the nightly or, worse, a real user's Settings save. This removes
-      # the rules Rocky Surf stamped and no longer needs; a rule the operator added by hand carries a
-      # different description and is reported, never touched (scripts/e2e/aws-ssh-rules.mjs).
+      # THE SSH-RULE SWEEP (gh issue #320, retargeted #326). The lifecycle authorizes the runner's
+      # fresh public IP on the nightly's own rockysurf-nightly-ssh group so it can SSH the box, and by
+      # the "provision never revokes" anti-lockout contract nothing ever removes it — so the group
+      # would climb to AWS's 60-rule ceiling and the next authorize would fail the nightly. This
+      # removes the rules Rocky Surf stamped and no longer needs; a rule the operator added by hand
+      # carries a different description and is reported, never touched (scripts/e2e/aws-ssh-rules.mjs).
       #
       # IT RUNS AS THE OPERATOR IDENTITY, not the published provider role: revoke is deliberately
       # absent from that role (gh issue #309 owns the product's revoke path), so the sweep reads the

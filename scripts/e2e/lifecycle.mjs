@@ -35,6 +35,7 @@ import {
   resolveAuditCredentials,
   resolveRunCredentials,
 } from './aws-audit-credentials.mjs'
+import { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
 
 /**
  * The offerings this exit run uses, and THE ARCHITECTURE EACH ONE IS EXPECTED TO BE.
@@ -206,6 +207,11 @@ async function writeConfig() {
     const cidr = `${await currentPublicIp()}/32`
     log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
     lines.push(`  aws:`, `    enabled: true`, `    region: ${AWS_REGION}`)
+    // Pin the nightly to its own SSH group (issue #326). Without this the provider defaults to
+    // `rockysurf-ssh`, the group a real user's box would also use — and the `if: always()` sweep,
+    // aimed at the CI group, would then clean a group the run never filled while the shared one
+    // leaked. The sweep imports this same const, so the two can never name different groups.
+    lines.push(`    securityGroupName: ${CI_SSH_SG_NAME}`)
     // A named profile locally, the default credential chain in CI — where there is no
     // ~/.aws/config to name and the credentials arrive as environment variables. Set
     // ROCKYSURF_E2E_AWS_PROFILE to '' to force the chain.

@@ -15,10 +15,12 @@
  * runs as the operator, exactly as the GCP and Azure sweeps run as their CI-only identities. See
  * scripts/e2e/aws-audit-credentials.mjs.
  *
- * WHAT IT REMOVES. Every port-22 range on the shared `rockysurf-ssh` group carrying Rocky Surf's own
- * description stamp and not named in `keep` (empty here — the nightly's only stamped rules are the
- * ephemeral runner IPs). A range with any other description, or none, is an operator's and is
- * reported, never touched. See scripts/e2e/aws-ssh-rules.mjs for the safety argument.
+ * WHAT IT REMOVES. Every port-22 range on the CI `rockysurf-nightly-ssh` group (its name comes from
+ * the shared const in scripts/e2e/aws-ci-ssh-sg.mjs that the lifecycle config also uses, so the
+ * group filled and the group swept are the same one) carrying Rocky Surf's own description stamp —
+ * all of which are the ephemeral runner IPs the nightly authorized and by contract never took back.
+ * A range with any other description, or none, is an operator's and is reported, never touched. See
+ * scripts/e2e/aws-ssh-rules.mjs for the safety argument.
  *
  * IT DOES NOT FAIL THE JOB. Unlike the Terminate sweep, finding rules to remove here is the NORMAL
  * case, not evidence of a leak: the lifecycle is designed never to revoke, so this is the only thing
@@ -31,16 +33,15 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveAuditCredentials } from './aws-audit-credentials.mjs'
+import { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
 import { describePort22Ranges, findSharedSg, planSshSweep, revokeCidr } from './aws-ssh-rules.mjs'
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
 const REGION = process.env.AWS_REGION ?? 'us-east-1'
-const SG_NAME = process.env.ROCKYSURF_SSH_SG_NAME ?? 'rockysurf-ssh'
-/** Empty in the nightly: every stamped rule on the CI group is an ephemeral runner IP. */
-const KEEP = (process.env.ROCKYSURF_SSH_SWEEP_KEEP ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean)
+// The CI SG name comes from the shared const the lifecycle config also uses (issue #326), so the
+// group this sweep cleans is guaranteed to be the one the run filled. An override stays available
+// for a workstation pointed at a differently named group.
+const SG_NAME = process.env.ROCKYSURF_SSH_SG_NAME ?? CI_SSH_SG_NAME
 
 const log = (...args) => console.log('[ssh-sweep]', ...args)
 
@@ -82,11 +83,10 @@ async function main() {
 
     const { SSH_RULE_DESCRIPTION } = await import(pathToFileURL(join(REPO, 'packages/provider-aws/dist/index.js')).href)
     const ranges = await describePort22Ranges(ec2, commands, groupId)
-    const { revoke, kept, foreign } = planSshSweep({ ranges, keep: KEEP, ruleDescription: SSH_RULE_DESCRIPTION })
+    const { revoke, foreign } = planSshSweep({ ranges, ruleDescription: SSH_RULE_DESCRIPTION })
 
-    log(`${groupId}: ${ranges.length} port-22 range(s) — ${revoke.length} to remove, ${kept.length} kept, ${foreign.length} not ours`)
+    log(`${groupId}: ${ranges.length} port-22 range(s) — ${revoke.length} to remove, ${foreign.length} not ours`)
     for (const f of foreign) log(`  left alone (not our stamp): ${f.cidr} — "${f.description}"`)
-    for (const cidr of kept) log(`  kept (in live config): ${cidr}`)
 
     let removed = 0
     for (const cidr of revoke) {
