@@ -1004,6 +1004,21 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
     title: 'MCP',
     help: 'What an MCP client may do through this instance once it holds a token.',
   },
+  /**
+   * THE ONE SECTION ID THAT IS NOT A CONFIG PATH (issue #331). Backup and Restore act on the
+   * whole installation, not on a field of the file, so no field's path will ever map to this
+   * tab — the SPA hand-writes its two cards, the way the Connect GitHub card is hand-written
+   * on the `github` tab. It is declared HERE all the same, because the page's rule 1 is that
+   * the navigation is the server's inventory, and a tab smuggled in client-side would be the
+   * first one core could not see.
+   */
+  {
+    id: 'backup',
+    title: 'Backup',
+    help:
+      'Everything Rocky Surf knows lives on this machine — there is no cloud copy. A backup is ' +
+      'one file you keep wherever you keep files; Restore reads it back on your next machine.',
+  },
 ] as const
 
 /**

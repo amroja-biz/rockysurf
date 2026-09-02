@@ -36,11 +36,12 @@ export function BackupReminder() {
           ⚠︎
         </span>
         <span>
-          <strong>Rocky Surf keeps everything on this machine.</strong> Servers, provider
-          credentials, per-server SSH private keys and remote-desktop passwords live only in
-          this installation&rsquo;s data directory — there is no cloud copy. Back it up, and
-          keep the backup somewhere private: it holds the key that decrypts every secret stored
-          here. <Link to="/help#backup">Backing up your data</Link>.
+          <strong>Rocky Surf keeps everything on this machine.</strong> Servers, per-server SSH
+          private keys, remote-desktop passwords and your Connect-GitHub token live only in
+          this installation&rsquo;s data directory — there is no cloud copy, and your cloud
+          credentials are never stored here at all. Back it up from{' '}
+          <Link to="/settings?section=backup">Settings&nbsp;→&nbsp;Backup</Link>, or copy the
+          whole directory: <Link to="/help#backup">Backing up your data</Link>.
         </span>
       </div>
       <button

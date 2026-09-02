@@ -1511,3 +1511,67 @@ export interface SshPathReport {
 export async function getSshPath(serverId: string): Promise<SshPathReport> {
   return request<SshPathReport>(`/servers/${serverId}/ssh-path`)
 }
+
+/* --------------------------------------------------------------------- backup / restore */
+
+/** One domain's outcome in a restore report (issue #331). */
+export interface RestoreDomainReport {
+  restored: number
+  skipped: number
+  refused: { id: string; reason: string }[]
+}
+
+export interface RestoreSecretsReport {
+  restored: number
+  skipped: number
+  readable: number
+  unreadable: number
+  dropped: { id: string; reason: string }[]
+}
+
+export interface RestoreConfigOutcome {
+  written: boolean
+  applied: boolean
+  refused?: { path: string; message: string }[]
+  warnings?: { path: string; message: string }[]
+  reloadBlocked?: string
+  skipped?: string
+  pinnedKept: string[]
+}
+
+export interface RestoreResult {
+  report: {
+    users: RestoreDomainReport
+    tools: RestoreDomainReport
+    toolState: { applied: number; skipped: number }
+    packs: RestoreDomainReport
+    servers: RestoreDomainReport
+    repositories: { restored: number; skipped: number }
+    secrets: RestoreSecretsReport
+    spend: { adjustedMonth?: string }
+  }
+  config: RestoreConfigOutcome
+  /** The GitHub tokens the backup left behind by design — the re-enter list (issue #331). */
+  tokensToReenter: string[]
+}
+
+/**
+ * Download the backup artifact (issue #331). Raw fetch like the pack export above, because
+ * the body is a file the caller hands to the browser rather than JSON to act on — and the
+ * server's own filename (in `content-disposition`) is part of the answer.
+ */
+export async function downloadBackup(): Promise<{ filename: string; text: string }> {
+  const response = await fetch(`${API_BASE_URL}/backup`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    credentials: 'include',
+  })
+  if (!response.ok) throw new ApiError(response.status, response.statusText)
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const match = /filename="([^"]+)"/.exec(disposition)
+  return { filename: match?.[1] ?? 'rockysurf-backup.json', text: await response.text() }
+}
+
+/** Restore a backup artifact the operator picked from disk (issue #331). */
+export async function restoreBackup(artifact: unknown): Promise<RestoreResult> {
+  return request<RestoreResult>('/backup/restore', { method: 'POST', body: JSON.stringify(artifact) })
+}

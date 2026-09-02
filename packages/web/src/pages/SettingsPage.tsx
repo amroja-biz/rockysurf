@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } f
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
+import { BackupRestoreCards } from '../components/BackupRestoreCards'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
 import { MachineTypePicker } from '../components/MachineTypePicker'
@@ -2019,6 +2020,18 @@ export function SettingsPage() {
    * which is what lets a section core adds render in exactly the same frame as these without a
    * line here. A key with no entry is not a hole — it is a section drawn from the inventory.
    */
+  /**
+   * How many GitHub tokens sit in the file as LITERALS ('set' covers a mixed value too, the
+   * `view.ts` line). The Backup card's disclosure is exact — "these N will not be included" —
+   * because the backup redacts exactly these (issue #331), and a vague "may include tokens"
+   * would be the warning-shaped reassurance the PR rules ban.
+   */
+  const literalTokenCount =
+    (secretAt(view.values, ['github', 'pat']).state === 'set' ? 1 : 0) +
+    ((valueAt(view.values, ['github', 'tokens']) as unknown[] | undefined) ?? []).filter(
+      (_, index) => secretAt(view.values, ['github', 'tokens', index, 'pat']).state === 'set',
+    ).length
+
   const handWritten: Record<string, ReactNode> = {
     server: (
       <>
@@ -2027,6 +2040,22 @@ export function SettingsPage() {
         {textField(['server', 'publicUrl'], 'Public URL')}
         {readOnlyField(['server', 'dataDir'], 'Data directory')}
       </>
+    ),
+
+    /*
+      BACKUP AND RESTORE (issue #331): the one section whose id is not a config path, so no
+      field will ever land on it — the two cards are the whole tab. A restore can change the
+      configuration file AND the database, so its callback reloads everything this page holds.
+    */
+    backup: (
+      <BackupRestoreCards
+        literalTokenCount={literalTokenCount}
+        onRestored={() => {
+          void load()
+          void loadConnection()
+          void loadProviders()
+        }}
+      />
     ),
 
     /*
