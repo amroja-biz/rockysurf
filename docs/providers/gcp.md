@@ -383,25 +383,28 @@ What the sync does, precisely:
   Rocky Surf cannot tell you whether the patch landed. It does not claim success it cannot
   support, and it deletes nothing.
 
-**Adding a CIDR works today. Removing one does not.** This is a deliberate limitation of this
-release and it is stated here rather than discovered later: a CIDR you delete from
-`sshAllowedCidr` stays on the firewall rule until you remove it yourself, and the sync report
-hands you the command:
+**Adding a CIDR widens the rule immediately. Removing one converges it, once you confirm.** A
+range you delete from `sshAllowedCidr` does not vanish from the firewall rule on sight: it is
+**reported and offered for keep-or-remove, default keep**, and only when you pick remove does the
+next sync patch it out. The sync report hands you the equivalent command either way:
 
 ```bash
 gcloud compute firewall-rules update rockysurf-ssh \
   --source-ranges=203.0.113.7/32 --project=my-project-123456
 ```
 
-The reason is that this rule's `sourceRanges` were frozen at create time for the whole life of
-the release before this one, so what is on the rule is very often the CIDRs of an *older* config —
-quite possibly the network you are sitting on while you read this. Patching to exactly your list
-would drop those in one call, and the first thing an operator does with this feature is save it
-from a network that may be reachable only because of them. Converging to exactly the list is
-deferred until you have been offered keep-or-remove and picked one; see
-[ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md). It is the same
-report-don't-revoke stance [AWS](aws.md#who-can-reach-ssh) takes on a range it cannot prove it
-authorized.
+The reason for the default-keep is that this rule's `sourceRanges` were frozen at create time for
+the whole life of the release before this one, so what is on the rule is very often the CIDRs of
+an *older* config — quite possibly the network you are sitting on while you read this. So the patch
+carries the **union** of your list and the extras you have not asked to remove, never dropping a
+frozen range you did not choose to; a single-field patch is atomic, so it always reasserts your
+whole list first and can only ever narrow the rule *toward* it (authorize-before-revoke by
+construction). The first push after an upgrade may surface several extras at once; once you have
+adopted or removed each, they are gone, and from then on the only extra a removal produces is the
+one CIDR you just took out. This is the same keep-or-remove stance
+[AWS](aws.md#who-can-reach-ssh) takes on a stamped range, and it needs **no new GCP permission** —
+`compute.firewalls.update` already covers the patch. Rocky Surf still **never** deletes or
+delete-and-recreates the rule (it is shared by every box in the project).
 
 Once you have removed a range, **new SSH connections from that network stop as soon as the change
 lands.** Established sessions survive — a firewall rule is evaluated on connection setup — and the

@@ -1164,6 +1164,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
               status: 'skipped',
               applied: [],
               reported: [],
+              removable: [],
               detail:
                 `No ${config.nsgName} network security group exists in the ${resourceGroup} ` +
                 'resource group yet, so there is nothing to update. Rocky Surf creates it at the ' +
@@ -1194,8 +1195,11 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
             status: changed ? 'updated' : 'unchanged',
             applied: desired,
             // Always empty here, and the paragraph above says why. Azure's rule is written whole
-            // every time, so there is never a stamped-by-us leftover to offer the operator.
+            // every time, so there is never a stamped-by-us leftover to offer the operator — its
+            // `reported` and `removable` are both always empty, and removing a CIDR from the list
+            // takes effect on Azure in this one step (issue #309 needs nothing here).
             reported: [],
+            removable: [],
             detail: changed
               ? `${config.nsgName} now allows ${desired.join(', ')} on port 22.` +
                 (removed.length > 0
@@ -1208,6 +1212,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
           status: 'failed',
           applied: [],
           reported: [],
+          removable: [],
           detail:
             `Azure did not answer within ${Math.round(deadlineMs / 1000)}s, so Rocky Surf cannot ` +
             `say whether ${config.nsgName} now allows ${desired.join(', ')}. Nothing was deleted. ` +

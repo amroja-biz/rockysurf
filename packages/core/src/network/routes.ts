@@ -44,7 +44,40 @@ interface SyncReport {
   status: 'updated' | 'unchanged' | 'skipped' | 'failed'
   applied: readonly string[]
   reported: readonly string[]
+  /** The stamped extras a keep-or-remove prompt may offer removing (issue #309). */
+  removable?: readonly string[]
   detail: string
+}
+
+/**
+ * The optional request body: which stamped extras the operator confirmed for removal, per cloud.
+ *
+ * Absent on the plain push (the save, and the footer button) — that carries no removals and syncs
+ * additively. Present only after the operator has stood in front of the keep-or-remove prompt and
+ * picked REMOVE, and it names ONLY the extras that prompt surfaced. The provider is the gate: it
+ * revokes a named range solely when it can prove authorship and the range is a genuine extra
+ * (`SshAccessSyncOptions`), so a malformed or hostile body can only ever narrow a cloud toward the
+ * config it already runs, never past it and never onto a CIDR the operator did not confirm.
+ */
+interface SyncRequestBody {
+  revoke?: Record<string, readonly string[]>
+}
+
+/** Read the body if there is one; a plain push sends none, and that must not error. */
+async function readRevokeMap(c: { req: { json: () => Promise<unknown> } }): Promise<Record<string, readonly string[]>> {
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return {}
+  }
+  const revoke = (body as SyncRequestBody | undefined)?.revoke
+  if (!revoke || typeof revoke !== 'object') return {}
+  const out: Record<string, readonly string[]> = {}
+  for (const [id, cidrs] of Object.entries(revoke)) {
+    if (Array.isArray(cidrs)) out[id] = cidrs.filter((cidr): cidr is string => typeof cidr === 'string')
+  }
+  return out
 }
 
 /**
@@ -94,6 +127,7 @@ export function createNetworkRoutes(deps: NetworkRoutesDeps) {
   routes.post('/api/v1/network/ssh-access/sync', async (c) => {
     const onDisk = cidrsInFile(deps.configPath)
     const running = cidrsInForce(deps.inForce())
+    const revokeMap = await readRevokeMap(c)
 
     /**
      * Only the clouds that maintain a whitelist, and only via the capability flag.
@@ -132,7 +166,13 @@ export function createNetworkRoutes(deps: NetworkRoutesDeps) {
         }
 
         try {
-          const result = await deps.registry.get(provider).syncSshAccess!()
+          // Only this provider's confirmed removals reach it, and only when the body named any.
+          // The provider is the authority on whether a named range is actually removable; the
+          // route just forwards the operator's confirmation (issue #309).
+          const revoke = revokeMap[provider]
+          const result = await deps.registry
+            .get(provider)
+            .syncSshAccess!(revoke && revoke.length > 0 ? { revoke } : undefined)
           return { provider, ...result }
         } catch (err) {
           /**

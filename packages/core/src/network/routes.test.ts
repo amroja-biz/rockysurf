@@ -126,6 +126,70 @@ describe('pushing the SSH whitelist', () => {
     expect(body.synced[0]?.detail).toMatch(/different networks/)
   })
 
+  /**
+   * Issue #309. The keep-or-remove prompt sends the extras the operator confirmed for removal, per
+   * cloud. The route forwards each cloud ONLY its own set, and a plain push (no body) forwards
+   * nothing — the provider then syncs additively and revokes nothing.
+   */
+  it('forwards each cloud only its own confirmed removals', async () => {
+    const seen: Record<string, unknown> = {}
+    const app = harness(
+      {
+        aws: {
+          capabilities: { managesSshAccess: true },
+          syncSshAccess: async (options?: unknown) => {
+            seen['aws'] = options
+            return { status: 'updated', applied: [], reported: [], removable: [], detail: '' }
+          },
+        },
+        gcp: {
+          capabilities: { managesSshAccess: true },
+          syncSshAccess: async (options?: unknown) => {
+            seen['gcp'] = options
+            return { status: 'unchanged', applied: [], reported: [], removable: [], detail: '' }
+          },
+        },
+      } as never,
+      {
+        providers: {
+          aws: { sshAllowedCidr: ['203.0.113.7/32'] },
+          gcp: { sshAllowedCidr: ['203.0.113.7/32'] },
+        },
+      },
+      'providers:\n  aws:\n    sshAllowedCidr:\n      - 203.0.113.7/32\n  gcp:\n    sshAllowedCidr:\n      - 203.0.113.7/32\n',
+    )
+
+    await app.request('/api/v1/network/ssh-access/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ revoke: { aws: ['192.0.2.0/24'] } }),
+    })
+
+    expect(seen['aws']).toEqual({ revoke: ['192.0.2.0/24'] })
+    // gcp had no confirmed removals, so it is called additively — no options at all.
+    expect(seen['gcp']).toBeUndefined()
+  })
+
+  it('syncs additively when the push carries no body', async () => {
+    let received: unknown = 'unset'
+    const app = harness(
+      {
+        aws: {
+          capabilities: { managesSshAccess: true },
+          syncSshAccess: async (options?: unknown) => {
+            received = options
+            return { status: 'updated', applied: [], reported: [], removable: [], detail: '' }
+          },
+        },
+      } as never,
+      { providers: { aws: { sshAllowedCidr: ['203.0.113.7/32'] } } },
+      'providers:\n  aws:\n    sshAllowedCidr:\n      - 203.0.113.7/32\n',
+    )
+
+    await syncing(app)
+    expect(received).toBeUndefined()
+  })
+
   it('turns a non-admin away', async () => {
     const app = new Hono<AppEnv>()
     app.use('*', async (c, next) => {

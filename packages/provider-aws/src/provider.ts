@@ -8,6 +8,7 @@ import {
   DescribeSubnetsCommand,
   DescribeVpcsCommand,
   EC2Client,
+  RevokeSecurityGroupIngressCommand,
   RunInstancesCommand,
   StartInstancesCommand,
   StopInstancesCommand,
@@ -31,6 +32,7 @@ import {
   type ProviderData,
   type ProvisionResult,
   type ProvisionSpec,
+  type SshAccessSyncOptions,
   type SshAccessSyncResult,
 } from '@rockysurf/provider-sdk'
 import { resolveSshCidrs, type AwsProviderConfig } from './config.js'
@@ -369,6 +371,46 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     return authorized
   }
 
+  /**
+   * Revoke each range, treating "already gone" as success.
+   *
+   * The mirror of `authorizeSshRanges`, and only ever called from `syncSshAccess()` on ranges the
+   * operator has CONFIRMED for removal and which carry our stamp — never from a provision, which
+   * stays additive forever (issue #309). One call per range, for the same reason authorize is: a
+   * batch that names one already-absent range would be rejected whole on some EC2 error paths, and
+   * "already gone" is the success case, not a failure to swallow the rest of.
+   */
+  async function revokeSshRanges(groupId: string, cidrs: readonly string[]): Promise<string[]> {
+    const revoked: string[] = []
+    for (const cidr of cidrs) {
+      try {
+        await ec2.send(
+          new RevokeSecurityGroupIngressCommand({
+            GroupId: groupId,
+            IpPermissions: [
+              {
+                IpProtocol: 'tcp',
+                FromPort: 22,
+                ToPort: 22,
+                IpRanges: [{ CidrIp: cidr }],
+              },
+            ],
+          }),
+        )
+        revoked.push(cidr)
+      } catch (err) {
+        // Already absent — a concurrent sync, or the operator, beat us to it — is success: the
+        // range the operator asked to be gone is gone.
+        if (awsErrorCode(err) === 'InvalidPermission.NotFound') {
+          revoked.push(cidr)
+          continue
+        }
+        throw mapAwsError(err, 'ec2:RevokeSecurityGroupIngress')
+      }
+    }
+    return revoked
+  }
+
   /** Every port-22 IPv4 range currently on the shared group, with whatever description it carries. */
   async function describeSshRanges(groupId: string): Promise<Map<string, string | undefined>> {
     const described = await send('ec2:DescribeSecurityGroups', () =>
@@ -688,12 +730,22 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
      * The call issue #304 exists for. Before it, the only thing that ever wrote this operator's
      * CIDR to EC2 was a launch, so "I moved house" was fixed by starting a box nobody wanted.
      *
-     * Authorize-before-revoke is deliberate and load-bearing: if the second half fails the
-     * operator is left with MORE access than they started with, never less. A sync that died
-     * halfway through the other order could lock them out of every box in the account.
+     * ADDITIVE BY DEFAULT, CONVERGING ON CONFIRMATION (issue #309). With no `options.revoke` this
+     * authorizes what is missing and REPORTS what is extra — the release ADR-0021 shipped. When
+     * the operator has stood in front of the keep-or-remove prompt and picked REMOVE, the ranges
+     * they picked arrive in `options.revoke`, and each one is taken off the group IF Rocky Surf can
+     * prove it authored it (the stamp) and it is genuinely an extra. A confirmed range Rocky Surf
+     * did NOT author is not a silent no-op: it is surfaced as a removal Rocky Surf will not perform
+     * (issue #309 part 3), with the command that finishes it, and the sync reports `failed`.
+     *
+     * Authorize-before-revoke is deliberate and load-bearing: the authorize below runs first, so
+     * if the revoke half fails the operator is left with MORE access than they started with, never
+     * less. A sync that died halfway through the other order could lock them out of every box in
+     * the account. `provision()` never reaches this method and never revokes — that floor holds.
      */
-    async syncSshAccess(): Promise<SshAccessSyncResult> {
+    async syncSshAccess(options?: SshAccessSyncOptions): Promise<SshAccessSyncResult> {
       const desired = resolveSshCidrs(config)
+      const confirmedRevoke = options?.revoke ?? []
       const { vpcId } = await resolveDefaultVpc()
       const groupId = sharedSgId ?? (await findSharedSg(vpcId))
 
@@ -702,6 +754,7 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
           status: 'skipped',
           applied: [],
           reported: [],
+          removable: [],
           detail:
             `No ${config.securityGroupName} security group exists in ${region} yet, so there is ` +
             'nothing to update. Rocky Surf creates it at the first launch, with these CIDRs ' +
@@ -712,6 +765,9 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
 
       const actual = await describeSshRanges(groupId)
       const missing = desired.filter((cidr) => !actual.has(cidr))
+
+      // AUTHORIZE FIRST. Whatever the revoke half does after this, the operator has at least as
+      // much access as their list asks for by the time anything is taken away.
       const authorized = await authorizeSshRanges(groupId, missing)
 
       // Anything on the group the config no longer names, split by who authorized it.
@@ -719,33 +775,74 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
       const ours = extra.filter(([, description]) => description === SSH_RULE_DESCRIPTION).map(([cidr]) => cidr)
       const theirs = extra.filter(([, description]) => description !== SSH_RULE_DESCRIPTION).map(([cidr]) => cidr)
 
+      // The operator's confirmed removals, split the same way. A confirmed range still in the list
+      // is ignored — the list is the source of truth and this can only narrow toward it — so we
+      // only ever consider ranges that are genuinely extras.
+      const revokeOurs = ours.filter((cidr) => confirmedRevoke.includes(cidr))
+      const refusedTheirs = theirs.filter((cidr) => confirmedRevoke.includes(cidr))
+
+      // THE ONLY REVOKE IN THE PROVIDER, and it runs after authorize, on stamped extras only.
+      const revoked = revokeOurs.length > 0 ? await revokeSshRanges(groupId, revokeOurs) : []
+
+      // What is still on the group and not in the list, after the confirmed removals landed.
+      const keptOurs = ours.filter((cidr) => !revoked.includes(cidr))
+
       const notes: string[] = []
-      if (ours.length > 0) {
+      if (revoked.length > 0) {
+        notes.push(`Removed ${revoked.join(', ')} at your request.`)
+      }
+      if (keptOurs.length > 0) {
         notes.push(
-          `${ours.length} range(s) Rocky Surf authorized earlier are still on ` +
-            `${config.securityGroupName} and are no longer in your list: ${ours.join(', ')}. ` +
+          `${keptOurs.length} range(s) Rocky Surf authorized earlier are still on ` +
+            `${config.securityGroupName} and are no longer in your list: ${keptOurs.join(', ')}. ` +
             'They have been left alone — keep them by adding them back to sshAllowedCidr, or ' +
             'remove them deliberately.',
         )
       }
-      if (theirs.length > 0) {
+      // Issue #309 part 3: a range the operator asked to remove that Rocky Surf did not author. A
+      // hand-added CIDR never acquires our stamp (EC2 swallows the duplicate authorize), so this
+      // is the one it will not remove — said as a failure to complete the request, with the command.
+      for (const cidr of refusedTheirs) {
         notes.push(
-          `${theirs.join(', ')} is still authorized on ${config.securityGroupName}. Rocky Surf ` +
-            'did not create that rule and will not remove it. To remove it yourself, run: ' +
+          `You asked to remove ${cidr}, but Rocky Surf did not create that rule on ` +
+            `${config.securityGroupName} and will not remove it. To remove it yourself, run: ` +
             `aws ec2 revoke-security-group-ingress --group-id ${groupId} --protocol tcp ` +
-            `--port 22 --cidr ${theirs[0] ?? ''} --region ${region}`,
+            `--port 22 --cidr ${cidr} --region ${region}`,
+        )
+      }
+      // Unstamped extras the operator did NOT ask to remove: a standing leftover, reported as before.
+      const leftoverTheirs = theirs.filter((cidr) => !confirmedRevoke.includes(cidr))
+      if (leftoverTheirs.length > 0) {
+        notes.push(
+          `${leftoverTheirs.join(', ')} is still authorized on ${config.securityGroupName}. Rocky ` +
+            'Surf did not create that rule and will not remove it. To remove it yourself, run: ' +
+            `aws ec2 revoke-security-group-ingress --group-id ${groupId} --protocol tcp ` +
+            `--port 22 --cidr ${leftoverTheirs[0] ?? ''} --region ${region}`,
         )
       }
 
+      const changed = authorized.length > 0 || revoked.length > 0
+      // A confirmed removal Rocky Surf could not carry out is a failure to complete the request,
+      // even when other parts of the same sync succeeded: the operator asked for it and it did not
+      // happen.
+      const status: SshAccessSyncResult['status'] =
+        refusedTheirs.length > 0 ? 'failed' : changed ? 'updated' : 'unchanged'
+
+      const summary =
+        authorized.length > 0
+          ? `Authorized ${authorized.join(', ')} on ${config.securityGroupName}.`
+          : revoked.length > 0
+            ? `${config.securityGroupName} now allows ${desired.join(', ')}.`
+            : `${config.securityGroupName} already allowed ${desired.join(', ')}.`
+
       return {
-        status: authorized.length > 0 ? 'updated' : 'unchanged',
+        status,
         applied: desired,
-        reported: [...ours, ...theirs],
-        detail:
-          (authorized.length > 0
-            ? `Authorized ${authorized.join(', ')} on ${config.securityGroupName}.`
-            : `${config.securityGroupName} already allowed ${desired.join(', ')}.`) +
-          (notes.length > 0 ? ' ' + notes.join(' ') : ''),
+        reported: [...keptOurs, ...theirs],
+        // Only the stamped extras still present are offerable at a keep-or-remove prompt. The
+        // unstamped ones in `reported` are surfaced, never offered as a removal we cannot perform.
+        removable: keptOurs,
+        detail: summary + (notes.length > 0 ? ' ' + notes.join(' ') : ''),
       }
     },
   }

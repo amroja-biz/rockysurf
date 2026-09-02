@@ -299,7 +299,10 @@ after a save that changed a list, from the Settings page's `Push SSH access to t
 or from `rockysurf network sync` — instead of only at the next launch. The button is not
 redundant with the save: a cloud can drift while the file does not, which is the state GCP has
 been in for every installation, and no save would catch it. What each provider then does with the list differs and the flag deliberately does not say:
-Azure rewrites its rule whole, while AWS and GCP widen only and report what they will not remove.
+Azure rewrites its rule whole; AWS and GCP widen additively and then CONVERGE on confirmation
+(issue #309) — a stamped extra the list no longer names is offered keep-or-remove on the Settings
+page, and remove is a confirmed, itemized revoke (authorize-before-revoke), while a range Rocky Surf
+cannot prove it created is reported with the command that removes it by hand.
 
 `hetzner` declares nothing because it has no whitelist at all: a Hetzner server is reachable the
 moment it boots, there is no firewall object to create or adopt, and there is no `sshAllowedCidr`
