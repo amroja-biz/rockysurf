@@ -274,6 +274,13 @@ Hetzner's image ships without `jq` and Canonical's AWS AMI has it, so the agent'
 bootstrap path fired on exactly one cloud during the spike (ADR-0002 Decision 9, amendment
 `E10`, finding `#36`).
 
+Because the plan itself is JSON, the one package the agent installs for its OWN use is `jq`
+(`ensure_jq` in `agent.sh`) — the bootstrap-the-bootstrapper hop, run before the plan can be
+parsed. `jq` is therefore a prerequisite of the *agent*, not a *pack* tool: it is deliberately
+absent from the tool registry, no pack defines it, and none should. The registry carries what a
+pack installs; the agent's own runtime prerequisites live in `agent.sh`. (This is why grepping
+`packs/` for a `jq` tool finds nothing, by design.)
+
 Consequently the agent MUST:
 
 - bootstrap its own JSON parser before parsing the plan, and MUST NOT assume `jq`, `curl`,

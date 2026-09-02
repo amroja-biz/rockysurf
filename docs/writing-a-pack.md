@@ -433,6 +433,13 @@ following exist or are reachable.
 | Don't assume | Why not | What to do |
 |---|---|---|
 | `jq`, `curl`, `wget`, `unzip`, `git`, `python3` | Not guaranteed by the base image, and absent from a stock `ubuntu:24.04` container | `apt-get install -y` what you use, after refreshing the package list once |
+
+`jq` is a partial exception worth knowing: the bootstrap agent installs it for its own use
+(it needs `jq` to read the JSON plan) before any step runs, so on a real box `jq` is always
+present — and it is intentionally **not** a registry tool, so you will never reference it by id
+and should never add one. The row keeps it listed because a portable pack still shouldn't lean
+on an agent-internal detail; install what you use. Everything else in that row (`curl`, `wget`,
+`unzip`, `git`, `python3`) the agent does not install — those you must.
 | Fresh apt package lists | A stock container has none, so the first `apt-get install` fails with "Unable to locate package". Nothing refreshes them on your behalf: the runtime is only required to bootstrap its own JSON parser, not to update your package lists | Call an `apt_update_once` helper like the one above |
 | The AWS CLI, or any cloud SDK | Nothing on the box is cloud-specific by design, and the box may not be on AWS at all | Bundle what you need, or don't need it |
 | Cloud credentials, instance roles, or `s3://` access | The box holds no cloud credentials. A pack that reaches for one is broken on every other provider | Fetch assets over plain HTTPS from a public URL |
