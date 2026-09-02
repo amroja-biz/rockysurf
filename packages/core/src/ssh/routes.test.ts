@@ -268,7 +268,38 @@ describe('GET /api/v1/servers/:id/ssh-host-key', () => {
  */
 describe('StrictHostKeyChecking', () => {
   const REPO = fileURLToPath(new URL('../../../..', import.meta.url))
-  const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.data', 'coverage', '.beads'])
+  /**
+   * `dist.build` and `dist.prev` are in here for a different reason than the rest.
+   *
+   * The others are just noise — generated or vendored trees with no source rule to enforce. Those
+   * two are TRANSIENT: `scripts/build-package.mjs` compiles into `dist.build/`, moves the old
+   * `dist/` to `dist.prev/`, renames the new tree into place and deletes the leftovers. Both exist
+   * only while a build is running, and both are then renamed or removed out from under anything
+   * that happens to be reading them.
+   *
+   * So a walk that descends into them races the build: this test collected a path under
+   * `packages/rockysurf/dist.build/` and threw ENOENT on `readFileSync` a moment later, because
+   * another package's suite was rebuilding the binary at the time
+   * (`packages/rockysurf/vitest.global-setup.ts` does exactly that). Nothing was wrong with the
+   * repository — the file it wanted had been renamed into `dist/` while the walk was in flight.
+   *
+   * This is the residue of `docs/memories/2026-08-21-pnpm-sdk-build-race.md`. The atomic-rename
+   * swap that memory describes protects READERS OF `dist/`, and completely: they see the whole old
+   * tree or the whole new one. It cannot protect something enumerating the repository, because the
+   * scratch directory is a real directory for the length of the compile and walking into it is a
+   * race the rename does not narrow.
+   */
+  const SKIP_DIRS = new Set([
+    'node_modules',
+    '.git',
+    'dist',
+    'dist.build',
+    'dist.prev',
+    'build',
+    '.data',
+    'coverage',
+    '.beads',
+  ])
 
   function walk(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

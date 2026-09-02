@@ -28,6 +28,21 @@ Both directories are committed to this public repository and are world-readable:
 secret, credential, IP address, account ID, or other private infrastructure detail into either
 one.
 
+## The pre-push gate
+
+Use **`pnpm run check:parallel`**. It runs the same lint, typecheck and tests as `pnpm run check`
+and reaches the same verdict, but concurrently — measured at 58-60s against 93-97s for a build plus
+the serial gate, which is most of what an agent spends waiting. Building first is still not
+optional; the runner does it for you.
+
+`pnpm run check` remains the reference gate. If the parallel run and the serial run disagree, the
+serial one is right, the parallel one has a bug, and that is worth an issue rather than a
+workaround. Details, including the load-sensitive tests it runs serially at the end and why, are in
+the "The same gate, roughly a third quicker again" section of [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+**It does not run the browser suite**, any more than `pnpm run check` does — that one needs
+Chromium and is a separate command. See the next section, which is not optional for a UI change.
+
 ## Verifying a UI change
 
 **Any pull request that touches `packages/web/` must run `pnpm run test:ui`** — the browser
