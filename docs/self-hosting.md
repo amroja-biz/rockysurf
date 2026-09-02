@@ -293,8 +293,9 @@ a warning rather than a refusal, since an operator may have deliberate reasons.
 
 Two of the things in it deserve separate thought:
 
-- **`secret.key`** is the master key for every stored secret — provider credentials, per-server
-  SSH private keys, remote-desktop passwords. Lose it and every one of them is unrecoverable and
+- **`secret.key`** is the master key for every stored secret — per-server SSH private keys,
+  remote-desktop passwords, the Connect-GitHub token (cloud provider credentials are not among
+  them: Rocky Surf stores none, issue #280). Lose it and every one of them is unrecoverable and
   every server has to be recreated. Obtain it, and all of them decrypt. It is written `0600` and
   the process refuses to start if its permissions are looser than that. You can hold it outside
   the filesystem entirely by setting `ROCKYSURF_SECRET_KEY` (base64, exactly 32 bytes decoded),
@@ -368,10 +369,39 @@ servers exist, their keys, your credentials. If a box was destroyed at the cloud
 backup was cold, the reconciler notices the difference and reports it rather than resurrecting
 anything.
 
-**Treat the backup like the key it contains.** It holds every provider credential and every
-managed server's private key in encrypted form, with the key to decrypt them in the same
-archive. Encrypt it, or store `secret.key` separately via `ROCKYSURF_SECRET_KEY` and back up
-only the database.
+**Treat the backup like the key it contains.** It holds every managed server's private key and
+your Connect-GitHub token in encrypted form, with the key to decrypt them in the same archive —
+and the configuration file, cleartext pasted tokens included. (Cloud provider credentials are
+not in it, because Rocky Surf stores none — issue #280.) Encrypt it, or store `secret.key`
+separately via `ROCKYSURF_SECRET_KEY` and back up only the database.
+
+### Moving to a new computer: Settings → Backup
+
+The tar above is the full-fidelity snapshot — everything, key included, process stopped. For
+the ordinary migration ("I got a new laptop") there is a first-class path that needs neither
+(issue #331, ADR-0023): **Settings → Backup** downloads one JSON artifact from the *running*
+process (its reads are one database transaction, so the WAL caveat above does not apply), and
+**Restore** on the new installation reads it back.
+
+What makes the artifact safe to put wherever you keep files:
+
+- **Stored secrets travel as the ciphertext they already are** — and the master key does not
+  travel at all. Copy `secret.key` to the new machine yourself (or set
+  `ROCKYSURF_SECRET_KEY`), and every restored secret decrypts in place; without it, everything
+  else still restores and the report says how many secrets are sealed until the key arrives.
+- **Cleartext GitHub tokens never travel.** Any literal `github.pat` / `github.tokens[].pat`
+  in your configuration file is replaced with a `${VAR}` placeholder in the artifact; the
+  restore report lists the redacted tokens by name so you know exactly which to paste back in.
+
+Restore is a **merge, never a replace**: everything in the file is added, skipped because it
+already exists, or refused with a reason (a pack or tool id your new release ships file-backed
+is refused, ADR-0018's rule), and re-running the same restore is a no-op. The new machine's
+own `server.port`, `server.host`, `server.dataDir` and `auth.mode` are kept. Your cloud
+machines are untouched either way — they live in your cloud accounts; a restored server row is
+a record, and the reconciler then reports any machine that no longer answers, exactly as it
+does after a laptop was closed for a week. An artifact from an older Rocky Surf restores into
+a newer one (the format carries a version and is upgraded on read); the reverse is refused
+with an upgrade-first message.
 
 ## Upgrading
 

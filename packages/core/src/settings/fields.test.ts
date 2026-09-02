@@ -353,6 +353,9 @@ describe('every setting on the page explains itself', () => {
       'registry',
       'registry.sources',
       'mcp',
+      // Not a config path — the Backup/Restore tab (issue #331), whose cards act on the whole
+      // installation rather than on a field of the file. See its SectionSpec comment.
+      'backup',
     ])
   })
 

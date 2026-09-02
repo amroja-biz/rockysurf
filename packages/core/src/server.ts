@@ -244,6 +244,9 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
     configStore,
     secrets,
     secretsStore,
+    // Backup/Restore's re-seal and readability probe (issue #331) — ciphertext work the
+    // store has no verb for; see the AppDeps comment.
+    masterKey: masterKey.key,
     events,
     // The hook that hands a pack's install steps their credentials (rockysurf-55fx.14). It was
     // an AppDeps option nothing in production supplied, so `secrets.env` was written empty and

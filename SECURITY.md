@@ -132,6 +132,45 @@ buys little, while a transfer that fails halfway would strand the operator.
 `GET /api/v1/servers/:id/ssh-host-key` returns the host **public** key and is not on the
 exemption list, because a public key is not a secret. It exists so clients can pin.
 
+### Backup and Restore
+
+**A backup artifact contains no plaintext secret and no key to any ciphertext it carries**
+(issue #331, ADR-0023). Settings → Backup downloads one JSON document holding the
+installation's control-plane state; what matters here is exactly what crosses that boundary:
+
+- **Stored secrets travel verbatim as ciphertext** — the `secrets` rows exactly as the table
+  holds them (ciphertext, nonce, auth tag, key id). **The master key is never in the
+  artifact**; it travels only by the operator's own hand (`secret.key`, or
+  `ROCKYSURF_SECRET_KEY`), which has been the first-boot banner's instruction since v0.1. An
+  artifact without its key is unreadable to whoever finds it.
+- **Cleartext GitHub tokens never travel.** A literal `github.pat` or `github.tokens[].pat` in
+  the config file is replaced with a `${VAR}` placeholder before the config text enters the
+  artifact; only the tokens' *names* travel, so Restore can list what the operator must
+  re-enter. A value that is already a whole `${VAR}` reference travels as written — it is the
+  name of a variable, not a secret.
+- **Never in the artifact:** the master key, any plaintext secret, session rows (and the
+  `session-signing-key`, which a restore also refuses on the way in — a restored signing key
+  would keep old cookies alive), the admin password hash (the person restoring is already
+  signed in over there with a password they know; swapping it mid-session is a self-lockout),
+  and cloud credentials — of which there are none to include.
+
+The custody rule above holds without a second exemption: the backup route reads ciphertext
+rows and never calls a plaintext accessor. Restore's one plaintext moment — re-sealing a
+remapped user's `github-token` row under its new owner id, because the GCM associated data
+binds the owner — happens inside `packages/core/src/backup/restore.ts`, returns counts and
+booleans, and is never reachable from a route's response. A key that is absent and a key that
+is wrong are deliberately the same failure there: the token is dropped with "reconnect
+GitHub", never restored as an undecryptable brick.
+
+Restore is admin-only, merge-only (nothing existing is overwritten or deleted), and refuses an
+artifact from a newer format version outright. It restores **records, not machines**: nothing
+is created or contacted in any cloud, and the reconciler afterwards reports any row whose
+machine no longer answers.
+
+The manual whole-directory backup (`docs/self-hosting.md`) is a different object with a
+different rule: it contains `secret.key` beside the database, and the documentation says to
+treat it like the key it contains.
+
 ### Provider credentials
 
 **Rocky Surf stores no cloud credentials** (issue #280). The first-run wizard selects clouds

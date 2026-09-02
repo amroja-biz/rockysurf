@@ -27,6 +27,7 @@ import { bootstrapModeHooks } from './bootstrap/push-runner.js'
 import { snapshotInstallPlan } from './bootstrap/install-plan.js'
 import { createSimulatedBootstrap } from './bootstrap/simulated-bootstrap.js'
 import { createPushBootstrapSupervisor } from './bootstrap/supervisor.js'
+import { createBackupRoutes } from './backup/routes.js'
 import { createCostsRoutes } from './costs/routes.js'
 import { createRegistryClient, type RegistryClient } from './packs/registry.js'
 import { createPackRoutes } from './packs/routes.js'
@@ -93,6 +94,14 @@ export interface AppDeps {
    * discovers at request time that it has nowhere to read from.
    */
   secretsStore?: SecretsStore
+  /**
+   * The master key itself, for the ONE consumer that works below the store's plaintext
+   * accessors: Backup/Restore (issue #331). Restore re-seals a remapped user's github-token
+   * row under its new owner id — a ciphertext-to-ciphertext operation the store has no verb
+   * for — and probes restored rows for readability, returning counts and never plaintext.
+   * Optional like `secretsStore`, and absent in every test that does not exercise it.
+   */
+  masterKey?: Buffer
   /**
    * Reads the decrypted per-server secrets a callback-mode box fetches (git token, remote
    * desktop password). Injected so the internal routes never reach into the secret store
@@ -605,6 +614,27 @@ export function createApp(deps: AppDeps): CreatedApp {
       createNetworkRoutes({ registry, inForce: currentConfig, configPath: deps.configPath }),
     )
   }
+
+  /* --------------------------------------------------------------------- backup / restore */
+
+  /**
+   * Backup and Restore (issue #331, ADR-0022). Mounted unconditionally — a backup of a core
+   * with no config file is still the database's worth of state, and the routes say plainly
+   * when the config portion has nowhere to go. `refreshSpend` closes the loop on the restore's
+   * baseline adjustment: the tracker's snapshot is recomputed before the response lands, so
+   * the Costs page the operator checks next is already right.
+   */
+  app.route(
+    '/',
+    createBackupRoutes({
+      db,
+      ...(deps.configPath ? { configPath: deps.configPath } : {}),
+      ...(deps.env ? { env: deps.env } : {}),
+      ...(deps.configStore ? { reload: () => deps.configStore!.reload() } : {}),
+      ...(deps.masterKey ? { masterKey: deps.masterKey } : {}),
+      refreshSpend: () => jobs.spend.refresh(),
+    }),
+  )
 
   /* ------------------------------------------------------------------------ ssh keys */
 

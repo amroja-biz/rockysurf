@@ -674,7 +674,15 @@ export function HelpPage() {
         <p>
           Rocky Surf keeps everything it knows in one directory, and there is no hosted copy of
           any of it — back it up yourself, or a lost machine takes your server records, your
-          cloud credentials and your SSH keys with it.
+          GitHub tokens and your SSH keys with it. (Your cloud credentials are never stored
+          here: they live in your own environment and auth chains.)
+        </p>
+        <p>
+          <strong>Moving to a new computer?</strong> Settings&nbsp;→&nbsp;Backup downloads one
+          JSON file — your records, packs, tools and encrypted secrets as ciphertext, with no
+          key and no cleartext tokens in it — and Restore reads it back on the other side. Carry{' '}
+          <code>secret.key</code> yourself. The rest of this section is the full-fidelity
+          alternative: the whole directory, key included, copied by hand.
         </p>
         <p>
           <strong>Where it is:</strong> <code>~/.rockysurf</code> by default, or whatever{' '}
@@ -708,9 +716,10 @@ export function HelpPage() {
         </ul>
         <p>
           <strong>This is sensitive.</strong> Together, <code>secret.key</code> and{' '}
-          <code>rockysurf.db</code> decrypt every provider credential, every managed server&rsquo;s
-          SSH private key, and any remote-desktop password Rocky Surf holds for you — a
-          Connect-GitHub token lives there too. A backup is that same secret material, copied.
+          <code>rockysurf.db</code> decrypt every managed server&rsquo;s SSH private key and any
+          remote-desktop password Rocky Surf holds for you — a Connect-GitHub token lives there
+          too. (Cloud provider credentials are not among them: Rocky Surf stores none.) A backup
+          of the directory is that same secret material, copied.
           Store it somewhere private, encrypt it, or keep <code>secret.key</code> out of the
           backup entirely by setting <code>ROCKYSURF_SECRET_KEY</code> instead of letting Rocky
           Surf write it to disk.
