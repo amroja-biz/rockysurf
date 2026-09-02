@@ -12,6 +12,7 @@ import {
   type ProviderData,
   type ProvisionResult,
   type ProvisionSpec,
+  type SshAccessSyncOptions,
   type SshAccessSyncResult,
 } from '@rockysurf/provider-sdk'
 import { GceApi, lastSegment } from './api.js'
@@ -762,9 +763,18 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
      * the seconds between the two calls port 22 is closed on EVERY box in the project at once.
      * `compute.firewalls.patch` changes the one field in place, and a patch that fails changes
      * nothing.
+     *
+     * ADDITIVE BY DEFAULT, CONVERGING ON CONFIRMATION (issue #309). With no `options.revoke` the
+     * patch carries the UNION of the list and the extras already on the rule — ADR-0021's
+     * widen-only release, which never narrows a rule whose `sourceRanges` may be the network the
+     * operator is saving from. When the operator has picked REMOVE at the keep-or-remove prompt,
+     * the ranges they picked arrive in `options.revoke` and are dropped from the patched
+     * `sourceRanges`. A single-field PATCH is atomic — it applies whole or changes nothing — so it
+     * still always contains every desired range, and authorize-before-revoke holds by construction.
      */
-    async syncSshAccess(): Promise<SshAccessSyncResult> {
+    async syncSshAccess(options?: SshAccessSyncOptions): Promise<SshAccessSyncResult> {
       const desired = resolveSshCidrs(config)
+      const confirmedRevoke = options?.revoke ?? []
 
       /** The one command that finishes, by hand, whatever this could not do itself. */
       const command = (ranges: readonly string[]) =>
@@ -789,6 +799,7 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
               status: 'skipped',
               applied: [],
               reported: [],
+              removable: [],
               detail:
                 `No ${config.firewallRuleName} firewall rule exists in ${projectId} yet, so there ` +
                 'is nothing to update. Rocky Surf creates it at the first launch, with these ' +
@@ -813,6 +824,9 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
               status: 'failed',
               applied: [],
               reported: existing,
+              // Nothing on an unowned rule is Rocky Surf's to offer removing — the whole rule is
+              // the operator's. This is issue #309 part 3 for GCP: a removal it will not perform.
+              removable: [],
               detail:
                 `${config.firewallRuleName} in ${projectId} was not created by Rocky Surf — its ` +
                 'description does not match the one Rocky Surf writes — so it has been left ' +
@@ -828,15 +842,23 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
           const extras = existing.filter((cidr) => !desired.includes(cidr))
           const missing = desired.filter((cidr) => !existing.includes(cidr))
 
-          // WIDEN ONLY, FOR NOW. Patching to exactly `desired` would drop `extras`, and the first
-          // thing an operator does with this feature is save it from a network the frozen rule
-          // may be the only reason they can reach. So the patch carries the union, the extras are
-          // `reported`, and the detail says how to remove them. Converging to exactly-the-list is
-          // deferred until the operator has been offered keep-or-remove and picked one — the same
-          // report-don't-revoke stance `provider-aws` takes on an unstamped ingress range.
-          const target = [...desired, ...extras]
+          // The confirmed removals (issue #309): extras the operator picked REMOVE for. A confirmed
+          // range still in the list is ignored — the list is the source of truth — so only genuine
+          // extras are ever dropped. `removed` leaves the rule; `keptExtras` stays and is offered.
+          const removed = extras.filter((cidr) => confirmedRevoke.includes(cidr))
+          const keptExtras = extras.filter((cidr) => !confirmedRevoke.includes(cidr))
 
-          if (missing.length > 0) {
+          // WIDEN, THEN CONVERGE ON CONFIRMATION. The patch carries the list plus the extras the
+          // operator has NOT asked to remove. With no confirmed removals this is ADR-0021's union
+          // (widen only, never drop a frozen range that may be the operator's only way in); with
+          // confirmed removals it is the list plus what is left, which is how convergence lands.
+          // Either way `target` always contains every `desired` range, so a PATCH can only ever
+          // leave the operator at least as reachable as their list asks — authorize-before-revoke
+          // by construction, since the write is atomic.
+          const target = [...desired, ...keptExtras]
+
+          // A patch is needed when the list gained a range OR the operator confirmed a removal.
+          if (missing.length > 0 || removed.length > 0) {
             try {
               // Only `sourceRanges` is sent. A patch body carrying the whole rule would re-assert
               // the network, the target tags and the ports as a side effect of changing who may
@@ -852,6 +874,7 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
                   status: 'failed',
                   applied: [],
                   reported: extras,
+                  removable: keptExtras,
                   detail:
                     `Compute Engine refused to update ${config.firewallRuleName}: this credential ` +
                     'is missing the compute.firewalls.update permission. Grant it, or run: ' +
@@ -862,28 +885,36 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
             }
           }
 
+          const removedNote = removed.length > 0 ? ` ${removed.join(', ')} was removed at your request.` : ''
           const kept =
-            extras.length > 0
-              ? ` ${extras.join(', ')} was already on the rule and is not in your list; it has ` +
+            keptExtras.length > 0
+              ? ` ${keptExtras.join(', ')} was already on the rule and is not in your list; it has ` +
                 'been KEPT, because it may be the network you are reading this from. To remove ' +
                 `it, run: ${command(desired)}`
               : ''
 
+          const changed = missing.length > 0 || removed.length > 0
           return {
-            status: missing.length > 0 ? 'updated' : 'unchanged',
+            status: changed ? 'updated' : 'unchanged',
             applied: desired,
-            reported: extras,
+            reported: keptExtras,
+            removable: keptExtras,
             detail:
               (missing.length > 0
                 ? `Added ${missing.join(', ')} to ${config.firewallRuleName}, which now allows ` +
                   `${target.join(', ')} on port 22.`
-                : `${config.firewallRuleName} already allowed ${desired.join(', ')} on port 22.`) + kept,
+                : removed.length > 0
+                  ? `${config.firewallRuleName} now allows ${target.join(', ')} on port 22.`
+                  : `${config.firewallRuleName} already allowed ${desired.join(', ')} on port 22.`) +
+              removedNote +
+              kept,
           }
         },
         () => ({
           status: 'failed',
           applied: [],
           reported: [],
+          removable: [],
           detail:
             `Compute Engine did not answer within ${Math.round(deadlineMs / 1000)}s, so Rocky Surf ` +
             `cannot say whether ${config.firewallRuleName} now allows ${desired.join(', ')}. ` +

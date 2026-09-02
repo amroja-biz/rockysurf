@@ -195,6 +195,14 @@ Resources:
                   StringEquals:
                     'ec2:ResourceTag/managed-by': !Ref ManagedByTag
 
+              - Sid: RevokeSshOnOwnGroupOnly
+                Effect: Allow
+                Action: 'ec2:RevokeSecurityGroupIngress'
+                Resource: !Sub 'arn:aws:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/managed-by': !Ref ManagedByTag
+
 Outputs:
   RoleArn:
     Description: Assume this to run Rocky Surf with exactly the published permissions.

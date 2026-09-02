@@ -31,6 +31,34 @@ export const SSH_ACCESS_SYNC_STATUSES = ['updated', 'unchanged', 'skipped', 'fai
 
 export type SshAccessSyncStatus = (typeof SSH_ACCESS_SYNC_STATUSES)[number]
 
+/**
+ * What an operator has confirmed a sync may do beyond the default, additive push (issue #309).
+ *
+ * A bare `syncSshAccess()` — no options — is still exactly ADR-0021's release: authorize what the
+ * config names and is missing, report what is extra, and revoke NOTHING. That is the safe default
+ * and the anti-lockout floor: a sync that only ever widens can never lock anyone out.
+ *
+ * `revoke` is the operator having stood in front of the keep-or-remove prompt (ADR-0021's
+ * "Deliberately unresolved") and picked REMOVE for specific ranges. It is NOT a second source of
+ * truth for the whitelist — the reason `syncSshAccess()` otherwise takes no argument (clause 5) —
+ * and it deliberately cannot act like one:
+ *
+ * - a range in `revoke` is removed ONLY if the provider can prove it created it (AWS: the ingress
+ *   stamp; GCP: the rule description) AND the range is genuinely an EXTRA — on the cloud, not in
+ *   the provider's own `sshAllowedCidr`. So `revoke` can only ever narrow the cloud TOWARD the
+ *   config, never past it: a range still in the list is never revoked however it is named here;
+ * - a range in `revoke` that the provider CANNOT prove it created is not removed. It is surfaced
+ *   as a removal Rocky Surf will not perform, with the command that finishes it by hand — the
+ *   loud failure of issue #309 part 3, not a silent no-op.
+ *
+ * Authorize-before-revoke still holds: whatever is missing is authorized first, so a sync that
+ * dies half-way through leaves MORE access than it started with, never less.
+ */
+export interface SshAccessSyncOptions {
+  /** Extras the operator confirmed for removal at the keep-or-remove prompt. Absent means none. */
+  revoke?: readonly string[]
+}
+
 export interface SshAccessSyncResult {
   status: SshAccessSyncStatus
 
@@ -65,6 +93,22 @@ export interface SshAccessSyncResult {
    *   request, not a footnote, and the caller says so with the exact command that finishes it.
    */
   reported: readonly string[]
+
+  /**
+   * The subset of `reported` that Rocky Surf CAN revoke, if the operator confirms (issue #309).
+   *
+   * These are the stamped extras — ranges Rocky Surf can prove it authored and which the config no
+   * longer names — that a keep-or-remove prompt should offer, DEFAULT KEEP. They are the "adopt or
+   * converge" half of the report: keeping one adds it back to the list, removing one sends it back
+   * as `revoke` on a second sync, which authorizes-before-revoke and takes it off the cloud.
+   *
+   * Always a subset of `reported`. Empty where there is nothing to offer: on a `skipped`/`failed`
+   * result, on Azure (which converges in a single whole-rule write, so it never leaves a
+   * stamped-by-us leftover), and for the unstamped duplicates that land in `reported` but which
+   * Rocky Surf will not touch — those are surfaced, never offered as a one-click removal it cannot
+   * actually perform.
+   */
+  removable?: readonly string[]
 
   /**
    * One or two plain sentences for a human, including any remediation command.

@@ -1196,6 +1196,8 @@ export interface SshAccessSyncReport {
   status: 'updated' | 'unchanged' | 'skipped' | 'failed'
   applied: string[]
   reported: string[]
+  /** The stamped extras this cloud can revoke if the operator confirms (issue #309). */
+  removable?: string[]
   detail: string
 }
 
@@ -1204,9 +1206,16 @@ export interface SshAccessSyncReport {
  *
  * Separate from the save on purpose: a firewall call that times out must not be able to fail a
  * file write that already succeeded.
+ *
+ * `revoke` maps a provider id to the stamped extras the operator confirmed for removal at the
+ * keep-or-remove prompt (issue #309). Omitted on the plain push (the save and the footer button),
+ * which syncs additively and revokes nothing.
  */
-export async function syncSshAccess(): Promise<{ synced: SshAccessSyncReport[] }> {
-  return request<{ synced: SshAccessSyncReport[] }>('/network/ssh-access/sync', { method: 'POST' })
+export async function syncSshAccess(revoke?: Record<string, string[]>): Promise<{ synced: SshAccessSyncReport[] }> {
+  return request<{ synced: SshAccessSyncReport[] }>('/network/ssh-access/sync', {
+    method: 'POST',
+    ...(revoke && Object.keys(revoke).length > 0 ? { body: JSON.stringify({ revoke }) } : {}),
+  })
 }
 
 export async function saveSettings(mtimeMs: number | null, changes: SettingsChange[]): Promise<SettingsSaveResult> {

@@ -1264,11 +1264,14 @@ export function SettingsPage() {
    * create time and have ignored the setting ever since. Nothing in a save would fix that,
    * because nothing about it is a change.
    */
-  async function pushSshAccess(failurePrefix = 'Could not push the SSH rule'): Promise<void> {
+  async function pushSshAccess(
+    failurePrefix = 'Could not push the SSH rule',
+    revoke?: Record<string, string[]>,
+  ): Promise<void> {
     setPushing(true)
     setSyncReports(null)
     try {
-      const { synced } = await syncSshAccess()
+      const { synced } = await syncSshAccess(revoke)
       setSyncReports(synced)
       const failed = synced.filter((report) => report.status === 'failed')
       if (failed.length > 0) {
@@ -1283,6 +1286,44 @@ export function SettingsPage() {
     } finally {
       setPushing(false)
     }
+  }
+
+  /**
+   * KEEP an authorized-but-unlisted network by adding it to the list (issue #309, default action).
+   *
+   * The safe half of the keep-or-remove prompt: it adds the CIDR the cloud is still allowing to
+   * `sshAllowedCidr` and saves that one change, which re-pushes and folds the extra back into the
+   * list. Nothing is revoked, so this can never cut off a network the operator is sitting on.
+   */
+  async function keepExtraCidr(cloud: string, cidr: string): Promise<void> {
+    const path = ['providers', cloud, 'sshAllowedCidr']
+    const key = path.join('.')
+    const savedRaw = valueAt(values, path) ?? valueAt(defaults, path)
+    const saved = savedRaw === undefined ? [] : Array.isArray(savedRaw) ? (savedRaw as string[]) : [String(savedRaw)]
+    const pending = (edits[key]?.value as string[] | undefined) ?? saved
+    if (pending.includes(cidr)) return
+    await submit([{ path, value: [...pending, cidr] }], [key])
+  }
+
+  /**
+   * REMOVE an authorized-but-unlisted network — an itemized, confirmed revoke (issue #309).
+   *
+   * Never a silent side effect: it opens the one confirmation this page has, and only on the
+   * operator's yes does it call the sync route with this CIDR in the `revoke` set. The provider
+   * authorizes-before-revoke and removes it only if it can prove it created it; a range it cannot
+   * prove comes back as a failure that names the manual command.
+   */
+  function confirmRemoveExtraCidr(cloud: string, cidr: string): void {
+    setPendingRemoval({
+      title: `Remove ${cidr} from ${cloud}?`,
+      label: cidr,
+      message:
+        `${cidr} is authorized on ${cloud} but is not in your list. Removing it revokes the rule ` +
+        'Rocky Surf created for it, ending new SSH connections from that network; existing ' +
+        'sessions survive. Your list is reasserted first, so nothing you kept is affected.',
+      confirmLabel: 'Remove from the cloud',
+      confirm: () => pushSshAccess('Could not remove the network', { [cloud]: [cidr] }),
+    })
   }
 
   /* -------------------------------------------------------------- the unified token list */
@@ -2418,6 +2459,45 @@ export function SettingsPage() {
               <li key={report.provider} data-sync-provider={report.provider} data-sync-status={report.status}>
                 <strong>{report.provider}</strong>: {report.status}
                 {report.detail ? ` — ${report.detail}` : ''}
+                {/*
+                  THE KEEP-OR-REMOVE PROMPT (issue #309). A cloud reports as `removable` the
+                  networks it is still allowing that Rocky Surf can prove it created but the list no
+                  longer names — the pre-#308 accumulation on the first push, and thereafter the one
+                  CIDR a removal produces. Each is offered keep (adds it back to the list) or remove
+                  (a confirmed revoke). DEFAULT KEEP: doing nothing leaves them authorized, because
+                  one may be the network the operator is reading this from.
+                */}
+                {report.removable && report.removable.length > 0 && (
+                  <div className="settings-sync-adopt" data-sync-removable={report.provider}>
+                    <p>
+                      These networks are authorized on {report.provider} but not in your list. Keep one to add
+                      it back, or remove it from the cloud:
+                    </p>
+                    <ul>
+                      {report.removable.map((cidr) => (
+                        <li key={cidr} data-removable-cidr={cidr}>
+                          <code>{cidr}</code>
+                          <button
+                            type="button"
+                            className="link-button"
+                            disabled={pushing || saving}
+                            onClick={() => void keepExtraCidr(report.provider, cidr)}
+                          >
+                            Keep in list
+                          </button>
+                          <button
+                            type="button"
+                            className="link-button"
+                            disabled={pushing || saving}
+                            onClick={() => confirmRemoveExtraCidr(report.provider, cidr)}
+                          >
+                            Remove from {report.provider}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

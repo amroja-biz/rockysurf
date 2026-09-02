@@ -41,6 +41,7 @@ export { normalizeSshCidrs, opensSshToTheInternet } from './ssh-cidr.js'
 
 export {
   SSH_ACCESS_SYNC_STATUSES,
+  type SshAccessSyncOptions,
   type SshAccessSyncResult,
   type SshAccessSyncStatus,
 } from './ssh-access.js'

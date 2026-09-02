@@ -275,6 +275,17 @@ and turned one transaction into a partial one.
 
 ## Deliberately unresolved
 
+> **Update — resolved in issue #309 (2026-09-02).** Everything this section names as the plan has
+> since shipped. AWS and GCP now CONVERGE: a stamped extra is offered keep-or-remove on the Settings
+> page (default keep), and REMOVE sends it back as a confirmed, itemized revoke — AWS revokes the
+> stamped ingress range authorize-before-revoke, GCP patches `sourceRanges` down to the list plus
+> what was kept. Provision stays additive forever and never revokes; only this explicit confirmed
+> sync may, so a half-failed sync leaves more access, never less. AWS gains the one permission this
+> section anticipated — `ec2:RevokeSecurityGroupIngress` as `RevokeSshOnOwnGroupOnly` — and GCP needs
+> none. An unstamped range the operator asks to remove is surfaced as a failure Rocky Surf will not
+> perform, with the manual command. The reasoning below is kept as the record of why the release
+> before #309 stopped short.
+
 **Converging AWS and GCP to EXACTLY the list is not in this release.** On AWS that means revoking
 the *stamped* extras — ranges Rocky Surf can prove it authorized and which the config file no
 longer names. On GCP it means patching `sourceRanges` to the list alone instead of to the union of

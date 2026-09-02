@@ -738,9 +738,9 @@ describe('syncSshAccess', () => {
   const OURS = 'rockysurf: SSH to managed dev boxes. Shared across servers; safe to reuse.'
 
   /** `syncSshAccess` is optional on the SDK interface; this provider declares it, so it is there. */
-  async function sync(p: ComputeProvider) {
+  async function sync(p: ComputeProvider, options?: { revoke?: readonly string[] }) {
     if (!p.syncSshAccess) throw new Error('provider does not implement syncSshAccess')
-    return await p.syncSshAccess()
+    return await p.syncSshAccess(options)
   }
 
   const seedRule = (overrides: Partial<{ description: string; sourceRanges: string[] }> = {}) => {
@@ -867,6 +867,58 @@ describe('syncSshAccess', () => {
     expect(result.reported).toEqual(['198.51.100.0/24'])
     expect(result.detail).toContain('KEPT')
     expect(firewallCalls().filter((call) => call.method !== 'GET')).toEqual([])
+  })
+
+  /* -------------------------------------------------- converge on confirmation (issue #309) */
+
+  it('offers a frozen extra as removable without dropping it unasked', async () => {
+    seedRule({ sourceRanges: [CIDR, '198.51.100.0/24'] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR] }))
+
+    // Default keep: reported AND offered for removal, but still on the rule.
+    expect(result.removable).toEqual(['198.51.100.0/24'])
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toContain('198.51.100.0/24')
+  })
+
+  it('drops a frozen extra from sourceRanges when the operator confirms it', async () => {
+    seedRule({ sourceRanges: [CIDR, '198.51.100.0/24'] })
+
+    const result = await sync(build({ sshAllowedCidr: [CIDR] }), { revoke: ['198.51.100.0/24'] })
+
+    expect(result.status).toBe('updated')
+    expect(result.reported).toEqual([])
+    expect(result.removable).toEqual([])
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toEqual([CIDR])
+    expect(result.detail).toContain('removed at your request')
+    // One PATCH, never a delete-and-recreate.
+    expect(firewallCalls().filter((call) => call.method === 'DELETE')).toEqual([])
+  })
+
+  /**
+   * Authorize-before-revoke, GCP-style: the rule is patched in a single atomic write, so the
+   * `sourceRanges` it lands on must ALWAYS contain every desired range — the operator can never be
+   * left with less access than their list, even mid-converge.
+   */
+  it('always writes every desired range, even while dropping a confirmed extra', async () => {
+    seedRule({ sourceRanges: [CIDR, '198.51.100.0/24'] })
+
+    await sync(build({ sshAllowedCidr: [CIDR, OTHER_CIDR] }), { revoke: ['198.51.100.0/24'] })
+
+    const patches = firewallCalls().filter((call) => call.method === 'PATCH')
+    expect(patches).toHaveLength(1)
+    const written = (patches[0]?.body as { sourceRanges: string[] }).sourceRanges
+    expect(written).toEqual([CIDR, OTHER_CIDR])
+    for (const desired of [CIDR, OTHER_CIDR]) expect(written).toContain(desired)
+  })
+
+  it('never drops a range that is still in the list, however revoke names it', async () => {
+    seedRule({ sourceRanges: [CIDR] })
+
+    await sync(build({ sshAllowedCidr: [CIDR] }), { revoke: [CIDR] })
+
+    // CIDR is in the list, so the confirmed removal is ignored and it stays.
+    expect(gce.state.firewalls.get('rockysurf-ssh')?.sourceRanges).toContain(CIDR)
   })
 
   it('answers within its own deadline when Compute Engine never replies', async () => {

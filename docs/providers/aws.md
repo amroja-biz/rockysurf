@@ -150,6 +150,15 @@ the tag conditions to match.
       "Condition": {
         "StringEquals": { "ec2:ResourceTag/managed-by": "rockysurf" }
       }
+    },
+    {
+      "Sid": "RevokeSshOnOwnGroupOnly",
+      "Effect": "Allow",
+      "Action": "ec2:RevokeSecurityGroupIngress",
+      "Resource": "arn:aws:ec2:REGION:ACCOUNT_ID:security-group/*",
+      "Condition": {
+        "StringEquals": { "ec2:ResourceTag/managed-by": "rockysurf" }
+      }
     }
   ]
 }
@@ -420,21 +429,26 @@ A **`Push SSH access to the clouds`** button in the Settings page footer runs th
 demand, without requiring unsaved edits — which is what you want when the group drifted and your
 file did not. `rockysurf network sync` is the CLI equivalent.
 
-**Rocky Surf adds and reports; it does not revoke.** This is the part worth reading carefully,
-because it is the one place where the three clouds' behaviour differs in a way you can see.
+**Rocky Surf adds freely; it removes only what it can prove it created, and only when you
+confirm.** This is the part worth reading carefully, because it is the one place where the three
+clouds' behaviour differs in a way you can see.
 
 - Every CIDR in your list that is not already authorized is authorized, one call per range —
   EC2 rejects a whole request containing one duplicate, so a batch would mean one pre-existing
-  entry silently blocking every new one.
-- Anything on the group that your list no longer names is **left in place and reported**. There is
-  no `ec2:RevokeSecurityGroupIngress` in the published policy and Rocky Surf makes no such call.
-- The report tells the two kinds of leftover apart, using the description Rocky Surf stamps on
-  every range it authorizes (`rockysurf sshAllowedCidr`). A range carrying that stamp is one an
-  earlier Rocky Surf added, and you are told which, so you can put it back in the list or remove
-  it deliberately. A range **without** it was added by you, by your own tooling, or by a release
-  older than the stamp, and removing it silently would be the product deleting access it did not
-  create and cannot explain.
-- For anything it will not remove, you get the exact command:
+  entry silently blocking every new one. This is **additive and never revokes**: launching a box
+  and pushing your list both only ever widen access, so a half-failed push leaves you with more
+  access than you started with, never locked out.
+- Anything on the group that your list no longer names is **reported, not removed on sight**. The
+  report tells two kinds of leftover apart, using the description Rocky Surf stamps on every range
+  it authorizes (`rockysurf sshAllowedCidr`):
+  - A range carrying that stamp is one Rocky Surf added, so it is **offered for keep-or-remove**,
+    default **keep**. Keeping it puts it back in your list; removing it revokes it — an itemized,
+    confirmed action, never a silent side effect. Authorize-before-revoke still holds: your list is
+    reasserted first, so the revoke can only ever narrow the group *toward* your list.
+  - A range **without** the stamp was added by you, by your own tooling, or by a release older than
+    the stamp. Rocky Surf will not remove it, and if you ask it to — by deleting from the list a
+    CIDR you had first added by hand — it tells you so plainly rather than pretending it converged,
+    with the exact command that finishes the job:
 
 ```bash
 aws ec2 revoke-security-group-ingress \
@@ -442,18 +456,19 @@ aws ec2 revoke-security-group-ingress \
   --cidr 198.51.100.0/24 --region us-east-1
 ```
 
-**So a CIDR you delete from the list is still authorized on EC2 until you run that.** That is
-stated here rather than hidden. Removing a range is currently a two-step operation on AWS and on
-[GCP](gcp.md#the-change-reaches-google-cloud-on-save), which keeps its extras for the same
-reason, and a one-step operation only on [Azure](azure.md#who-can-reach-ssh), where the whole rule
-is Rocky Surf's own and is rewritten wholesale every time. Converging the group to exactly your
-list — revoking the stamped extras — is deliberately not in this release; see
-[ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md).
+**The first push after an upgrade may surface several stamped extras at once** — the ranges an
+older, additive Rocky Surf accumulated. They are offered keep-or-remove, default keep, and once
+you have adopted or removed each, they are gone: from then on the only extra a removal produces is
+the one CIDR you just took out of the list, offered the same way. Removing a CIDR **converges** the
+group. This matches [GCP](gcp.md#the-change-reaches-google-cloud-on-save); on
+[Azure](azure.md#who-can-reach-ssh) a removal already took effect in one step, because the whole
+rule is Rocky Surf's own and is rewritten wholesale.
 
-**No new IAM permission was needed for any of this.** `ec2:DescribeSecurityGroups` and
-`ec2:AuthorizeSecurityGroupIngress` were already in the published policy, because provision has
-always needed them, and nothing revokes. If you have an older role, it already grants everything
-this path uses.
+**One IAM permission arrives with this behaviour:** `ec2:RevokeSecurityGroupIngress`, as
+`RevokeSshOnOwnGroupOnly`, scoped by the same `managed-by` tag as authorize and withheld until now
+because nothing revoked. `ec2:DescribeSecurityGroups` and `ec2:AuthorizeSecurityGroupIngress` were
+already published. If you deployed an older role, **re-deploy `deploy/aws/iam-role.yaml`** to pick
+up the revoke statement, or a confirmed removal will fail with `UnauthorizedOperation`.
 
 **Removing a CIDR ends new SSH connections from that network as soon as the revoke lands.**
 Established sessions survive — a security group is evaluated on connection setup — and the boxes

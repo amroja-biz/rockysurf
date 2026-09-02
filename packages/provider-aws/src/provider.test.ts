@@ -8,6 +8,7 @@ import {
   DescribeSubnetsCommand,
   DescribeVpcsCommand,
   EC2Client,
+  RevokeSecurityGroupIngressCommand,
   RunInstancesCommand,
   StartInstancesCommand,
   StopInstancesCommand,
@@ -139,6 +140,7 @@ beforeEach(() => {
   ec2Mock.on(DescribeSecurityGroupsCommand).resolves({ SecurityGroups: [] })
   ec2Mock.on(CreateSecurityGroupCommand).resolves({ GroupId: SG_ID })
   ec2Mock.on(AuthorizeSecurityGroupIngressCommand).resolves({})
+  ec2Mock.on(RevokeSecurityGroupIngressCommand).resolves({})
   ec2Mock.on(DescribeAccountAttributesCommand).resolves({})
   ec2Mock.on(TerminateInstancesCommand).resolves({})
   ec2Mock.on(StopInstancesCommand).resolves({})
@@ -879,13 +881,21 @@ describe('acceptance criteria a reviewer can grep for', () => {
   })
 
   /**
-   * The narrowing half of #304 is NOT in this release, and this is the assertion that keeps it
-   * that way. Rocky Surf authorizes and reports; it removes nothing. A revoke that arrives before
-   * the operator has been offered "keep or remove" for the ranges an older release accumulated
-   * would delete access they never agreed to lose — possibly the network they are sitting on.
+   * PROVISION IS ADDITIVE FOREVER — the anti-lockout floor (issue #309). Revoke arrived with this
+   * release, but only on the explicit, confirmed `syncSshAccess()` path. A launch must never take
+   * access away: widening while someone waits for a box is safe, narrowing is not, and a half-
+   * failed provision must leave MORE access than it started with, never a locked-out account. So
+   * no lifecycle call — provision, describe, terminate, stop, start — may ever issue a revoke.
    */
-  it('revokes no ingress rule anywhere, on any path', () => {
-    expect(code).not.toMatch(/Revoke/)
+  it('never revokes on any lifecycle path — only a confirmed sync may', async () => {
+    const many = build({ sshAllowedCidr: [CIDR, '198.51.100.0/24'] })
+    const data = (await many.provision(spec())).data
+    await many.stop(data)
+    await many.start(data)
+    await many.terminate(data)
+    expect(ec2Mock.commandCalls(RevokeSecurityGroupIngressCommand)).toHaveLength(0)
+    // And the source carries no Revoke call reachable from provision's helpers.
+    expect(code).toMatch(/RevokeSecurityGroupIngressCommand/) // it exists, on the sync path only
   })
 
   it('imports only the two AWS clients it needs', () => {
@@ -1035,5 +1045,103 @@ describe('syncSshAccess (issue #304)', () => {
 
   it('exports the ownership stamp so the CI sweep shares one source of truth (issue #320)', () => {
     expect(SSH_RULE_DESCRIPTION).toBe('rockysurf sshAllowedCidr')
+  })
+
+  /* ---------------------------------------------------- converge on confirmation (issue #309) */
+
+  /** The CIDR each Revoke call named, in call order. */
+  const revokedCidrs = () =>
+    ec2Mock
+      .commandCalls(RevokeSecurityGroupIngressCommand)
+      .map(
+        (call) =>
+          (call.args[0].input as { IpPermissions: { IpRanges: { CidrIp: string }[] }[] }).IpPermissions[0]
+            ?.IpRanges[0]?.CidrIp,
+      )
+
+  it('offers a stamped extra for keep-or-remove but does not remove it unasked', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: SSH_RULE_DESCRIPTION },
+        { CidrIp: '192.0.2.0/24', Description: SSH_RULE_DESCRIPTION },
+      ]),
+    )
+    // No revoke set — a plain push. The extra is surfaced as removable, and nothing is revoked.
+    const result = await provider.syncSshAccess!()
+    expect(result.removable).toEqual(['192.0.2.0/24'])
+    expect(result.reported).toContain('192.0.2.0/24')
+    expect(ec2Mock.commandCalls(RevokeSecurityGroupIngressCommand)).toHaveLength(0)
+  })
+
+  it('revokes a stamped extra when the operator confirms it', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: SSH_RULE_DESCRIPTION },
+        { CidrIp: '192.0.2.0/24', Description: SSH_RULE_DESCRIPTION },
+      ]),
+    )
+    const result = await provider.syncSshAccess!({ revoke: ['192.0.2.0/24'] })
+    expect(result.status).toBe('updated')
+    expect(revokedCidrs()).toEqual(['192.0.2.0/24'])
+    // Gone now — no longer offered, no longer reported.
+    expect(result.removable ?? []).not.toContain('192.0.2.0/24')
+    expect(result.reported).not.toContain('192.0.2.0/24')
+    expect(result.detail).toMatch(/Removed 192\.0\.2\.0\/24 at your request/)
+  })
+
+  /**
+   * AUTHORIZE-BEFORE-REVOKE, pinned. A single sync that both adds a missing range and removes a
+   * confirmed extra must authorize first, so a failure between the two leaves MORE access, never a
+   * lockout. The call order is the assertion.
+   */
+  it('authorizes what is missing BEFORE it revokes what is confirmed', async () => {
+    const many = build({ sshAllowedCidr: [CIDR, '198.51.100.0/24'] })
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: SSH_RULE_DESCRIPTION },
+        { CidrIp: '192.0.2.0/24', Description: SSH_RULE_DESCRIPTION },
+      ]),
+    )
+    await many.syncSshAccess!({ revoke: ['192.0.2.0/24'] })
+
+    const authAt = ec2Mock.commandCalls(AuthorizeSecurityGroupIngressCommand)[0]
+    const revokeAt = ec2Mock.commandCalls(RevokeSecurityGroupIngressCommand)[0]
+    expect(authAt).toBeDefined()
+    expect(revokeAt).toBeDefined()
+    // aws-sdk-client-mock preserves call order across command types on the one client.
+    const order = ec2Mock.calls().map((c) => c.args[0].constructor.name)
+    expect(order.indexOf('AuthorizeSecurityGroupIngressCommand')).toBeLessThan(
+      order.indexOf('RevokeSecurityGroupIngressCommand'),
+    )
+  })
+
+  it('never revokes a CIDR that is still in the list, however it is named in revoke', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([{ CidrIp: CIDR, Description: SSH_RULE_DESCRIPTION }]),
+    )
+    // CIDR is the configured list; asking to revoke it must be ignored — the list is the truth.
+    const result = await provider.syncSshAccess!({ revoke: [CIDR] })
+    expect(ec2Mock.commandCalls(RevokeSecurityGroupIngressCommand)).toHaveLength(0)
+    expect(result.applied).toContain(CIDR)
+  })
+
+  /**
+   * Issue #309 part 3. An operator hand-added a range, so it never acquired our stamp (EC2 swallows
+   * the duplicate authorize). Asking to remove it is a request Rocky Surf cannot fulfil, and it
+   * says so — a failure, with the manual command — rather than silently doing nothing.
+   */
+  it('refuses to remove an unstamped range and reports the failure loudly', async () => {
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(
+      groupWith([
+        { CidrIp: CIDR, Description: SSH_RULE_DESCRIPTION },
+        { CidrIp: '10.0.0.0/8', Description: 'added by hand in the console' },
+      ]),
+    )
+    const result = await provider.syncSshAccess!({ revoke: ['10.0.0.0/8'] })
+    expect(ec2Mock.commandCalls(RevokeSecurityGroupIngressCommand)).toHaveLength(0)
+    expect(result.status).toBe('failed')
+    expect(result.detail).toContain('did not create that rule')
+    expect(result.detail).toContain('aws ec2 revoke-security-group-ingress')
+    expect(result.detail).toContain('10.0.0.0/8')
   })
 })
