@@ -41,6 +41,18 @@ const TOOLS: AdminTool[] = [
   tool({ toolId: 'hand-rolled', installOrder: 30, installScript: TRICKY_SCRIPT }),
   tool({ toolId: 'switched-off', installOrder: 20, enabled: false }),
   tool({ toolId: 'always-on', installOrder: 50, alwaysInstall: true }),
+  // A personal tool fetched from a URL (issue #299): sourceFile null, provenance in `registry`.
+  tool({
+    toolId: 'from-url',
+    installOrder: 60,
+    registry: {
+      source: 'a URL import',
+      url: 'https://tools.example.com/from-url.yaml',
+      sha256: 'deadbeef',
+      trust: 'unverified',
+      installedAt: '2026-09-02T00:00:00.000Z',
+    },
+  }),
 ]
 
 const PACKS: AdminSurgePack[] = [
@@ -107,6 +119,12 @@ beforeEach(async () => {
         res.end(JSON.stringify(PACKS))
         return
       }
+      if (url.pathname === '/api/v1/admin/tools/import' && req.method === 'POST') {
+        // Import returns the list of rows it wrote (issue #299) — both the file and URL arms.
+        res.writeHead(201, { 'content-type': 'application/json' })
+        res.end(JSON.stringify([TOOLS[3]]))
+        return
+      }
       if (url.pathname.startsWith('/api/v1/admin/tools/')) {
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify(TOOLS[3]))
@@ -141,8 +159,8 @@ describe('the tools table', () => {
   it('lists tools in the order they install, within each section', async () => {
     renderPage()
     const [personal, official] = await screen.findAllByRole('table')
-    // Personal: switched-off(20), hand-rolled(30), always-on(50).
-    expect(idsIn(personal!)).toEqual(['switched-off', 'hand-rolled', 'always-on'])
+    // Personal: switched-off(20), hand-rolled(30), always-on(50), from-url(60).
+    expect(idsIn(personal!)).toEqual(['switched-off', 'hand-rolled', 'always-on', 'from-url'])
     // Official: curl(10) git(10) claude-code(40).
     expect(idsIn(official!)).toEqual(['curl', 'git', 'claude-code'])
   })
@@ -161,8 +179,16 @@ describe('the tools table', () => {
     // "file: " on their own — assert on the cell rather than on a text match.
     const sources = (await screen.findAllByTestId(/^file-backed-/)).map((el) => el.textContent)
     expect(sources).toEqual(Array(3).fill('file: ai-coding-agents.yaml'))
-    // `hand-rolled`, `switched-off` and `always-on` have no sourceFile.
+    // `hand-rolled`, `switched-off` and `always-on` are plain database rows; `from-url` also
+    // has no sourceFile but shows its URL origin instead, so it is not counted here.
     expect(await screen.findAllByText('database')).toHaveLength(3)
+  })
+
+  it('shows where a URL-imported tool came from, in full (issue #299)', async () => {
+    renderPage()
+    const cell = await screen.findByTestId('url-import-from-url')
+    expect(cell.textContent).toContain('imported from')
+    expect(cell.textContent).toContain('https://tools.example.com/from-url.yaml')
   })
 
   it('marks a disabled tool', async () => {
@@ -248,11 +274,24 @@ describe('editing a script', () => {
     expect(screen.getByTestId('export-claude-code')).toBeDefined()
   })
 
-  it('offers an import control that takes a file, and no URL box', async () => {
+  it('offers an import control that takes a file and one that takes a URL (issue #299)', async () => {
     renderPage()
     expect(await screen.findByLabelText('Import a tool file')).toBeDefined()
-    // A URL import would install root shell with nothing recorded about where it came from.
-    expect(screen.queryByLabelText(/url/i)).toBeNull()
+    // The URL arm exists now that the tools table records provenance (ADR-0018, issue #299).
+    expect(screen.getByLabelText('Tool file URL')).toBeDefined()
+  })
+
+  it('imports from a URL by sending the address to core, which does the guarded fetch', async () => {
+    renderPage()
+    const box = await screen.findByLabelText('Tool file URL')
+    fireEvent.change(box, { target: { value: 'https://tools.example.com/acme.yaml' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import from URL' }))
+
+    await waitFor(() => expect(writes.some((w) => w.path === '/api/v1/admin/tools/import')).toBe(true))
+    const post = writes.find((w) => w.path === '/api/v1/admin/tools/import')!
+    expect(post.method).toBe('POST')
+    // Only the address crosses — the browser never fetches the URL itself.
+    expect(JSON.parse(post.body)).toEqual({ url: 'https://tools.example.com/acme.yaml' })
   })
 
   /**

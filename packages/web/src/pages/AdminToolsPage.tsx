@@ -31,6 +31,13 @@ import {
  * created here — including anything re-imported, which core stores with a null `sourceFile` —
  * are editable normally.
  */
+/**
+ * The exact string core stamps on a tool fetched from a one-off URL import (`packs/routes.ts`,
+ * issue #299). Duplicated because the SPA does not import from core — the same way `PacksPage`
+ * duplicates it — and a drift shows up as the generic wording rather than as a broken page.
+ */
+const URL_IMPORT_SOURCE = 'a URL import'
+
 export function AdminToolsPage() {
   const [tools, setTools] = useState<AdminTool[]>([])
   const [packs, setPacks] = useState<AdminSurgePack[]>([])
@@ -40,6 +47,8 @@ export function AdminToolsPage() {
   const [addingToPack, setAddingToPack] = useState<AdminTool | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [importUrl, setImportUrl] = useState('')
+  const [importing, setImporting] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -115,23 +124,46 @@ export function AdminToolsPage() {
     }
   }
 
-  /**
-   * Import from a file on the operator's own disk. There is no URL box beside this, and the
-   * absence is deliberate — see `importTools` in the API client.
-   */
+  /** Shared success toast: both import doors land here, so they read identically. */
+  function announceImported(imported: AdminTool[]) {
+    toast.success(
+      imported.length === 1
+        ? `Imported ${imported[0]!.toolId}. Add it to a pack to put it on a box.`
+        : `Imported ${imported.length} tools. Add them to a pack to put them on a box.`,
+    )
+  }
+
+  /** Import from a file on the operator's own disk — records no provenance, nothing to record. */
   async function importFromFile(file: File) {
     try {
-      const imported = await importTools(await file.text())
-      toast.success(
-        imported.length === 1
-          ? `Imported ${imported[0]!.toolId}. Add it to a pack to put it on a box.`
-          : `Imported ${imported.length} tools. Add them to a pack to put them on a box.`,
-      )
+      announceImported(await importTools({ yaml: await file.text() }))
       await refresh()
     } catch (err) {
       // Core's message names the tool and the reason — a file-backed collision, a pack file
       // pasted into the wrong door — and anything this page invented would be vaguer.
       toast.error(err instanceof ApiError ? err.detail : 'Import failed')
+    }
+  }
+
+  /**
+   * Import from a URL (issue #299). The address goes to core, which fetches it through the SSRF
+   * guard and records where it came from on the row (ADR-0018 deferred this until the tools
+   * table could hold that provenance; issue #299 added the columns). The browser never fetches
+   * — a control plane holding cloud credentials does its own guarded fetch.
+   */
+  async function importFromUrl() {
+    const url = importUrl.trim()
+    if (!url) return
+    setImporting(true)
+    try {
+      announceImported(await importTools({ url }))
+      setImportUrl('')
+      await refresh()
+    } catch (err) {
+      // Core's message carries the guard's own refusal reason for a private/unreachable address.
+      toast.error(err instanceof ApiError ? err.detail : 'Import failed')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -186,6 +218,13 @@ export function AdminToolsPage() {
                         title="Edit the YAML file; the boot sync rewrites this row from disk"
                       >
                         file: <code>{tool.sourceFile}</code>
+                      </span>
+                    ) : tool.registry?.source === URL_IMPORT_SOURCE && tool.registry.url ? (
+                      // Where this installation fetched the tool's root-running shell from
+                      // (issue #299). The URL is the answer an operator needs, so it is shown in
+                      // full rather than summarised — the same call the packs page makes.
+                      <span data-testid={`url-import-${tool.toolId}`} title="Fetched from this URL through the SSRF guard">
+                        imported from <code>{tool.registry.url}</code>
                       </span>
                     ) : (
                       <span>database</span>
@@ -250,6 +289,31 @@ export function AdminToolsPage() {
             if (file) void importFromFile(file)
           }}
         />
+        {/* Import from a URL (issue #299). The address is all the browser sends — core fetches
+            it through the SSRF guard and records where it came from on the row. A submit rather
+            than a bare button, so Enter in the box imports. */}
+        <form
+          className="tool-import-url"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void importFromUrl()
+          }}
+        >
+          <label htmlFor="import-tool-url" className="visually-hidden">
+            Tool file URL
+          </label>
+          <input
+            id="import-tool-url"
+            type="url"
+            inputMode="url"
+            placeholder="https://…/tool.yaml"
+            value={importUrl}
+            onChange={(e) => setImportUrl(e.target.value)}
+          />
+          <button type="submit" className="button" disabled={importing || !importUrl.trim()}>
+            {importing ? 'Importing…' : 'Import from URL'}
+          </button>
+        </form>
       </div>
 
       {loading && <p>Loading…</p>}

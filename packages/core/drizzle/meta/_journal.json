@@ -134,6 +134,13 @@
       "when": 1788279302306,
       "tag": "0018_thankful_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788364738755,
+      "tag": "0019_useful_colleen_wing",
+      "breakpoints": true
     }
   ]
 }

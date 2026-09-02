@@ -180,9 +180,11 @@ or pasted into an issue.
 Importing a tool whose id already exists as a **personal** row replaces it — that is what
 re-importing an edit means, and it is deliberate.
 
-**There is no import-from-URL.** A pack records where a URL import came from; the tools table has
-no such columns, so a URL import would install root-running shell while being unable to say where
-it had been. Send the file.
+**Import from a URL** works too (ADR-0022, issue #299): give the Tools page an `https://…/tool.yaml`
+address and the control plane fetches it through the SSRF guard and records where it came from —
+the URL, the digest, and `trust: unverified`. A pasted or uploaded file records nothing, because
+there is nothing true to record. (Originally withheld from tools until the `tools` table had the
+provenance columns to hold that answer; issue #299 added them.)
 
 Finally, tell the user what was actually proven — which architectures ran, what CI will still
 check, and what the tool still needs a human to do (nearly every CLI needs a login, and no

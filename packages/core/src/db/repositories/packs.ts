@@ -43,6 +43,18 @@ export interface UpsertToolInput {
   alwaysInstall?: boolean
   /** Null for a row created in the admin UI; a filename for one loaded from `packs/`. */
   sourceFile?: string | null
+  /**
+   * Where a tool imported from a URL came from (issue #299), and note what it is NOT:
+   * `sourceFile`. Writing provenance there would make the boot reconcile delete the tool, the
+   * same ADR-0006 trap the pack columns dodge. A URL-imported tool keeps `sourceFile` null and
+   * carries its origin in these columns instead.
+   *
+   * Absent means LEAVE WHAT IS THERE, the same contract `registry` has on `UpsertPackInput`:
+   * the boot reconcile re-upserts every file-backed tool passing no `registry`, and the admin
+   * PUT sends a whole row on every ordinary edit — a plain edit to a URL-imported tool must not
+   * quietly erase where it came from. Passing `null` explicitly still clears it.
+   */
+  registry?: RegistryProvenance | null
 }
 
 export interface UpsertPackInput {
@@ -134,6 +146,11 @@ export function upsertTool(db: Db, input: UpsertToolInput): ToolRow {
     // A fresh row needs a value; an upsert of an existing one leaves the column alone unless
     // the caller said otherwise (see the conditional spread below).
     alwaysInstall: input.alwaysInstall ?? false,
+    registrySource: input.registry?.source ?? null,
+    registryUrl: input.registry?.url ?? null,
+    registrySha256: input.registry?.sha256 ?? null,
+    registryTrust: input.registry?.trust ?? null,
+    registryInstalledAt: input.registry?.installedAt ?? null,
     createdAt: now,
     updatedAt: now,
   }
@@ -162,6 +179,19 @@ export function upsertTool(db: Db, input: UpsertToolInput): ToolRow {
         // one; assigning unconditionally would reset an operator's "install this everywhere"
         // on every shipped tool at the next restart, with nothing to show what happened.
         ...(input.alwaysInstall === undefined ? {} : { alwaysInstall: values.alwaysInstall }),
+        // `registry` OMITTED means "leave the provenance alone", the same contract as
+        // `alwaysInstall` and for the same reasons: the boot reconcile and the admin PUT both
+        // re-upsert a whole row with no `registry`, and neither must erase where a URL-imported
+        // tool came from. Passing `null` explicitly still clears it.
+        ...(input.registry === undefined
+          ? {}
+          : {
+              registrySource: values.registrySource,
+              registryUrl: values.registryUrl,
+              registrySha256: values.registrySha256,
+              registryTrust: values.registryTrust,
+              registryInstalledAt: values.registryInstalledAt,
+            }),
         updatedAt: now,
       },
     })

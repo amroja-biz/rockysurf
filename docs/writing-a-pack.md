@@ -1228,8 +1228,8 @@ translation — paste it straight across in either direction.
 
 **Export** any tool from the Tools page and you get `<toolId>.yaml`. `sourceFile` is stripped:
 which `packs/*.yaml` a row came from is one installation's fact about its own disk. **Import**
-takes the file back on any installation, where it becomes a Personal row with a `NULL`
-`sourceFile` that boot never overwrites and never restores.
+takes the file back on any installation — pasted, uploaded, or fetched from a URL — where it
+becomes a Personal row with a `NULL` `sourceFile` that boot never overwrites and never restores.
 
 Three refusals worth knowing before they surprise you:
 
@@ -1240,9 +1240,15 @@ Three refusals worth knowing before they surprise you:
 - An **unknown key** is an error, not a value quietly dropped. A dropped key is a promise the
   file made and the installation did not keep.
 
-There is **no import-from-a-URL** for tools, unlike packs. A pack records where a URL import came
-from; the `tools` table has no provenance columns, so a URL import would install root-privileged
-shell while being unable to say anything true about its origin. Send the file.
+**Importing from a URL** works the same way it does for packs (ADR-0022, which supersedes
+ADR-0018's original "no URL arm"). You give the Tools page an `https://…/tool.yaml` address; the
+control plane — never your browser — fetches it through the same SSRF guard the pack import uses,
+and records where it came from on the row: the URL, the digest of the exact bytes accepted, and a
+`trust` of `unverified` (a one-off URL has no operator-written trust label to borrow). The Tools
+page shows that origin, so "where did this root-privileged shell come from" has a true answer. A
+tool that arrived by paste or upload records nothing, because there is nothing true to record.
+This was deferred at first precisely because the `tools` table had no columns to hold that
+provenance; issue #299 added them.
 
 A tool file is for *sharing*, not for *deploying*: a tool reaches a box only by being listed in a
 pack. Registering one makes it available to put in a pack; it installs nothing on its own.
