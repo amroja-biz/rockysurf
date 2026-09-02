@@ -507,6 +507,38 @@ path; once retirement is confirmed, that disclosure and every `.pem`-based comma
 there is nothing left to download. If you ever lose your own key on a server whose bootstrap
 finished, there is no generated key left to fall back to — that trade is the point.
 
+### When a box reads as filtered but its network is already in the list
+
+On AWS, Azure and Google Cloud, `sshAllowedCidr` is the firewall Rocky Surf manages, and it
+allows exactly the networks you put in it. A box can still read as **filtered** — SSH times out
+with no refusal, and "Test SSH Path" says as much — even though the CIDR you added *is* in the
+list and the same box is reachable from some other network. That combination usually means
+**per-port NAT**: on some networks (carrier-grade NAT, a few corporate and mobile gateways) web
+traffic on ports 80 and 443 leaves by a different public address than everything else, SSH
+included. A "what is my IP" page reports the web address, so that is the one you whitelist — and
+the cloud correctly allows it while your SSH packets, carrying the *other* address, keep getting
+dropped. The address the page gave you is precisely the one your SSH connection does not use.
+
+Confirm it in two commands from the machine you SSH from, and compare the addresses:
+
+```
+curl -4 https://checkip.amazonaws.com     # your WEB address (what "what is my IP" shows)
+curl http://portquiz.net:22/              # your SSH-path address (portquiz answers on any port
+                                          #   and echoes back the source IP it saw on port 22)
+```
+
+If the two differ, that split is the bug: add the **port-22** address as a `/32` to
+`sshAllowedCidr`, save, and reconnect. Two notes:
+
+- **These NAT addresses can rotate.** If a network that used to work goes quiet, re-run the
+  port-22 command and update the `/32`.
+- **A quick check that it is the network, not the box:** if you can SSH in from a *different*
+  network — a phone hotspot, say — the box is healthy and this egress split is the cause.
+
+Rocky Surf never looks your address up itself, by design — you type the CIDR and it pushes what
+you typed — so this is a check you run, not one the product can run for you. It cannot report the
+offending address either: the firewall dropped the packet before it reached the box.
+
 ## Repositories, and how private ones clone
 
 The Repositories field on the create-server form takes one git URL per line, and each one is
