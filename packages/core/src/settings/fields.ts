@@ -1014,12 +1014,16 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
  * said. That is inherent — the comment described the thing being removed — and it is stated
  * in the UI rather than worked around.
  *
- * `blank` IS PART OF THE INVENTORY, and it is here rather than in the SPA because it is a claim
- * about the SCHEMA (issue #302 follow-up). A new entry has to be a value `configSchema` accepts
- * the moment Add writes it — `ssh.keys` requires a non-empty `name`, `registry.sources` a real
- * https URL — and the page cannot know that. Declaring it here is what lets the page draw a
- * list it has never heard of: `fields.test.ts` parses every one of these through the schema, so
- * a blank that would be refused on Add fails the build instead of the operator's save.
+ * `add` IS PART OF THE INVENTORY, and it is here rather than in the SPA because half of it is a
+ * claim about the SCHEMA (issue #302 follow-up, reshaped by rsui-9sc). The page's Add button
+ * reveals a BLANK form — nothing is written until the operator has typed the entry and pressed
+ * its own save. That is the owner's ruling on this flow: no entry appears before the person
+ * asked for one, and no entry ever carries a name the person did not choose. What core still
+ * has to declare is what that form asks for: `example` supplies the greyed placeholder in each
+ * box, and `required` names the fields the form insists on before it will send anything.
+ * `fields.test.ts` parses every `example` through the schema, so a placeholder that would
+ * mislead — an example URL the schema refuses, a name it will not take — fails the build
+ * instead of the operator.
  *
  * `labelField` names the item field that titles a card — the one an operator recognises the
  * entry by. Defaults to the first of `itemFields`.
@@ -1028,15 +1032,27 @@ export interface ListSpec {
   path: string
   itemFields: readonly string[]
   /**
-   * A new entry, as a value the config schema accepts — and the page's whole ability to draw an
-   * Add button for a list it has never heard of.
+   * How a new entry is collected: the noun on the Add button, placeholder values for the blank
+   * form it reveals, and the fields that form requires — the page's whole ability to offer Add
+   * for a list it has never heard of.
+   *
+   * `example` is a complete entry the config schema accepts. It is never written by itself —
+   * it exists to be shown greyed in the form's boxes, and keeping it schema-valid keeps the
+   * placeholders honest. An empty-string example means "no placeholder for this box"; the
+   * field's own help does the explaining.
    *
    * ABSENT means this list is not added to generically, and `github.tokens` is the only one:
    * every shape of entry it takes needs a token, a token cannot be invented as a placeholder,
-   * and it has a bespoke card that collects one before writing anything. A list with no blank
+   * and it has a bespoke card that collects one before writing anything. A list with no `add`
    * still renders its entries generically; it just does not offer Add.
    */
-  blank?: Readonly<Record<string, string | number | boolean>>
+  add?: Readonly<{
+    /** The singular the buttons speak — "Add key", "Add this key". */
+    noun: string
+    example: Readonly<Record<string, string | number | boolean>>
+    /** Item fields the new-entry form refuses to send empty, with the reason said in words. */
+    required: readonly string[]
+  }>
   labelField?: string
   /** Shown in place of the list when it is empty. */
   empty: string
@@ -1052,9 +1068,11 @@ export const SETTINGS_LISTS: readonly ListSpec[] = [
   {
     path: 'ssh.keys',
     itemFields: ['name', 'publicKey'],
-    // `name` cannot be blank — it is how the key is chosen on the New Server page, and the
-    // schema refuses an empty one. `publicKey` CAN be, and means "added, not yet filled in".
-    blank: { name: 'my-laptop', publicKey: '' },
+    // Both fields required: a key with no name cannot be chosen on the New Server page, and a
+    // name with no key is the phantom card the owner reported (rsui-9sc). The publicKey example
+    // is deliberately empty — a plausible-looking placeholder key would either be refused by
+    // the schema or be a real key somebody else holds the other half of.
+    add: { noun: 'key', example: { name: 'my-laptop', publicKey: '' }, required: ['name', 'publicKey'] },
     labelField: 'name',
     empty:
       'None yet. Add one and the New Server page will offer it — you can still paste a key there ' +
@@ -1063,14 +1081,22 @@ export const SETTINGS_LISTS: readonly ListSpec[] = [
   {
     path: 'providers.byo.hosts',
     itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
-    blank: { name: 'change-me', host: '10.0.0.1' },
+    // `user` and `port` have schema defaults and the rest are optional, so the form only
+    // insists on the two things a host cannot be reached without.
+    add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
     labelField: 'name',
     empty: 'None yet. Enabling this provider requires at least one host.',
   },
   {
     path: 'registry.sources',
     itemFields: ['name', 'url', 'trust'],
-    blank: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+    // `trust` is not required: left blank it is omitted, and the schema defaults it to
+    // `community` — the label an operator has to opt out of, never into.
+    add: {
+      noun: 'source',
+      example: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      required: ['name', 'url'],
+    },
     labelField: 'name',
     empty:
       "None yet. Add one to browse somebody else's packs — or your own, published as a single " +

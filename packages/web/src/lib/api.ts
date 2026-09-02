@@ -1070,17 +1070,27 @@ export interface SettingsSection {
   help: string
 }
 
+/** How a list collects a new entry: nothing is written until its blank form is filled and saved. */
+export interface SettingsListAdd {
+  /** The singular the buttons speak — "Add key", "Add this key". */
+  noun: string
+  /** A schema-valid model entry, shown greyed as each box's placeholder. Never written as-is. */
+  example: Record<string, string | number | boolean>
+  /** Item fields the form refuses to send empty. */
+  required: string[]
+}
+
 export interface SettingsList {
   path: string
   itemFields: string[]
   /**
-   * A new entry, as a value core's schema accepts — what the Add button writes.
+   * The Add button's noun, the form's placeholders, and what the form insists on.
    *
    * This is what lets the page draw a list it has no hand-written block for. Absent means the
    * list is not added to generically (`github.tokens`, whose entries need a token that cannot
    * be invented); its entries still render, it just offers no Add.
    */
-  blank?: Record<string, string | number | boolean>
+  add?: SettingsListAdd
   /** The item field that titles a card. Defaults to the first of `itemFields`. */
   labelField?: string
   /** Core's sentence for when the list is empty. */

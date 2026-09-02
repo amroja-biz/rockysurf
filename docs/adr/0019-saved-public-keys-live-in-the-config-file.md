@@ -21,6 +21,26 @@ hand-written block so the generic path is exercised by the product rather than o
 and a card that would draw a heading and nothing else now says so instead of implying an editor
 that is not there. See "The editor that was not there", below.
 
+**Amended again 2026-09-01, evening, after the owner used the shipped page (bead rsui-9sc).**
+Clause 6's mechanism — Add writes a blank `{ name: 'my-laptop', publicKey: '' }` entry to the
+file before anyone types — survived contact with tests and not with the owner: a first visit
+after one click showed what looked like an EXISTING key nobody had saved, a save appeared to
+mint another (`my-laptop 2`, numbered by #311 to dodge the uniqueness refusal), and the
+private-key warning repeated under every card. The ruling, verbatim in spirit: a single cyan
+**Add key** button; clicking it reveals a **blank form with no default name** that asks for the
+name and the key; saving the form appends the entry; the warning appears **once per page**.
+
+So the generic list renderer now follows the convention the GitHub-token card always had: Add
+reveals a draft held in page state, **nothing is written until the form's own save**, required
+fields are refused empty in words at the form, and a `warning` on a list's item field is said
+once at the head of the list rather than under every entry. `SETTINGS_LISTS.blank` became
+`SETTINGS_LISTS.add` — a noun for the button, a schema-valid `example` used only as
+placeholders, and the `required` field names — and the numbering #311 added is gone, because
+there is no constant placeholder left to collide. Clause 6's *schema* half still stands: an
+empty `publicKey` remains legal, for the files the old flow (and hand editing) already wrote,
+but the page no longer produces one — the form requires both boxes. This applies to every
+generic list (`providers.byo.hosts`, `registry.sources`) — the same trap was latent in each.
+
 ## Context
 
 The New Server page has taken a pasted SSH public key since the rewrite: one textarea, one

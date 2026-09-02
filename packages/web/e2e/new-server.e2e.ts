@@ -21,12 +21,13 @@ const PUBLIC_KEY =
 test('a key saved in Settings is offered by the New Server page', async ({ page, controlPlane }) => {
   await page.goto('/settings?section=ssh')
   const panel = page.locator('.settings-panel:not([hidden])')
-  await panel.getByRole('button', { name: 'Add', exact: true }).click()
-  await page.locator('#ssh\\.keys\\.0\\.name').fill('laptop')
-  await page.locator('#ssh\\.keys\\.0\\.publicKey').fill(PUBLIC_KEY)
-  await page.getByRole('button', { name: 'Save to the file' }).click()
-  /* Waited on the file rather than the toast: `Add` raises a toast of its own, so there are two
-     identical ones on screen and neither says which save it belongs to. The file does. */
+  /* The standard add flow (rsui-9sc): Add key reveals a blank form, and the form's own button
+     is the save — nothing goes near the footer. */
+  await panel.getByRole('button', { name: 'Add key' }).click()
+  await page.locator('#ssh\\.keys\\.new\\.name').fill('laptop')
+  await page.locator('#ssh\\.keys\\.new\\.publicKey').fill(PUBLIC_KEY)
+  await panel.getByRole('button', { name: 'Add this key' }).click()
+  /* Waited on the file rather than the toast — the file is what the New Server page reads. */
   await expect.poll(() => controlPlane.readConfig()).toContain('name: laptop')
 
   await page.goto('/servers/new')
