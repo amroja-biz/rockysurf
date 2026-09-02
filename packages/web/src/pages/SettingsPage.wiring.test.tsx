@@ -481,9 +481,33 @@ const clickIn = (id: string, name: string) => {
   fireEvent.click(within(tokenCard(id)).getByRole('button', { name }))
 }
 
+/**
+ * Wait for the page to finish whatever save is in flight — keyed off the DOM state every
+ * Save/Add/Remove button on the page gates itself on (`saving`, `SettingsPage.tsx`'s `submit`),
+ * not off the stub merely having received a request body.
+ *
+ * `saves.push` happens the moment the stub's PUT handler finishes reading the request — before
+ * it has even written a response, let alone before the page has read that response and cleared
+ * `saving`. A click that follows immediately (`clickIn`, below) lands on a button still disabled
+ * by a stale `saving` and is silently dropped rather than sent, which is a worse failure than the
+ * flake this replaces. Waiting on the footer's own "Saving…" / "Save to the file" toggle is the
+ * actual precondition the next action depends on.
+ *
+ * The 3000ms allowance is not invented for this assertion: it matches what
+ * `CreateServerPage.test.tsx` already gives this same class of real-HTTP wait, and this is a
+ * generous ceiling on top of the correct condition, not a substitute for one — a genuinely stuck
+ * request still fails well inside vitest's own 10s `testTimeout` (rockysurf-zn33: the previous,
+ * server-receipt-based wait was observed giving up at ~1.2s on a loaded runner, green on an
+ * immediate rerun of the same commit).
+ */
+async function waitForSaveToSettle(): Promise<void> {
+  await screen.findByRole('button', { name: 'Save to the file' }, { timeout: 3000 })
+}
+
 /** The one save this page made, once it has made it. */
 async function onlySave(): Promise<(typeof saves)[number]> {
-  await waitFor(() => expect(saves).toHaveLength(1))
+  await waitForSaveToSettle()
+  expect(saves).toHaveLength(1)
   return saves[0]!
 }
 
@@ -682,14 +706,11 @@ describe('the unified token list', () => {
     expect(control('github.tokens.0.pat').value).toBe('github_pat_newacme')
     clickIn('0', 'Save this token')
     // The first save is already awaited above (`onlySave()`), so this is a second, independent
-    // real round trip against the stub HTTP server — not a race with the first. There is no
-    // promise the test can hold for it (`clickIn` only dispatches a DOM event), so the only
-    // deterministic thing left to fix is testing-library's default 1000ms `waitFor` budget,
-    // which is too tight for a real socket under a loaded CI runner (rockysurf-zn33: observed
-    // giving up at ~1.2s on run 32296243192, green on immediate rerun of the same commit).
-    // `CreateServerPage.test.tsx` widens the same class of real-HTTP wait to 3000ms; this one
-    // gets a bit more headroom since it is the second round trip in the test, not the first.
-    await waitFor(() => expect(saves).toHaveLength(2), { timeout: 5000 })
+    // real round trip against the stub HTTP server — not a race with the first. See
+    // `waitForSaveToSettle` for why this waits on the footer's own idle state rather than on
+    // `saves` growing again.
+    await waitForSaveToSettle()
+    expect(saves).toHaveLength(2)
     expect(saves[1]!.changes).toEqual([
       { path: ['github', 'tokens', 0, 'pat'], value: 'github_pat_newacme' },
     ])
@@ -1630,7 +1651,8 @@ describe('restart honesty, per setting', () => {
     fireEvent.change(control('limits.maxServers'), { target: { value: '12' } })
     save()
 
-    await waitFor(() => expect(saves).toHaveLength(1))
+    await waitForSaveToSettle()
+    expect(saves).toHaveLength(1)
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -2804,7 +2826,8 @@ describe('pushing the SSH whitelist at the clouds (issue #304)', () => {
     fireEvent.change(control('limits.maxServers'), { target: { value: '9' } })
     save()
 
-    await waitFor(() => expect(saves).toHaveLength(1))
+    await waitForSaveToSettle()
+    expect(saves).toHaveLength(1)
     expect(syncCalls).toBe(0)
   })
 
