@@ -1041,9 +1041,12 @@ describe('the SSH-path diagnosis (issue #304)', () => {
     // Scoped to the advisory: the app shell has a Settings link of its own, and the point
     // here is that the diagnosis carries the operator to the field, not that the nav exists.
     expect(within(advisory).getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe('/settings')
-    // Something the OPERATOR runs. The product never calls a "what is my IP" service and this
-    // page is the only place the suggestion is allowed to live.
-    expect(advisory.textContent).toContain('curl -4 ifconfig.me')
+    // Something the OPERATOR runs. The product never calls it, and this page is the only place
+    // the suggestion is allowed to live. It is a port-22 probe, not a "what is my IP" page:
+    // on split-egress networks the web address is precisely the wrong value to whitelist (#323).
+    expect(advisory.textContent).toContain('curl http://portquiz.net:22/')
+    expect(advisory.textContent).not.toContain('ifconfig.me')
+    expect(advisory.textContent).toContain('the whitelist needs the port-22 one')
     expect(advisory.textContent).toContain('Rocky Surf never looks your address up itself')
   })
 
@@ -1094,7 +1097,7 @@ describe('the SSH-path diagnosis (issue #304)', () => {
 
     const advisory = await screen.findByTestId('ssh-path-advisory')
     expect(advisory.textContent).toContain('The last SSH attempt Rocky Surf recorded got no answer at all')
-    expect(advisory.textContent).toContain('curl -4 ifconfig.me')
+    expect(advisory.textContent).toContain('curl http://portquiz.net:22/')
   })
 
   it('asks again when the operator presses Test SSH path, which is the point of the button', async () => {

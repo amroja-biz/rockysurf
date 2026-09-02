@@ -463,6 +463,14 @@ security decision that belongs somewhere reviewable, not inferred at runtime fro
 address the operator happened to have that morning. **That is unchanged** — nothing here
 discovers your address; you type the CIDR and Rocky Surf pushes what you typed.
 
+**Whitelist the address your SSH connection uses, not the one a "what is my IP" page shows you.**
+On some networks — carrier-grade NAT, a few corporate and mobile gateways — web traffic (80/443)
+leaves by a different public address than everything else, SSH included, so the web address you
+copy in is allowed while your SSH packets, carrying a different address, are still dropped and the
+box reads as *filtered*. Find the port-22 address with `curl http://portquiz.net:22/` and compare
+it to `curl -4 https://checkip.amazonaws.com`; if they differ, whitelist the port-22 one. See
+[When a box reads as filtered but its network is already in the list](../self-hosting.md#when-a-box-reads-as-filtered-but-its-network-is-already-in-the-list).
+
 It matters slightly more here than on AWS. **An Azure Standard-SKU public IP is closed to inbound
 traffic by default** — Basic SKUs, which were open by default, were retired on 2025-09-30 — so
 without this rule SSH does not work at all rather than working too widely. The failure is at least

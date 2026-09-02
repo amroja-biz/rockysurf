@@ -179,6 +179,20 @@ export function HelpPage() {
           boots, and there is no firewall object for Rocky Surf to own.
         </p>
         <p>
+          <strong>Use the address your SSH connection uses, not the one a &ldquo;what is my IP&rdquo; page
+          shows you.</strong> On some networks — carrier-grade NAT, a few corporate and mobile gateways —
+          web traffic (ports 80 and 443) leaves by a different public address than everything else, SSH
+          included. Whitelist the web address on such a network and the cloud correctly allows it while your
+          SSH packets, carrying a different address, are still dropped — the box reads as{' '}
+          <em>filtered</em> even though the CIDR is in the list. Find the SSH-path address with{' '}
+          <code>curl http://portquiz.net:22/</code>, which echoes back the source IP a server saw on port 22,
+          and compare it to your web address from <code>curl -4 https://checkip.amazonaws.com</code>; if they
+          differ, whitelist the port-22 one. These NAT addresses can rotate, so if a network that used to
+          work goes quiet, re-run the port-22 command and update its <code>/32</code>. A quick check that it
+          is the network and not the box: if you can SSH in from a different network — a phone hotspot, say —
+          the box is fine and this egress split is the cause.
+        </p>
+        <p>
           <strong>Saving <code>sshAllowedCidr</code> pushes it to the cloud straight away</strong> —
           you do not have to launch a server for it to take effect, which is what used to be
           required. Settings writes your file, this process adopts it, and then a second call

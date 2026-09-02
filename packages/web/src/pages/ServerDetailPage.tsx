@@ -856,8 +856,12 @@ function probeSummary(report: SshPathReport | null): string {
  * fixes it — and it never proposes a value, because Rocky Surf does not know the operator's
  * address and is never going to look it up. That ban is old and load-bearing: an earlier
  * prototype discovered the address from a "what is my IP" service and was removed on purpose, so
- * `curl -4 ifconfig.me` below is written as something the OPERATOR runs. Nothing in this product
- * calls it, and a test in `provider-aws` greps the provider sources to keep it that way.
+ * the `curl http://portquiz.net:22/` below is written as something the OPERATOR runs. Nothing in
+ * this product calls it, and a test in `provider-aws` greps the provider sources to keep it that
+ * way. It is a port-22 probe on purpose, not a "what is my IP" page: on split-egress networks
+ * (carrier-grade NAT, some corporate gateways) a web page reports the address the operator's
+ * traffic leaves by on ports 80/443, which is *not* the address their SSH packets carry, so the
+ * web address is precisely the wrong value to whitelist (issue #323).
  *
  * THE STRONGEST CLAIM MADE HERE is the one the owner wrote: *the path from this machine to the
  * box appears filtered*. Not "your address changed", not "you are on a new network" — core saw a
@@ -911,15 +915,26 @@ function SshPathAdvisory({ report, providerName }: { report: SshPathReport; prov
             the address in the whitelist is no longer yours, and every box on {cloud} is unreachable the same way.
           </p>
           <p>
-            Find your current address — run <code>curl -4 ifconfig.me</code>, or read it off any &ldquo;what is my
-            IP&rdquo; page — and add it to the SSH whitelist for {cloud} in <Link to="/settings">Settings</Link>. Saving
-            pushes the new rule to the cloud straight away; you do not have to launch a server for it to take effect,
-            and the addresses already in the list stay.
+            Find the address your SSH connection uses — run <code>curl http://portquiz.net:22/</code>, which answers
+            HTTP on any port and echoes back the source IP a server saw on port 22 — and add it to the SSH whitelist for{' '}
+            {cloud} in <Link to="/settings">Settings</Link>. Saving pushes the new rule to the cloud straight away; you
+            do not have to launch a server for it to take effect, and the addresses already in the list stay.
+          </p>
+          <p>
+            Use the port-22 address, not one a &ldquo;what is my IP&rdquo; page gives you. On some networks —
+            carrier-grade NAT, a few corporate and mobile gateways — the address a web page shows is the one your
+            traffic leaves by on ports 80 and 443, and your SSH packets leave by a different one; the whitelist needs
+            the port-22 one. Compare them if you like: <code>curl http://portquiz.net:22/</code> against{' '}
+            <code>curl -4 https://checkip.amazonaws.com</code> (the web address). If they differ, whitelist the port-22
+            address. These NAT addresses can also rotate, so if a network that used to work goes quiet, re-run the
+            port-22 command and update its <code>/32</code>.
           </p>
           <p className="hint">
             Rocky Surf never looks your address up itself, by design: what the firewall allows stays your decision,
             written into the config file where it can be reviewed. This check ran from the machine Rocky Surf is running
-            on — if that is not the machine you SSH from, the two paths can differ.
+            on — if that is not the machine you SSH from, the two paths can differ. A quick way to tell the box is fine
+            and the trouble is your network: if you can SSH in from a different network — a phone hotspot, say — the box
+            is healthy and your egress split is the culprit.
           </p>
         </>
       ) : (
