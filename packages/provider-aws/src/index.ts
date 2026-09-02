@@ -14,7 +14,7 @@ export { awsConfigSchema, resolveSshCidrs, type AwsProviderConfig } from './conf
 export { awsErrorCode, isNotFound, mapAwsError } from './errors.js'
 export { buildOfferings, OFFERING_IDS } from './offerings.js'
 export { parsePriceFeedDoc, PriceFeedClient, type PriceFeedDoc } from './feed.js'
-export { ec2ConsoleUrl, makeAwsProvider, type AwsProviderOptions } from './provider.js'
+export { ec2ConsoleUrl, makeAwsProvider, SSH_RULE_DESCRIPTION, type AwsProviderOptions } from './provider.js'
 
 export const AWS_PROVIDER_ID = 'aws'
 

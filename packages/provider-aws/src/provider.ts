@@ -63,8 +63,13 @@ import { buildOfferings } from './offerings.js'
  * command that would remove it.
  *
  * Changing this string orphans every range a previous release stamped. Don't.
+ *
+ * Exported because the ownership check is not the provider's alone: the nightly CI sweep and the
+ * one-time cleanup script (issue #320) decide what they may safely remove from the shared group by
+ * exactly this stamp, and a second copy of the literal in a script is a second thing to forget to
+ * change. One constant, imported wherever the question "did Rocky Surf author this rule?" is asked.
  */
-const SSH_RULE_DESCRIPTION = 'rockysurf sshAllowedCidr'
+export const SSH_RULE_DESCRIPTION = 'rockysurf sshAllowedCidr'
 
 const CAPABILITIES: ProviderCapabilities = {
   stop: true,
@@ -339,9 +344,26 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
         // Already authorized — by a previous boot, another process, or the operator — is success.
         // Note this also means a hand-added range KEEPS the operator's own description rather
         // than acquiring ours, which is why `syncSshAccess()` can still tell the two apart.
-        if (awsErrorCode(err) !== 'InvalidPermission.Duplicate') {
-          throw mapAwsError(err, 'ec2:AuthorizeSecurityGroupIngress')
+        if (awsErrorCode(err) === 'InvalidPermission.Duplicate') continue
+
+        // The full-group case, named rather than left generic (issue #320). A shared group has a
+        // hard ceiling of 60 inbound rules, and the way it fills up in practice is stale one-off
+        // /32s that nothing ever removed — the nightly CI runner's fresh public IP every night was
+        // the discovered offender. `mapAwsError` would land this on the right `quota` code but with
+        // EC2's own opaque wording; a self-hoster whose Settings save "silently failed to reach
+        // AWS" is better served by an error that says which group is full and what the ceiling is.
+        if (awsErrorCode(err) === 'RulesPerSecurityGroupLimitExceeded') {
+          throw new ProviderError(
+            'quota',
+            `${config.securityGroupName} (${groupId}) is at AWS's limit of 60 inbound rules, so ` +
+              `${cidr} could not be authorized. Stale one-off rules stamped '${SSH_RULE_DESCRIPTION}' ` +
+              'from earlier runs are the usual cause — remove the ones no longer in use and try ' +
+              'again. This does not touch any rule the operator added by hand.',
+            { providerCode: 'RulesPerSecurityGroupLimitExceeded', cause: err },
+          )
         }
+
+        throw mapAwsError(err, 'ec2:AuthorizeSecurityGroupIngress')
       }
     }
     return authorized

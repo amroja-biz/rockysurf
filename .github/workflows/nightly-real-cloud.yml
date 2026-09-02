@@ -107,10 +107,16 @@ name: Nightly real-cloud lifecycle
 # reproduce this without reverse-engineering it from these comments.
 #
 # ONE CONSEQUENCE OF THAT SPLIT: the entry role can do essentially nothing on its own — assume the
-# provider role, and read volumes for the orphan audit. So while the preflight below treats
+# provider role, read volumes for the orphan audit, and (gh issue #320) revoke the stale SSH rules
+# the SSH-rule sweep cleans off the shared group. So while the preflight below treats
 # vars.AWS_PROVIDER_ROLE_ARN as optional, an entry role deployed from nightly-ci.yaml makes it
 # mandatory in practice: without the second hop the lifecycle has no permission to launch
 # anything. Set both, or neither.
+#
+# IF YOU WIRED THIS UP BEFORE gh issue #320: redeploy the entry role (./deploy/aws/setup-nightly.sh,
+# idempotent) so it carries ec2:RevokeSecurityGroupIngress on the shared group. Until then the
+# SSH-rule sweep step still runs, sees the strays, and prints one warning naming that exact command
+# rather than failing the morning red.
 #
 # ─── THE SAME IDEA ON GCP, WITH ONE HOP INSTEAD OF TWO (gh issue #132) ───────────────────────
 #
@@ -617,6 +623,26 @@ jobs:
             echo '::error::this run left instances behind; the sweep cleaned up'
             exit 1
           fi
+
+      # THE SSH-RULE SWEEP (gh issue #320). The lifecycle authorizes the runner's fresh public IP on
+      # the shared rockysurf-ssh group so it can SSH the box, and by the "provision never revokes"
+      # anti-lockout contract nothing ever removes it — so the group climbed to 59/60 and the next
+      # authorize would have failed the nightly or, worse, a real user's Settings save. This removes
+      # the rules Rocky Surf stamped and no longer needs; a rule the operator added by hand carries a
+      # different description and is reported, never touched (scripts/e2e/aws-ssh-rules.mjs).
+      #
+      # IT RUNS AS THE OPERATOR IDENTITY, not the published provider role: revoke is deliberately
+      # absent from that role (gh issue #309 owns the product's revoke path), so the sweep reads the
+      # entry role's session the audit-credentials seam already captured before the chaining hop.
+      # ROCKYSURF_E2E_AWS_PROFILE='' forces the ambient chain in the no-chaining case, exactly as the
+      # Lifecycle step does. Unlike the terminate sweep this NEVER fails the job — a group that needed
+      # cleaning is the normal case here, and the only loud message is the one that says the entry
+      # role has not yet been redeployed with the revoke grant.
+      - name: SSH-rule sweep
+        if: always()
+        env:
+          ROCKYSURF_E2E_AWS_PROFILE: ''
+        run: node scripts/e2e/aws-ssh-sweep.mjs
 
       - uses: actions/upload-artifact@v4
         if: always()
