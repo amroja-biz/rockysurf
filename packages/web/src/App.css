@@ -2748,6 +2748,17 @@ p.hint {
   flex-wrap: wrap;
 }
 
+/* The footer sits below `.settings-layout`, not inside its grid, so it does not inherit the
+   nav column's width — without this it starts flush with the tab list on the left rather than
+   with the panel content beside it (issue #322). `13rem` and `1.5rem` mirror the nav-column
+   width and gap the grid rule above sets for this same breakpoint; below it the layout is a
+   single stacked column, so the footer is already flush with the (full-width) content there. */
+@media (min-width: 60rem) {
+  .settings-actions {
+    margin-left: calc(13rem + 1.5rem);
+  }
+}
+
 /* Screen-reader-only, for the header cell that labels a column of buttons. */
 .visually-hidden {
   position: absolute;
