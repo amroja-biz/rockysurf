@@ -192,6 +192,32 @@ Resources:
                     # ours to kill, orphan hunt or no.
                     'ec2:ResourceTag/managed-by': 'rockysurf'
 
+              # The SSH-rule sweep (gh issue #320). The nightly writes the runner's fresh public IP
+              # into the shared rockysurf-ssh group every run to SSH the box it provisions, and the
+              # provider — additive by the anti-lockout contract — never takes it back. Left alone
+              # the group climbs to AWS's 60-rule ceiling, at which point the next launch (or a real
+              # user's Settings save) fails. scripts/e2e/aws-ssh-sweep.mjs removes those strays, and
+              # it runs as THIS role for the same reason the instance sweep does: revoke is
+              # deliberately ABSENT from the published provider role (that path is gh issue #309), so
+              # a cleanup wired through the identity under test could not do the one thing it exists
+              # to do. Read is region-scoped (Describe* takes no resource ARN); revoke is confined to
+              # a security group the product tagged as its own — a hand-made rule on an untagged
+              # group is never this role's to remove.
+              - Sid: SshRuleSweepSee
+                Effect: Allow
+                Action: 'ec2:DescribeSecurityGroups'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'aws:RequestedRegion': !Ref ProviderRegion
+              - Sid: SshRuleSweepRevoke
+                Effect: Allow
+                Action: 'ec2:RevokeSecurityGroupIngress'
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${ProviderRegion}:${AWS::AccountId}:security-group/*'
+                Condition:
+                  StringEquals:
+                    'ec2:ResourceTag/managed-by': 'rockysurf'
+
 Outputs:
   NightlyRoleArn:
     Description: >-

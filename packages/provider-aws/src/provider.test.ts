@@ -40,7 +40,7 @@ import { awsConfigSchema, type AwsProviderConfig } from './config.js'
 import { mapAwsError } from './errors.js'
 import type { PriceFeedDoc } from './feed.js'
 import { AWS_TYPES } from './prices.generated.js'
-import { ec2ConsoleUrl, makeAwsProvider } from './provider.js'
+import { ec2ConsoleUrl, makeAwsProvider, SSH_RULE_DESCRIPTION } from './provider.js'
 
 const AMI_ARM64 = 'ami-arm64test'
 const AMI_AMD64 = 'ami-amd64test'
@@ -1011,5 +1011,29 @@ describe('syncSshAccess (issue #304)', () => {
     const result = await provider.syncSshAccess!()
     expect(result.reported).toContain('192.0.2.0/24')
     expect(result.detail).toMatch(/no longer in your list/)
+  })
+
+  /**
+   * Issue #320. `RulesPerSecurityGroupLimitExceeded` already lands on the `quota` code through
+   * `mapAwsError`, but with EC2's own opaque wording. The failure this rewording exists for is a
+   * real user's Settings save that "silently failed to reach AWS": naming the group and the ceiling
+   * turns that into something the operator can act on.
+   */
+  it('names the security group and the 60-rule ceiling when the group is full (issue #320)', async () => {
+    const many = build({ sshAllowedCidr: [CIDR, '198.51.100.0/24'] })
+    ec2Mock.on(DescribeSecurityGroupsCommand).resolves(groupWith([]))
+    ec2Mock.on(AuthorizeSecurityGroupIngressCommand).rejects(awsError('RulesPerSecurityGroupLimitExceeded'))
+    const err = await many.syncSshAccess!().catch((e) => e)
+    expect(err).toBeInstanceOf(ProviderError)
+    expect(err.code).toBe('quota')
+    expect(err.providerCode).toBe('RulesPerSecurityGroupLimitExceeded')
+    expect(err.message).toContain('rockysurf-ssh')
+    expect(err.message).toContain('60')
+    // The stamp is named so the operator knows which rules the cleanup considers its own to prune.
+    expect(err.message).toContain(SSH_RULE_DESCRIPTION)
+  })
+
+  it('exports the ownership stamp so the CI sweep shares one source of truth (issue #320)', () => {
+    expect(SSH_RULE_DESCRIPTION).toBe('rockysurf sshAllowedCidr')
   })
 })
