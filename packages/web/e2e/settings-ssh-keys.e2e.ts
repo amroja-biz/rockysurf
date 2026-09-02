@@ -106,49 +106,39 @@ test('a saved key can be removed, and the file loses it', async ({ page, control
 })
 
 /**
- * ══════════════════════════════════════════════════════════════════════════════════════════
- * THE REPRODUCTION. This is the acceptance criterion of issue #310.
- * ══════════════════════════════════════════════════════════════════════════════════════════
+ * THE REGRESSION TEST FOR THE SSH-LIST SAVE BUG (#302/#303/#305, fixed by #311).
  *
- * `test.fail()` means "this is expected to fail" — Playwright RUNS it and the run is green only
- * when the test fails. That is deliberate and it is the whole point: a `fixme` would be skipped,
- * would assert nothing, and would prove nothing about the bug being present. This executes
- * against the broken behaviour on every CI run and stays green while the bug is there.
+ * This was written as a REPRODUCTION, against the broken behaviour, and it is kept here now
+ * that the behaviour is fixed — which is the whole point of having written it that way. It
+ * carried `test.fail()` while the bug was live (Playwright runs such a test and the suite is
+ * green only while it fails, so the bug was pinned by something that executed rather than by a
+ * skipped note). #311 landed, the test started passing, the job went red on purpose, and that
+ * line came off. What is left guards the fix.
  *
- * WHEN THE FIX (#311, for #302/#303/#305) MERGES, THIS TEST STARTS PASSING — and Playwright
- * reports "expected to fail but passed", which turns the `UI (browser)` job RED. That is the
- * intended signal, not an accident: it is what forces somebody to come here and delete the
- * `test.fail()` line, converting the reproduction into an ordinary regression test. Deleting
- * that one line is the entire follow-up.
+ * WHAT WENT WRONG, and what each assertion below now holds in place. `listSection` used to
+ * append a blank entry carrying a CONSTANT name, and to compute ONE `blocked` flag from "does
+ * this list have any pending edit" which disabled Add and Remove together. Two defects, asserted
+ * here in order of how objectively they fail rather than in the order a hand meets them:
  *
- * WHAT IS BROKEN, on the commit this was written against. `listSection` appends a blank entry
- * carrying a CONSTANT name, and computes ONE `blocked` flag from "does this list have any
- * pending edit" which disables Add and Remove together. That is two defects, and they are
- * asserted here in order of how objectively they fail rather than in the order a hand meets
- * them:
+ *   1. A SECOND `Add` WAS REFUSED OUTRIGHT. Both blanks were born with the same name, the schema
+ *      rejected the pair with `two saved SSH keys share a name`, the write came back 400, and
+ *      the list still held exactly one entry — with nothing on screen saying so. A count rather
+ *      than a matter of style, which is why it is asserted first: while the bug was live this
+ *      was the assertion that actually ran. #311 numbers new entries generically.
+ *   2. AND THE CONTROLS BESIDE A VALID EDIT WENT DEAD. Typing a name into the entry you had just
+ *      added disabled Add and Remove with "Save or discard your other changes to this list
+ *      first" — for renaming the key you were in the middle of adding.
  *
- *   1. A SECOND `Add` IS REFUSED OUTRIGHT. Both blanks are born with the same name, the schema
- *      rejects the pair with `two saved SSH keys share a name`, the write comes back 400, and
- *      the list still holds exactly one entry. Nothing on screen says so. This is the hardest
- *      failure to argue with — a count, not a matter of style — so it is asserted first, and it
- *      is therefore the one that actually runs while the bug is present.
- *   2. AND THE CONTROLS BESIDE A VALID EDIT GO DEAD. Type a name into the entry you just added
- *      and Add and Remove are disabled with "Save or discard your other changes to this list
- *      first" — for renaming the key you are in the middle of adding.
- *
- * The footer `Save to the file` button is NOT one of the defects, which is worth writing down
- * because the issue's own wording points at it: no valid single edit was ever found that
+ * The footer `Save to the file` button was NOT one of the defects, which is worth keeping on the
+ * record because the issue's own wording pointed at it: no valid single edit was ever found that
  * disabled it, either by driving the page here or by the author of the fix. The dead controls
- * are the list's own Add and Remove.
+ * were the list's own Add and Remove. Do not "restore" an interlock on that button.
  *
- * THE SAME TRAP IS LATENT IN `registry.sources` AND `providers.byo.hosts` — same uniqueness
- * rule, same constant placeholder. #311 numbers new entries generically in `listSection`, so
- * one fix covers all three; only this list has a test, and the other two are worth a pass if
- * this suite is ever widened.
+ * THE SAME TRAP WAS LATENT IN `registry.sources` AND `providers.byo.hosts` — same uniqueness
+ * rule, same constant placeholder. #311's generic numbering covers all three; only this list has
+ * a test, and the other two are worth a pass if this suite is ever widened.
  */
 test('adding a second key is not blocked by an edit to the first', async ({ page, controlPlane }) => {
-  test.fail()
-
   await page.goto('/settings?section=ssh')
   const panel = page.locator(openPanel)
   const add = panel.getByRole('button', { name: 'Add', exact: true })
