@@ -672,7 +672,8 @@ describe('a pack that declares inputs (issue #189)', () => {
  * The pack export/import above shares a whole box. This shares the unit people actually trade:
  * "here is how I install my linter." The tests that matter are the ones about what may NOT
  * happen — a file-backed row overwritten, a pack file misread as a tool file, a URL fetched
- * with nowhere to record where it had been.
+ * through anything but the SSRF guard, or a URL import that forgets where it came from
+ * (issue #299 adds the arm and the provenance it records).
  */
 describe('tool export and import', () => {
   const TOOL_YAML = [
@@ -800,18 +801,78 @@ describe('tool export and import', () => {
   })
 
   /**
-   * NO `url` ARM, deliberately. The `tools` table has no provenance columns, so a URL import
-   * would install root-running shell while being unable to say where it came from — the problem
-   * issue #88 fixed for packs. Adding those columns is its own change.
+   * THE `url` ARM (issue #299), now that the `tools` table carries provenance columns. The
+   * three tests below are the tool halves of the pack import's own URL suite: the guard is
+   * really wired, the URL is recorded, and a paste records nothing.
    */
-  it('takes no url — a tool has nowhere to record where it came from', async () => {
-    const res = await send(
-      'POST',
-      '/api/v1/admin/tools/import',
-      { url: 'https://example.com/tool.yaml' },
-      auth(),
+
+  // Real guard, no stub — the wiring proof that the route actually calls it. Literal private
+  // addresses are screened before any socket opens, so nothing here touches a network.
+  it.each([
+    'http://169.254.169.254/latest/meta-data/iam/',
+    'http://127.0.0.1:8080/tool.yaml',
+    'http://10.0.0.5/tool.yaml',
+    'http://[::1]/tool.yaml',
+  ])('refuses %s with a 400 from the SSRF guard', async (url) => {
+    const res = await send('POST', '/api/v1/admin/tools/import', { url }, auth())
+    expect(res.status).toBe(400)
+    expect((await json(res)).error).toContain('not a public address')
+  })
+
+  // The guard refuses loopback — correctly — so the stubbed happy path mounts the routes
+  // standalone with fetchText injected, behind a middleware playing the authenticated admin.
+  const importToolVia = async (fetchText: NonNullable<PackRoutesDeps['fetchText']>, url: string) => {
+    const standalone = new Hono<AppEnv>()
+    standalone.use('*', async (c, next) => {
+      c.set('user', upsertUserByGithubId(opened.db, { githubId: 'gh:tool-stub', githubUsername: 'stub', isAdmin: true }))
+      await next()
+    })
+    standalone.route('/', createPackRoutes({ db: opened.db, fetchText }))
+    return standalone.request('/api/v1/admin/tools/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+  }
+
+  it('imports the text the guarded fetch returns', async () => {
+    const url = 'https://tools.example.com/acme-linter.yaml'
+    const res = await importToolVia(async (u) => {
+      expect(u).toBe(url)
+      return { ok: true, text: TOOL_YAML }
+    }, url)
+    expect(res.status).toBe(201)
+    expect(((await res.json()) as any)[0].toolId).toBe('acme-linter')
+  })
+
+  it('records the URL it came from, so the row does not read as one somebody typed here', async () => {
+    // Issue #88 at tool granularity: a tool fetched from off this machine is root shell, and a
+    // row that could not say where it came from was the reason ADR-0018 deferred this arm.
+    const url = 'https://tools.example.com/acme-linter.yaml'
+    const res = await importToolVia(async () => ({ ok: true, text: TOOL_YAML }), url)
+    const body = (await res.json()) as any
+    expect(body[0].registry).toMatchObject({
+      source: 'a URL import',
+      url,
+      sha256: sha256Text(TOOL_YAML),
+      // Never an operator-written label and never `official`: a one-off fetch has no such line.
+      trust: 'unverified',
+    })
+  })
+
+  it('surfaces the guard refusal reason for an unreachable URL', async () => {
+    const res = await importToolVia(
+      async () => ({ ok: false, reason: 'Could not resolve tools.example.com' }),
+      'https://tools.example.com/x.yaml',
     )
     expect(res.status).toBe(400)
+    expect(((await res.json()) as any).error).toBe('Could not resolve tools.example.com')
+  })
+
+  it('records nothing for a pasted file, because there is nothing true to record', async () => {
+    const res = await send('POST', '/api/v1/admin/tools/import', { yaml: TOOL_YAML }, auth())
+    expect(res.status).toBe(201)
+    expect((await json(res))[0].registry).toBeNull()
   })
 
   it('requires admin', async () => {

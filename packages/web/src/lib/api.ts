@@ -831,6 +831,25 @@ export interface AdminTool extends Tool {
    * UI shows this rather than letting an operator make an edit that quietly disappears.
    */
   sourceFile?: string
+  /**
+   * Where a tool imported from a URL came from, or null (issue #299).
+   *
+   * A SEPARATE field from `sourceFile`, exactly as on `AdminSurgePack`. A URL-imported tool
+   * keeps `sourceFile` null — that null is what stops the boot reconcile from deleting it — so a
+   * UI reading provenance out of `sourceFile` would show it as "database" and lose where its
+   * root-running shell came from. There is no tool registry (ADR-0018): `source` is always the
+   * fixed sentence "a URL import" and `url` beside it is the whole of what was recorded.
+   *
+   * `trust` is snapshotted at import as `unverified`: a one-off URL has no operator-written
+   * trust label to borrow.
+   */
+  registry?: {
+    source: string
+    url: string | null
+    sha256: string | null
+    trust: string | null
+    installedAt: string | null
+  } | null
 }
 
 export interface AdminSurgePack {
@@ -1297,14 +1316,16 @@ export async function exportToolYaml(toolId: string): Promise<string> {
 }
 
 /**
- * Import tools from a pasted or uploaded tool file.
+ * Import tools from a pasted or uploaded tool file, or from a URL (issue #299).
  *
- * NO URL ARM, unlike `importSurgePack` above — and that is the point rather than an omission.
- * A pack records where a URL import came from; the tools table has no provenance columns, so a
- * URL import would install root-running shell while being unable to say where it had been.
+ * NOW WITH A URL ARM, like `importSurgePack` above. ADR-0018 withheld it until the tools table
+ * could record provenance; issue #299 added those columns, so a URL import records where its
+ * root-running shell came from (`AdminTool.registry`) rather than reading as one typed in here.
+ * The fetch is server-side, through the same SSRF guard the pack import uses — the browser only
+ * ever sends the address.
  */
-export async function importTools(yaml: string): Promise<AdminTool[]> {
-  return request<AdminTool[]>('/admin/tools/import', { method: 'POST', body: JSON.stringify({ yaml }) })
+export async function importTools(source: { yaml: string } | { url: string }): Promise<AdminTool[]> {
+  return request<AdminTool[]>('/admin/tools/import', { method: 'POST', body: JSON.stringify(source) })
 }
 
 /* --------------------------------------------------------------------------- pack shop */

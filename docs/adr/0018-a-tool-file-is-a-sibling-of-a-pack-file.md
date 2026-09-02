@@ -4,7 +4,10 @@
 
 Accepted — 2026-09-01. Issue #289. Extends the file formats [ADR-0004](0004-packs-as-pr-able-yaml.md)
 froze with a second one; ADR-0004's pack format is untouched, and it remains the only thing the
-boot reconcile reads.
+boot reconcile reads. **The "no `{ url }` arm" clause is superseded by
+[ADR-0022](0022-a-tool-can-be-imported-from-a-url-now-that-tools-carry-provenance.md)** (issue
+#299), which added the tool provenance columns whose absence was the whole of the objection; the
+rest of this ADR stands.
 
 ## Context
 
@@ -53,7 +56,10 @@ before any plan runs, which is not something a person imports. The refusal reuse
 thing in the same words.
 
 **Import takes pasted or uploaded text only — there is no `{ url }` arm.** This is the one place
-the two formats deliberately differ.
+the two formats deliberately differ. *(Superseded by
+[ADR-0022](0022-a-tool-can-be-imported-from-a-url-now-that-tools-carry-provenance.md), issue #299:
+the arm exists now that the `tools` table has the provenance columns to record where a URL import
+came from — which is exactly what this clause said was missing.)*
 
 ## Consequences
 
@@ -73,7 +79,10 @@ That column shipped in [ADR-0020](0020-modifying-an-official-pack-forks-it.md), 
 predicted here holds by construction rather than by a new guard: `alwaysInstall` was added to the
 request bodies and never to `toolSchema`, so the tests written here passed unedited.
 
-A tool file records no provenance, and none is faked.
+A tool file records no provenance, and none is faked. *(Still true of the file itself under
+[ADR-0022](0022-a-tool-can-be-imported-from-a-url-now-that-tools-carry-provenance.md): the file
+carries nothing, but a tool **imported from a URL** now has the installation record where it was
+fetched from, in columns the file never sees.)*
 
 ## Alternatives considered
 
@@ -99,6 +108,10 @@ this shell that runs as root on my boxes come from?" is the question an operator
 The `tools` table has no such columns. A URL import would install root-privileged shell while being
 structurally unable to say anything true about its origin, which is the #88 problem restored at a
 finer granularity. Adding the columns is its own change; until then, the file travels by hand.
+*(That change landed:
+[ADR-0022](0022-a-tool-can-be-imported-from-a-url-now-that-tools-carry-provenance.md) (issue #299)
+added the columns and then the arm on top of them. The rejection here was always "not without the
+columns," never "not ever.")*
 
 **Reusing `tools.bootstrap` to mean "install everywhere".** Rejected, and recorded here because it
 is the tempting shortcut: it is reserved by the schema comment, by `lint.ts` and by the tool form,

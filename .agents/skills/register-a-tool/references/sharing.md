@@ -67,17 +67,22 @@ A row with a `sourceFile` belongs to the boot reconcile: the next restart rewrit
 (ADR-0004). An import allowed to win there would appear to work and then silently revert, which
 is worse than being told no. The 409 names the tool.
 
-## There is no import-from-URL
+## Import from a URL
 
-Packs have one; tools do not, and the asymmetry is the point.
+Both formats have this now (ADR-0022, issue #299; ADR-0018 originally withheld it from tools).
 
-A pack imported from a URL records where it came from — `registrySource`, `registryUrl`,
-`registrySha256`, `registryTrust` — because issue #88 established that "where did this shell that
-runs as root on my boxes actually come from?" is the question an operator needs answered. The
-`tools` table has no such columns. A URL import would therefore install root-privileged shell
-while being structurally unable to say anything true about its origin.
+Give the Tools page an `https://…/tool.yaml` address and the control plane — never your browser —
+fetches it through the same SSRF guard the pack import uses, then records where it came from on
+the row: the URL, the sha256 of the exact bytes accepted, and a `trust` of `unverified` (a one-off
+URL has no operator-written trust label to borrow, and there is no tool registry to borrow one
+from). The Tools page shows that origin, so "where did this root-privileged shell come from" has a
+true answer — which is what issue #88 asked for, and what the `tools` table could not answer until
+issue #299 added the provenance columns.
 
-Send the file. Adding the columns is its own change, tracked separately.
+A tool that arrives by **paste or upload records nothing**, because there is nothing true to
+record: the bytes came from your own machine. And the file itself still carries no provenance in
+either case — an exported tool file names no origin, so the record is the importing installation's,
+not the file's.
 
 ## Where a tool should actually live
 

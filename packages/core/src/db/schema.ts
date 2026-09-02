@@ -466,6 +466,33 @@ export const tools = sqliteTable('tools', {
   runAs: text('run_as').notNull().default('rocky'),
   /** Which pack file this definition came from, for round-tripping edits back to YAML. */
   sourceFile: text('source_file'),
+  /**
+   * Where a tool imported from a URL came from (issue #299), the tool equivalents of the pack
+   * registry columns above.
+   *
+   * SEPARATE COLUMNS, AND NOT `sourceFile`, WHICH WOULD DELETE THE TOOL. `syncPacksToDb`
+   * removes every tool row with a non-null `sourceFile` whose file the next boot does not find,
+   * so recording a URL there would make the imported tool vanish on the next restart — the exact
+   * ADR-0006 trap the pack columns above were shaped to dodge. A URL-imported tool keeps
+   * `sourceFile` NULL, exactly like one created in the admin UI, and the boot reconcile leaves
+   * it alone by construction.
+   *
+   * THERE IS NO TOOL REGISTRY (ADR-0018, issue #289). A tool only ever arrives from a one-off
+   * URL, never from a configured shelf, so `registrySource` is always the fixed sentence
+   * `URL_IMPORT_SOURCE` ('a URL import') and `registryUrl` beside it is the whole of what was
+   * recorded. The columns are named for the pack ones so the two provenance surfaces read the
+   * same, not because a tool ever has a source with a name of its own.
+   *
+   * `registryTrust` is snapshotted as `unverified` at import time: a one-off URL has no
+   * operator-written trust label, and `official` is unreachable from here as it is for packs.
+   */
+  registrySource: text('registry_source'),
+  registryUrl: text('registry_url'),
+  /** The digest verified at import. Lets the UI say exactly which bytes were accepted. */
+  registrySha256: text('registry_sha256'),
+  registryTrust: text('registry_trust'),
+  /** ISO-8601. When this installation imported it, which is not when the URL was published. */
+  registryInstalledAt: text('registry_installed_at'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

@@ -102,6 +102,22 @@ const adminTool = (t: ToolRow) => ({
    * operator (ADR-0004).
    */
   sourceFile: t.sourceFile ?? undefined,
+  /**
+   * Where a tool imported from a URL came from (issue #299), a SEPARATE field from `sourceFile`
+   * exactly as it is on `adminPack`. A URL-imported tool has `sourceFile: null` — that null is
+   * what keeps the boot reconcile from deleting it — so a UI reading provenance out of
+   * `sourceFile` would show it as "database" and lose where it came from. The Tools page needs
+   * this to say the row is shell fetched from off this machine, and which URL.
+   */
+  registry: t.registrySource
+    ? {
+        source: t.registrySource,
+        url: t.registryUrl,
+        sha256: t.registrySha256,
+        trust: t.registryTrust,
+        installedAt: t.registryInstalledAt,
+      }
+    : null,
 })
 
 const packFields = (p: Pack) => ({
@@ -254,14 +270,17 @@ const importBody = z
   .describe('either the file contents or a URL to fetch them from')
 
 /**
- * Tool import takes the file contents and nothing else — no `url` arm (issue #289).
+ * Tool import takes the file contents or a URL to fetch them from (issue #299 adds the `url`
+ * arm ADR-0018 deferred).
  *
- * Not an oversight and not symmetry for its own sake: see the route, which explains why a URL
- * import with no provenance columns to record it in would repeat issue #88.
+ * The same union `importBody` uses for packs, and now for the same reason it is safe to: the
+ * `tools` table gained the provenance columns a URL import needs (issue #299), so a fetched
+ * tool can record where its root-running shell came from rather than reading — falsely — as one
+ * typed in here. That was the whole of ADR-0018's objection to the arm.
  */
 const importToolsBody = z
-  .strictObject({ yaml: z.string().min(1) })
-  .describe('the contents of a tool file')
+  .union([z.strictObject({ yaml: z.string().min(1) }), z.strictObject({ url: z.url() })])
+  .describe('either the contents of a tool file or a URL to fetch them from')
 
 /**
  * A database row back to the frozen tool shape.
@@ -420,22 +439,39 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
   })
 
   /**
-   * IMPORT TOOLS from a pasted or uploaded tool file.
+   * IMPORT TOOLS from a pasted or uploaded tool file, or from a URL (issue #299).
    *
-   * PASTE ONLY — there is deliberately no `{ url }` here, unlike the pack import. A pack
-   * records where a URL import came from (`registrySource`/`registryUrl`/`registrySha256`,
-   * ADR-0006 and issue #88); the `tools` table has no such columns, so a URL import would
-   * install root-running shell while being able to say nothing truthful about its origin. That
-   * is the exact problem #88 fixed for packs, and adding the columns is its own change.
+   * THE `{ url }` ARM, which ADR-0018 deferred until the `tools` table could record provenance.
+   * It now can (issue #299), so a fetched tool records where it came from
+   * (`registrySource`/`registryUrl`/`registrySha256`, ADR-0006's columns) exactly as a pack
+   * URL import does — that was the whole of the objection. A fetch on a control plane holding
+   * cloud credentials goes through the SSRF guard `fetchPublicText` (rockysurf-ftl9.9), never a
+   * raw fetch, the same guard and injection seam the pack import uses.
+   *
+   * `trust` is snapshotted as `unverified`, and a PASTED file records nothing — both mirror the
+   * pack path; see the provenance block below for why.
    *
    * A file-backed id is refused rather than overwritten. The boot reconcile owns those rows, so
    * an import that "won" would be silently undone at the next restart — a 409 that explains
    * itself is the honest answer.
    */
-  routes.post('/api/v1/admin/tools/import', validate('json', importToolsBody), (c) => {
-    const { yaml } = c.req.valid('json')
+  routes.post('/api/v1/admin/tools/import', validate('json', importToolsBody), async (c) => {
+    const body = c.req.valid('json')
 
-    const { file, issues } = parseToolFile('imported.yaml', yaml)
+    let text: string
+    if ('yaml' in body) {
+      text = body.yaml
+    } else {
+      // A server-side fetch of an operator-supplied URL on a control plane holding cloud
+      // credentials, so it goes through the SSRF guard: scheme check, every resolved address
+      // screened against private/link-local/metadata ranges, redirects re-validated hop by hop,
+      // body capped. Identical to the pack import's own url arm.
+      const fetched = await fetchText(body.url)
+      if (!fetched.ok) return badRequest(c, fetched.reason)
+      text = fetched.text
+    }
+
+    const { file, issues } = parseToolFile('imported.yaml', text)
     if (!file || issues.length > 0) {
       return badRequest(
         c,
@@ -452,6 +488,36 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
       )
     }
 
+    /**
+     * AN IMPORT FROM A URL REMEMBERS THE URL (issue #88, issue #299).
+     *
+     * The tool half of what the pack import already does. A tool fetched from somebody's URL and
+     * a tool typed into the admin form used to be indistinguishable — both `sourceFile: null`,
+     * "created here" — which is false about the first, and false in the direction an operator
+     * cares about: this is shell that will run as root on a box. The provenance columns are the
+     * right home for it (ADR-0006: never `sourceFile`, which the boot reconcile would delete the
+     * row for). `trust` is `unverified` rather than borrowed from any configured source — there
+     * is no tool registry (ADR-0018), so a one-off fetch has no operator-written trust line to
+     * borrow, and claiming one would put words in their mouth.
+     *
+     * Every tool in the fetched file shares one provenance record: the URL is where the file
+     * came from and the sha256 is of the whole file, exactly the bytes the fetch returned.
+     *
+     * A PASTED OR UPLOADED FILE STILL RECORDS NOTHING, because there is nothing true to record:
+     * the bytes came from the admin's own machine, and this installation cannot say where they
+     * had been before that.
+     */
+    const registry: RegistryProvenance | undefined =
+      'url' in body
+        ? {
+            source: URL_IMPORT_SOURCE,
+            url: body.url,
+            sha256: sha256Text(text),
+            trust: 'unverified',
+            installedAt: new Date().toISOString(),
+          }
+        : undefined
+
     const imported = file.tools.map((tool) =>
       upsertTool(db, {
         id: tool.toolId,
@@ -467,6 +533,9 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
         runAs: tool.runAs,
         // Imported, not loaded from a file — null is what keeps the boot reconcile off it.
         sourceFile: null,
+        // `null` on the paste path clears any stale provenance if this import replaces a row
+        // that had been fetched from a URL before; the URL path stamps the fetch.
+        registry: registry ?? null,
       }),
     )
 
