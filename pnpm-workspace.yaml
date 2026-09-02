@@ -1,5 +1,13 @@
 packages:
   - 'packages/*'
+# Force every transitive esbuild onto one safe, already-in-tree version. drizzle-kit@0.31.10
+# (the latest stable) still drags in the deprecated @esbuild-kit/core-utils, which exact-pins
+# esbuild@0.18.20 — vulnerable to GHSA-67mh-4wv8-2f99 (dev-server SSRF, fixed in 0.25.0+).
+# That path is dev/CLI only (drizzle-kit generate/check load the TS config via esbuild's
+# transform API, never the dev server), but the alert must still clear. 0.28.2 is what vite@8
+# and tsx already resolve, so this also dedupes the tree to a single esbuild. See issue #328.
+overrides:
+  esbuild: 0.28.2
 # esbuild is a transitive dev dependency of vitest and needs its install script to link the
 # platform binary. Nothing in packages/ ships it at runtime.
 # better-sqlite3 is a native module — its install script compiles or downloads the binding,
