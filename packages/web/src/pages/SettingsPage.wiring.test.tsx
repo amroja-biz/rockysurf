@@ -210,31 +210,35 @@ const VIEW: SettingsView = {
   fields: FIELDS,
   sections: SECTIONS,
   /**
-   * Mirrored from core's `SETTINGS_LISTS`, `blank` and all — because the page now DRAWS from
+   * Mirrored from core's `SETTINGS_LISTS`, `add` and all — because the page now DRAWS from
    * this (issue #302 follow-up). `ssh.keys` deliberately has no hand-written block on the page,
    * so what these four rows say is the whole of what its card can be.
    */
   lists: [
-    // No blank: the token list collects a token through its own card before writing anything.
+    // No `add`: the token list collects a token through its own card before writing anything.
     { path: 'github.tokens', itemFields: ['host', 'owner', 'repo', 'pat'], labelField: 'owner', empty: 'None yet.' },
     {
       path: 'ssh.keys',
       itemFields: ['name', 'publicKey'],
-      blank: { name: 'my-laptop', publicKey: '' },
+      add: { noun: 'key', example: { name: 'my-laptop', publicKey: '' }, required: ['name', 'publicKey'] },
       labelField: 'name',
       empty: 'None yet. Add one and the New Server page will offer it.',
     },
     {
       path: 'providers.byo.hosts',
       itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
-      blank: { name: 'change-me', host: '10.0.0.1' },
+      add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
       labelField: 'name',
       empty: 'None yet. Enabling this provider requires at least one host.',
     },
     {
       path: 'registry.sources',
       itemFields: ['name', 'url', 'trust'],
-      blank: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      add: {
+        noun: 'source',
+        example: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+        required: ['name', 'url'],
+      },
       labelField: 'name',
       empty: 'None yet.',
     },
@@ -1363,7 +1367,7 @@ describe('what the page sends', () => {
     // on any pending edit at all, which made adding a host mean saving the port first.
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
     open('Your own machines')
-    expect(screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled')).toBe(false)
+    expect(screen.getByRole('button', { name: 'Add host' }).hasAttribute('disabled')).toBe(false)
 
     fireEvent.change(control('providers.byo.hosts.0.name'), { target: { value: 'renamed' } })
     expect(
@@ -1371,7 +1375,7 @@ describe('what the page sends', () => {
       'Remove should wait, because removing an entry renumbers the rest',
     ).toBe(true)
     expect(
-      screen.getByRole('button', { name: 'Add' }).hasAttribute('disabled'),
+      screen.getByRole('button', { name: 'Add host' }).hasAttribute('disabled'),
       'Add appends at the end and renumbers nothing, so it must stay usable',
     ).toBe(false)
     expect(saves).toHaveLength(0)
@@ -2156,7 +2160,7 @@ describe('finding your way around the page', () => {
     served.lists.push({
       path: 'notifications.targets',
       itemFields: ['name', 'webhookUrl'],
-      blank: { name: 'my-alerts', webhookUrl: '' },
+      add: { noun: 'target', example: { name: 'my-alerts', webhookUrl: '' }, required: ['name'] },
       labelField: 'name',
       empty: 'None yet. Add one to be told when something happens.',
     })
@@ -2171,9 +2175,13 @@ describe('finding your way around the page', () => {
     // than the control not existing.
     expect(control('notifications.targets.0.webhookUrl').closest('.form-group')!.textContent).toContain('Webhook Url')
 
-    fireEvent.click(within(panelOf('notifications')).getByRole('button', { name: 'Add' }))
+    // The Add flow a list core invented gets is the same one every list gets: a button wearing
+    // the noun core sent, a blank form, and an append of exactly what was typed into it.
+    fireEvent.click(within(panelOf('notifications')).getByRole('button', { name: 'Add target' }))
+    fireEvent.change(control('notifications.targets.new.name'), { target: { value: 'pager' } })
+    fireEvent.click(within(panelOf('notifications')).getByRole('button', { name: 'Add this target' }))
     expect((await onlySave()).changes).toEqual([
-      { path: ['notifications', 'targets', 1], value: { name: 'my-alerts', webhookUrl: '' } },
+      { path: ['notifications', 'targets', 1], value: { name: 'pager' } },
     ])
   })
 
@@ -2260,27 +2268,40 @@ describe('pack sources', () => {
     expect(control('registry.sources.0.trust').value).toBe('community')
   })
 
-  it('says beside the URL box what a source actually is, before anyone pastes one in', async () => {
+  it('says what a source actually is, once at the head of the list, before anyone pastes one in', async () => {
     // The warning is core's words, carried through unchanged. A URL box here is a box for
     // somebody else's root shell, and the page must not draw it as though it were a hostname.
+    // ONCE, at the list's head, rather than repeated under every source's URL box — the same
+    // section-level rule the private-key warning follows (rsui-9sc).
     renderPage()
     await loaded()
     open('Pack sources')
 
-    expect(control('registry.sources.0.url').closest('.form-group')!.textContent).toContain('run as ROOT')
+    const panel = panelOf('registry')
+    expect(panel.querySelector('[data-list-warning="registry.sources.*.url"]')!.textContent).toContain('run as ROOT')
+    expect(panel.textContent!.split('run as ROOT').length - 1).toBe(1)
   })
 
-  it('adds a source as one whole entry appended to the list', async () => {
+  it('adds a source as one whole entry appended to the list, once its form is filled', async () => {
     renderPage()
     await loaded()
     open('Pack sources')
 
-    fireEvent.click(within(panelOf('registry')).getByRole('button', { name: 'Add' }))
+    // The click itself writes nothing — it reveals the form (rsui-9sc).
+    fireEvent.click(within(panelOf('registry')).getByRole('button', { name: 'Add source' }))
+    expect(saves).toHaveLength(0)
 
+    fireEvent.change(control('registry.sources.new.name'), { target: { value: 'my packs' } })
+    fireEvent.change(control('registry.sources.new.url'), {
+      target: { value: 'https://packs.example.com/my-pack.yaml' },
+    })
+    fireEvent.click(within(panelOf('registry')).getByRole('button', { name: 'Add this source' }))
+
+    // `trust` was left empty, so it is not written — core's schema defaults it to `community`.
     expect((await onlySave()).changes).toEqual([
       {
         path: ['registry', 'sources', 1],
-        value: { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+        value: { name: 'my packs', url: 'https://packs.example.com/my-pack.yaml' },
       },
     ])
   })
@@ -2307,10 +2328,10 @@ describe('pack sources', () => {
  * The list the New Server page's picker offers. Three things matter enough to pin: the key is
  * drawn as a READABLE box rather than a masked one — it is published material, and masking it
  * would hide the value the operator compares against `~/.ssh/*.pub` while implying Rocky Surf
- * is keeping a secret for them; the warning about the private half reaches the screen; and Add
- * appends an entry with an EMPTY key, because the alternative — a plausible-looking placeholder
- * — would either be refused by core or, worse, be a real key somebody else holds the other half
- * of.
+ * is keeping a secret for them; the warning about the private half reaches the screen ONCE,
+ * at the head of the list rather than under every card; and Add reveals a BLANK form and
+ * writes nothing (rsui-9sc) — no entry exists until the person typed a name and a key and
+ * pressed the form's own button, so the page can never show a saved-looking key nobody saved.
  */
 describe('saved SSH public keys', () => {
   const panelOf = (id: string) => document.getElementById(`settings-panel-${id}`)!
@@ -2324,24 +2345,137 @@ describe('saved SSH public keys', () => {
     expect(control('ssh.keys.0.publicKey').value).toBe('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop')
   })
 
-  it('says beside the box that the private half must never go in it', async () => {
+  /**
+   * ONCE PER PAGE, NOT ONCE PER CARD (rsui-9sc). The owner read the same private-key paragraph
+   * under every saved key and under the form being filled in — three copies of one sentence on
+   * one screen. It is a warning about a KIND of box, so the list says it once at its head; the
+   * inline REFUSAL when a private key is actually pasted is per-box and stays per-box.
+   */
+  it('warns about the private half once at the head of the list, not under every card', async () => {
+    served.values['ssh'] = {
+      keys: [
+        { name: 'laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop' },
+        { name: 'desktop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4n desktop' },
+      ],
+    }
     renderPage()
     await loaded()
     open('SSH public keys')
 
-    expect(control('ssh.keys.0.publicKey').closest('.form-group')!.textContent).toContain('Never paste a private key')
+    // Two saved cards AND the open add form — the states that used to multiply the warning.
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+
+    const text = panelOf('ssh').textContent!
+    const matches = text.split('Never paste a private key').length - 1
+    expect(matches, 'the private-key warning must appear exactly once on the page').toBe(1)
+    // And it did not move inside any one entry's card — it stands at the list's head.
+    expect(panelOf('ssh').querySelector('[data-list-warning="ssh.keys.*.publicKey"]')).toBeTruthy()
   })
 
-  it('adds an entry with no key in it, rather than a placeholder somebody holds', async () => {
+  it('reveals a blank form on Add — no default name, and nothing written by the click', async () => {
     renderPage()
     await loaded()
     open('SSH public keys')
 
-    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add' }))
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+
+    // Nothing saved, and nothing pre-filled: a default name is how the phantom `my-laptop`
+    // entry got into the owner's file (rsui-9sc).
+    expect(saves).toHaveLength(0)
+    expect(control('ssh.keys.new.name').value).toBe('')
+    expect(control('ssh.keys.new.publicKey').value).toBe('')
+
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'yubikey' } })
+    fireEvent.change(control('ssh.keys.new.publicKey'), {
+      target: { value: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 yubikey' },
+    })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add this key' }))
 
     expect((await onlySave()).changes).toEqual([
-      { path: ['ssh', 'keys', 1], value: { name: 'my-laptop', publicKey: '' } },
+      {
+        path: ['ssh', 'keys', 1],
+        value: { name: 'yubikey', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 yubikey' },
+      },
     ])
+    // A committed entry closes the form rather than leaving a second, phantom-looking card.
+    await waitFor(() => expect(control('ssh.keys.new.name')).toBeNull())
+  })
+
+  it('refuses to add a key whose form is missing a required field, and sends nothing', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'no-key-yet' } })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add this key' }))
+
+    expect(saves).toHaveLength(0)
+    expect(panelOf('ssh').textContent).toContain('needs the public key filled in')
+  })
+
+  it('refuses a name already in the list, in words, before anything is sent', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'laptop' } })
+    fireEvent.change(control('ssh.keys.new.publicKey'), {
+      target: { value: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 second' },
+    })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add this key' }))
+
+    expect(saves).toHaveLength(0)
+    expect(panelOf('ssh').textContent).toContain('already a key called')
+  })
+
+  it('shows a server refusal of the entry being added on the form itself', async () => {
+    nextSaveFailure = {
+      status: 400,
+      body: {
+        error: 'ssh.keys.1.publicKey: that is a PRIVATE key…',
+        code: 'bad_request',
+        issues: [
+          {
+            path: 'ssh.keys.1.publicKey',
+            message: 'that is a PRIVATE key, and it must never be pasted here or stored by Rocky Surf.',
+          },
+        ],
+      },
+    }
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'oops' } })
+    fireEvent.change(control('ssh.keys.new.publicKey'), {
+      target: { value: '-----BEGIN OPENSSH PRIVATE KEY-----' },
+    })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add this key' }))
+
+    // Beside the box in the form — the server answers about the slot being written to, and the
+    // form is where the person is looking. Nothing typed is thrown away by the refusal.
+    await waitFor(() =>
+      expect(control('ssh.keys.new.publicKey').closest('.form-group')!.textContent).toContain('PRIVATE key'),
+    )
+    expect(control('ssh.keys.new.name').value).toBe('oops')
+  })
+
+  it('lets Cancel close the form without writing anything', async () => {
+    renderPage()
+    await loaded()
+    open('SSH public keys')
+
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'half-typed' } })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Cancel' }))
+
+    expect(saves).toHaveLength(0)
+    expect(control('ssh.keys.new.name')).toBeNull()
+    // And the Add button is back for next time.
+    expect(within(panelOf('ssh')).getByRole('button', { name: 'Add key' })).toBeTruthy()
   })
 
   it('saves a pasted key against the entry it belongs to', async () => {
@@ -2408,20 +2542,25 @@ describe('saved SSH public keys', () => {
    * no way to add one. An empty list is what every installation starts in, so it is the case
    * that had to be pinned and was not.
    */
-  it('offers a way to add the first key when none are saved', async () => {
+  it('offers a way to add the first key when none are saved, and shows no phantom card', async () => {
     served.values['ssh'] = { keys: [] }
     renderPage()
     await loaded()
     open('SSH public keys')
 
     const panel = panelOf('ssh')
-    expect(within(panel).getByRole('button', { name: 'Add' })).toBeTruthy()
+    // ZERO cards — the state the owner reported was a saved-looking `my-laptop` entry on a
+    // fresh page (rsui-9sc). An empty list is an empty-state sentence and an Add button.
+    expect(panel.querySelectorAll('.settings-entry')).toHaveLength(0)
     expect(panel.textContent).toContain('None yet')
+    expect(within(panel).getByRole('button', { name: 'Add key' })).toBeTruthy()
 
-    fireEvent.click(within(panel).getByRole('button', { name: 'Add' }))
-    expect((await onlySave()).changes).toEqual([
-      { path: ['ssh', 'keys', 0], value: { name: 'my-laptop', publicKey: '' } },
-    ])
+    // The click reveals the one blank form, and writes nothing.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add key' }))
+    expect(saves).toHaveLength(0)
+    expect(panel.querySelectorAll('[data-list-draft]')).toHaveLength(1)
+    // A form is not a saved entry, so it carries no Remove button — disabled or otherwise.
+    expect(within(panel.querySelector('[data-list-draft]') as HTMLElement).queryByRole('button', { name: 'Remove' })).toBeNull()
   })
 
   /**
@@ -2464,29 +2603,38 @@ describe('saved SSH public keys', () => {
     fireEvent.change(control('ssh.keys.0.name'), { target: { value: 'rockysurf' } })
 
     const panel = panelOf('ssh')
-    expect(within(panel).getByRole('button', { name: 'Add' })).toHaveProperty('disabled', false)
+    expect(within(panel).getByRole('button', { name: 'Add key' })).toHaveProperty('disabled', false)
     const remove = within(panel).getByRole('button', { name: 'Remove' })
     expect(remove).toHaveProperty('disabled', true)
     expect(remove.getAttribute('title')).toContain('renumbers')
   })
 
   /**
-   * A SECOND ENTRY, which the constant placeholder made impossible: `blank` always carried the
-   * same name, every one of these schemas requires the label to be unique, so core refused the
-   * second Add with "two saved SSH keys share a name" — forever. A list of your SSH keys that
-   * cannot hold two keys is not a list.
+   * A SECOND KEY, which the constant placeholder once made impossible: the old Add wrote
+   * `my-laptop` every time, the schema requires names to be unique, and core refused the
+   * second one forever. #311 numbered the blanks; rsui-9sc removed the blanks entirely — the
+   * person names each key, so two adds are two different names and nothing needs numbering.
    */
-  it('numbers a new entry so a second Add is not refused as a duplicate', async () => {
-    // An entry already carrying the placeholder name — the state one press of Add leaves.
-    served.values['ssh'] = { keys: [{ name: 'my-laptop', publicKey: '' }] }
+  it('adds a second key through the same form, with the name the person chose', async () => {
+    served.values['ssh'] = {
+      keys: [{ name: 'laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop' }],
+    }
     renderPage()
     await loaded()
     open('SSH public keys')
 
-    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add' }))
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add key' }))
+    fireEvent.change(control('ssh.keys.new.name'), { target: { value: 'desktop' } })
+    fireEvent.change(control('ssh.keys.new.publicKey'), {
+      target: { value: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 desktop' },
+    })
+    fireEvent.click(within(panelOf('ssh')).getByRole('button', { name: 'Add this key' }))
 
     expect((await onlySave()).changes).toEqual([
-      { path: ['ssh', 'keys', 1], value: { name: 'my-laptop 2', publicKey: '' } },
+      {
+        path: ['ssh', 'keys', 1],
+        value: { name: 'desktop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8 desktop' },
+      },
     ])
   })
 
@@ -2513,7 +2661,7 @@ describe('saved SSH public keys', () => {
     await loaded()
     open('SSH public keys')
 
-    expect(within(panelOf('ssh')).getByRole('button', { name: 'Add' })).toBeTruthy()
+    expect(within(panelOf('ssh')).getByRole('button', { name: 'Add key' })).toBeTruthy()
   })
 })
 

@@ -21,6 +21,7 @@ import {
   type SettingsChange,
   type SettingsField,
   type SettingsList,
+  type SettingsListAdd,
   type SettingsView,
 } from '../lib/api'
 import { ENV_VAR_ONLY, envVarDisplay, envVarReference } from '../lib/envRef'
@@ -334,6 +335,17 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<TokenDraft | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
   /**
+   * THE HALF-TYPED NEW ENTRY OF EACH GENERIC LIST, keyed by the list's path (rsui-9sc).
+   *
+   * A key present here IS the open form: Add puts an empty record in, Cancel and a successful
+   * save take it out. Held as page state and never written half-formed — the owner's ruling on
+   * this flow is that no entry exists in the file until the person typed it and asked for it,
+   * which is also how the token list's own draft has always worked.
+   */
+  const [listDrafts, setListDrafts] = useState<Record<string, Record<string, string>>>({})
+  /** The refusal under a list's form — a required box left empty, or a name already taken. */
+  const [listDraftErrors, setListDraftErrors] = useState<Record<string, string>>({})
+  /**
    * WHICH SECTION IS OPEN LIVES IN THE URL, not in a `useState` beside it (issue #122).
    *
    * One place, so there is nothing to keep in step: a pasted `?section=providers.aws` opens AWS,
@@ -605,6 +617,18 @@ export function SettingsPage() {
   const draw = (pattern: string) => drawn.add(pattern)
 
   /**
+   * Field patterns whose `warning` a list has already said once, at its own head (rsui-9sc).
+   *
+   * The private-key warning belongs to `ssh.keys.*.publicKey`, and rendering it under the
+   * pattern meant rendering it under EVERY entry's box — the owner read the same paragraph
+   * three times on one screen. A warning about a KIND of field is section-level news, so the
+   * list states it once above its entries and the per-entry renderers skip it. Same lifetime
+   * and same discipline as `drawn` above: filled while the sections are built, read in the
+   * same pass, thrown away with the render.
+   */
+  const hoistedWarnings = new Set<string>()
+
+  /**
    * One `<form>` per masked credential box, so Chrome stops reading this page as several forms
    * crammed into one — and so it is right about what it is reading.
    *
@@ -689,7 +713,9 @@ export function SettingsPage() {
         <label htmlFor={key}>{label}</label>
         {helpFor(pattern, key)}
         {control}
-        {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        {spec?.warning && !hoistedWarnings.has(pattern) && (
+          <p className="hint settings-warning">{spec.warning}</p>
+        )}
         <RestartNote spec={spec} />
         {warnings[key] && <p className="warning settings-field-warning">{warnings[key]}</p>}
         {error && <p className="error settings-field-error">{error}</p>}
@@ -997,7 +1023,9 @@ export function SettingsPage() {
           {secretStateHint(state, acceptsLiteral(pattern))}
           Leave this blank to keep it as it is.
         </p>
-        {spec?.warning && <p className="hint settings-warning">{spec.warning}</p>}
+        {spec?.warning && !hoistedWarnings.has(pattern) && (
+          <p className="hint settings-warning">{spec.warning}</p>
+        )}
         {fieldErrors[key] && <p className="error settings-field-error">{fieldErrors[key]}</p>}
         {(state.state !== 'unset' || cleared) && (
           <button
@@ -1602,13 +1630,14 @@ export function SettingsPage() {
     fields: ListField[],
     itemLabel: (entry: Record<string, unknown>, index: number) => string,
     /** Absent means this list is not added to here — its entries still render. */
-    blank: Record<string, unknown> | undefined,
+    add: SettingsListAdd | undefined,
     empty: string,
     /** The item field a card is titled by — also the one a new entry must not collide on. */
     labelField?: string,
   ): ReactNode {
     const entries = (valueAt(values, path) as Record<string, unknown>[] | undefined) ?? []
-    const prefix = `${path.join('.')}.`
+    const listKey = path.join('.')
+    const prefix = `${listKey}.`
 
     /**
      * REMOVING renumbers; APPENDING does not — so only Remove waits for a clean list.
@@ -1630,33 +1659,152 @@ export function SettingsPage() {
       : undefined
 
     /**
-     * A NEW ENTRY MUST NOT COLLIDE WITH ONE THAT IS ALREADY THERE.
+     * The warnings this list's item fields carry, said ONCE at the head of the list (rsui-9sc).
      *
-     * `blank` is a constant, and the schemas behind these lists require the label to be unique
-     * — `ssh.keys` ("two saved SSH keys share a name"), `registry.sources`, and the BYO hosts.
-     * So pressing Add twice sent the same name twice and core refused the SECOND one, every
-     * time, forever: a list you could never get a second entry into, which for a list of your
-     * SSH keys is the entire point of it. Numbering the new one is what a person would have
-     * done by hand.
+     * A `warning` on `ssh.keys.*.publicKey` is a warning about every key box that will ever be
+     * drawn here, and drawing it under each of them told the owner the same thing under every
+     * card. Recording the pattern in `hoistedWarnings` is what stops the per-entry renderers
+     * repeating it; the sentence itself is core's, unchanged.
      */
-    const uniqueBlank = (): Record<string, unknown> | undefined => {
-      if (!blank) return undefined
-      const field = labelField ?? fields[0]?.name
-      if (!field) return blank
-      const proposed = blank[field]
-      if (typeof proposed !== 'string') return blank
-      const taken = new Set(entries.map((entry) => String(entry[field] ?? '')))
-      if (!taken.has(proposed)) return blank
-      let n = 2
-      while (taken.has(`${proposed} ${n}`)) n += 1
-      return { ...blank, [field]: `${proposed} ${n}` }
+    const listWarnings = fields.flatMap((f) => {
+      const pattern = `${listKey}.*.${f.name}`
+      const warning = specs.get(pattern)?.warning
+      if (!warning) return []
+      hoistedWarnings.add(pattern)
+      return [{ pattern, warning }]
+    })
+
+    /**
+     * THE BLANK FORM AN Add CLICK REVEALS — and the whole add flow (rsui-9sc).
+     *
+     * What it replaces: Add used to WRITE a placeholder entry to the config file on the spot —
+     * `{ name: 'my-laptop', publicKey: '' }` — so a first visit after one click showed what
+     * looked like a saved key nobody had saved, and every further click minted `my-laptop 2`,
+     * a card with a Remove button interlocked into the bargain. The owner's ruling: a button
+     * that says what it adds, a form with NO default name that asks for the fields, and an
+     * entry that exists only once it is typed and saved. The token list's draft card has
+     * always worked this way; this is the same convention for every generic list.
+     *
+     * Nothing here goes through `edits`: the draft is not an entry and has no index, so a
+     * half-typed form cannot dirty the list, block Remove, or be carried off by the footer
+     * Save. Its one save is its own button, appending at `entries.length` — and a refusal from
+     * the server lands back on this form's own boxes, because that is the index the server
+     * answers about.
+     */
+    const draftValues = add ? listDrafts[listKey] : undefined
+    const draftId = (name: string) => `${listKey}.new.${name}`
+    const draftPrefix = `${listKey}.${entries.length}`
+    const closeDraft = () => {
+      setListDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== listKey)))
+      setListDraftErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== listKey)))
+    }
+
+    function addDraftEntry(add: SettingsListAdd, draftValues: Record<string, string>): void {
+      const refuse = (message: string) => setListDraftErrors((prev) => ({ ...prev, [listKey]: message }))
+      const typed = (name: string) => (draftValues[name] ?? '').trim()
+
+      const missing = fields.find((f) => add.required.includes(f.name) && typed(f.name) === '')
+      if (missing) return refuse(`A new ${add.noun} needs the ${missing.label.toLowerCase()} filled in first.`)
+
+      // The schemas behind these lists require the label to be unique — core would refuse the
+      // save — but the server's sentence arrives keyed to the whole list, and the person is
+      // looking at this form. Same check, said where they are, before anything is sent.
+      const title = labelField ? typed(labelField) : ''
+      if (labelField && entries.some((entry) => String(entry[labelField] ?? '') === title)) {
+        return refuse(`There is already a ${add.noun} called “${title}” — give this one a different name.`)
+      }
+
+      // Only what was typed is written. A box left empty says nothing, so an optional field is
+      // absent from the file and a schema default (a host's port, a source's trust) applies —
+      // the entry a person would have written by hand.
+      const value: Record<string, unknown> = {}
+      for (const f of fields) {
+        const raw = typed(f.name)
+        if (raw === '') continue
+        const asNumber = Number(raw)
+        value[f.name] = f.name === 'port' && Number.isFinite(asNumber) ? asNumber : raw
+      }
+      void submit([{ path: [...path, entries.length], value }], []).then((ok) => {
+        if (ok) closeDraft()
+      })
+    }
+
+    function draftForm(add: SettingsListAdd, draftValues: Record<string, string>): ReactNode {
+      return (
+        <div className="settings-entry" data-list-draft={listKey}>
+          <h3>New {add.noun}</h3>
+          {fields.map((f) => {
+            const id = draftId(f.name)
+            const specPath = `${listKey}.*.${f.name}`
+            const placeholder = String(add.example[f.name] ?? '')
+            /* The server answers about the slot this form is writing to — `entries.length` —
+               so its refusal of a box renders under that box, not at the top of the page. */
+            const serverError = fieldErrors[`${draftPrefix}.${f.name}`]
+            return (
+              <div className="form-group" data-field={id} key={id}>
+                <label htmlFor={id}>{f.label}</label>
+                {helpFor(specPath, id)}
+                <input
+                  id={id}
+                  type={f.name === 'port' ? 'number' : 'text'}
+                  spellCheck={false}
+                  autoComplete="off"
+                  value={draftValues[f.name] ?? ''}
+                  placeholder={placeholder}
+                  aria-describedby={helpId(specPath, id)}
+                  onChange={(e) => {
+                    setListDraftErrors((prev) =>
+                      Object.fromEntries(Object.entries(prev).filter(([k]) => k !== listKey)),
+                    )
+                    setListDrafts((prev) => ({
+                      ...prev,
+                      [listKey]: { ...draftValues, [f.name]: e.target.value },
+                    }))
+                  }}
+                />
+                {serverError && <p className="error settings-field-error">{serverError}</p>}
+              </div>
+            )
+          })}
+          {listDraftErrors[listKey] && (
+            <p className="error settings-field-error" data-draft-refusal={listKey}>
+              {listDraftErrors[listKey]}
+            </p>
+          )}
+          {/* A refusal of the entry as a whole — or of a box this form does not draw. */}
+          {Object.entries(fieldErrors)
+            .filter(
+              ([key]) =>
+                (key === draftPrefix || key.startsWith(`${draftPrefix}.`)) &&
+                !fields.some((f) => key === `${draftPrefix}.${f.name}`),
+            )
+            .map(([key, message]) => (
+              <p className="error settings-field-error" key={key}>
+                {message}
+              </p>
+            ))}
+          <div className="settings-entry-actions">
+            <button type="button" className="btn-primary" disabled={saving} onClick={() => addDraftEntry(add, draftValues)}>
+              Add this {add.noun}
+            </button>
+            <button type="button" className="btn-secondary" onClick={closeDraft}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )
     }
 
     // The section wrapper and the header belong to the panel that draws this list, so a list is
     // a section's CONTENTS here — the same shape every other block below has.
     return (
       <>
-        {entries.length === 0 && <p className="hint">{empty}</p>}
+        {listWarnings.map(({ pattern, warning }) => (
+          <p className="hint settings-warning" data-list-warning={pattern} key={pattern}>
+            {warning}
+          </p>
+        ))}
+        {entries.length === 0 && !draftValues && <p className="hint">{empty}</p>}
         {entries.map((entry, index) => {
           /*
             THE HEADING FOLLOWS THE BOX, not the file (issue #302 follow-up).
@@ -1696,14 +1844,21 @@ export function SettingsPage() {
             </div>
           )
         })}
-        {blank && (
+        {add && draftValues && draftForm(add, draftValues)}
+        {/*
+          CYAN, LIKE EVERY BUTTON THAT CREATES SOMETHING NEW — "New server", "New Surge Pack",
+          and now this. `btn-primary` for the base skin, `new-action` so the etched skin colours
+          it as a create rather than a start; the pairing is #183's convention, stated at the
+          `.new-action` rule in etched.css.
+        */}
+        {add && !draftValues && (
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-primary new-action"
             disabled={saving}
-            onClick={() => void submit([{ path: [...path, entries.length], value: uniqueBlank() }], [])}
+            onClick={() => setListDrafts((prev) => ({ ...prev, [listKey]: {} }))}
           >
-            Add
+            Add {add.noun}
           </button>
         )}
       </>
@@ -1760,7 +1915,7 @@ export function SettingsPage() {
       id.split('.'),
       fields,
       (entry, index) => String(entry[labelField] || `${noun} ${index + 1}`),
-      list.blank,
+      list.add,
       list.empty,
       labelField,
     )
@@ -1881,9 +2036,11 @@ export function SettingsPage() {
         {tokenEntries.map(tokenCard)}
         {draftCard()}
         {!draft && (
+          /* Cyan like every other button that creates something new (rsui-9sc) — this card flow
+             was already the convention the generic lists now follow, so it wears the colour too. */
           <button
             type="button"
-            className="btn-secondary"
+            className="btn-primary new-action"
             disabled={Boolean(tokenListBusy) || saving}
             title={tokenListBusy}
             onClick={() => {
@@ -1981,7 +2138,9 @@ export function SettingsPage() {
         { name: 'identityFile', label: 'Private key path' },
       ],
       (entry, i) => String(entry['name'] || `host ${i + 1}`),
-      { name: 'change-me', host: '10.0.0.1' },
+      // The Add form's noun, placeholders and required fields are core's, like the inventory
+      // this whole page draws from — a hand-written block improves the labels, not the facts.
+      lists.get('providers.byo.hosts')?.add,
       'None yet. Enabling this provider requires at least one host.',
       'name',
     ),
@@ -2062,7 +2221,7 @@ export function SettingsPage() {
         { name: 'trust', label: 'Your label for it' },
       ],
       (entry, i) => String(entry['name'] || `source ${i + 1}`),
-      { name: 'my-packs', url: 'https://example.com/my-pack.yaml', trust: 'community' },
+      lists.get('registry.sources')?.add,
       "None yet. Add one to browse somebody else's packs — or your own, published as a single " +
         'YAML file at an https URL.',
       'name',

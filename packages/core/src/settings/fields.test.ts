@@ -142,23 +142,38 @@ describe('the inventory is internally consistent', () => {
   })
 
   /**
-   * THE ADD BUTTON'S VALUE HAS TO PARSE (issue #302 follow-up).
+   * THE FORM'S PLACEHOLDERS HAVE TO PARSE (issue #302 follow-up, reshaped by rsui-9sc).
    *
-   * `blank` is what the page writes into the file the moment somebody presses Add, so a blank
-   * the schema refuses is an Add button that cannot be used — discovered by the operator, on
-   * their own config file, as a failed save. It is a claim about `config/schema.ts`, so it is
-   * checked against `config/schema.ts` rather than eyeballed.
+   * Nothing is written on Add any more — the button reveals a blank form, and only what the
+   * operator types is saved. But `example` is what that form SHOWS as the model answer, so an
+   * example the schema would refuse is the page teaching people to type an unsaveable entry.
+   * It is a claim about `config/schema.ts`, so it is checked against `config/schema.ts` rather
+   * than eyeballed.
    */
-  it('offers a new-entry shape the config schema actually accepts', () => {
+  it('offers example values the config schema actually accepts', () => {
     for (const list of SETTINGS_LISTS) {
-      if (!list.blank) continue
+      if (!list.add) continue
       const segments = list.path.split('.')
-      // The document that has this one list, with the blank as its only entry.
-      const document = segments.reduceRight<unknown>((inner, key) => ({ [key]: inner }), [list.blank])
+      // The document that has this one list, with the example as its only entry.
+      const document = segments.reduceRight<unknown>((inner, key) => ({ [key]: inner }), [list.add.example])
       expect(
         () => configSchema.parse(document),
-        `${list.path}'s blank is not a value the schema accepts, so its Add button writes an unsaveable entry`,
+        `${list.path}'s example is not a value the schema accepts, so its form teaches an unsaveable entry`,
       ).not.toThrow()
+    }
+  })
+
+  /** The form can only ask for boxes it draws, and can only insist on boxes it asks for. */
+  it('names only real item fields in example and required', () => {
+    for (const list of SETTINGS_LISTS) {
+      if (!list.add) continue
+      for (const name of Object.keys(list.add.example)) {
+        expect(list.itemFields, `${list.path}'s example names no item field ${name}`).toContain(name)
+      }
+      for (const name of list.add.required) {
+        expect(list.itemFields, `${list.path} requires ${name}, which is not an item field`).toContain(name)
+      }
+      expect(list.add.noun.length, `${list.path}'s Add button has no noun`).toBeGreaterThan(1)
     }
   })
 
@@ -172,11 +187,11 @@ describe('the inventory is internally consistent', () => {
 
   /**
    * Only `github.tokens` may decline to be added to, and it has to keep earning that: a list
-   * without a blank has no Add button on the page, which is a dead end unless something else
+   * without an `add` has no Add button on the page, which is a dead end unless something else
    * on that section collects the entry instead.
    */
   it('lets only the token list opt out of a generic Add', () => {
-    expect(SETTINGS_LISTS.filter((l) => !l.blank).map((l) => l.path)).toEqual(['github.tokens'])
+    expect(SETTINGS_LISTS.filter((l) => !l.add).map((l) => l.path)).toEqual(['github.tokens'])
   })
 })
 

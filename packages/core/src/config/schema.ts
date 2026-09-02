@@ -790,13 +790,12 @@ const sshPublicKeySchema = z.strictObject({
    * message is passed through verbatim: it is written for the person who pasted, and rewording
    * it here would give one mistake two sentences.
    *
-   * EMPTY IS LEGAL, and it means one thing only: an entry somebody has added and not yet
-   * filled in. The Settings page's Add button writes a blank entry to the file before the
-   * person types into it — that is how every list on that page works — so a schema demanding a
-   * key here would make Add itself unsaveable, and the alternative (shipping a real public key
-   * as the placeholder) would authorize a keypair whose private half belongs to whoever
-   * generated it. A half-filled entry is simply not offered on the New Server page. Any
-   * NON-empty value is parsed in full, private-key refusal included.
+   * EMPTY IS LEGAL, and it means one thing only: an entry added and never filled in. The
+   * Settings page no longer writes one — its Add form collects the key before anything is
+   * saved (rsui-9sc) — but files written by earlier builds, and files edited by hand, hold
+   * half-filled entries today, and a schema that started refusing them would refuse to BOOT on
+   * a file that used to load. A half-filled entry is simply not offered on the New Server
+   * page. Any NON-empty value is parsed in full, private-key refusal included.
    */
   publicKey: z
     .string()
