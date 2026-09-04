@@ -79,6 +79,12 @@ export function HelpPage() {
                 node packages/rockysurf/dist/bin.js token
               </code>
             </pre>
+            <p>
+              <strong>Rocky Surf itself has to already be running</strong> wherever{' '}
+              <code>ROCKYSURF_URL</code> points — <code>rockysurf serve</code>, or the process
+              this page is served by. An MCP client may start the server below before that is
+              true; it says so on stderr and every tool call recovers once core is up.
+            </p>
             <pre>
               <code>{MCP_CLIENT_SNIPPET}</code>
             </pre>
