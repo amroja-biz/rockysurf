@@ -75,7 +75,8 @@ the tag conditions to match.
         "ec2:DescribeImages",
         "ec2:DescribeVpcs",
         "ec2:DescribeSubnets",
-        "ec2:DescribeSecurityGroups"
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstanceTypeOfferings"
       ],
       "Resource": "*"
     },
@@ -271,7 +272,7 @@ published policy quietly stops being the policy anyone has tested.
 
 ## What each statement is for
 
-The provider makes **thirteen** distinct API calls. Here is every one of them and why.
+The provider makes **fifteen** distinct API calls. Here is every one of them and why.
 
 | Call | Statement | Why it is needed |
 |---|---|---|
@@ -280,12 +281,14 @@ The provider makes **thirteen** distinct API calls. Here is every one of them an
 | `ec2:DescribeImages` | ReadOnlyDiscovery | Reading the AMI's **root device name**. See the note below — this is not optional. |
 | `ec2:DescribeVpcs`, `ec2:DescribeSubnets` | ReadOnlyDiscovery | Finding your default VPC and a default subnet. Rocky Surf does not create networking. |
 | `ec2:DescribeSecurityGroups` | ReadOnlyDiscovery | Finding the shared SSH group, and reporting it to the reconciler. |
+| `ec2:DescribeInstanceTypeOfferings` | ReadOnlyDiscovery | Picking a default subnet in an Availability Zone that actually offers the instance type you asked for. See [the note below](#your-default-subnet-may-be-in-the-wrong-zone). |
 | `ssm:GetParameter` | ResolveUbuntuAmiFromPublicSsm | Resolving the current Ubuntu 24.04 AMI for the requested architecture. |
 | `ec2:RunInstances` | LaunchTaggedInstances + LaunchUsingExistingNetworkAndImage | Creating the box. Split into two statements — see below. |
 | `ec2:CreateTags` | TagOnCreate | Required even though the provider never calls it directly. See below. |
 | `ec2:TerminateInstances`, `ec2:StopInstances`, `ec2:StartInstances` | ManageOwnInstancesOnly | Destroying and power-cycling boxes Rocky Surf created. |
 | `ec2:CreateSecurityGroup` | CreateTheSharedSshGroup | Creating the one shared SSH group, on first launch only. |
 | `ec2:AuthorizeSecurityGroupIngress` | AuthorizeSshOnOwnGroupOnly | Adding the SSH rule to that group. |
+| `ec2:RevokeSecurityGroupIngress` | RevokeSshOnOwnGroupOnly | Removing an SSH rule Rocky Surf authored, and only on an itemized, confirmed removal. Never on a launch. |
 
 ### Three things that trip people up
 
@@ -335,6 +338,25 @@ Ubuntu AMIs are owned by Canonical, not by you. The same applies to the SSM para
 `arn:aws:ssm:*::parameter/aws/service/canonical/*` is the AWS public parameter namespace, which
 lives outside any account. Writing your account id into either of these produces a policy that
 denies everything with no obvious explanation.
+
+### Your default subnet may be in the wrong zone
+
+**Not every Availability Zone offers every instance type, and your default VPC has a subnet in
+all of them.** `us-east-1e` is the famous example: no `t3`, no `t4g`, no `m5`. Rocky Surf used to
+take the first default subnet `DescribeSubnets` returned, which in some accounts is exactly that
+zone — so a `t4g.small` create failed with EC2's `Unsupported — Your requested instance type
+(t4g.small) is not supported in your requested Availability Zone (us-east-1e)`, and failed the
+same way every time after, because the answer had been cached (issue #357).
+
+It now asks `ec2:DescribeInstanceTypeOfferings` which zones offer the type you picked, and
+launches into a default subnet in one of them. **You still never choose an Availability Zone** —
+that is the point. If none of your default subnets is in a zone that offers the type, the create
+is refused before anything is launched, and the message names the zones that would have worked.
+
+**If you deployed the role before this grant existed, re-deploy
+[`deploy/aws/iam-role.yaml`](../../deploy/aws/iam-role.yaml).** Without it, Rocky Surf cannot make
+the check: it falls back to the old first-subnet behaviour, logs one line saying so and naming the
+re-deploy, and your creates behave exactly as they did before — no worse, and no better.
 
 ### Where `*` is unavoidable
 
@@ -469,6 +491,13 @@ rule is Rocky Surf's own and is rewritten wholesale.
 because nothing revoked. `ec2:DescribeSecurityGroups` and `ec2:AuthorizeSecurityGroupIngress` were
 already published. If you deployed an older role, **re-deploy `deploy/aws/iam-role.yaml`** to pick
 up the revoke statement, or a confirmed removal will fail with `UnauthorizedOperation`.
+
+**The same re-deploy now also picks up `ec2:DescribeInstanceTypeOfferings`** (issue #357), which is
+what lets Rocky Surf launch into an Availability Zone that offers the instance type you asked for
+rather than whichever default subnet AWS happened to list first. Both grants are in the published
+policy above, so one re-deploy of the same template is the whole job. Skipping it does not break
+anything: the removal path is the one that fails, and the zone check degrades to the behaviour you
+have today. See [the note above](#your-default-subnet-may-be-in-the-wrong-zone).
 
 **Removing a CIDR ends new SSH connections from that network as soon as the revoke lands.**
 Established sessions survive — a security group is evaluated on connection setup — and the boxes
