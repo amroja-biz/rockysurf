@@ -50,3 +50,30 @@ test('and the official pack it came from gets its own, different mark', async ({
   await expect(page.locator('.pack-icon-copies:visible')).toHaveCount(1)
   await expect(page.locator('.pack-icon-delta:visible')).toHaveCount(0)
 })
+
+/**
+ * SAVING AN EDIT RETURNS TO THE PACK'S OWN TAB (issue #342), not wherever the detail page
+ * happened to be reached from. This continues the fork created above — a Personal (`local`)
+ * pack, database-backed and therefore editable — because editing needs a pack Edit is actually
+ * offered on; a file-backed official pack is read-only (see the "ported from the admin
+ * surge-packs page" describe in `PacksPage.test.tsx`).
+ */
+test('editing a Personal pack lands back on the Personal tab, not Official', async ({ page }) => {
+  await page.goto('/packs?tab=personal')
+  await page.getByTestId('pack-card-ai-coding-agents-copy').click()
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  const form = page.getByTestId('pack-form')
+  await expect(form).toBeVisible()
+
+  // Any real edit — Display order is the field the issue's own screenshot shows.
+  await form.getByLabel('Display order').fill('42')
+  await form.getByRole('button', { name: 'Save', exact: true }).click()
+
+  // Back on the LIST, Personal tab specifically — not the detail page, and not Official, which
+  // is where a save with no tab memory would silently default to. `toBeVisible` is the proof:
+  // every tab panel stays mounted (`hidden`, not unmounted — see the page's own docblock), so
+  // the card being VISIBLE, not merely present, is what says Personal is the active panel.
+  await expect(page).toHaveURL(/\/packs\?tab=personal/)
+  await expect(page.getByTestId('pack-card-ai-coding-agents-copy')).toBeVisible()
+})
