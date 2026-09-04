@@ -4,6 +4,7 @@ import {
   DescribeAccountAttributesCommand,
   DescribeImagesCommand,
   DescribeInstancesCommand,
+  DescribeInstanceTypeOfferingsCommand,
   DescribeSecurityGroupsCommand,
   DescribeSubnetsCommand,
   DescribeVpcsCommand,
@@ -145,6 +146,11 @@ export interface AwsProviderOptions {
   sleep?: (ms: number) => Promise<void>
   /** Injected by tests; production builds a `PriceFeedClient` from the config. */
   priceFeed?: { get(): Promise<PriceFeedDoc | null> }
+  /**
+   * Where an operator advisory goes — a degradation the operator has to act on, not a failure.
+   * Defaults to `console.warn`, and matches `provider-azure`'s option of the same name.
+   */
+  log?: (message: string) => void
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
@@ -164,6 +170,7 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
 
   const grace = options.absenceGrace ?? DESCRIBE_ABSENCE_GRACE
   const sleep = options.sleep ?? defaultSleep
+  const log = options.log ?? ((message: string) => console.warn(message))
 
   /**
    * Instances this provider has observed running, which is what keeps the propagation grace
@@ -174,7 +181,11 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
 
   /** Per-process caches. Everything here is cheap to rebuild and safe to lose. */
   const amiCache = new Map<Architecture, { imageId: string; rootDeviceName: string }>()
-  let defaultVpc: { vpcId: string; subnetId: string } | undefined
+  let defaultVpc: { vpcId: string; subnets: readonly { subnetId: string; az: string | undefined }[] } | undefined
+  /** Zones offering an instance type, per type. `null` means "the identity may not ask" (#357). */
+  const azsByType = new Map<string, ReadonlySet<string> | null>()
+  /** The missing-grant advisory is said once per process, not once per create. */
+  let offeringsGrantAdvised = false
   let sharedSgId: string | undefined
 
   async function send<T>(what: string, run: () => Promise<T>): Promise<T> {
@@ -218,6 +229,18 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     return resolved
   }
 
+  /**
+   * The default VPC and EVERY default subnet in it, with the Availability Zone each one sits in.
+   *
+   * The subnet list, not a single subnet, is what gets memoized — issue #357. The old memo cached
+   * `subnets.Subnets[0]` once per process, which is DescribeSubnets API order and nothing else. In
+   * the reporting account that first entry is `us-east-1e`, the zone that offers almost no modern
+   * instance type, so every `t3`/`t4g` create in that account failed with EC2's post-hoc
+   * `Unsupported — your requested instance type is not supported in your requested Availability
+   * Zone`, forever, because the wrong answer was cached on the first call. Which subnet is right
+   * depends on the instance type being launched, so it cannot be decided here; see
+   * {@link resolveSubnetForType}.
+   */
   async function resolveDefaultVpc() {
     if (defaultVpc) return defaultVpc
 
@@ -232,7 +255,7 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
       )
     }
 
-    const subnets = await send('ec2:DescribeSubnets (default-for-az)', () =>
+    const described = await send('ec2:DescribeSubnets (default-for-az)', () =>
       ec2.send(
         new DescribeSubnetsCommand({
           Filters: [
@@ -242,11 +265,94 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
         }),
       ),
     )
-    const subnetId = subnets.Subnets?.[0]?.SubnetId
-    if (!subnetId) throw new ProviderError('invalid_spec', `default VPC ${vpcId} has no default subnet`)
+    const subnets = (described.Subnets ?? []).flatMap((s) =>
+      s.SubnetId ? [{ subnetId: s.SubnetId, az: s.AvailabilityZone }] : [],
+    )
+    if (subnets.length === 0) throw new ProviderError('invalid_spec', `default VPC ${vpcId} has no default subnet`)
 
-    defaultVpc = { vpcId, subnetId }
+    defaultVpc = { vpcId, subnets }
     return defaultVpc
+  }
+
+  /**
+   * The Availability Zones in this region that actually offer `instanceType`, or `null` when the
+   * identity is not allowed to ask.
+   *
+   * `null` is the graceful-degradation signal (issue #357, note 3). `ec2:DescribeInstanceTypeOfferings`
+   * is new to the published policy, so every self-hoster running a role deployed before this
+   * release is refused here — and a preflight that turned "your create might fail" into "your
+   * create definitely fails" would be a worse product than the bug it fixes. So an auth refusal
+   * degrades to the old first-subnet behaviour and says so once, in the shape
+   * `provider-azure` already uses for its unreadable core quota. Anything else — throttling, a
+   * network fault — is a real failure and is thrown, exactly as every other call in this provider.
+   */
+  async function offeredAzs(instanceType: string): Promise<ReadonlySet<string> | null> {
+    const memoized = azsByType.get(instanceType)
+    if (memoized !== undefined) return memoized
+
+    let azs: ReadonlySet<string> | null
+    try {
+      const offered = await send(`ec2:DescribeInstanceTypeOfferings ${instanceType}`, () =>
+        ec2.send(
+          new DescribeInstanceTypeOfferingsCommand({
+            LocationType: 'availability-zone',
+            Filters: [{ Name: 'instance-type', Values: [instanceType] }],
+          }),
+        ),
+      )
+      azs = new Set((offered.InstanceTypeOfferings ?? []).flatMap((o) => (o.Location ? [o.Location] : [])))
+    } catch (err) {
+      if (!(err instanceof ProviderError) || err.code !== 'auth') throw err
+      if (!offeringsGrantAdvised) {
+        offeringsGrantAdvised = true
+        log(
+          `[aws] ec2:DescribeInstanceTypeOfferings is not authorized for this identity, so Rocky Surf ` +
+            `cannot check that a default subnet's Availability Zone offers ${instanceType} and is ` +
+            `falling back to the first default subnet in ${region}. A launch may still be refused by ` +
+            `EC2 with "Unsupported ... not supported in your requested Availability Zone". Re-deploy ` +
+            `deploy/aws/iam-role.yaml to add the grant. ${err.message}`,
+        )
+      }
+      azs = null
+    }
+
+    azsByType.set(instanceType, azs)
+    return azs
+  }
+
+  /**
+   * The default subnet to launch `instanceType` into: the first one whose zone offers the type.
+   *
+   * The operator never picks an Availability Zone and never should have to (issue #357, note 6) —
+   * they picked an instance type and a region, and which of their default subnets can carry it is
+   * arithmetic, not a decision. When none of them can, this refuses BEFORE RunInstances with the
+   * zones that would work, which is a cheaper and far clearer failure than EC2's `Unsupported`.
+   */
+  async function resolveSubnetForType(instanceType: string): Promise<{ vpcId: string; subnetId: string }> {
+    const { vpcId, subnets } = await resolveDefaultVpc()
+    const azs = await offeredAzs(instanceType)
+
+    // Degraded (no grant): the pre-#357 answer, first in DescribeSubnets order. Never worse.
+    const first = subnets[0]
+    if (!azs) {
+      if (!first) throw new ProviderError('invalid_spec', `default VPC ${vpcId} has no default subnet`)
+      return { vpcId, subnetId: first.subnetId }
+    }
+
+    const match = subnets.find((s) => s.az && azs.has(s.az))
+    if (match) return { vpcId, subnetId: match.subnetId }
+
+    const mine = subnets.map((s) => s.az ?? '(unknown zone)').join(', ')
+    const theirs = [...azs].sort()
+    throw new ProviderError(
+      'invalid_spec',
+      `${instanceType} is not offered in any Availability Zone your default VPC has a default subnet in. ` +
+        `Your default subnets are in ${mine}, and ${region} offers ${instanceType} in ` +
+        `${theirs.length > 0 ? theirs.join(', ') : 'no zone at all'}. ` +
+        (theirs.length > 0
+          ? `Pick an instance type offered in ${mine}, or create a default subnet in one of ${theirs.join(', ')}.`
+          : `Pick a different instance type, or a region that offers ${instanceType}.`),
+    )
   }
 
   async function findSharedSg(vpcId: string): Promise<string | undefined> {
@@ -508,9 +614,11 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
     async provision(spec: ProvisionSpec): Promise<ProvisionResult> {
       await provider.validateSpec(spec)
 
+      // The subnet is chosen for THIS instance type, not once per process (issue #357): a zone
+      // that carries t3.small may well refuse the next type the operator asks for.
       const [{ imageId, rootDeviceName }, { subnetId }] = await Promise.all([
         resolveAmi(spec.arch),
-        resolveDefaultVpc(),
+        resolveSubnetForType(spec.offeringId),
       ])
       const securityGroupId = await ensureSecurityGroup()
 

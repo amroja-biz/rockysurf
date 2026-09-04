@@ -118,6 +118,10 @@ Resources:
                   - 'ec2:DescribeVpcs'
                   - 'ec2:DescribeSubnets'
                   - 'ec2:DescribeSecurityGroups'
+                  # Which Availability Zones actually offer the instance type being launched.
+                  # Without it the provider cannot tell that its default subnet is in a zone that
+                  # refuses the type, and the launch fails at RunInstances instead (issue #357).
+                  - 'ec2:DescribeInstanceTypeOfferings'
                 Resource: '*'
 
               - Sid: ResolveUbuntuAmiFromPublicSsm

@@ -4,6 +4,7 @@ import {
   DescribeAccountAttributesCommand,
   DescribeImagesCommand,
   DescribeInstancesCommand,
+  DescribeInstanceTypeOfferingsCommand,
   DescribeSecurityGroupsCommand,
   DescribeSubnetsCommand,
   DescribeVpcsCommand,
@@ -47,6 +48,8 @@ const AMI_ARM64 = 'ami-arm64test'
 const AMI_AMD64 = 'ami-amd64test'
 const VPC_ID = 'vpc-default'
 const SUBNET_ID = 'subnet-default-a'
+/** The zone SUBNET_ID sits in. Every default mock below offers every type here (issue #357). */
+const AZ = 'us-east-1a'
 const SG_ID = 'sg-sharedssh'
 const CIDR = '203.0.113.7/32'
 
@@ -136,7 +139,9 @@ beforeEach(() => {
 
   ec2Mock.on(DescribeImagesCommand).resolves({ Images: [{ RootDeviceName: '/dev/sda1' }] })
   ec2Mock.on(DescribeVpcsCommand).resolves({ Vpcs: [{ VpcId: VPC_ID }] })
-  ec2Mock.on(DescribeSubnetsCommand).resolves({ Subnets: [{ SubnetId: SUBNET_ID }] })
+  ec2Mock.on(DescribeSubnetsCommand).resolves({ Subnets: [{ SubnetId: SUBNET_ID, AvailabilityZone: AZ }] })
+  // The happy account: the one default subnet's zone offers whatever is asked for.
+  ec2Mock.on(DescribeInstanceTypeOfferingsCommand).resolves({ InstanceTypeOfferings: [{ Location: AZ }] })
   ec2Mock.on(DescribeSecurityGroupsCommand).resolves({ SecurityGroups: [] })
   ec2Mock.on(CreateSecurityGroupCommand).resolves({ GroupId: SG_ID })
   ec2Mock.on(AuthorizeSecurityGroupIngressCommand).resolves({})
@@ -416,6 +421,126 @@ describe('provision', () => {
     await custom.provision(spec({ tags: { 'managed-by': 'rockysurf-staging' } }))
     const tags = Object.fromEntries((runInputs()[0]?.TagSpecifications?.[0]?.Tags ?? []).map((t) => [t.Key, t.Value]))
     expect(tags['managed-by']).toBe('rockysurf-staging')
+  })
+})
+
+/**
+ * SUBNET SELECTION IS AZ-AWARE (issue #357).
+ *
+ * The bug these cover: the provider took the first subnet DescribeSubnets returned and memoized
+ * it for the life of the process. In the reporting account that is `us-east-1e`, which offers
+ * almost no modern instance type, so every t3/t4g create failed with EC2's post-hoc
+ * `Unsupported ... not supported in your requested Availability Zone` — and kept failing, because
+ * the wrong subnet was cached on the first call.
+ */
+describe('subnet selection is AZ-aware (issue #357)', () => {
+  const AZ_E = 'us-east-1e'
+  const SUBNET_E = 'subnet-default-e'
+  const SUBNET_A = 'subnet-default-a'
+
+  /** The real shape: `us-east-1e` first in API order, the usable zone behind it. */
+  const twoSubnets = () =>
+    ec2Mock.on(DescribeSubnetsCommand).resolves({
+      Subnets: [
+        { SubnetId: SUBNET_E, AvailabilityZone: AZ_E },
+        { SubnetId: SUBNET_A, AvailabilityZone: AZ },
+      ],
+    })
+
+  /** Offerings keyed by the instance-type filter the provider sends, as EC2 answers it. */
+  const offeringsBy = (byType: Record<string, string[]>) =>
+    ec2Mock
+      .on(DescribeInstanceTypeOfferingsCommand)
+      .callsFake((input: { Filters?: { Name?: string; Values?: string[] }[] }) => {
+        const type = input.Filters?.find((f) => f.Name === 'instance-type')?.Values?.[0] ?? ''
+        return { InstanceTypeOfferings: (byType[type] ?? []).map((Location) => ({ Location })) }
+      })
+
+  const subnetOf = (i: number) => runInputs()[i]?.NetworkInterfaces?.[0]?.SubnetId
+
+  const buildLogging = (lines: string[]): ComputeProvider =>
+    makeAwsProvider({
+      config: config(),
+      ec2: new EC2Client({ region: 'us-east-1' }),
+      ssm: new SSMClient({ region: 'us-east-1' }),
+      sleep: async () => {},
+      priceFeed: feedOf(FEED),
+      log: (message) => lines.push(message),
+    })
+
+  it('skips the first subnet when its zone does not offer the type', async () => {
+    twoSubnets()
+    offeringsBy({ 't4g.small': [AZ, 'us-east-1b'] })
+
+    await build().provision(spec({ offeringId: 't4g.small', arch: 'arm64' }))
+
+    expect(subnetOf(0)).toBe(SUBNET_A)
+  })
+
+  it('refuses before RunInstances when no default subnet is in a zone that offers the type', async () => {
+    ec2Mock.on(DescribeSubnetsCommand).resolves({ Subnets: [{ SubnetId: SUBNET_E, AvailabilityZone: AZ_E }] })
+    offeringsBy({ 't4g.small': ['us-east-1a', 'us-east-1b', 'us-east-1c'] })
+
+    const err = await build()
+      .provision(spec({ offeringId: 't4g.small', arch: 'arm64' }))
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderError)
+    // The message has to be actionable on its own: the zone the operator HAS, the zones that
+    // would work, and the region they are in.
+    expect((err as ProviderError).message).toContain('t4g.small')
+    expect((err as ProviderError).message).toContain(AZ_E)
+    expect((err as ProviderError).message).toContain('us-east-1a, us-east-1b, us-east-1c')
+    expect((err as ProviderError).message).toContain('us-east-1')
+    // Refused BEFORE the launch — that is the whole point of the preflight.
+    expect(ec2Mock.commandCalls(RunInstancesCommand)).toHaveLength(0)
+    // And not retryable: a second identical attempt would fail identically.
+    expect((err as ProviderError).retryable).toBe(false)
+  })
+
+  /**
+   * GRACEFUL DEGRADATION IS A HARD REQUIREMENT. Every self-hoster running a role deployed before
+   * this release is refused the new call. A preflight that turned "your create might fail" into
+   * "your create definitely fails" would be worse than the bug it fixes, so an auth refusal falls
+   * back to the old first-subnet answer and says so once, naming the re-deploy.
+   */
+  it('degrades to the first subnet with an advisory when the role lacks the new grant', async () => {
+    twoSubnets()
+    ec2Mock.on(DescribeInstanceTypeOfferingsCommand).rejects(awsError('UnauthorizedOperation', 403))
+    const lines: string[] = []
+    const degraded = buildLogging(lines)
+
+    const result = await degraded.provision(spec({ offeringId: 't4g.small', arch: 'arm64' }))
+
+    expect(result.data['instanceId']).toBeTruthy()
+    expect(subnetOf(0)).toBe(SUBNET_E) // exactly the pre-#357 behaviour: first in API order
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('ec2:DescribeInstanceTypeOfferings')
+    expect(lines[0]).toContain('deploy/aws/iam-role.yaml')
+
+    // Said once per process, not once per create — an operator advisory, not a log line per box.
+    await degraded.provision(spec({ serverId: 'srv-two', idempotencyKey: 'idem-two' }))
+    expect(lines).toHaveLength(1)
+  })
+
+  it('resolves per instance type across creates instead of caching one subnet', async () => {
+    twoSubnets()
+    offeringsBy({ 't4g.small': [AZ], 't3.small': [AZ_E, AZ] })
+    const p = build()
+
+    await p.provision(spec({ offeringId: 't4g.small', arch: 'arm64' }))
+    await p.provision(spec({ offeringId: 't3.small', arch: 'amd64', serverId: 'srv-two', idempotencyKey: 'idem-two' }))
+
+    // The old memo would have launched both into whichever subnet the first create picked.
+    expect(subnetOf(0)).toBe(SUBNET_A)
+    expect(subnetOf(1)).toBe(SUBNET_E)
+    // The VPC and its subnet list are still memoized — it is the CHOICE that stopped being cached.
+    expect(ec2Mock.commandCalls(DescribeVpcsCommand)).toHaveLength(1)
+    expect(ec2Mock.commandCalls(DescribeSubnetsCommand)).toHaveLength(1)
+    // One offerings lookup per distinct type, and none for a type already resolved.
+    expect(ec2Mock.commandCalls(DescribeInstanceTypeOfferingsCommand)).toHaveLength(2)
+    await p.provision(spec({ offeringId: 't4g.small', arch: 'arm64', serverId: 'srv-3', idempotencyKey: 'idem-3' }))
+    expect(ec2Mock.commandCalls(DescribeInstanceTypeOfferingsCommand)).toHaveLength(2)
   })
 })
 
