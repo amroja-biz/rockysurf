@@ -146,6 +146,14 @@ table with its own one-line summary.
 The one worth naming out of order is `rockysurf token`: it mints the credential that the MCP
 server and every client command require, and none of them work until you have exported one.
 
+**`rockysurf mcp` needs a control plane already running** wherever `ROCKYSURF_URL` points —
+`rockysurf serve` (or the bare `rockysurf` above, which is the same thing). It does not start one
+itself: an MCP client is free to launch it first, but every tool call has to reach a live core to
+do anything, and the first sign of that used to be a first tool call's failure rather than
+anything at startup. A newer `rockysurf mcp` probes once after it connects and, if nothing
+answers, says so on stderr — non-fatal, because the moment core comes up the next tool call
+recovers on its own.
+
 **A command comes first, and options follow it.** `rockysurf token --config ./rockysurf.config.yaml`
 works; `rockysurf --config ./rockysurf.config.yaml token` does not, because the dispatch reads
 the first argument before any option parsing happens. Written the wrong way round it refuses with

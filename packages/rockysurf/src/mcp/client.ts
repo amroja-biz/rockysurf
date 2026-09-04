@@ -11,6 +11,16 @@
  *  - it needs a token to do anything, so an MCP server with no credential is inert.
  */
 
+/**
+ * The actionable "nothing is there" message, shared by every caller that needs to tell a human
+ * or an agent that Rocky Surf itself is not reachable at a given URL — this client's own catch
+ * below, and the MCP server's startup preflight (server.ts), which needs the identical wording
+ * rather than a second copy that can drift from it (#350).
+ */
+export function unreachableMessage(baseUrl: string): string {
+  return `cannot reach Rocky Surf at ${baseUrl}. Is it running? Start it with \`rockysurf serve\`.`
+}
+
 export class CoreApiError extends Error {
   constructor(
     readonly status: number,
@@ -69,9 +79,7 @@ export function createCoreClient(options: CoreClientOptions): CoreClient {
     } catch (cause) {
       // A control plane that is not running is the most likely failure by far, and the message
       // has to say so — an agent cannot read a stack trace and act on it.
-      throw new Error(
-        `cannot reach Rocky Surf at ${base}. Is it running? Start it with \`rockysurf serve\`. (${String(cause)})`,
-      )
+      throw new Error(`${unreachableMessage(base)} (${String(cause)})`)
     }
 
     if (response.status === 204) return undefined as T
