@@ -156,6 +156,35 @@ async function costContext(client: CoreClient): Promise<Record<string, unknown>>
   }
 }
 
+/* ------------------------------------------------------------------- saved ssh keys */
+
+/**
+ * One entry from the operator's `ssh.keys` list, as `GET /api/v1/ssh-keys` reports it (#302).
+ *
+ * Declared as the shape this file READS, like `ProviderCatalogue` above and for the same
+ * reason. The route is the New Server page's own option source: not admin-only, mounted
+ * unconditionally, and answered from a function that re-reads the config, so a key saved a
+ * moment ago is offered on the next call with no restart (ADR-0017).
+ */
+export interface SavedSshKeyRow {
+  name: string
+  publicKey: string
+}
+
+/**
+ * The saved keys, or an empty list.
+ *
+ * The `Array.isArray` guard is not defensive typing for its own sake: every caller below
+ * either maps over this or searches it, and an installation whose route answered something
+ * else would otherwise fail a create with a `TypeError` instead of the refusal it deserves.
+ * An empty list is a real answer — most installations have saved none — so the callers say
+ * that in as many words rather than treating it as an error.
+ */
+async function savedSshKeys(client: CoreClient): Promise<SavedSshKeyRow[]> {
+  const rows = await client.get<unknown>('/api/v1/ssh-keys')
+  return Array.isArray(rows) ? (rows as SavedSshKeyRow[]) : []
+}
+
 /* ------------------------------------------------------------------------------- tools */
 
 const serverIdSchema = z.strictObject({
@@ -355,6 +384,55 @@ export const MCP_TOOLS: McpToolDefinition[] = [
   },
 
   {
+    /**
+     * THE SAVED-KEY CATALOGUE, and it is `list_offerings`' argument applied a third time (#360).
+     *
+     * `create_server` gained `ssh_key_name` in the same change, and a parameter whose values an
+     * agent cannot learn is the defect rockysurf-oeay named for `offering_id` and #278 named
+     * again for `pack_id`: usable only by an agent a human had already briefed. The house answer
+     * both times was a read tool over the route the SPA's own picker reads, and this is that
+     * answer a third time rather than a new mechanism.
+     *
+     * WHY NOT THE NAMES IN `create_server`'S DESCRIPTION, which was the cheaper option on the
+     * table. A description is composed once, when the client connects, and cached by it for the
+     * session — so a key saved afterwards would be invisible until the human restarted their
+     * agent, and a name removed afterwards would go on being advertised. An agent told by a
+     * stale description to use a key that is no longer saved gets the unknown-name refusal
+     * below, which is #355's failure mode wearing a different hat: the roster would be the
+     * thing that misled it. A tool call is read fresh, every time, from the same function the
+     * form reads.
+     *
+     * NAMES ONLY, where `list_offerings` passes core's object straight through. A public key is
+     * published material and this route is deliberately not admin-only, so withholding the
+     * bodies protects nothing — the reason is the two other ones. An agent choosing between
+     * saved keys is choosing between their names, which is the whole of what the human says out
+     * loud ("use rockysurf-mac"); and the key lines are ~100 characters each of context that
+     * decides nothing, on a tool an agent may call before every create. It also keeps
+     * SECURITY.md's "no tool result contains key material" sentence true without a footnote
+     * about which half.
+     *
+     * Read scope, for `list_offerings`' reason in full: it spends nothing, changes nothing, and
+     * discloses a list of names the operator typed into their own settings page.
+     */
+    name: 'list_ssh_keys',
+    title: 'List the SSH public keys saved by name',
+    description:
+      'The names of the SSH public keys the human saved under Settings → SSH public keys. Use ' +
+      'it to pick an ssh_key_name for create_server — "use my usual key" is answered from this ' +
+      'list, and a name that is not on it is refused rather than quietly creating a box without ' +
+      'the key. Names only: the key bodies are not returned, because choosing between saved ' +
+      'keys is choosing between their names. An empty list means this installation has saved ' +
+      'none, which is the common case — a key can still be passed verbatim to create_server as ' +
+      'ssh_public_key.',
+    scope: 'read',
+    inputSchema: z.strictObject({}),
+    run: async (_args, { client }) => {
+      const keys = await savedSshKeys(client)
+      return { sshKeyNames: keys.map((key) => key.name) }
+    },
+  },
+
+  {
     name: 'get_server',
     title: 'Get a server',
     description: 'Full detail for one server, including provisioning progress and cost so far.',
@@ -470,7 +548,10 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     description:
       'Create a new dev box. Subject to the configured limits — maximum servers, creates per ' +
       'hour, and the monthly spend cap — all enforced by the control plane, which will refuse ' +
-      'with a reason rather than silently succeeding.',
+      'with a reason rather than silently succeeding. To authorize the human\'s own SSH key on ' +
+      'the box, pass ssh_key_name (a key they saved by name — list_ssh_keys enumerates them) or ' +
+      'ssh_public_key (the key itself). Omit both and the box authorizes only Rocky Surf\'s own ' +
+      'managed key, which a human downloads from the web UI to log in.',
     scope: 'create',
     inputSchema: z.strictObject({
       name: z.string().min(1).optional().describe('A name for the server. One is generated if omitted.'),
@@ -569,10 +650,130 @@ export const MCP_TOOLS: McpToolDefinition[] = [
             'rather than building a box that fails its last step. Never returned by any tool — ' +
             'if it is lost, SSH in and run `sudo passwd rocky`.',
         ),
+      /**
+       * THE HUMAN'S OWN KEY, WHICH THIS TOOL COULD NOT ASK FOR AT ALL UNTIL NOW (#360).
+       *
+       * The capability ran end to end in core the whole time — stored on the row, appended to
+       * `authorized_keys`, and core's own managed key retired afterwards — and the SPA has
+       * offered it since #302. This schema simply had no word for it, so an MCP-created box came
+       * up authorized for core's key alone. That still WORKS, through the key download in the
+       * web UI, which is exactly why it read as a bug rather than announcing itself.
+       *
+       * TWO PARAMETERS FOR ONE FIELD, deliberately, and they are the SPA's two controls: a
+       * picker over the saved list, and a paste box. Both resolve to the single `sshPublicKey`
+       * the New Server page posts, so the wire shape, the validation and the row are one path
+       * with no MCP-specific branch anywhere in core. The name is resolved HERE and the KEY goes
+       * on the wire — never the name — for #302's reason: a server stays answerable to the key
+       * it actually authorized, and editing the settings list later cannot rewrite that.
+       *
+       * NO PARSING IN THIS FILE. `normalizeUserPublicKey` runs in `lifecycle.create`, before the
+       * row is written, and its refusal — including the one that names a pasted PRIVATE key
+       * first and by name — comes back as a 400 this layer passes through with its code intact.
+       * A second validator here is exactly the parallel path the #348 review said this server
+       * must not grow.
+       *
+       * PUBLIC HALVES ARE NOT A CUSTODY PROBLEM. A public key is published material, handed to
+       * a cloud provider in the clear on every create (SECURITY.md), so unlike `rdp_password`
+       * above there is nothing here to weigh against the agent's transcript.
+       */
+      ssh_key_name: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Authorize a key the human saved by name under Settings → SSH public keys — the ' +
+            'answer to "use my usual key". Call list_ssh_keys for the names. A name that is not ' +
+            'saved is refused, naming the ones that are, and nothing is created. Use ' +
+            'ssh_public_key instead for a key that is not saved; naming both is refused.',
+        ),
+      ssh_public_key: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'Authorize a public key given verbatim — one `authorized_keys` line, the contents of ' +
+            'a `.pub` file. Passed to the control plane exactly as given and parsed there, which ' +
+            'refuses a PRIVATE key by name before it complains about anything else. Prefer ' +
+            'ssh_key_name when the key is already saved.',
+        ),
     }),
     run: async (args, { client }) => {
       const packId = args['pack_id'] ? String(args['pack_id']) : undefined
       const rdpPassword = args['rdp_password'] ? String(args['rdp_password']) : undefined
+      const keyName = args['ssh_key_name'] ? String(args['ssh_key_name']) : undefined
+      const verbatimKey = args['ssh_public_key'] ? String(args['ssh_public_key']) : undefined
+
+      // Both named is a caller that does not know which key it wants, and picking one for it
+      // would authorize a key nobody chose. Refused rather than resolved by precedence, and
+      // refused first, so a create that could go either way never reaches a provider.
+      if (keyName && verbatimKey) {
+        throw new Error(
+          'create_server takes ssh_key_name OR ssh_public_key, not both — they are two ways to ' +
+            'name one key and there is no way to tell which was meant. Pass the saved name if ' +
+            'the key is saved (list_ssh_keys shows them), otherwise the key itself. Nothing was ' +
+            'created.',
+        )
+      }
+
+      /**
+       * THE SAVED NAME, RESOLVED HERE, AND A MISS IS A REFUSAL (#360, the #355 lesson).
+       *
+       * An unknown name could be dropped and the create allowed through — the UI treats the key
+       * as optional, after all — and that is precisely the failure this issue was filed about:
+       * a box that comes up without the key still works, so a silent miss reads as a bug in the
+       * product rather than a typo in the argument. So it refuses, and the refusal NAMES the
+       * saved keys, because "no such key" with no list is a dead end for an agent that has no
+       * screen to go and look at.
+       *
+       * A read failure here is deliberately NOT swallowed: an unreadable list with a name to
+       * resolve means the key cannot be honored, and dropping it silently is the whole bug.
+       * The route's own error comes back through `runTool`'s `CoreApiError` handling intact.
+       */
+      let suppliedKey = verbatimKey
+      let sshKeyNote: string | undefined
+      if (keyName) {
+        const saved = await savedSshKeys(client)
+        const found = saved.find((key) => key.name === keyName)
+        if (!found) {
+          throw new Error(
+            saved.length
+              ? `no SSH public key called "${keyName}" is saved on this installation. Saved keys: ` +
+                `${saved.map((key) => key.name).join(', ')}. Pass one of those as ssh_key_name, or ` +
+                'pass the key itself as ssh_public_key. Nothing was created.'
+              : `no SSH public key called "${keyName}" is saved on this installation — it has ` +
+                'saved none at all, so Settings → SSH public keys is empty and there is no name ' +
+                'to use. Pass the key itself as ssh_public_key, or ask the human to save it by ' +
+                'name first. Nothing was created.',
+          )
+        }
+        // The KEY on the wire, never the name (#302).
+        suppliedKey = found.publicKey
+      } else if (!verbatimKey) {
+        /**
+         * NEITHER PARAMETER GIVEN, AND SAVED KEYS EXIST: a note on the result, not a refusal
+         * and not a warning (design question 4 of #360, decided here).
+         *
+         * The UI's optionality is real and stays — a box with core's managed key alone is a
+         * legitimate create, and refusing one would break a thing that works. But the UI's
+         * reason for staying silent does not carry over: a human omitting the key has just
+         * LOOKED at a picker with their own key names in it and decided against it, and an
+         * agent has no equivalent glance. Omission by an agent is far more often ignorance of
+         * the parameter than a decision about it — which is how this issue got filed.
+         *
+         * So the result says what happened and what was available, once, after the fact. It
+         * cannot fail a create: the read is swallowed, exactly as `costContext` swallows its
+         * own, because losing a note must never cost a machine.
+         */
+        const saved = await savedSshKeys(client).catch(() => [] as SavedSshKeyRow[])
+        if (saved.length > 0) {
+          sshKeyNote =
+            'No SSH public key was requested, so this box authorizes only Rocky Surf\'s own ' +
+            'managed key — logging in means a human downloading that key from the web UI. This ' +
+            `installation has keys saved by name (${saved.map((key) => key.name).join(', ')}); ` +
+            'pass one as ssh_key_name to authorize it as well. Nothing is wrong if that was ' +
+            'intended — the key is optional here exactly as it is on the web form.'
+        }
+      }
 
       // Refused BEFORE the create, not after: a desktop pack with no password provisions
       // fully and then fails its injected `rdp` step, which is a running instance the agent
@@ -606,8 +807,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         ...(args['create_anyway'] ? { createAnyway: true } : {}),
         ...(args['provider'] ? { provider: args['provider'] } : {}),
         ...(rdpPassword ? { rdpPassword } : {}),
+        // The same field the New Server page posts, whichever parameter named the key — one
+        // wire shape, one validator, one column (#302, #360).
+        ...(suppliedKey ? { sshPublicKey: suppliedKey } : {}),
       })
-      return { server, ...(await costContext(client)) }
+      return { server, ...(sshKeyNote ? { sshKeyNote } : {}), ...(await costContext(client)) }
     },
   },
 

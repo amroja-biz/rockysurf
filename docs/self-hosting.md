@@ -527,6 +527,16 @@ public key is published material and encrypting a copy of it would be theatre; s
 in [`SECURITY.md`](../SECURITY.md#what-is-stored-and-what-is-never-stored). Saving one takes
 effect at once — the next New Server page offers it, with no restart.
 
+**An agent connected over MCP uses the same list, by name** (issue #360). `list_ssh_keys` returns
+the names you saved — names only, never the key lines — and `create_server` takes `ssh_key_name`
+to authorize one of them, or `ssh_public_key` for a key you never saved. Both end up in the same
+`sshPublicKey` field the form posts, so an agent's box and yours are built the same way. A name
+that is not on the list is refused, and the refusal names the ones that are: a box that came up
+on Rocky Surf's own key still works, so quietly dropping the key would look like a bug in the
+product rather than a typo in the request. If you have saved keys and an agent creates a box
+without naming one, the result says so — a note, not a refusal, because the key is as optional
+there as it is here.
+
 Removing a key here changes nothing on a box it was already authorized on; that you do over SSH.
 
 The create form's "Use my own public key" option pastes your key onto the box — but it does not
@@ -1325,7 +1335,8 @@ restarts, and removing it is something you do explicitly in the admin UI.
 
 `mcp.scopes` decides, and it defaults to `[read, stop]`. That grant advertises everything that
 reads (`list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs`,
-`list_providers`, `get_provider`) and the pause/resume pair (`stop_server`, `start_server`).
+`list_providers`, `get_provider`, `list_ssh_keys`) and the pause/resume pair (`stop_server`,
+`start_server`).
 `create_server` needs `create`, and `terminate_server` needs `terminate`: both are opt-in,
 because making a box costs money and destroying one costs work that does not come back.
 

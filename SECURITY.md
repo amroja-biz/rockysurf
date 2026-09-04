@@ -36,7 +36,8 @@ refuses to store them, rather than merely abstaining:
 - **The master key itself**, when supplied as `ROCKYSURF_SECRET_KEY` — nothing is written to
   disk in that case.
 - **Your own SSH private keys.** `ssh.keys` in the config file saves PUBLIC halves by name, so
-  the New Server page can offer them (issue #302). A public key is published material — it is
+  the New Server page can offer them (issue #302) and an agent can ask for one by name over MCP
+  (issue #360; names only — see the MCP threat model). A public key is published material — it is
   handed to your cloud provider in the clear on every create and written into `authorized_keys`
   on the box — so it is stored in the config file in plain text, deliberately, and is not
   encrypted, not masked on the settings page, and not a secret kind above. The parser
@@ -612,7 +613,7 @@ someone into setting; config is where an operator reviews it.
 
 | Tool | Scope | Reversible? |
 |---|---|---|
-| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs`, `list_providers`, `get_provider` | `read` | reads only |
+| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs`, `list_providers`, `get_provider`, `list_ssh_keys` | `read` | reads only |
 | `stop_server` | `stop` | yes — disk preserved, `start_server` brings it back |
 | `start_server` | `stop` | yes — `stop_server` pauses it again; resumes hourly billing |
 | `create_server` | `create` | spends money until stopped or terminated |
@@ -641,6 +642,35 @@ No tool result contains key material or a credential of any kind. `get_ssh_comma
 command string and a pointer to where a human can download the key. A private key in a tool
 result is a private key in the agent's context, its transcript, and every log that transcript
 touches, permanently.
+
+`list_ssh_keys` (issue #360) returns the **names** an operator saved their public keys under and
+not the key lines, so that sentence holds without a footnote about which half. The bodies are
+withheld for two ordinary reasons rather than a custody one — a public key is published material
+and the route behind this tool is deliberately not admin-only — namely that an agent choosing
+between saved keys is choosing between their names, and that the lines would be context on every
+call that decides nothing.
+
+### The key an agent may authorize
+
+`create_server` takes `ssh_key_name` (a key the operator saved by name under **Settings → SSH
+public keys**) or `ssh_public_key` (one `authorized_keys` line, verbatim). Both resolve to the
+single `sshPublicKey` field the New Server page posts, so there is one create path, one
+validator and one column — the MCP server is a translation layer here as everywhere, with no
+parsing of its own.
+
+This is **not** the credential case below. A public key authenticates nobody and unlocks
+nothing; it is handed to your cloud provider in the clear on every create, so there is nothing
+to weigh against the agent's transcript. What matters is the other direction: `PRIVATE KEY` in
+`ssh_public_key` is refused by `packages/core/src/ssh/public-key.ts`, by name and before any
+other complaint, exactly as it is refused at a settings save and on the web form — and the
+create is refused before a row is written, so nothing is provisioned.
+
+A saved name that does not exist is **refused, naming the saved keys**, rather than creating a
+box without the key. A box that comes up on core's managed key alone still works, so a silently
+dropped key reads as a defect in the product rather than as a typo in an argument — which is how
+issue #360 came to be filed. For the same reason, a create that names no key at all on an
+installation that *has* saved keys carries a note saying so on the result. It is a note and not
+a refusal: the key is optional here exactly as it is on the web form.
 
 ### The one credential an agent may be given
 

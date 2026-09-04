@@ -75,6 +75,7 @@ describe('scopes', () => {
       'list_packs',
       'list_providers',
       'list_servers',
+      'list_ssh_keys',
     ])
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).toContain('stop_server')
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).not.toContain('create_server')
@@ -221,9 +222,10 @@ describe('tools/list over the protocol', () => {
 
   it('offers the default installation every tool but create and terminate', async () => {
     // The roster the owner's agent enumerated in #353 was these seven; `list_providers` and
-    // `get_provider` (#351) landed on `read` afterwards and belong here too. What is being
-    // pinned is the shape of the default grant, not the count: nothing create-shaped or
-    // terminate-shaped may appear without an operator asking for it.
+    // `get_provider` (#351) landed on `read` afterwards and belong here too, as does
+    // `list_ssh_keys` (#360). What is being pinned is the shape of the default grant, not the
+    // count: nothing create-shaped or terminate-shaped may appear without an operator asking
+    // for it.
     const names = (await listTools(['read', 'stop'])).map((t) => t.name).sort()
     expect(names).toEqual([
       'get_provider',
@@ -233,6 +235,7 @@ describe('tools/list over the protocol', () => {
       'list_packs',
       'list_providers',
       'list_servers',
+      'list_ssh_keys',
       'start_server',
       'stop_server',
     ])
@@ -243,7 +246,7 @@ describe('tools/list over the protocol', () => {
     // Every advertised tool that names it — `list_providers` acquired the reference with #351,
     // and inherited the note without anyone editing this list, which is the point of deriving
     // it from the description text.
-    for (const name of ['list_packs', 'list_offerings', 'list_providers']) {
+    for (const name of ['list_packs', 'list_offerings', 'list_providers', 'list_ssh_keys']) {
       const description = tools.find((t) => t.name === name)!.description ?? ''
       expect(description, name).toContain('create_server')
       expect(description, name).toContain('"create" MCP scope')
@@ -663,6 +666,203 @@ describe('create_server and the desktop password', () => {
       Record<string, unknown>,
     ]
     expect(body['rdpPassword']).toBe(PASSWORD)
+  })
+})
+
+/**
+ * THE HUMAN'S OWN SSH KEY, OVER MCP (#360).
+ *
+ * The reported symptom: a create through `create_server` worked and the box came up without
+ * the owner's standard key, because the tool had no parameter for one. What these pin is the
+ * translation — one saved name resolved to one key, one wire field, and every way of getting
+ * it wrong refusing BEFORE a machine exists rather than after.
+ *
+ * Mocked control plane, because that is what a translation layer is: the field name and the
+ * route are the behaviour. The claim a mock cannot make — that `sshPublicKey` is the field
+ * core actually reads — is made against a real core further down.
+ */
+describe("create_server and the human's own SSH key", () => {
+  const LAPTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'
+  const DESKTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB4nOEqLQMPa6QK8PPVoO7JVYqvvUEvFI0pOx1WLQO0k desktop'
+  const SAVED = [
+    { name: 'rockysurf-mac', publicKey: LAPTOP },
+    { name: 'desktop', publicKey: DESKTOP },
+  ]
+
+  const bodyOf = (posts: Array<{ path: string; body: unknown }>) =>
+    (posts[0]?.body ?? {}) as Record<string, unknown>
+
+  it('list_ssh_keys reads the saved-key route and returns names, never key bodies', async () => {
+    const { client: c, reads } = recording({ '/api/v1/ssh-keys': SAVED })
+    const result = (await runTool('list_ssh_keys', {}, ctx(['read'], c))) as { sshKeyNames: string[] }
+
+    expect(reads()).toEqual(['/api/v1/ssh-keys'])
+    expect(result.sshKeyNames).toEqual(['rockysurf-mac', 'desktop'])
+    // Names are what an agent chooses by; the lines themselves would be context that decides
+    // nothing, and keeping them out is what keeps "no tool result carries key material" whole.
+    expect(JSON.stringify(result)).not.toContain('AAAAC3NzaC1lZDI1NTE5')
+  })
+
+  it('resolves a saved name to the key, and puts the KEY on the wire', async () => {
+    const { client: c, posts } = recording({ '/api/v1/ssh-keys': SAVED })
+    await runTool('create_server', { size: 'small', ssh_key_name: 'rockysurf-mac' }, ctx(['create'], c))
+
+    expect(posts.map((p) => p.path)).toEqual(['/api/v1/servers'])
+    // The same field the New Server page posts (#302): a server is answerable to the key it
+    // authorized, not to a settings entry that may be renamed or deleted next week.
+    expect(bodyOf(posts)['sshPublicKey']).toBe(LAPTOP)
+    expect(bodyOf(posts)['sshKeyName']).toBeUndefined()
+  })
+
+  it('passes a verbatim key through untouched', async () => {
+    const { client: c, posts, reads } = recording()
+    await runTool('create_server', { size: 'small', ssh_public_key: LAPTOP }, ctx(['create'], c))
+
+    expect(bodyOf(posts)['sshPublicKey']).toBe(LAPTOP)
+    // Nothing is parsed, trimmed or looked up here — the saved list is not even read, because
+    // a key given in full has no name to resolve.
+    expect(reads()).toEqual([])
+  })
+
+  it('refuses an unknown saved name, NAMING the saved keys, without creating anything', async () => {
+    const { client: c, posts } = recording({ '/api/v1/ssh-keys': SAVED })
+    const error = (await runTool(
+      'create_server',
+      { size: 'small', ssh_key_name: 'rockysurf-mc' },
+      ctx(['create'], c),
+    ).catch((e: unknown) => e)) as Error
+
+    // The whole point of the refusal: a silent miss is what got this issue filed, and a
+    // refusal with no list is a dead end for a caller with no screen to go and look at.
+    expect(posts).toEqual([])
+    expect(error.message).toContain('rockysurf-mc')
+    expect(error.message).toContain('rockysurf-mac')
+    expect(error.message).toContain('desktop')
+    expect(error.message).toContain('Nothing was created')
+  })
+
+  it('says the list is empty when a name is given and none are saved', async () => {
+    const { client: c, posts } = recording({ '/api/v1/ssh-keys': [] })
+    const error = (await runTool('create_server', { size: 'small', ssh_key_name: 'laptop' }, ctx(['create'], c)).catch(
+      (e: unknown) => e,
+    )) as Error
+
+    expect(posts).toEqual([])
+    expect(error.message).toContain('saved none at all')
+    expect(error.message).toContain('ssh_public_key')
+  })
+
+  it('refuses both parameters at once rather than picking one', async () => {
+    const { client: c, posts, reads } = recording({ '/api/v1/ssh-keys': SAVED })
+    const error = (await runTool(
+      'create_server',
+      { size: 'small', ssh_key_name: 'rockysurf-mac', ssh_public_key: DESKTOP },
+      ctx(['create'], c),
+    ).catch((e: unknown) => e)) as Error
+
+    // Refused first, before anything is read or posted: resolving by precedence would
+    // authorize a key nobody chose.
+    expect(posts).toEqual([])
+    expect(reads()).toEqual([])
+    expect(error.message).toContain('not both')
+  })
+
+  it('does not swallow a saved-list read failure when a name has to be resolved', async () => {
+    // Degrading to "no key" here would be the exact bug this issue is about, dressed as
+    // resilience: the create would succeed and the box would come up without the key.
+    const c = client({
+      get: (async (path: string) => {
+        if (path === '/api/v1/costs') return COSTS
+        throw new CoreApiError(500, { error: 'saved keys unavailable' })
+      }) as CoreClient['get'],
+    })
+    await expect(
+      runTool('create_server', { size: 'small', ssh_key_name: 'rockysurf-mac' }, ctx(['create'], c)),
+    ).rejects.toThrow()
+    expect(c.post).not.toHaveBeenCalled()
+  })
+
+  /**
+   * DESIGN QUESTION 4 OF #360, DECIDED: a note, not a warning and not a refusal.
+   *
+   * The key stays optional exactly as it is on the web form — a box with core's managed key
+   * alone is a legitimate create. What does not carry over is the UI's reason for silence: a
+   * human omitting the key has just looked at a picker holding their own key names, and an
+   * agent has no equivalent glance.
+   */
+  it('notes the saved keys on a create that asked for none', async () => {
+    const { client: c, posts } = recording({ '/api/v1/ssh-keys': SAVED })
+    const result = (await runTool('create_server', { size: 'small' }, ctx(['create'], c))) as {
+      sshKeyNote?: string
+    }
+
+    expect(bodyOf(posts)['sshPublicKey']).toBeUndefined()
+    expect(result.sshKeyNote).toContain('rockysurf-mac')
+    expect(result.sshKeyNote).toContain('ssh_key_name')
+    // A note, not a scolding: the create happened and omitting the key is allowed.
+    expect(result.sshKeyNote).toContain('Nothing is wrong if that was intended')
+  })
+
+  it('stays silent on an installation with no saved keys', async () => {
+    // Most installations have saved none, and a note that fires on every create there would be
+    // noise the agent learns to skip.
+    const { client: c } = recording({ '/api/v1/ssh-keys': [] })
+    const result = (await runTool('create_server', { size: 'small' }, ctx(['create'], c))) as {
+      sshKeyNote?: string
+    }
+    expect(result.sshKeyNote).toBeUndefined()
+  })
+
+  it('never lets the note cost a machine when the saved list cannot be read', async () => {
+    const c = client({
+      get: (async (path: string) => {
+        if (path === '/api/v1/costs') return COSTS
+        throw new Error('saved keys unavailable')
+      }) as CoreClient['get'],
+    })
+    const result = (await runTool('create_server', { size: 'small' }, ctx(['create'], c))) as {
+      server: unknown
+      sshKeyNote?: string
+    }
+    expect(result.server).toBeDefined()
+    expect(result.sshKeyNote).toBeUndefined()
+  })
+})
+
+/**
+ * THE TWO KEY PARAMETERS, IN THE SCHEMA A CLIENT ACTUALLY RECEIVES (#360).
+ *
+ * The bug was a missing parameter, so the assertion that matches it is about the advertised
+ * input schema rather than about a function this file could call directly — a `run` that
+ * handled `ssh_key_name` perfectly while `tools/list` never offered it would be the same bug
+ * with more code behind it.
+ */
+describe('the create_server schema over the protocol', () => {
+  it('advertises both ways to name a key, and list_ssh_keys to discover one', async () => {
+    const server = createMcpServer({
+      scopes: ['read', 'create'],
+      baseUrl: 'http://127.0.0.1:0',
+      token: 'test-token',
+      fetchImpl: (async () => {
+        throw new Error('tools/list must not make an HTTP call')
+      }) as unknown as typeof fetch,
+    })
+    const mcpClient = new Client({ name: 'test', version: '0' }, { capabilities: {} })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), mcpClient.connect(clientTransport)])
+    try {
+      const tools = (await mcpClient.listTools()).tools
+      const create = tools.find((t) => t.name === 'create_server')!
+      const properties = (create.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}
+      expect(Object.keys(properties)).toContain('ssh_key_name')
+      expect(Object.keys(properties)).toContain('ssh_public_key')
+      // Discovery, in the roster: the parameter is only usable if the names can be learned.
+      expect(create.description ?? '').toContain('list_ssh_keys')
+      expect(tools.map((t) => t.name)).toContain('list_ssh_keys')
+    } finally {
+      await mcpClient.close()
+      await server.close()
+    }
   })
 })
 
@@ -1201,14 +1401,147 @@ describe('create_server can express architecture', () => {
   })
 })
 
+/**
+ * THE KEY PARAMETERS AGAINST A REAL CONTROL PLANE (#360).
+ *
+ * Everything above stubs core, which is right for a translation layer and cannot make the one
+ * claim that matters here: that `sshPublicKey` is the field core reads and that the saved list
+ * this tool resolves against is the same list the New Server page offers. A misspelt field
+ * would satisfy every mocked assertion above and ship the original bug — a box created without
+ * the key, which still works, so nothing looks broken.
+ *
+ * It is also where the PRIVATE-key refusal is asserted, deliberately: there is no second
+ * validator in the MCP layer to test, and a mock asserting a message this file never composes
+ * would be asserting its own fixture. `normalizeUserPublicKey` runs in `lifecycle.create`, and
+ * what is pinned is that its sentence reaches the agent intact.
+ */
+describe("a real control plane, the saved keys, and the human's own key", () => {
+  const LAPTOP = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop'
+  const dirs: string[] = []
+
+  afterAll(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  })
+
+  async function bootCore(sshKeys: string): Promise<{
+    booted: Awaited<ReturnType<typeof boot>>
+    client: CoreClient
+  }> {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-mcp-key-'))
+    dirs.push(dir)
+    const configPath = join(dir, 'rockysurf.config.yaml')
+    writeFileSync(configPath, `server:\n  dataDir: ${join(dir, 'data')}\nlimits:\n  maxServers: 5\n${sshKeys}`)
+
+    const booted = await boot({
+      argv: ['--config', configPath],
+      listen: false,
+      announce: () => {},
+      log: () => {},
+      providers: () => new ProviderRegistry([makeFakeProvider()]),
+    })
+    const [admin] = booted.db.sqlite.prepare('SELECT id FROM users WHERE is_admin = 1 LIMIT 1').all() as {
+      id: string
+    }[]
+    const { token } = issueSession(booted.db.db, admin!.id)
+    const client = createCoreClient({
+      baseUrl: 'http://core.test',
+      token,
+      fetchImpl: ((input: string, init?: RequestInit) => booted.app.request(input, init)) as unknown as typeof fetch,
+    })
+    return { booted, client }
+  }
+
+  const WITH_LAPTOP = `ssh:\n  keys:\n    - name: rockysurf-mac\n      publicKey: ${LAPTOP}\n`
+  const scopes: McpScope[] = ['read', 'create']
+
+  const suppliedKeyOf = (booted: Awaited<ReturnType<typeof boot>>, serverId: string) =>
+    (
+      booted.db.sqlite.prepare('SELECT user_supplied_public_key AS key FROM servers WHERE id = ?').get(serverId) as {
+        key: string | null
+      }
+    ).key
+
+  it('authorizes the key a saved name refers to, end to end', async () => {
+    const { booted, client } = await bootCore(WITH_LAPTOP)
+    try {
+      // The name the human says out loud, resolved through the same route the form's picker
+      // reads, landing on the same column a pasted key lands on.
+      const names = (await runTool('list_ssh_keys', {}, { client, scopes })) as { sshKeyNames: string[] }
+      expect(names.sshKeyNames).toEqual(['rockysurf-mac'])
+
+      const created = (await runTool('create_server', { size: 'small', ssh_key_name: 'rockysurf-mac' }, {
+        client,
+        scopes,
+      })) as { server: { serverId: string }; sshKeyNote?: string }
+
+      expect(suppliedKeyOf(booted, created.server.serverId)).toBe(LAPTOP)
+      // The note is for a create that asked for no key; this one asked for one.
+      expect(created.sshKeyNote).toBeUndefined()
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('authorizes a verbatim key by the same road', async () => {
+    const { booted, client } = await bootCore('')
+    try {
+      const created = (await runTool('create_server', { size: 'small', ssh_public_key: LAPTOP }, {
+        client,
+        scopes,
+      })) as { server: { serverId: string } }
+      expect(suppliedKeyOf(booted, created.server.serverId)).toBe(LAPTOP)
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it("surfaces core's PRIVATE-key refusal, and creates nothing", async () => {
+    const { booted, client } = await bootCore('')
+    try {
+      const error = (await runTool(
+        'create_server',
+        { size: 'small', ssh_public_key: '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----' },
+        { client, scopes },
+      ).catch((e: unknown) => e)) as Error
+
+      const payload = JSON.parse(error.message) as Record<string, unknown>
+      expect(payload['refused']).toBe(true)
+      expect(payload['status']).toBe(400)
+      expect(payload['code']).toBe('invalid_public_key')
+      // Core's own sentence, written for the person who pasted, reaching the agent unedited —
+      // there is no second copy of it in the MCP layer to drift from this one.
+      expect(String(payload['message'])).toContain('PRIVATE key')
+      expect(booted.db.sqlite.prepare('SELECT COUNT(*) AS n FROM servers').get()).toMatchObject({ n: 0 })
+    } finally {
+      await booted.close()
+    }
+  })
+
+  it('notes the saved keys when a real create asked for none', async () => {
+    const { booted, client } = await bootCore(WITH_LAPTOP)
+    try {
+      const created = (await runTool('create_server', { size: 'small' }, { client, scopes })) as {
+        server: { serverId: string }
+        sshKeyNote?: string
+      }
+      expect(suppliedKeyOf(booted, created.server.serverId)).toBeNull()
+      expect(created.sshKeyNote).toContain('rockysurf-mac')
+    } finally {
+      await booted.close()
+    }
+  })
+})
+
 describe('the tool surface', () => {
-  it('is the six tools the bead names plus five added since, each with a scope', () => {
+  it('is the six tools the bead names plus six added since, each with a scope', () => {
     // `list_offerings` was the seventh, added by rockysurf-oeay: `create_server.offering_id` was
     // advertised with no way to learn its values, which made the parameter usable only by an
     // agent a human had already briefed. `list_packs` is the same argument applied to
     // `pack_id`, and `start_server` is the half of stop/start that was missing — both #278.
     // `list_providers` and `get_provider` are #351: what a cloud CAN DO (capabilities), where
-    // `list_offerings` only ever told an agent what it sells.
+    // `list_offerings` only ever told an agent what it sells. `list_ssh_keys` is #360, and it
+    // is the discovery argument a third time — `create_server.ssh_key_name` names a saved key,
+    // and a name an agent cannot learn is a parameter only a briefed agent can use.
     expect(MCP_TOOLS.map((t) => t.name).sort()).toEqual([
       'create_server',
       'get_provider',
@@ -1218,6 +1551,7 @@ describe('the tool surface', () => {
       'list_packs',
       'list_providers',
       'list_servers',
+      'list_ssh_keys',
       'start_server',
       'stop_server',
       'terminate_server',
