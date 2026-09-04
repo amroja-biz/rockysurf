@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router'
 import { useAuth } from '../contexts/AuthContext'
 import { useEvents } from '../contexts/EventsContext'
+import { useScrollToHash } from '../hooks/useScrollToHash'
 import { GITHUB_URL } from '../lib/links'
 import { EtchedDefs } from './etched'
 
@@ -52,6 +53,9 @@ export function AppShell({
   const { user, logout } = useAuth()
   const { connectionStatus } = useEvents()
   const { pathname } = useLocation()
+  // Every authenticated page renders through here, so this is the one place a `#anchor` in the
+  // URL needs to be made to work (issue #344) — not a per-page concern.
+  useScrollToHash()
 
   return (
     <div className="app-shell">
