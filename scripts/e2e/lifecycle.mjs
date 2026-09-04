@@ -36,6 +36,7 @@ import {
   resolveRunCredentials,
 } from './aws-audit-credentials.mjs'
 import { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
+import { buildConfigYaml } from './e2e-config.mjs'
 
 /**
  * The offerings this exit run uses, and THE ARCHITECTURE EACH ONE IS EXPECTED TO BE.
@@ -163,65 +164,38 @@ function hetznerToken() {
   return token
 }
 
+/**
+ * Resolve this run's decisions, then hand them to `buildConfigYaml` and write the file.
+ *
+ * THE TEXT ITSELF IS BUILT IN `e2e-config.mjs`, which takes no network, no filesystem and no
+ * environment, so a unit test can validate the exact file every cloud gets against core's own
+ * loader on a pull request (issue #343). What stays here is everything that cannot be a pure
+ * function: the public-address lookup, the Hetzner token, the AWS profile resolution, the log
+ * line that records the firewall decision, and the write itself.
+ */
 async function writeConfig() {
-  const lines = [`server:`, `  port: ${PORT}`, `  dataDir: ${dataDir}`, `providers:`]
+  // AWS is the else-branch below, so every non-Hetzner cloud resolves the address the same way.
+  const cidr = CLOUD === 'hetzner' ? undefined : `${await currentPublicIp()}/32`
+  if (cidr) log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
 
-  if (CLOUD === 'hetzner') {
-    lines.push(`  hetzner:`, `    enabled: true`, `    token: ${hetznerToken()}`, `    location: fsn1`)
-  } else if (CLOUD === 'gcp') {
-    const cidr = `${await currentPublicIp()}/32`
-    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
-    // NO `keyFile`, ever. The credential comes from the ambient ADC chain, which in CI is the
-    // federated credential file `google-github-actions/auth` wrote from GitHub's own OIDC token
-    // and locally is `gcloud auth application-default login`. There is no long-lived key in
-    // either path, and the config schema has nowhere to put key material anyway.
-    lines.push(
-      `  gcp:`,
-      `    enabled: true`,
-      `    projectId: ${GCP_PROJECT}`,
-      `    zone: ${GCP_ZONE}`,
-      `    sshAllowedCidr: ${cidr}`,
-    )
-  } else if (CLOUD === 'azure') {
-    const cidr = `${await currentPublicIp()}/32`
-    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
-    // NO SECRET, ever — the Azure config schema has nowhere to put one. The credential comes
-    // from `CredentialChain`, which in CI is workload identity federation: the three standard
-    // AZURE_* variables and a file holding GitHub's own OIDC token (gh issue #170).
-    //
-    // `allowAzureCli: false` IS LOAD-BEARING HERE, NOT HARDENING THEATRE. The nightly's sweep
-    // step logs `az` in as the CI-ONLY identity on the same runner, so a chain permitted to fall
-    // through to `az account get-access-token` could quietly run the lifecycle as the sweep
-    // account — every check would pass and the run would prove nothing whatsoever about the role
-    // this project publishes. It is also what the 2026-08-26 hand run set, for the same reason.
-    lines.push(
-      `  azure:`,
-      `    enabled: true`,
-      `    subscriptionId: ${AZURE_SUBSCRIPTION}`,
-      `    resourceGroup: ${AZURE_RESOURCE_GROUP}`,
-      `    location: ${AZURE_LOCATION}`,
-      `    sshAllowedCidr: ${cidr}`,
-      `    allowAzureCli: false`,
-    )
-  } else {
-    const cidr = `${await currentPublicIp()}/32`
-    log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
-    lines.push(`  aws:`, `    enabled: true`, `    region: ${AWS_REGION}`)
-    // Pin the nightly to its own SSH group (issue #326). Without this the provider defaults to
-    // `rockysurf-ssh`, the group a real user's box would also use — and the `if: always()` sweep,
-    // aimed at the CI group, would then clean a group the run never filled while the shared one
-    // leaked. The sweep imports this same const, so the two can never name different groups.
-    lines.push(`    securityGroupName: ${CI_SSH_SG_NAME}`)
-    // A named profile locally, the default credential chain in CI — where there is no
-    // ~/.aws/config to name and the credentials arrive as environment variables. Set
-    // ROCKYSURF_E2E_AWS_PROFILE to '' to force the chain.
-    const { profile } = resolveRunCredentials(process.env)
-    if (profile) lines.push(`    profile: ${profile}`)
-    lines.push(`    sshAllowedCidr: ${cidr}`)
-  }
+  const text = buildConfigYaml({
+    cloud: CLOUD,
+    port: PORT,
+    dataDir,
+    cidr,
+    hetznerToken: CLOUD === 'hetzner' ? hetznerToken() : undefined,
+    gcpProject: GCP_PROJECT,
+    gcpZone: GCP_ZONE,
+    azureSubscription: AZURE_SUBSCRIPTION,
+    azureResourceGroup: AZURE_RESOURCE_GROUP,
+    azureLocation: AZURE_LOCATION,
+    awsRegion: AWS_REGION,
+    awsSecurityGroupName: CI_SSH_SG_NAME,
+    awsProfile: resolveRunCredentials(process.env).profile,
+  })
 
   mkdirSync(dataDir, { recursive: true, mode: 0o700 })
-  writeFileSync(configPath, `${lines.join('\n')}\n`, { mode: 0o600 })
+  writeFileSync(configPath, text, { mode: 0o600 })
 }
 
 /* ------------------------------------------------ what THIS run is allowed to destroy */

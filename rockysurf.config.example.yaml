@@ -208,6 +208,14 @@ providers:
     # sshAllowedCidr: "0.0.0.0/0"
     # allowAllCidr: true
 
+    # The rest have working defaults and are here so you know they exist.
+    # securityGroupName: rockysurf-ssh  # the shared SSH group, one per region, reused by every
+    #                                   # server. Name a different one to keep a second
+    #                                   # installation's rules out of this one's group.
+    # managedBy: rockysurf              # the managed-by tag every audit filters on
+    # rootVolumeGb: 20                  # root volume size, in GiB
+    # amiParameterPrefix: /aws/service/canonical/ubuntu/server/24.04/stable/current
+
     # Optional allowlist: the only instance types this installation will create, on the New
     # Server page and through the API, the CLI and MCP alike. Omit to offer everything the
     # region sells. t4g.* are ARM (Graviton) and are the cheap, fast default.

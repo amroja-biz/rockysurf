@@ -294,6 +294,25 @@ const awsProviderSchema = section(
      * what an operator sees.
      */
     allowAllCidr: z.boolean().optional(),
+    /**
+     * Name of the shared SSH security group. One per region, reused by every server.
+     *
+     * The THIRD field this section has had to learn the same lesson about (issue #343, after
+     * rockysurf-55fx.12 and rockysurf-p5jr), and the first one to break CI rather than an
+     * operator: #327 pointed the nightly at its own group, `rockysurf-nightly-ssh`, so a sweep
+     * aimed at CI could never touch the group a real user's box shares — and both AWS legs then
+     * exited in two seconds, before reaching the cloud at all, on `Unrecognized key:
+     * "securityGroupName"`. The provider has accepted the field since it was written. This
+     * strict object is what reads the operator's file, so a field only the provider knows about
+     * is not merely undocumented, it is unusable.
+     */
+    securityGroupName: z.string().trim().min(1).optional(),
+    /** Value of the `managed-by` tag every audit filters on, and the group's `Name` tag. */
+    managedBy: z.string().trim().min(1).optional(),
+    /** Root volume size in GiB. */
+    rootVolumeGb: z.coerce.number().int().positive().optional(),
+    /** Base image family, as an SSM public parameter path with `{arch}` substituted. */
+    amiParameterPrefix: z.string().trim().min(1).optional(),
     /** Optional allowlist of instance types offered to users. Omit to offer everything. */
     sizes: z.array(z.string().trim().min(1)).nonempty().optional(),
   }),
