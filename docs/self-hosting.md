@@ -802,7 +802,8 @@ Username for '...': No such device or address` — correct, and no help at all.
 **You can create anyway.** The check is a prediction, not a guarantee: a forge can be briefly
 unreachable, and the box makes its own credential choice at clone time. The SPA offers a *Create
 anyway* checkbox once something has been refused, the API takes `"createAnyway": true`, and the
-MCP tool takes `create_anyway`.
+MCP `create_server` tool takes `create_anyway` — on an installation that has granted the `create`
+scope, which is not the default (see *What an agent connected over MCP may do*).
 
 **A self-hosted forge on a private network still gets checked**, but only because you named it.
 Repository URLs are user-supplied text reaching a control plane that holds cloud credentials, so
@@ -1319,6 +1320,29 @@ A pack installed from a registry lands as a **database row with no `sourceFile`*
 one you create in the admin UI. The boot reconcile described above never touches it: it deletes
 file-backed rows whose files have gone, and a registry pack was never file-backed. So it survives
 restarts, and removing it is something you do explicitly in the admin UI.
+
+## What an agent connected over MCP may do
+
+`mcp.scopes` decides, and it defaults to `[read, stop]`. That grant advertises everything that
+reads (`list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs`,
+`list_providers`, `get_provider`) and the pause/resume pair (`stop_server`, `start_server`).
+`create_server` needs `create`, and `terminate_server` needs `terminate`: both are opt-in,
+because making a box costs money and destroying one costs work that does not come back.
+
+**An agent reporting that there is no `create_server` tool is reporting this setting.** The tool
+exists and has since the MCP server did; the default grant withholds it, and a tool the
+installation has not granted is not offered to the client at all. Under a grant that withholds
+it, the tools that do get offered say so in their own descriptions rather than leaving the
+absence to be guessed at.
+
+To grant it: tick `create` under **Settings → MCP** (or add it to `mcp.scopes` in the config
+file), then **reconnect the MCP client**. Scopes are read by the separate process your client
+starts with `rockysurf mcp`, when that process starts — Rocky Surf itself needs no restart, and
+nothing changes for an already-connected client until it reconnects. In Claude Code that means
+restarting the session.
+
+The blast radius each scope buys, and why the split is where it is, is in
+[`SECURITY.md`](../SECURITY.md#the-scope-split).
 
 ## Security
 

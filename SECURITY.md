@@ -627,6 +627,14 @@ A tool the installation has not granted is neither advertised nor callable, and 
 **re-checked at call time** rather than relying on the tool's absence from the list — a client
 can call a name it was never offered, and "not listed" is not a security control.
 
+The absence is not silent, though. A tool that *is* advertised and names a withheld one in its
+own description — `list_packs`, `list_offerings` and `list_providers` all point at
+`create_server` — carries a note saying which scope that tool needs and that `mcp.scopes` is
+where an operator grants it.
+Nothing withheld is advertised or made callable by this; it exists because silence read as a
+missing feature. An agent on the default scopes reported `create_server` as a registration bug,
+having confirmed twice that a tool it was deliberately not granted was not there.
+
 ### What an agent never receives
 
 No tool result contains key material or a credential of any kind. `get_ssh_command` returns a

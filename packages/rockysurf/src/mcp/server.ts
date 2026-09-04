@@ -4,7 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { z } from 'zod'
 import type { McpScope } from '@rockysurf/core'
 import { createCoreClient, unreachableMessage } from './client.js'
-import { runTool, visibleTools } from './tools.js'
+import { describeTool, runTool, visibleTools } from './tools.js'
 
 /**
  * The MCP server: `rockysurf mcp` (rockysurf-ftl9.1).
@@ -49,10 +49,14 @@ export function createMcpServer(options: McpServerOptions): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     // Only what this installation granted. A tool an agent cannot call should not be dangled
     // in front of it — that is how a model spends a turn discovering it is not allowed.
+    //
+    // `describeTool` does not widen that: it adds the REASON a named-but-absent tool is absent
+    // to the description of a tool that is present (#353). Silence about a withheld scope reads
+    // as a missing feature; a sentence naming `mcp.scopes` reads as the operator decision it is.
     tools: visibleTools(options.scopes).map((tool) => ({
       name: tool.name,
       title: tool.title,
-      description: tool.description,
+      description: describeTool(tool, options.scopes),
       inputSchema: z.toJSONSchema(tool.inputSchema, { io: 'input' }) as Record<string, unknown>,
     })),
   }))

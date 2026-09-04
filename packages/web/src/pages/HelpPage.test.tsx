@@ -46,6 +46,17 @@ describe('HelpPage', () => {
     expect(text).toContain('budget-capped, not sandboxed')
   })
 
+  it('answers "my agent says there is no create_server tool" before it is asked (#353)', () => {
+    // The owner hit this and it read as a bug worth filing. The page must name the tool, say
+    // the absence is the default scope grant, and point at where the scope is granted — a
+    // paragraph that says only "create is opt-in" does not connect to the symptom.
+    const { container } = renderHelp()
+    const text = container.textContent ?? ''
+    expect(text).toContain('create_server')
+    expect(text).toContain('not a bug')
+    expect(container.querySelector('a[href="/settings?section=mcp"]')).toBeTruthy()
+  })
+
   it('mints the token with a command that works before v0.1.0 is on npm (rockysurf-lsi1)', () => {
     // The owner caught the first version teaching `rockysurf token` — a command npm cannot
     // supply until the packages are published. The page must show the checkout form and say
