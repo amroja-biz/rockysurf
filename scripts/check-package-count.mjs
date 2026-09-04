@@ -75,7 +75,7 @@ function publishablePackages() {
  * this deliberately stops before). Returns `{ name }` per row, name with backticks stripped.
  *
  * A line scanner rather than a markdown parser, matching the style of the other doc-vs-reality
- * lints in this directory (e.g. check-size-table.mjs): this repo's tables are simple enough
+ * lints in this directory (e.g. check-packs-bundle.mjs): this repo's tables are simple enough
  * that a real parser would be more code to trust, not less.
  */
 function releasingTableRows(source) {

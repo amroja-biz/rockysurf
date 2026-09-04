@@ -16,7 +16,8 @@
  * fail is worse than no test.
  *
  * So the copy is a committed artifact and this lint keeps it honest, the same shape as
- * `check-iam-policy.mjs` (published policy vs. what the provider calls) and `check-size-table.mjs`.
+ * `check-iam-policy.mjs` (published policy vs. what the provider calls) and
+ * `check-package-count.mjs` (three docs vs. what `pnpm publish -r` actually ships).
  * Two files that must agree, and a check that fails when they do not, is a pattern this
  * repository already trusts.
  *

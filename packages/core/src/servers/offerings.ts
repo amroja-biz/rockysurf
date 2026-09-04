@@ -1,4 +1,16 @@
-import type { Architecture, Offering } from '@rockysurf/provider-sdk'
+import {
+  archLabel,
+  chooseForSize,
+  chooseOffering,
+  SIZE_REQUIREMENTS,
+  type Architecture,
+  type Offering,
+  type OfferingRefusal,
+  type PreferenceObstacle,
+  type RejectedPreference,
+  type Requirements,
+  type SizeChoiceOptions,
+} from '@rockysurf/provider-sdk'
 import type { ServerSize } from '../db/schema.js'
 
 /**
@@ -12,40 +24,20 @@ import type { ServerSize } from '../db/schema.js'
  * had just invented ("arch arm64 does not match offering e2-micro (amd64)"). The only surface
  * that worked was the SPA, because it resolves in the browser and posts an `offeringId`.
  *
- * So the SPA's rule moves to where every caller passes through. A size is a FLOOR, not a
- * machine type: the cheapest available offering that meets it wins, and a cloud with coarser
- * types simply rounds up. Requested arch is part of the floor rather than a filter applied
- * afterwards, which is what makes arch-only creation possible at all.
+ * THE DECISIONS ARE NO LONGER MADE HERE (issue #349, ADR-0024). `chooseForSize` /
+ * `chooseOffering` in `@rockysurf/provider-sdk` own them, and the SPA's
+ * `packages/web/src/lib/requirements.ts` calls the same two functions before submit. This file
+ * is the server-side VOICE of that one resolver: it turns a structured outcome into the
+ * lowercase fragments core's HTTP errors are built from, and it keeps the two server-only
+ * helpers (`allowedOfferings`, `describeCatalogue`) that the browser has no use for.
  *
- * This module knows nothing about any particular cloud. It compares numbers on `Offering` and
- * matches `Offering.id` against a string allowlist, so no provider-id conditional is involved
- * and a provider added tomorrow is resolved by the same code.
- *
- * The SPA keeps its own copy in `packages/web/src/lib/requirements.ts` — it must resolve
- * BEFORE submit to show the machine and its price, and the dependency lint keeps core and the
- * browser bundle apart. `scripts/check-size-table.mjs` fails the build if the two size tables
- * drift, because two tables that disagree would show one price and bill another.
+ * What used to be here — `SIZE_REQUIREMENTS`, `byPrice`, `meets`, `preferenceProblem` and the
+ * choosing half of `resolveOffering`/`resolveSize` — existed in parallel in the SPA, and
+ * `scripts/check-size-table.mjs` compared only the NUMBERS. There is one table now, so that lint
+ * is retired.
  */
 
-export interface Requirements {
-  vcpu: number
-  memGb: number
-  /** When set, only offerings of this architecture satisfy the requirements. */
-  arch?: Architecture
-}
-
-/**
- * What each size asks for. MINIMUMS, not exact matches.
- *
- * Kept identical to the SPA's table by `scripts/check-size-table.mjs`. Changing a row here is
- * a pricing change for every installation that creates by size, so it changes in both places
- * or not at all.
- */
-export const SIZE_REQUIREMENTS: Record<ServerSize, Requirements> = {
-  small: { vcpu: 2, memGb: 2 },
-  medium: { vcpu: 2, memGb: 4 },
-  large: { vcpu: 4, memGb: 8 },
-}
+export { archLabel, SIZE_REQUIREMENTS, type Requirements }
 
 export type OfferingResolution =
   | { ok: true; offering: Offering }
@@ -58,23 +50,27 @@ export type OfferingResolution =
    */
   | { ok: false; reason: string; soldOut: boolean }
 
-export function archLabel(arch: Architecture): string {
-  return arch === 'arm64' ? 'ARM64' : 'x86-64'
+/** `on ARM64`, or nothing at all when the caller expressed no preference. */
+function archNote(arch: Architecture | undefined): string {
+  return arch ? ` on ${archLabel(arch)}` : ''
 }
 
-/** Cheapest first; unpriced offerings sort last, since we cannot compare them honestly. */
-function byPrice(a: Offering, b: Offering): number {
-  const left = a.hourly?.amount ?? Number.POSITIVE_INFINITY
-  const right = b.hourly?.amount ?? Number.POSITIVE_INFINITY
-  if (left !== right) return left - right
-  // A stable tiebreak, so two equally-priced types do not resolve differently run to run.
-  return a.id.localeCompare(b.id)
+/**
+ * The server-side sentence for a refusal.
+ *
+ * Lowercase and unpunctuated, because every one of these ends up interpolated into a larger
+ * HTTP error message in `servers/routes.ts` rather than read on its own.
+ */
+function refusalReason(refusal: OfferingRefusal): string {
+  const { requirements: r } = refusal
+  const floor = `${r.vcpu} vCPU and ${r.memGb} GB${archNote(r.arch)}`
+  if (!refusal.soldOut) return `no machine type here offers at least ${floor}`
+  // Lead with the provider's reason when every candidate gives the same one (Azure: no core
+  // quota, issue #116) — its remedy is a portal request, not waiting for stock.
+  return refusal.unanimousReason !== undefined
+    ? `every machine type meeting ${floor} is unavailable: ${refusal.unanimousReason} — try another size or architecture`
+    : `every machine type meeting ${floor} is sold out right now — try another size or architecture`
 }
-
-const meets = (offering: Offering, requirements: Requirements): boolean =>
-  offering.cpu >= requirements.vcpu &&
-  offering.memoryGb >= requirements.memGb &&
-  (requirements.arch === undefined || offering.arch === requirements.arch)
 
 /**
  * The cheapest AVAILABLE offering meeting `requirements`, or an honest refusal.
@@ -84,34 +80,8 @@ const meets = (offering: Offering, requirements: Requirements): boolean =>
  * ignored, and they found out on the bill rather than in the response.
  */
 export function resolveOffering(offerings: readonly Offering[], requirements: Requirements): OfferingResolution {
-  const matching = offerings.filter((o) => meets(o, requirements))
-  const archNote = requirements.arch ? ` on ${archLabel(requirements.arch)}` : ''
-
-  if (matching.length === 0) {
-    return {
-      ok: false,
-      soldOut: false,
-      reason: `no machine type here offers at least ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote}`,
-    }
-  }
-
-  const available = matching.filter((o) => o.available).sort(byPrice)
-  const chosen = available[0]
-  if (!chosen) {
-    // Lead with the provider's reason when every candidate gives the same one (Azure: no core
-    // quota, issue #116) — its remedy is a portal request, not waiting for stock.
-    const why = matching[0]?.unavailableReason
-    const unanimous = why !== undefined && matching.every((o) => o.unavailableReason === why)
-    return {
-      ok: false,
-      soldOut: true,
-      reason: unanimous
-        ? `every machine type meeting ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote} is unavailable: ${why} — try another size or architecture`
-        : `every machine type meeting ${requirements.vcpu} vCPU and ${requirements.memGb} GB${archNote} is sold out right now — try another size or architecture`,
-    }
-  }
-
-  return { ok: true, offering: chosen }
+  const choice = chooseOffering(offerings, requirements)
+  return choice.ok ? choice : { ok: false, soldOut: choice.soldOut, reason: refusalReason(choice) }
 }
 
 /**
@@ -126,42 +96,30 @@ export type SizeResolution =
   | { ok: true; offering: Offering; preferred: boolean; note?: string }
   | { ok: false; reason: string; soldOut: boolean; note?: string }
 
-export interface SizeOptions {
-  arch?: Architecture
-  /** The machine type this user saved for this size on this cloud, if they saved one. */
-  preference?: string
-}
+export type SizeOptions = SizeChoiceOptions
 
 /**
- * Why a saved preference cannot be used right now, or `undefined` when it can.
+ * Why the saved type could not be used, in core's voice.
  *
- * THE FLOOR IS NOT CHECKED, on purpose. A size's `SIZE_REQUIREMENTS` row exists to stop a
- * caller with no opinion being handed something smaller than they asked for; a caller who
- * SAVED `t4g.large` as their small has the opinion, and re-refusing it against the floor would
- * be the product arguing with a setting it asked the user to make.
- *
- * The three things that ARE checked are the three that make the preference impossible rather
- * than merely unusual: it is not sold here, it is not sellable right now, or its architecture
- * contradicts one the caller named explicitly on this create.
+ * THE FLOOR IS NOT CHECKED, on purpose, and that rule lives in the shared resolver
+ * (`preferenceObstacle`): a size's `SIZE_REQUIREMENTS` row exists to stop a caller with no
+ * opinion being handed something smaller than they asked for; a caller who SAVED `t4g.large` as
+ * their small has the opinion, and re-refusing it against the floor would be the product arguing
+ * with a setting it asked the user to make.
  */
-function preferenceProblem(
-  offerings: readonly Offering[],
-  preference: string,
-  size: ServerSize,
-  arch: Architecture | undefined,
-): string | undefined {
-  const chosen = offerings.find((o) => o.id === preference)
-  const saved = `your saved ${size} type "${preference}"`
-  if (!chosen) return `${saved} is not one this installation offers`
-  if (!chosen.available) {
-    // The provider's own reason where it has one (Azure: which quota gate refused, issue #116) —
-    // "sold out" would send someone to wait for stock that a quota request is the only cure for.
-    return `${saved} is unavailable: ${chosen.unavailableReason ?? 'it is sold out right now'}`
+function obstacleSentence(rejected: RejectedPreference, size: ServerSize): string {
+  const saved = `your saved ${size} type "${rejected.preference}"`
+  const obstacle: PreferenceObstacle = rejected.obstacle
+  switch (obstacle.kind) {
+    case 'not-offered':
+      return `${saved} is not one this installation offers`
+    case 'unavailable':
+      // The provider's own reason where it has one (Azure: which quota gate refused, issue #116) —
+      // "sold out" would send someone to wait for stock that a quota request is the only cure for.
+      return `${saved} is unavailable: ${obstacle.unavailableReason ?? 'it is sold out right now'}`
+    case 'arch-mismatch':
+      return `${saved} is ${archLabel(obstacle.preferredArch)} and this create asked for ${archLabel(obstacle.requestedArch)}`
   }
-  if (arch !== undefined && chosen.arch !== arch) {
-    return `${saved} is ${archLabel(chosen.arch)} and this create asked for ${archLabel(arch)}`
-  }
-  return undefined
 }
 
 /**
@@ -172,35 +130,30 @@ function preferenceProblem(
  * failure mode this has to avoid is a user who saved `t4g.large`, quietly got a `t4g.small` for
  * six weeks, and found out from the invoice.
  *
- * Every caller passes through here: the SPA resolves in the browser with the mirror of this
- * function in `packages/web/src/lib/requirements.ts` and posts a concrete `offeringId`, and the
- * CLI and the MCP server post a `size` that reaches this one through the create route. Same
- * preference, same order, three surfaces.
+ * Every caller passes through the shared `chooseForSize`: the SPA calls it in the browser and
+ * posts a concrete `offeringId`, and the CLI and the MCP server post a `size` that reaches this
+ * wrapper through the create route. Same preference, same order, three surfaces.
  */
 export function resolveSize(
   offerings: readonly Offering[],
   size: ServerSize,
   options: SizeOptions = {},
 ): SizeResolution {
-  const { arch, preference } = options
-  const fallback = resolveOffering(offerings, {
-    ...SIZE_REQUIREMENTS[size],
-    ...(arch ? { arch } : {}),
-  })
+  const choice = chooseForSize(offerings, size, options)
+  const note = choice.rejected ? obstacleSentence(choice.rejected, size) : undefined
 
-  if (!preference) return fallback.ok ? { ...fallback, preferred: false } : fallback
-
-  const problem = preferenceProblem(offerings, preference, size, arch)
-  if (!problem) {
-    // `preferenceProblem` already found it and vouched for it; re-finding it keeps this
-    // function's return type honest without a non-null assertion on a search done twice.
-    const chosen = offerings.find((o) => o.id === preference)!
-    return { ok: true, offering: chosen, preferred: true }
+  if (choice.ok) {
+    if (!note) return { ok: true, offering: choice.offering, preferred: choice.preferred }
+    return {
+      ok: true,
+      offering: choice.offering,
+      preferred: choice.preferred,
+      note: `${note}, so ${choice.offering.id} was used instead`,
+    }
   }
 
-  return fallback.ok
-    ? { ...fallback, preferred: false, note: `${problem}, so ${fallback.offering.id} was used instead` }
-    : { ...fallback, note: problem }
+  const refusal = { ok: false as const, soldOut: choice.soldOut, reason: refusalReason(choice) }
+  return note ? { ...refusal, note } : refusal
 }
 
 /**
@@ -211,12 +164,12 @@ export function resolveSize(
  * New Server page" since it was written — and nothing read it. An operator who set it to keep
  * anyone from starting a 64-vCPU box got the sentence and none of the effect.
  *
- * Applied here rather than in the provider because it is core's own idea: the provider sells
- * what it sells, and which of that this installation is willing to buy is an operator policy.
- * It is a plain string allowlist against `Offering.id`, so applying it costs core no knowledge
- * of any cloud.
+ * SERVER-ONLY, and deliberately not part of the shared resolver: the provider sells what it
+ * sells, and which of that this installation is willing to buy is an operator policy that
+ * reaches the browser already applied, in the `/api/v1/providers` response.
  *
- * An unset allowlist offers everything, which is the documented default.
+ * It is a plain string allowlist against `Offering.id`, so applying it costs core no knowledge
+ * of any cloud. An unset allowlist offers everything, which is the documented default.
  */
 export function allowedOfferings(
   offerings: readonly Offering[],

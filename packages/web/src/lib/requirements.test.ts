@@ -45,18 +45,15 @@ describe('resolving a t-shirt size to a concrete offering', () => {
     if (result.ok) expect(result.offering.id).toBe('t3.small')
   })
 
-  it('offers the runners-up as alternatives, cheapest first', () => {
-    const result = resolveOffering(CATALOGUE, SIZE_REQUIREMENTS.small)
-    if (!result.ok) throw new Error('expected a resolution')
-    expect(result.alternatives.map((o) => o.id)).toEqual(['t3.small', 't4g.medium', 't3.medium'])
-  })
-
-  it('sorts an unpriced offering last rather than treating it as free', () => {
+  it('never picks an unpriced offering over a priced one that fits', () => {
+    // `null` means the provider quoted nothing, not that it is free. (That an unpriced type
+    // sorts LAST rather than first is pinned on the shared comparator itself, in the SDK's
+    // `sizing.test.ts`; the runners-up list this used to also assert is gone — nothing outside
+    // this module ever read it.)
     const withUnpriced = [...CATALOGUE, offering({ id: 'mystery', cpu: 8, memoryGb: 16, arch: 'arm64', hourly: null })]
     const result = resolveOffering(withUnpriced, { vcpu: 2, memGb: 2 })
     if (!result.ok) throw new Error('expected a resolution')
     expect(result.offering.id).toBe('t4g.small')
-    expect(result.alternatives.at(-1)?.id).toBe('mystery')
   })
 
   it('distinguishes "sold out" from "not offered here"', () => {
@@ -135,10 +132,16 @@ describe('price formatting', () => {
 /**
  * `resolveSize` — the size resolver with the user's saved type in it (issue #124).
  *
- * The browser's copy of `packages/core/src/servers/offerings.ts`, and it has to agree with it
- * exactly: the page quotes the price of the machine IT resolved, and if the two disagreed the
- * user would be shown one number and billed another. The cases below are the same cases core's
- * `offering-resolution.test.ts` pins, asked of this copy.
+ * NO LONGER A COPY (issue #349). The decisions belong to `chooseForSize` in
+ * `@rockysurf/provider-sdk`, which core's `packages/core/src/servers/offerings.ts` calls too;
+ * this module only phrases the outcome for the form. So these cases — the same cases core's
+ * `offering-resolution.test.ts` pins through its create route — now exercise the ONE
+ * implementation through the browser's wrapper, and what they add on top of the SDK's own
+ * `sizing.test.ts` is the wording a person actually reads.
+ *
+ * The agreement they used to have to be trusted for is now structural: the page quotes the price
+ * of the machine it resolved and posts that offering, and there is nothing left for it to
+ * disagree with core about.
  */
 describe('a saved machine type is preferred over the cheapest that fits (issue #124)', () => {
   it('uses the saved type', () => {
