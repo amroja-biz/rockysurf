@@ -102,6 +102,20 @@ export function HelpPage() {
               <code>create</code> and <code>terminate</code> are separate opt-ins, because making a
               box costs money and destroying one costs work.
             </p>
+            {/*
+              #353: an agent on the default scopes reported "this MCP server has no create_server
+              tool" as a bug it had confirmed twice. It has one — the default grant simply
+              withholds it. The MCP roster now says so itself; this is the same sentence for the
+              human, on the page they are already reading when they wire the client up.
+            */}
+            <p>
+              So <strong>an agent that says there is no create_server tool is describing this
+              setting, not a bug</strong>: on the default scopes a tool that creates a box is not
+              among the ones it is offered. Tick <code>create</code> under{' '}
+              <Link to="/settings?section=mcp">Settings &rarr; MCP</Link> and reconnect the MCP client —
+              scopes are read by that separate process when it starts, so nothing here takes
+              effect until it does.
+            </p>
           </div>
           <div>
             <h3>Agent Skills</h3>

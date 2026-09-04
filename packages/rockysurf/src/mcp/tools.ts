@@ -651,6 +651,49 @@ export function visibleTools(scopes: readonly McpScope[]): McpToolDefinition[] {
 }
 
 /**
+ * One tool's description, TOLD WHAT THIS INSTALLATION WITHHELD (#353).
+ *
+ * THE BUG THIS FIXES IS A DOCUMENTATION BUG WITH A RUNTIME CAUSE. `create_server` has always
+ * been implemented, on the `create` scope, which is opt-in — so on a default `[read, stop]`
+ * installation `visibleTools` drops it. That much is deliberate and stays. What was not
+ * deliberate is that the tools that DO survive that grant go on NAMING it: `list_packs` says
+ * "use it to pick a pack_id for create_server", `list_offerings` says "pick an offering_id for
+ * create_server", and `list_providers` points at it for prices. An agent reading that roster
+ * sees a server documented around a tool it does not ship, and the only conclusion available to
+ * it is "registration bug" — which is exactly what the owner's agent concluded, in #353, twice
+ * confirmed and wrongly.
+ *
+ * SILENCE IS THE PART THAT MISLEADS, NOT THE ABSENCE. `server.ts` argues that a tool an agent
+ * cannot call should not be dangled in front of it, and that argument is untouched here: no
+ * withheld tool is added to the listing, and nothing about the gate changes. This makes the
+ * REASON for the absence visible in the roster the agent already reads, at roster time, before
+ * a call is spent finding out — so "not offered here" reads as an operator's setting with a
+ * named way to change it, rather than as a missing feature to report.
+ *
+ * Derived from the description text rather than hand-maintained per tool, so a future tool that
+ * mentions a scope-gated one inherits the note instead of re-acquiring the bug.
+ */
+export function describeTool(tool: McpToolDefinition, scopes: readonly McpScope[]): string {
+  const withheld = MCP_TOOLS.filter(
+    (other) =>
+      other.name !== tool.name &&
+      !scopes.includes(other.scope) &&
+      tool.description.includes(other.name),
+  )
+  if (withheld.length === 0) return tool.description
+
+  const notes = withheld.map(
+    (other) =>
+      `${other.name} is named above but is NOT offered by this installation: it needs the ` +
+      `"${other.scope}" MCP scope, which an operator grants deliberately in mcp.scopes in ` +
+      `rockysurf.config.yaml (Settings → MCP in the web UI), after which this MCP client has ` +
+      `to reconnect to see it. That is a setting, not a missing tool and not a bug to report — ` +
+      `ask the human to grant the scope, or do that step from the web UI instead.`,
+  )
+  return `${tool.description}\n\nSCOPE NOTE: ${notes.join(' ')}`
+}
+
+/**
  * Run one tool, gate first.
  *
  * The gate is re-checked here even though `visibleTools` already hid it: a client may call a

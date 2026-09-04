@@ -1,3 +1,5 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { boot, issueSession, makeFakeProvider, ProviderRegistry, type McpScope } from '@rockysurf/core'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -5,7 +7,8 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { createCommand } from '../cli/commands.js'
 import { CoreApiError, createCoreClient, type CoreClient } from './client.js'
-import { MCP_TOOLS, runTool, ScopeDeniedError, visibleTools } from './tools.js'
+import { createMcpServer } from './server.js'
+import { describeTool, MCP_TOOLS, runTool, ScopeDeniedError, visibleTools } from './tools.js'
 
 /**
  * The MCP surface, which is the highest-blast-radius feature in v0.1 and is tested like it.
@@ -125,6 +128,133 @@ describe('scopes', () => {
     const names = visibleTools(['read', 'stop']).map((t) => t.name)
     expect(names).not.toContain('create_server')
     expect(names).not.toContain('terminate_server')
+  })
+})
+
+/**
+ * WHY A TOOL IS ABSENT, SAID OUT LOUD IN THE ROSTER (#353).
+ *
+ * The reported symptom was an agent concluding, twice-confirmed and wrongly, that
+ * `create_server` was a registration bug: it is implemented, on the opt-in `create` scope, and
+ * a default `[read, stop]` installation drops it from the listing while two of the tools that
+ * remain go on naming it. These pin the fix at both ends — the note appears exactly when the
+ * named tool is withheld, and never when it is granted.
+ */
+describe('descriptions under a partial scope grant', () => {
+  const packs = () => MCP_TOOLS.find((t) => t.name === 'list_packs')!
+  const offerings = () => MCP_TOOLS.find((t) => t.name === 'list_offerings')!
+
+  it('keeps every tool description referring only to tools this grant can reach', () => {
+    // The general property, not two hand-picked cases: no advertised description may name a
+    // tool the caller cannot call without also saying that it cannot.
+    for (const scopes of [['read'], ['read', 'stop'], ['read', 'stop', 'create']] as McpScope[][]) {
+      for (const tool of visibleTools(scopes)) {
+        const text = describeTool(tool, scopes)
+        for (const other of MCP_TOOLS) {
+          if (other.name === tool.name || scopes.includes(other.scope)) continue
+          if (!tool.description.includes(other.name)) continue
+          expect(text, `${tool.name} names ${other.name} silently under [${scopes.join(', ')}]`).toContain(
+            'SCOPE NOTE',
+          )
+          expect(text).toContain(`"${other.scope}" MCP scope`)
+        }
+      }
+    }
+  })
+
+  it('names mcp.scopes and calls the absence a setting, not a bug', () => {
+    const text = describeTool(packs(), ['read', 'stop'])
+    expect(text).toContain('create_server')
+    expect(text).toContain('mcp.scopes')
+    expect(text).toContain('not a missing tool')
+    // The original description survives intact — the note is appended, never a replacement.
+    expect(text.startsWith(packs().description)).toBe(true)
+  })
+
+  it('says nothing extra once create is granted', () => {
+    // A note on an installation that granted the scope would be noise in every roster.
+    const scopes: McpScope[] = ['read', 'stop', 'create']
+    expect(describeTool(packs(), scopes)).toBe(packs().description)
+    expect(describeTool(offerings(), scopes)).toBe(offerings().description)
+  })
+
+  it('leaves a description that names no withheld tool exactly as written', () => {
+    const servers = MCP_TOOLS.find((t) => t.name === 'list_servers')!
+    expect(describeTool(servers, ['read'])).toBe(servers.description)
+  })
+
+  it('does not turn the note into a listing of the withheld tool', () => {
+    // The gate is unchanged: `create_server` is still not advertised and still not callable.
+    expect(visibleTools(['read', 'stop']).map((t) => t.name)).not.toContain('create_server')
+  })
+})
+
+/**
+ * THE ROSTER AN MCP CLIENT ACTUALLY RECEIVES (#353).
+ *
+ * `describeTool` being right is not the same claim as the server calling it, and the reported
+ * bug lived in exactly that gap — a correct implementation the listing never reached for.
+ * These drive `tools/list` over the SDK's own in-memory transport pair, so what is asserted is
+ * the JSON-RPC reply a client parses, not a function this file could call directly.
+ */
+describe('tools/list over the protocol', () => {
+  async function listTools(scopes: McpScope[]) {
+    const server = createMcpServer({
+      scopes,
+      baseUrl: 'http://127.0.0.1:0',
+      token: 'test-token',
+      // Never reached by a listing, and present so a stray call cannot escape to the network.
+      fetchImpl: (async () => {
+        throw new Error('tools/list must not make an HTTP call')
+      }) as unknown as typeof fetch,
+    })
+    const client = new Client({ name: 'test', version: '0' }, { capabilities: {} })
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)])
+    try {
+      return (await client.listTools()).tools
+    } finally {
+      await client.close()
+      await server.close()
+    }
+  }
+
+  it('offers the default installation every tool but create and terminate', async () => {
+    // The roster the owner's agent enumerated in #353 was these seven; `list_providers` and
+    // `get_provider` (#351) landed on `read` afterwards and belong here too. What is being
+    // pinned is the shape of the default grant, not the count: nothing create-shaped or
+    // terminate-shaped may appear without an operator asking for it.
+    const names = (await listTools(['read', 'stop'])).map((t) => t.name).sort()
+    expect(names).toEqual([
+      'get_provider',
+      'get_server',
+      'get_ssh_command',
+      'list_offerings',
+      'list_packs',
+      'list_providers',
+      'list_servers',
+      'start_server',
+      'stop_server',
+    ])
+  })
+
+  it('tells that roster why create_server is not among them', async () => {
+    const tools = await listTools(['read', 'stop'])
+    // Every advertised tool that names it — `list_providers` acquired the reference with #351,
+    // and inherited the note without anyone editing this list, which is the point of deriving
+    // it from the description text.
+    for (const name of ['list_packs', 'list_offerings', 'list_providers']) {
+      const description = tools.find((t) => t.name === name)!.description ?? ''
+      expect(description, name).toContain('create_server')
+      expect(description, name).toContain('"create" MCP scope')
+      expect(description, name).toContain('mcp.scopes')
+    }
+  })
+
+  it('drops the note again when the operator grants create', async () => {
+    const tools = await listTools(['read', 'stop', 'create'])
+    expect(tools.map((t) => t.name)).toContain('create_server')
+    expect(tools.find((t) => t.name === 'list_packs')!.description ?? '').not.toContain('SCOPE NOTE')
   })
 })
 

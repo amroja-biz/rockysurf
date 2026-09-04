@@ -861,7 +861,9 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
       'What an MCP client connected to this instance may do on your behalf. `read` and `stop` are ' +
       'the default pair — `stop` covers starting a stopped box again as well as stopping a ' +
       'running one, because pausing spend and resuming it are one decision; the other two are ' +
-      'granted deliberately.',
+      'granted deliberately. An agent that reports having no create_server tool is reporting this ' +
+      'box being unticked: the tool exists, and a scope this list withholds is not offered to the ' +
+      'client at all.',
     warning:
       'What an MCP client may do on your behalf. `create` spends money and `terminate` destroys a ' +
       'box an agent may be mid-task on; neither is recoverable by undo.',
