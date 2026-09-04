@@ -505,6 +505,33 @@ describe('ported from the admin surge-packs page', () => {
     expect(screen.queryByTestId('file-backed-mine')).toBeNull()
   })
 
+  /**
+   * Issue #342: saving an edit returns to the LIST, on the tab this pack's own provenance
+   * badges as — not wherever the detail page happened to be reached from, and not always
+   * Official (the tab a bare `/packs` falls back to). `mine` is `local` provenance, so this is
+   * the issue's own example: "if they edit a Personal Surge Pack, they should be taken back to
+   * the Personal tab". `pack-card-mine` only renders in list mode, so finding it after Save —
+   * where `renderDetail` never rendered the list at all — is itself proof navigation happened.
+   * Every tab panel stays mounted (`hidden`, not unmounted — see the page's own docblock), so
+   * presence alone would prove nothing further; checking the enclosing panel's `hidden`
+   * attribute is what proves Personal, specifically, is the one that came up active.
+   */
+  it('saving an edit returns to the tab where that pack lives, not Official', async () => {
+    vi.mocked(api.updateAdminSurgePack).mockResolvedValue(localAdmin({ displayOrder: 42 }))
+    renderDetail('mine')
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+    const form = await screen.findByTestId('pack-form')
+    expect(screen.queryByTestId('pack-card-mine')).toBeNull() // detail mode: no list rendered yet
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.updateAdminSurgePack).toHaveBeenCalledWith('mine', expect.anything()))
+    const personalCard = await screen.findByTestId('pack-card-mine')
+    const officialCard = screen.getByTestId('pack-card-ai-coding-agents')
+    expect((personalCard.closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(false)
+    expect((officialCard.closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(true)
+  })
+
   it('offers export for both file-backed and database packs', async () => {
     renderDetail('ai-coding-agents')
     expect(await screen.findByRole('button', { name: 'Export' })).toBeTruthy()

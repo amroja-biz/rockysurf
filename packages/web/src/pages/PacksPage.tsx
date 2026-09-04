@@ -508,12 +508,17 @@ function SurgePackFormModal({
         Enabled
       </label>
 
-      <button type="submit" disabled={saving}>
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-      <button type="button" onClick={onCancel}>
-        Cancel
-      </button>
+      {/* `.modal-actions` (issue #342) — the same wrapper `ToolFormModal` and `ConfirmModal` use
+          so Save/Cancel size and align like every other form's buttons, rather than stretching
+          to the form's full width the way a bare `<button>` does inside a flex-column `form`. */}
+      <div className="modal-actions">
+        <button type="button" className="button secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="button primary" disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
     </form>
   )
 }
@@ -1266,6 +1271,12 @@ export function PacksPage(): React.JSX.Element {
             onSaved={() => {
               setFormTarget(null)
               void load()
+              // Issue #342: back to the LIST, on the tab this pack's provenance badges as —
+              // `badgeText` already maps `official`/`registry`/`local` onto the exact three
+              // words `?tab=` reads (`official`/`community`/`personal`), so editing a Personal
+              // pack returns to Personal, not wherever the detail page happened to be reached
+              // from.
+              navigate(`/packs?tab=${badgeText(view.provenance)}`)
             }}
           />
         )}
