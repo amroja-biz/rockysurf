@@ -253,6 +253,28 @@ describe('the interface is implementable', () => {
     expect(stoppedStillBills.billsWhileStopped).toBe(true)
   })
 
+  it('recognises a ProviderError built by ANOTHER copy of this package (ADR-0026)', () => {
+    // A personal provider under <dataDir>/providers carries its own @rockysurf/provider-sdk, so
+    // its ProviderError is a different class. The guard is structural: the name and a frozen code.
+    class ForeignProviderError extends Error {
+      override readonly name = 'ProviderError'
+      readonly code = 'quota'
+      get retryable() {
+        return false
+      }
+    }
+    const foreign: unknown = new ForeignProviderError('over quota')
+    expect(isProviderError(foreign)).toBe(true)
+    // …and not merely anything with a name: the code has to be one of the nine.
+    class LookAlike extends Error {
+      override readonly name = 'ProviderError'
+      readonly code = 'not_a_code'
+    }
+    expect(isProviderError(new LookAlike('x'))).toBe(false)
+    expect(isProviderError(new Error('plain'))).toBe(false)
+    expect(isProviderError(new ProviderError('auth', 'ours'))).toBe(true)
+  })
+
   it('reports shared and server-owned resources distinctly (D1)', async () => {
     const provider = exampleFactory.createProvider({ region: 'eu-1' })
     await provider.provision(spec())

@@ -1,4 +1,4 @@
-import type { Config } from '../config/index.js'
+import { isShippedProviderId, providerEnabled, type Config } from '../config/index.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 
 /**
@@ -111,23 +111,41 @@ const DISPLAY_NAMES: Record<string, string> = {
   byo: 'Bring your own hosts',
 }
 
-/** Which env var, if any, is supplying this provider's credential right now. */
-function envCredential(providerId: string, env: NodeJS.ProcessEnv): string | undefined {
-  return PROVIDER_CREDENTIAL_ENV[providerId]?.find((name) => (env[name] ?? '').trim() !== '')
-}
-
 export function computeSetupState(deps: SetupStateDeps): SetupState {
   const env = deps.env ?? process.env
   const configured = deps.config.providers
 
-  const providers: ProviderSetupState[] = Object.entries(configured).map(([id, provider]) => {
-    const fromEnv = envCredential(id, env)
+  /**
+   * Which env var, if any, is supplying this provider's credential right now.
+   *
+   * The shipped table first, then what the composition root recorded on the registry about a
+   * personal provider's factory (`ProviderFactory.credentialEnv`, ADR-0026) — the same two
+   * sources, in the same order, that `resolveCredential` in `compose.ts` reads, so the wizard's
+   * "detected" and the boot's "ready" cannot disagree.
+   */
+  const envCredential = (providerId: string): string | undefined => {
+    const names = PROVIDER_CREDENTIAL_ENV[providerId] ?? deps.registry.describe(providerId)?.credentialEnv ?? []
+    return names.find((name) => (env[name] ?? '').trim() !== '')
+  }
 
-    // `byo` has no credential at all — its "configuration" is a list of hosts.
-    const inConfig =
-      id === 'byo'
+  const providers: ProviderSetupState[] = Object.keys(configured).map((id) => {
+    const fromEnv = envCredential(id)
+    const shipped = isShippedProviderId(id)
+
+    /**
+     * Whether the config file itself supplies the credential.
+     *
+     * `byo` has no credential at all — its "configuration" is a list of hosts. A PERSONAL
+     * provider (ADR-0026) is reported `'none'` unless the environment supplies something: core
+     * does not know which of its fields is the credential, and guessing from a key's name would
+     * be a heuristic that is wrong for the next cloud. The provider's own `credentialEnv` (E18)
+     * names the variables the composition root reads, and that is what `envCredential` sees.
+     */
+    const inConfig = !shipped
+      ? false
+      : id === 'byo'
         ? (configured.byo.hosts.length ?? 0) > 0
-        : Boolean((provider as { token?: string }).token)
+        : Boolean((configured[id] as { token?: string }).token)
 
     // Config first, then the environment — the same order the composition root resolves in,
     // so this report never disagrees with what actually loaded. A `${VAR}` reference in the
@@ -138,8 +156,14 @@ export function computeSetupState(deps: SetupStateDeps): SetupState {
     const unavailableReason = registryHas ? undefined : deps.registry.unavailableReason(id)
     return {
       id,
-      displayName: DISPLAY_NAMES[id] ?? id,
-      enabled: provider.enabled,
+      // A loaded provider names itself; a factory the composition root loaded but did not build
+      // from (disabled, or its section refused) is named by its descriptor; the table covers the
+      // shipped five when neither applies; and a personal provider whose package never loaded is
+      // shown by its id, which is the only name anyone has for it.
+      displayName: registryHas
+        ? deps.registry.get(id).displayName
+        : (deps.registry.describe(id)?.displayName ?? DISPLAY_NAMES[id] ?? id),
+      enabled: providerEnabled(deps.config, id),
       configured: source !== 'none',
       source,
       ...(fromEnv && !inConfig ? { envVar: fromEnv } : {}),

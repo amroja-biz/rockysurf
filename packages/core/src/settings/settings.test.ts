@@ -1018,3 +1018,77 @@ describe('saving a favourite machine type (issue #124)', () => {
     )
   })
 })
+
+/* ------------------------------------------------------------ personal providers (ADR-0026) */
+
+/**
+ * A section core has never heard of still gets a panel, and its unknown fields are masked.
+ *
+ * Both halves were found in review of the design rather than by an incident, and both are the
+ * same failure the settings page has already shipped twice: a section that exists in the file
+ * and cannot be seen. The first half is `settings/inventory.ts` contributing `enabled`, `package`
+ * and `sizes` for every non-shipped `providers.*` key; the second is `redactTree` masking every
+ * OTHER leaf of such a section by default, because `SECRET_KEY_NAME` knows `token` and not
+ * `privateKey`, and a personal provider's credential can be called anything.
+ */
+describe('a personal provider section in the file', () => {
+  const PERSONAL = [
+    'providers:',
+    '  nimbus:',
+    '    package: "@someone/rockysurf-provider-nimbus"',
+    '    enabled: false',
+    '    privateKey: "-----BEGIN LITERAL SECRET-----"',
+    '    region: sky-1',
+    '    sizes: [n-small]',
+    '',
+  ].join('\n')
+
+  beforeEach(() => {
+    writeFileSync(configPath, PERSONAL)
+  })
+
+  it('has an inventory panel — enabled, package and sizes — and a section titled by its id when nothing loaded it', async () => {
+    const view = await readView()
+    const paths = view.fields.map((f) => f.path)
+    expect(paths).toContain('providers.nimbus.enabled')
+    expect(paths).toContain('providers.nimbus.package')
+    expect(paths).toContain('providers.nimbus.sizes')
+    expect(view.fields.find((f) => f.path === 'providers.nimbus.package')).toMatchObject({ appliesAt: 'restart' })
+
+    const section = view.sections.find((s) => s.id === 'providers.nimbus')
+    expect(section?.title).toBe('nimbus')
+    expect(section?.help).toContain("runs with Rocky Surf's full access — install ones you trust")
+    // Placed with the other provider tabs, before Limits.
+    const ids = view.sections.map((s) => s.id)
+    expect(ids.indexOf('providers.nimbus')).toBeGreaterThan(ids.indexOf('providers.byo.hosts'))
+    expect(ids.indexOf('providers.nimbus')).toBeLessThan(ids.indexOf('limits'))
+  })
+
+  it('masks every field core cannot vouch for, and leaves its own three in the clear', async () => {
+    const view = await readView()
+    const nimbus = view.values['providers']['nimbus']
+    expect(nimbus['privateKey']).toEqual({ secret: true, state: 'set' })
+    expect(nimbus['region']).toEqual({ secret: true, state: 'set' })
+    expect(nimbus['enabled']).toBe(false)
+    expect(nimbus['package']).toBe('@someone/rockysurf-provider-nimbus')
+    expect(nimbus['sizes']).toEqual(['n-small'])
+    // And the literal never appears anywhere in the response.
+    expect(JSON.stringify(view)).not.toContain('BEGIN LITERAL SECRET')
+  })
+
+  it('lets the page switch the provider on, and refuses to edit a field the provider has not declared', async () => {
+    await saveOk([{ path: ['providers', 'nimbus', 'enabled'], value: true }])
+    expect(file()).toContain('    enabled: true')
+
+    const refused = await save({ mtimeMs: mtime(), changes: [{ path: ['providers', 'nimbus', 'region'], value: 'sky-2' }] })
+    expect(refused.status).toBe(400)
+    expect(await refused.text()).toContain('this settings page does not edit that field')
+    expect(file()).toContain('region: sky-1')
+  })
+
+  it('reports a changed package as waiting on a restart', async () => {
+    await saveOk([{ path: ['providers', 'nimbus', 'package'], value: '@someone/other' }])
+    const view = await readView()
+    expect(view.pendingRestart.map((p) => p.path)).toContain('providers.nimbus.package')
+  })
+})

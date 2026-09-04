@@ -109,9 +109,25 @@ export class ProviderError extends Error {
   }
 }
 
-/** Narrowing helper for `catch` blocks, which receive `unknown`. */
+/**
+ * Narrowing helper for `catch` blocks, which receive `unknown`.
+ *
+ * STRUCTURAL, NOT `instanceof` (ADR-0026). A personal provider installed under
+ * `<dataDir>/providers` resolves its OWN copy of this package, so its `ProviderError` is a
+ * different class from the one core imported — same source, different module instance — and an
+ * `instanceof` check would call every error such a provider throws "not a provider error",
+ * turning a clean `quota` refusal into an unexplained 500. What makes something a provider error
+ * is the contract, not the constructor: an `Error` that says its name is `ProviderError` and
+ * carries one of the nine frozen codes. `retryable` is a getter on whichever copy built it, so
+ * it keeps working too.
+ */
 export function isProviderError(err: unknown): err is ProviderError {
-  return err instanceof ProviderError
+  if (err instanceof ProviderError) return true
+  return (
+    err instanceof Error &&
+    err.name === 'ProviderError' &&
+    (PROVIDER_ERROR_CODES as readonly string[]).includes((err as { code?: unknown }).code as string)
+  )
 }
 
 /**

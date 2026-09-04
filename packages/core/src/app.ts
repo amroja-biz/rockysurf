@@ -5,7 +5,7 @@ import { Hono, type MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
-import { createPreferenceReader, type Config, type ConfigStore } from './config/index.js'
+import { createPreferenceReader, providerEnabled, type Config, type ConfigStore } from './config/index.js'
 import type { Db } from './db/client.js'
 import { getPack, listTools } from './db/repositories/packs.js'
 import { getUserByGithubUsername } from './db/repositories/users.js'
@@ -331,9 +331,8 @@ export function createApp(deps: AppDeps): CreatedApp {
       ok: true,
       name: 'rockysurf',
       authMode: currentConfig().auth.mode,
-      providers: Object.entries(currentConfig().providers)
-        .filter(([, provider]) => provider.enabled)
-        .map(([id]) => id),
+      // Shipped and personal alike (ADR-0026): every key under `providers:` with `enabled: true`.
+      providers: Object.keys(currentConfig().providers).filter((id) => providerEnabled(currentConfig(), id)),
     }),
   )
 
@@ -595,6 +594,8 @@ export function createApp(deps: AppDeps): CreatedApp {
       '/',
       createSettingsRoutes({
         configPath: deps.configPath,
+        // A personal provider's panel wears the name its factory gives it (ADR-0026).
+        describeProvider: (id) => registry.describe(id),
         ...(deps.env ? { env: deps.env } : {}),
         // What makes a save take effect (issue #264): the route writes the file and then asks
         // this process to adopt it, before it answers.

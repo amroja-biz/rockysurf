@@ -11,6 +11,7 @@ import {
   type RunCliOptions,
 } from '@rockysurf/core'
 import { composeRegistry } from './compose.js'
+import { loadPersonalProviders, type LoadedPersonalProviders } from './personal-providers.js'
 import { runMcpServer, MCP_BASE_URL_ENV, MCP_TOKEN_ENV } from './mcp/server.js'
 import { createCoreClient } from './mcp/client.js'
 import {
@@ -135,13 +136,31 @@ export async function runRockysurfCli(argv: string[], options: RunCliOptions = {
   const subcommand = command ? SUBCOMMANDS.find((c) => c.name === command) : undefined
   if (subcommand) return await subcommand.run(rest)
 
+  /**
+   * PERSONAL PROVIDERS LOAD ONCE, ON THE FIRST COMPOSITION (ADR-0026).
+   *
+   * `import()` is asynchronous and every composition after the first is synchronous by
+   * contract (`BootOptions.providers`): a config change rebuilds the registry inline so the
+   * settings save that caused it answers with the registry already current. So the first call —
+   * boot, which awaits — loads every `providers.<id>.package` the file names and remembers the
+   * result; every later call composes from what was loaded. A personal section added to the file
+   * after boot is therefore reported "restart to load it" rather than silently absent.
+   */
+  let personal: LoadedPersonalProviders | undefined
+
   // The seam wants a registry; compose also returns notes, which boot already logged. The
   // version is this package's, not core's — see readCliVersion. `subcommands` is what makes
   // `--help` able to name the table above. `options` still wins, so a test or an embedder can
   // override any of them.
   return runCli(argv, {
     version: readCliVersion(),
-    providers: (context) => composeRegistry(context).registry,
+    providers: (context) => {
+      if (personal) return composeRegistry(context, personal).registry
+      return loadPersonalProviders({ config: context.config }).then((loaded) => {
+        personal = loaded
+        return composeRegistry(context, loaded).registry
+      })
+    },
     subcommands: SUBCOMMANDS.map(({ name, summary }) => ({ name, summary })),
     ...options,
   })

@@ -1,0 +1,12 @@
+{
+  "name": "rockysurf-provider-nimbus",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A PERSONAL provider fixture for the browser suite (ADR-0026): the shape an out-of-tree provider package has, with import-only exports like every shipped provider. Not published, not a workspace package, no dependencies.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js"
+    }
+  }
+}

@@ -190,6 +190,18 @@ A credential supplied through the environment is configuration, not data: it is 
 process starts and written nowhere, so rotating it is an edit to your environment plus a
 restart, with no stored copy to diverge from it.
 
+### Personal providers
+
+A provider Rocky Surf did not ship — an npm package you install under the data directory and name
+as `providers.<id>.package` in the config file
+([ADR-0026](docs/adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)) — is
+software that runs inside this process, with everything this process can reach: the database, the
+master key, and every cloud credential in the environment. There is no sandbox and no second
+process, deliberately; a fence a provider could not do its job behind would be theatre. **A provider
+runs with Rocky Surf's full access — install ones you trust.** Its credential follows the same rule
+as every shipped cloud's: named in the config file as `${VAR}` or read from a variable the provider
+declares, and stored nowhere.
+
 ### GitHub tokens
 
 `github.pat` from `rockysurf.config.yaml` — the token that clones private repositories —

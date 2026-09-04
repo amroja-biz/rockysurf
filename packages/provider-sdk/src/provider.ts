@@ -246,4 +246,33 @@ export interface ProviderFactory<TConfig = ProviderConfig> {
    * Credentials are proven by `validateCredentials()`, which core calls when it chooses to.
    */
   createProvider(config: TConfig): ComputeProvider
+
+  /**
+   * Environment variables this provider's credential may arrive under, in the order to try them.
+   *
+   * Added by ADR-0026 (issue #294, amendment E18 to ADR-0003). **Additive and optional; absent
+   * means the credential is named in the config file or comes from an ambient chain the provider
+   * resolves itself.** It answers a COMPOSITION question — "the config field is empty; is the
+   * token in the environment?" — which is why it sits on the factory beside `configSchema`
+   * rather than inside the provider: the composition root has the factory in hand before any
+   * provider exists, and a chain-auth cloud (AWS, Azure, GCP) names its variables without having
+   * any credential field at all.
+   *
+   * Two consumers, and they must agree: the composition root reads the first non-empty variable
+   * when the config field is empty, and the first-run wizard reports "`HETZNER_TOKEN` detected" so
+   * the export-and-restart loop can say when it has closed. Nothing is ever stored — "Rocky Surf
+   * stores no cloud credentials" (issue #280) is what this field exists to keep true for a
+   * provider Rocky Surf did not ship.
+   */
+  readonly credentialEnv?: readonly string[]
+
+  /**
+   * The config field the credential belongs in — `'token'` for a bearer-token cloud — so the
+   * composition root can hand a value found in `credentialEnv` to `configSchema.parse` under the
+   * name the schema expects (ADR-0026, E18). Absent for a cloud whose credential is an ambient
+   * chain the provider resolves itself (AWS, Azure, GCP): those may still name `credentialEnv`
+   * for the wizard's detection, and nothing is injected. A value already in the config file under
+   * this field wins over the environment — the file is the copy an operator can see and diff.
+   */
+  readonly credentialField?: string
 }

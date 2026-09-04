@@ -13,15 +13,8 @@ import {
 import { badRequest, conflict, forbidden, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import { applyChanges, parseTree, type Change } from './document.js'
-import {
-  RESTART_REQUIRED_PATHS,
-  SETTINGS_FIELDS,
-  SETTINGS_LISTS,
-  SETTINGS_SECTIONS,
-  specFor,
-  patternOf,
-  type FieldSpec,
-} from './fields.js'
+import { patternOf, type FieldSpec, type ListSpec, type SectionSpec } from './fields.js'
+import { buildSettingsInventory, type SettingsInventory } from './inventory.js'
 import { fingerprint, redactTree } from './view.js'
 
 /**
@@ -71,6 +64,13 @@ export interface SettingsRoutesDeps {
    * says, rather than this route claiming an effect nothing produced.
    */
   reload?: () => ReloadOutcome
+  /**
+   * What the composition root knows about a provider id — its factory's display name — so a
+   * personal provider's panel can wear the name its package gives it (ADR-0026). Absent, the
+   * panel is titled by the config key, which is the only name anyone has for a package that did
+   * not load.
+   */
+  describeProvider?: (id: string) => { displayName: string } | undefined
 }
 
 /**
@@ -104,11 +104,17 @@ interface SettingsView {
   values: unknown
   /** What the loader uses for anything absent above — the schema's own defaults. */
   defaults: unknown
-  /** The inventory, so the page renders read-only reasons, help and warnings from one source. */
+  /**
+   * The inventory, so the page renders read-only reasons, help and warnings from one source.
+   *
+   * BUILT FOR THIS FILE (ADR-0026): core's hand-written rows plus a panel for every personal
+   * provider section the file names — see `settings/inventory.ts`. A section with no row renders
+   * nowhere, so the inventory has to know about a section before the page can.
+   */
   fields: readonly FieldSpec[]
   /** Section titles and their help text, for the same reason (rockysurf-5qzg). */
-  sections: typeof SETTINGS_SECTIONS
-  lists: typeof SETTINGS_LISTS
+  sections: readonly SectionSpec[]
+  lists: readonly ListSpec[]
   /** Present when the file on disk does not validate. The editor exists to fix this state. */
   issues?: readonly ConfigIssue[]
   /**
@@ -247,6 +253,10 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
    */
   const bootTree = parseTree(readFile(deps.configPath).text)
 
+  /** The inventory for a given file — core's rows plus a panel per personal provider (ADR-0026). */
+  const inventoryFor = (tree: unknown): SettingsInventory =>
+    buildSettingsInventory({ tree, ...(deps.describeProvider ? { describeProvider: deps.describeProvider } : {}) })
+
   /** The schema's own defaults, redacted like everything else so there is one masked path. */
   const defaults = redactTree(SCHEMA_DEFAULTS)
 
@@ -256,14 +266,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
    * Compared against the values at BOOT rather than against the store's current config, because
    * `PINNED_PATHS` means the store is still serving the booted values for four of the five and
    * would report no difference at all. `mcp.scopes` is the fifth and is not pinned — nothing in
-   * this process reads it — so it is compared the same way and for the same reason.
+   * this process reads it — so it is compared the same way and for the same reason. A personal
+   * provider's `package` is the sixth kind (ADR-0026): the package is loaded at boot.
    */
-  function pendingRestart(tree: unknown): PendingRestart[] {
-    return RESTART_REQUIRED_PATHS.flatMap((path) => {
+  function pendingRestart(tree: unknown, inventory: SettingsInventory): PendingRestart[] {
+    return inventory.restartRequiredPaths.flatMap((path) => {
       // No inventory path that needs a restart is inside a list, so none of them carries a `*`.
       if (path.includes('*')) return []
       if (fingerprint(effectiveAt(tree, path)) === fingerprint(effectiveAt(bootTree, path))) return []
-      const reason = SETTINGS_FIELDS.find((field) => field.path === path)?.restartReason
+      const reason = inventory.fields.find((field) => field.path === path)?.restartReason
       return reason ? [{ path, reason }] : []
     })
   }
@@ -271,15 +282,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
   function view(): SettingsView {
     const file = readFile(deps.configPath)
     const tree = parseTree(file.text)
+    const inventory = inventoryFor(tree)
     const checked = checkConfigText(file.text, env)
-    const waiting = pendingRestart(tree)
+    const waiting = pendingRestart(tree, inventory)
     return {
       file: { path: deps.configPath, exists: file.exists, mtimeMs: file.mtimeMs },
-      values: redactTree(tree),
+      values: redactTree(tree, [], inventory.isSecretPath),
       defaults,
-      fields: SETTINGS_FIELDS,
-      sections: SETTINGS_SECTIONS,
-      lists: SETTINGS_LISTS,
+      fields: inventory.fields,
+      sections: inventory.sections,
+      lists: inventory.lists,
       ...(checked.ok ? {} : { issues: checked.issues }),
       ...(checked.warnings.length > 0 ? { warnings: checked.warnings } : {}),
       drifted: waiting.length > 0,
@@ -313,9 +325,12 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
      * too: this route is not a general-purpose YAML writer, and treating it as one would make
      * the field inventory decorative.
      */
+    // The inventory for the file AS IT IS, so a personal section already in the file is editable
+    // and one that is not is refused like any other unknown path (ADR-0026).
+    const inventory = inventoryFor(parseTree(readFile(deps.configPath).text))
     const rejected = changes.flatMap((change) => {
       const path = change.path as (string | number)[]
-      const spec = specFor(path)
+      const spec = inventory.specFor(path)
       if (spec) {
         return spec.writable
           ? []
@@ -325,7 +340,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
       // removed, and it is legal exactly for the lists the inventory declares.
       const isListEntry =
         typeof path[path.length - 1] === 'number' &&
-        SETTINGS_LISTS.some((list) => list.path === patternOf(path.slice(0, -1)))
+        inventory.lists.some((list) => list.path === patternOf(path.slice(0, -1)))
       if (isListEntry) return []
       return [{ path: patternOf(path), message: 'this settings page does not edit that field' }]
     })
@@ -403,7 +418,7 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
     return success(c, {
       saved: true,
       /** Paths in this save that the running process is already using. Empty if it could not adopt. */
-      applied: outcome.applied ? saved.filter((path) => specFor(path.split('.'))?.appliesAt !== 'restart') : [],
+      applied: outcome.applied ? saved.filter((path) => inventory.specFor(path.split('.'))?.appliesAt !== 'restart') : [],
       /** Paths in this save that wait for a restart, each with its own reason. */
       restartRequired,
       /** Why nothing could be applied, when that is the case. */

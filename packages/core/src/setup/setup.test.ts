@@ -96,6 +96,36 @@ describe('GET /api/v1/setup', () => {
     expect(body.providers.map((p) => p.id).sort()).toEqual(['aws', 'azure', 'byo', 'gcp', 'hetzner'])
     expect(body.providers.every((p) => !p.enabled)).toBe(true)
   })
+
+  it('lists a personal provider beside the shipped five, named by its factory when the registry knows it (ADR-0026)', async () => {
+    // What the composition root records about a factory it loaded but built no provider from.
+    await build(
+      'providers:\n  nimbus:\n    package: rockysurf-provider-nimbus\n    enabled: true\n',
+      new ProviderRegistry([], [{ id: 'nimbus', reason: 'no credential found — export NIMBUS_TOKEN' }], [
+        { id: 'nimbus', displayName: 'Nimbus Cloud', credentialEnv: ['NIMBUS_TOKEN'] },
+      ]),
+    )
+    const body = (await (await getSetup()).json()) as {
+      providers: { id: string; displayName: string; enabled: boolean; source: string; envVar?: string; loaded: boolean; unavailableReason?: string }[]
+    }
+    const nimbus = body.providers.find((p) => p.id === 'nimbus')
+    expect(nimbus).toMatchObject({
+      displayName: 'Nimbus Cloud',
+      enabled: true,
+      // Core does not guess which of a personal section's fields is the credential: without a
+      // variable in the environment it reports none, never a key-name heuristic.
+      source: 'none',
+      loaded: false,
+      unavailableReason: 'no credential found — export NIMBUS_TOKEN',
+    })
+  })
+
+  it('detects a personal provider’s credential variable from what the registry knows of its factory', async () => {
+    const config = configSchema.parse({ providers: { nimbus: { package: 'p', enabled: true } } })
+    const known = new ProviderRegistry([], [], [{ id: 'nimbus', displayName: 'Nimbus', credentialEnv: ['NIMBUS_TOKEN'] }])
+    const state = computeSetupState({ config, registry: known, env: { NIMBUS_TOKEN: 'x' } })
+    expect(state.providers.find((p) => p.id === 'nimbus')).toMatchObject({ source: 'env', envVar: 'NIMBUS_TOKEN', configured: true })
+  })
 })
 
 describe('setup state', () => {

@@ -23,6 +23,7 @@ authenticates through your own auth path, described in its row below.
 | **Azure** | Credentials from your environment, a managed identity, or `az login` — never from the config file. Needs a resource group you create, a least-privilege role and an explicit `sshAllowedCidr` — [`providers/azure.md`](providers/azure.md). |
 | **GCP** | Uses Application Default Credentials — `gcloud auth application-default login`, a key file, or the metadata server — never a key in the config file. Needs a project and an explicit `sshAllowedCidr` — [`providers/gcp.md`](providers/gcp.md). |
 | **BYO** | Machines you already have, over SSH. No cloud API — [see below](#bring-your-own-hosts). |
+| **A cloud not listed here** | A provider you install yourself, written against the provider SDK — [Personal providers](#personal-providers). |
 
 There are two ways to run it. Both give you the same thing: one process, one port, one data
 directory.
@@ -508,6 +509,69 @@ rather than of Rocky Surf:
 
 `stop` and `start` are unsupported on BYO — core does not own the power state of a machine it did
 not create — and the UI hides those buttons rather than offering them and failing.
+
+## Personal providers
+
+The five providers above ship with Rocky Surf. A cloud that is not among them can still be driven
+by an installation you run, without a change to this repository: a **personal provider** is an
+npm package written against
+[`@rockysurf/provider-sdk`](../packages/provider-sdk/README.md) — yours, or somebody else's — that
+you install and name in the config file
+([ADR-0026](adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)).
+
+**A provider runs with Rocky Surf's full access — install ones you trust.** It is software running
+inside the same process as your database, your master key and every cloud credential in your
+environment. Nothing fences it, on purpose; the decision is yours, made when you install it.
+
+Install the package under the data directory's `providers` folder, which is where a package name
+in the config file is looked up. That folder is outside the application, so upgrading Rocky Surf
+(`npx rockysurf@latest`, `git pull && pnpm -r build`, or rebuilding the container image) leaves it
+alone:
+
+```bash
+mkdir -p ~/.rockysurf/providers && cd ~/.rockysurf/providers
+npm init -y
+npm install @someone/rockysurf-provider-digitalocean
+```
+
+In the container the folder is `/data/providers`, on the volume. Then add a section to the config
+file, keyed by the provider's id, naming the package:
+
+```yaml
+providers:
+  digitalocean:
+    package: "@someone/rockysurf-provider-digitalocean"   # or a path: ~/code/my-provider
+    enabled: true
+    token: "${DO_TOKEN}"        # the provider's own fields, as its README describes them
+    region: nyc3
+```
+
+`package` may also be a path to a built package directory or file — the shape for a provider you
+are developing in a checkout beside this one. Everything else in the section belongs to the
+provider and is validated by the provider's own schema when Rocky Surf starts; `sizes` is the
+same allowlist every provider gets.
+
+What to expect:
+
+- **Packages load when Rocky Surf starts.** Adding a section, or changing which package it names,
+  takes effect at the next restart. Enabling or disabling one takes effect on save, like every
+  other provider — the package is loaded whether or not the section is enabled.
+- **A package that cannot load never stops Rocky Surf starting.** Not installed, fails on import,
+  not a provider factory, an id that does not match the section key: each is reported on the New
+  Server page and in the boot log, in a sentence naming the section, and everything else keeps
+  working.
+- **The Settings page shows the section**, with its Enabled switch and the package it loads from.
+  The provider's own settings are edited in the file until the provider declares them; a value
+  under a personal section that Rocky Surf has not been told about is masked on that page, never
+  shown, because it could be a credential.
+- **Credentials work the way they do for Hetzner.** A token named in the file as `${VAR}` is read
+  from your environment; a provider may also name the variable itself, so the first-run wizard
+  can say when it has been detected. Rocky Surf stores none of it.
+- **A misspelled shipped provider is still caught.** `providers.hetzer:` is refused with "did you
+  mean hetzner?", not with advice to install a package.
+
+Writing one is described in [`docs/writing-a-provider.md`](writing-a-provider.md), and the
+`adding-providers` skill in `.agents/skills/` walks an agent through it.
 
 ## SSH access on a new server
 

@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 import { InvalidPublicKeyError, normalizeUserPublicKey } from '../ssh/public-key.js'
+import { refinePersonalProviderSections } from './personal-providers.js'
 
 /**
  * The shape of `rockysurf.config.yaml`, as a zod v4 schema.
@@ -510,14 +511,31 @@ const byoProviderSchema = section(
     }),
 )
 
+/**
+ * The five shipped sections by name, and ANY OTHER KEY as a personal provider (ADR-0026).
+ *
+ * The catchall is on the INNER object, not on `section()`'s preprocess wrapper — which exposes
+ * no `.catchall` and would silently lose the null-tolerance that lets a `providers:` with every
+ * child commented out parse. Its value type is `unknown` on purpose: a typed catchall would put
+ * an index signature on `Config['providers']` and widen every shipped section's type with the
+ * personal one's fields. Personal sections are read through `personalProviderSections()`, which
+ * parses each through `personalProviderSectionSchema`; the refine below runs that same schema so
+ * a file `configSchema` accepts is one that helper cannot throw on.
+ *
+ * `SHIPPED_PROVIDER_IDS` in `config/personal-providers.ts` must list exactly these keys; a test
+ * pins the two together.
+ */
 const providersSchema = section(
-  z.strictObject({
-    aws: awsProviderSchema,
-    azure: azureProviderSchema,
-    gcp: gcpProviderSchema,
-    hetzner: hetznerProviderSchema,
-    byo: byoProviderSchema,
-  }),
+  z
+    .strictObject({
+      aws: awsProviderSchema,
+      azure: azureProviderSchema,
+      gcp: gcpProviderSchema,
+      hetzner: hetznerProviderSchema,
+      byo: byoProviderSchema,
+    })
+    .catchall(z.unknown())
+    .superRefine((providers, ctx) => refinePersonalProviderSections(providers, ctx)),
 )
 
 /**
@@ -744,6 +762,16 @@ const bootstrapSchema = section(
  *
  * STRICT, and keyed by the same provider ids the `providers` block uses, so `preferences:
  * tiers: awz: …` is a boot error rather than a setting that silently does nothing for a year.
+ *
+ * SINCE ADR-0026 THE KEY SET IS OPEN, because a personal provider (`providers.digitalocean:
+ * package: …`) needs a tiers entry too, and its id is not known to this file. The five shipped
+ * ids stay declared; any other key is admitted here and checked by the TOP-LEVEL refine on
+ * `configObject`, which refuses a tiers key naming no provider in the same file — so `awz` is
+ * still a boot error, and `digitalocean` is fine exactly when `providers.digitalocean` exists.
+ * That check can only live at the top level: this block is also exported on its own and parsed
+ * alone by `config/live-preferences.ts`, which has no `providers` block to compare against. Do
+ * not "fix" that by tightening this schema — it would break live preference reads for every
+ * personal provider.
  */
 const tierPreferenceSchema = section(
   z.strictObject({
@@ -756,14 +784,17 @@ const tierPreferenceSchema = section(
 const preferencesSchema = section(
   z.strictObject({
     tiers: section(
-      z.strictObject({
-        aws: tierPreferenceSchema,
-        azure: tierPreferenceSchema,
-        gcp: tierPreferenceSchema,
-        hetzner: tierPreferenceSchema,
-        /** BYO offerings are host NAMES, so a preference here is "always claim this machine". */
-        byo: tierPreferenceSchema,
-      }),
+      z
+        .strictObject({
+          aws: tierPreferenceSchema,
+          azure: tierPreferenceSchema,
+          gcp: tierPreferenceSchema,
+          hetzner: tierPreferenceSchema,
+          /** BYO offerings are host NAMES, so a preference here is "always claim this machine". */
+          byo: tierPreferenceSchema,
+        })
+        // The catchall is on the inner object for the reason `providersSchema` gives.
+        .catchall(tierPreferenceSchema),
     ),
   }),
 )
@@ -876,6 +907,22 @@ const configObject = z
   .superRefine((config, ctx) => {
     const providers = config.providers as Record<string, { sizes?: readonly string[] } | undefined>
     for (const [providerId, tiers] of Object.entries(config.preferences.tiers)) {
+      /**
+       * A TIERS KEY MUST NAME A PROVIDER IN THIS FILE (ADR-0026). The tiers object admits any key
+       * so a personal provider can have saved types; this is where a key that is nobody's —
+       * `awz` — is still refused, with the same consequence it always had: a boot error rather
+       * than a preference that does nothing for a year.
+       */
+      if (!(providerId in providers)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['preferences', 'tiers', providerId],
+          message:
+            `preferences.tiers.${providerId} names no provider in this file — the key must be one of ` +
+            `${Object.keys(providers).join(', ')}`,
+        })
+        continue
+      }
       const allowlist = providers[providerId]?.sizes
       if (!allowlist) continue
       for (const [size, type] of Object.entries(tiers)) {

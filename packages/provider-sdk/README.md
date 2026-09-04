@@ -46,10 +46,16 @@ For what each shipped provider declares, see
 ## Writing a provider
 
 A provider package default-exports a `ProviderFactory`: an id, a display name, a config schema,
-and a synchronous `createProvider(config)` that does no I/O. The provider it returns implements
-nine required methods (plus the optional `syncSshAccess()`, ADR-0021) and declares five required
-capabilities; three more are optional and absent means `false` — `simulatedInstances` (E15),
-`managesSshAccess` (ADR-0021) and `billsWhileStopped` (ADR-0025).
+and a synchronous `createProvider(config)` that does no I/O — plus, optionally, `credentialField`
+and `credentialEnv` (ADR-0026, E18), which tell an installation where a token lands and which
+environment variables may supply it when the config field is empty. A factory like this can be
+installed into any Rocky Surf as a **personal provider** (`providers.<id>.package` in its config
+file); the operator-facing page is `docs/self-hosting.md`, "Personal providers". Note that such a
+package carries its OWN copy of this SDK, so nothing here depends on object identity —
+`isProviderError` is structural. The provider it returns implements nine required methods (plus
+the optional `syncSshAccess()`, ADR-0021) and declares five required capabilities; three more are
+optional and absent means `false` — `simulatedInstances` (E15), `managesSshAccess` (ADR-0021) and
+`billsWhileStopped` (ADR-0025).
 
 ```ts
 import {

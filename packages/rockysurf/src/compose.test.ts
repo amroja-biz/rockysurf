@@ -1,6 +1,8 @@
 import { configSchema, type Config } from '@rockysurf/core'
+import type { ComputeProvider, ProviderFactory } from '@rockysurf/provider-sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { composeRegistry } from './compose.js'
+import { PERSONAL_PROVIDER_TRUST_SENTENCE, type LoadedPersonalProviders } from './personal-providers.js'
 
 /**
  * The composition root's contract: which providers end up in the registry, and why each one
@@ -15,11 +17,138 @@ import { composeRegistry } from './compose.js'
 const config = (overrides: Record<string, unknown> = {}): Config =>
   configSchema.parse({ providers: overrides })
 
-function compose(cfg: Config, env: NodeJS.ProcessEnv = {}) {
+function compose(cfg: Config, env: NodeJS.ProcessEnv = {}, personal?: LoadedPersonalProviders) {
   const log = vi.fn()
-  const result = composeRegistry({ config: cfg, env, log })
+  const result = composeRegistry({ config: cfg, env, log }, personal)
   return { ...result, log }
 }
+
+/**
+ * A personal provider's factory, as `loadPersonalProviders` would hand it over (ADR-0026). The
+ * schema records what it was given so the tests can assert core's fields were stripped and the
+ * credential landed under the factory's own field name.
+ */
+function personalFactory(
+  id: string,
+  options: { credentialField?: string; credentialEnv?: readonly string[] } = {},
+): { factory: ProviderFactory<Record<string, unknown>>; parsed: Record<string, unknown>[] } {
+  const parsed: Record<string, unknown>[] = []
+  const factory: ProviderFactory<Record<string, unknown>> = {
+    id,
+    displayName: `${id} cloud`,
+    configSchema: {
+      parse: (input) => {
+        parsed.push(input as Record<string, unknown>)
+        return input as Record<string, unknown>
+      },
+    },
+    createProvider: (config): ComputeProvider =>
+      ({
+        id,
+        displayName: `${id} cloud`,
+        capabilities: {
+          stop: true,
+          ipStableAcrossStop: true,
+          canInjectHostKeys: false,
+          userDataMaxBytes: 0,
+          generatesUserData: false,
+          simulatedInstances: true,
+        },
+        config,
+      }) as unknown as ComputeProvider,
+    ...(options.credentialField ? { credentialField: options.credentialField } : {}),
+    ...(options.credentialEnv ? { credentialEnv: options.credentialEnv } : {}),
+  }
+  return { factory, parsed }
+}
+
+function loaded(entries: Record<string, ProviderFactory<never> | ProviderFactory<Record<string, unknown>>>, failures: Record<string, string> = {}) {
+  return {
+    factories: new Map(Object.entries(entries) as [string, ProviderFactory][]),
+    failures: new Map(Object.entries(failures)),
+    sources: new Map(Object.keys(entries).map((id) => [id, `/data/providers/node_modules/${id}/index.js`])),
+  }
+}
+
+describe('personal providers (ADR-0026)', () => {
+  it('composes a loaded factory from its section, stripping enabled, package and sizes', () => {
+    const { factory, parsed } = personalFactory('nimbus')
+    const { registry, notes } = compose(
+      config({ nimbus: { package: 'rockysurf-provider-nimbus', enabled: true, sizes: ['s-1'], region: 'nyc3', token: 'from-file' } }),
+      {},
+      loaded({ nimbus: factory }),
+    )
+
+    expect(registry.ids()).toEqual(['nimbus'])
+    expect(parsed).toEqual([{ region: 'nyc3', token: 'from-file' }])
+    // The trust sentence is printed beside every personal provider, verbatim, on every boot.
+    expect(notes.find((n) => n.startsWith('nimbus:'))).toContain(PERSONAL_PROVIDER_TRUST_SENTENCE)
+    // No credential field on this factory, so the note reads as AWS's does.
+    expect(notes).toContain('nimbus: ready (credentials from the environment)')
+    // The registry knows the factory's name even for a section it would not have built.
+    expect(registry.describe('nimbus')).toEqual({ id: 'nimbus', displayName: 'nimbus cloud' })
+  })
+
+  it('resolves the credential config-first, then from the factory’s own variables, into its own field', () => {
+    const { factory, parsed } = personalFactory('nimbus', { credentialField: 'token', credentialEnv: ['NIMBUS_TOKEN'] })
+    const cfg = config({ nimbus: { package: 'p', enabled: true } })
+
+    const fromEnv = compose(cfg, { NIMBUS_TOKEN: 'from-env' }, loaded({ nimbus: factory }))
+    expect(fromEnv.registry.ids()).toEqual(['nimbus'])
+    expect(parsed.at(-1)).toEqual({ token: 'from-env' })
+    expect(fromEnv.registry.describe('nimbus')?.credentialEnv).toEqual(['NIMBUS_TOKEN'])
+
+    const fromFile = compose(config({ nimbus: { package: 'p', enabled: true, token: 'from-file' } }), { NIMBUS_TOKEN: 'from-env' }, loaded({ nimbus: factory }))
+    expect(fromFile.registry.ids()).toEqual(['nimbus'])
+    expect(parsed.at(-1)).toEqual({ token: 'from-file' })
+
+    const none = compose(cfg, {}, loaded({ nimbus: factory }))
+    expect(none.registry.ids()).toEqual(['fake'])
+    expect(none.registry.unavailableReason('nimbus')).toContain('set providers.nimbus.token in rockysurf.config.yaml')
+    expect(none.registry.unavailableReason('nimbus')).toContain('export NIMBUS_TOKEN')
+  })
+
+  it('leaves a disabled personal provider out, but still names it', () => {
+    const { factory, parsed } = personalFactory('nimbus')
+    const { registry, notes } = compose(config({ nimbus: { package: 'p', enabled: false } }), {}, loaded({ nimbus: factory }))
+    expect(registry.ids()).toEqual(['fake'])
+    expect(parsed).toEqual([])
+    expect(notes).toContain('nimbus: disabled in config')
+    expect(registry.describe('nimbus')?.displayName).toBe('nimbus cloud')
+  })
+
+  it('reports a package that did not load with the loader’s own sentence', () => {
+    const { registry } = compose(
+      config({ nimbus: { package: 'p', enabled: true } }),
+      {},
+      loaded({}, { nimbus: 'package "p" could not be found: p is not installed under /data/providers' }),
+    )
+    expect(registry.ids()).toEqual(['fake'])
+    expect(registry.unavailableReason('nimbus')).toContain('could not be found')
+  })
+
+  it('reports a section added after boot as needing a restart, rather than silently ignoring it', () => {
+    const { registry } = compose(config({ nimbus: { package: 'p', enabled: true } }), {}, loaded({}))
+    expect(registry.unavailableReason('nimbus')).toBe(
+      'providers.nimbus was added to the config after Rocky Surf started — restart to load its package',
+    )
+  })
+
+  it('reports a personal provider’s own schema rejection in a sentence, like a shipped one', () => {
+    const factory: ProviderFactory<never> = {
+      id: 'nimbus',
+      displayName: 'Nimbus',
+      configSchema: {
+        parse: () => {
+          throw Object.assign(new Error('bad'), { issues: [{ path: ['region'], message: 'region is required: name the datacentre' }] })
+        },
+      },
+      createProvider: () => ({}) as never,
+    }
+    const { registry } = compose(config({ nimbus: { package: 'p', enabled: true } }), {}, loaded({ nimbus: factory }))
+    expect(registry.unavailableReason('nimbus')).toBe('region is required: name the datacentre')
+  })
+})
 
 describe('what ends up in the registry', () => {
   it('loads a provider whose credential is in the config file', () => {

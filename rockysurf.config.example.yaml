@@ -347,6 +347,23 @@ providers:
     #                             # connection is verified.
     #     identityFile: ~/.ssh/workshop_ed25519   # optional; overrides the default above
 
+  # A PERSONAL PROVIDER — a cloud Rocky Surf does not ship, written against @rockysurf/provider-sdk
+  # and installed by you. Any key here that is not one of the five above is one, and it must name
+  # the package that implements it. Install the package under the data directory, where an upgrade
+  # cannot remove it:
+  #
+  #   mkdir -p ~/.rockysurf/providers && cd ~/.rockysurf/providers && npm init -y \
+  #     && npm install @someone/rockysurf-provider-digitalocean
+  #
+  # A provider runs with Rocky Surf's full access — install ones you trust.
+  #
+  # digitalocean:
+  #   package: "@someone/rockysurf-provider-digitalocean"   # or a path: ~/code/my-provider
+  #   enabled: true
+  #   token: "${DO_TOKEN}"        # the provider's own fields, as its README describes them
+  #   region: nyc3
+  #   # sizes: [s-2vcpu-4gb]      # the same allowlist every provider gets
+
 limits:
   # Guardrails. These are enforced server-side, which is what makes it safe to let an agent
   # create its own boxes through the MCP server.
