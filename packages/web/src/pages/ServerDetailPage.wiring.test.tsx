@@ -714,6 +714,29 @@ describe('the connect panel once the managed key has been retired (issue #92)', 
  * does — 200, row unchanged — because a stub that returned `running` would test a Hetzner and
  * leave the EC2 case exactly as unobserved as it was.
  */
+/**
+ * A STOPPED MACHINE THAT STILL BILLS SAYS SO (ADR-0025). Core sends the `billing` block on a
+ * `stopped` row only when the provider declared `billsWhileStopped`; the page reads the block,
+ * never the provider's name, so a cloud that stops its meter at `stopped` — every shipped one —
+ * gets no such line.
+ */
+describe('a stopped row that core reports as still billing', () => {
+  it('carries the stopped-and-still-billing notice, naming the cloud', async () => {
+    row = { ...SERVER, status: 'stopped', billing: { live: true, providerState: 'stopped', since: '2026-08-26T11:42:42.509Z' } }
+    renderPage()
+    const notice = await screen.findByTestId('stopped-still-billing')
+    expect(notice.textContent).toMatch(/Stopped, and still billing: Fake charges for a stopped machine/)
+    expect(notice.textContent).toMatch(/Terminate it to stop the charge/)
+  })
+
+  it('shows nothing of the kind on an ordinary stopped row', async () => {
+    row = { ...SERVER, status: 'stopped' }
+    renderPage()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy())
+    expect(screen.queryByTestId('stopped-still-billing')).toBeNull()
+  })
+})
+
 describe('a stop or start the provider has not finished', () => {
   /** Land on the page with the box stopped, and click Start. */
   async function clickStart() {

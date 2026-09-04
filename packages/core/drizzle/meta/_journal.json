@@ -141,6 +141,13 @@
       "when": 1788364738755,
       "tag": "0019_useful_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1788563066133,
+      "tag": "0020_bills-while-stopped",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `servers` ADD `bills_while_stopped` integer DEFAULT false NOT NULL;

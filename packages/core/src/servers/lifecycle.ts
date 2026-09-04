@@ -704,7 +704,13 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
     // (rockysurf-4byx). Whatever the status machine does with this state next — promote,
     // suppress, or refuse the transition outright — the fact that a machine exists and is
     // metering is now on the row, and cost accrual reads it rather than the status.
-    let current = adoptReportedHostKey(recordProviderState(db, row.id, view.state), view)
+    // `billsWhileStopped` rides along as the provider's other word about money (ADR-0025): a
+    // stopped machine on a cloud that bills while stopped keeps metering, and the row has to
+    // carry that so the meter survives the provider being switched off in the config later.
+    let current = adoptReportedHostKey(
+      recordProviderState(db, row.id, view.state, undefined, provider.capabilities.billsWhileStopped === true),
+      view,
+    )
     const nextStatus = STATE_TO_STATUS[view.state]
     if (
       nextStatus &&
@@ -890,7 +896,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         // machine and the provider is charging for it from this moment, whatever the row's
         // status does next — including failing during bootstrap, which leaves the instance up
         // by design and used to accrue nothing at all.
-        recordProviderState(db, row.id, result.initial.state)
+        recordProviderState(db, row.id, result.initial.state, undefined, provider.capabilities.billsWhileStopped === true)
 
         // The pin, when the provider is the one that knows it, before anything can connect: the
         // create path is the only place it can be recorded early enough for the FIRST bootstrap

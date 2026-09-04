@@ -47,7 +47,9 @@ For what each shipped provider declares, see
 
 A provider package default-exports a `ProviderFactory`: an id, a display name, a config schema,
 and a synchronous `createProvider(config)` that does no I/O. The provider it returns implements
-nine methods and declares five capabilities.
+nine required methods (plus the optional `syncSshAccess()`, ADR-0021) and declares five required
+capabilities; three more are optional and absent means `false` — `simulatedInstances` (E15),
+`managesSshAccess` (ADR-0021) and `billsWhileStopped` (ADR-0025).
 
 ```ts
 import {
@@ -64,6 +66,10 @@ const capabilities: ProviderCapabilities = {
   canInjectHostKeys: true,    // can the box come up presenting a host key core minted?
   userDataMaxBytes: 16384,    // hard ceiling on the rendered document, before transport encoding
   generatesUserData: true,    // does the provider deliver user-data at all?
+  // Optional, absent means false:
+  //   managesSshAccess    — a shared firewall object core can bring in line with sshAllowedCidr
+  //   billsWhileStopped   — a stopped instance still bills at the running rate (ADR-0025)
+  //   simulatedInstances  — there is no machine at the address reported (test doubles only)
 }
 ```
 
@@ -172,11 +178,12 @@ The shape is frozen by
 written from the de-risking spike's findings memo. **Changing it means amending that ADR in the
 same pull request as the code.**
 
-That is a real path rather than a closed door. Five amendments have been accepted since the
+That is a real path rather than a closed door. Six amendments have been accepted since the
 freeze, each one driven by a provider that could not tell the truth without it: `hostKeyFingerprint`
 and `hostPublicKey` came from the first provider that could not inject a host key, `sshPort` from
 a box whose sshd was not on 22, `consoleUrl` from a console link only the provider could build,
-and `simulatedInstances` from a provider with no machine behind the address it reports. Every one
+`simulatedInstances` from a provider with no machine behind the address it reports, and
+`billsWhileStopped` from the first cloud whose powered-off machines still bill (ADR-0025). Every one
 is additive and optional, so no existing provider had to change.
 
 What an amendment needs: the case that some cloud's truth is currently unsayable, the field or

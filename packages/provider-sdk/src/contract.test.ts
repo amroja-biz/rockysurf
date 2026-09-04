@@ -244,6 +244,15 @@ describe('the interface is implementable', () => {
     await expect(provider.start({})).rejects.toMatchObject({ code: 'invalid_spec' })
   })
 
+  it('leaves billsWhileStopped absent by default, and lets a provider that must declare it do so (E17)', () => {
+    // Absent means false — every shipped provider says nothing, and the example provider here
+    // is one of them. The literal below is the DigitalOcean shape ADR-0025 was written for, and
+    // its whole job is to prove the optional field type-checks beside the five required ones.
+    expect(CAPABILITIES.billsWhileStopped).toBeUndefined()
+    const stoppedStillBills: ProviderCapabilities = { ...CAPABILITIES, stop: true, billsWhileStopped: true }
+    expect(stoppedStillBills.billsWhileStopped).toBe(true)
+  })
+
   it('reports shared and server-owned resources distinctly (D1)', async () => {
     const provider = exampleFactory.createProvider({ region: 'eu-1' })
     await provider.provision(spec())

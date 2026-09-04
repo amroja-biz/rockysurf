@@ -416,6 +416,19 @@ export const servers = sqliteTable(
      * machine was already billing before core learned to look accrues from when core looked.
      */
     billingSince: text('billing_since'),
+    /**
+     * Whether the provider said a `stopped` instance of this machine still bills (ADR-0025).
+     *
+     * The provider's word, like `providerState` — `capabilities.billsWhileStopped` as it stood
+     * the last time `recordProviderState` heard from it — and NOT configuration copied into data.
+     * It lives on the row for the same reason `providerState` does: the meter has to keep
+     * running on a stopped DigitalOcean droplet after the operator sets `enabled: false` on that
+     * cloud, and at that moment there is no provider in the registry left to ask. A live
+     * capability answers "what happens if you create here"; this column answers "what is
+     * happening to THIS machine". Refreshed on every provider read, so a provider that changes
+     * its answer between releases is believed at the next describe.
+     */
+    billsWhileStopped: integer('bills_while_stopped', { mode: 'boolean' }).notNull().default(false),
 
     /* --- timestamps, all ISO 8601 --- */
     createdAt: text('created_at').notNull(),

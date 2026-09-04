@@ -618,14 +618,15 @@ export async function downloadSshKey(serverId: string, serverName: string): Prom
 /**
  * What core is allowed to differ on. Every behavioural difference between clouds flows
  * through these flags — the UI reads them and never recognises a provider by name.
+ *
+ * The SDK's own type, imported rather than re-typed (ADR-0024 made this package a dependency of
+ * the browser bundle). The hand-copied version this replaced had five fields and had already
+ * drifted: it knew nothing of `managesSshAccess`, `simulatedInstances` or `billsWhileStopped`,
+ * so a page reading one of them would have been a type error against a value core really sends.
  */
-export interface ProviderCapabilities {
-  stop: boolean
-  ipStableAcrossStop: boolean
-  canInjectHostKeys: boolean
-  userDataMaxBytes: number
-  generatesUserData: boolean
-}
+import type { ProviderCapabilities } from '@rockysurf/provider-sdk'
+
+export type { ProviderCapabilities }
 
 /**
  * One machine type a provider can sell, as the frozen SDK models it.

@@ -105,6 +105,19 @@ export function assertProviderShape(provider: ComputeProvider): void {
     )
   }
 
+  /**
+   * The optional capabilities are optional, not loosely typed (ADR-0025). A provider that sets
+   * `billsWhileStopped: 'yes'` or `1` would read as truthy in core's billing predicate and as
+   * absent in a strict comparison, which is two answers to a question about money. Absent is
+   * legal and means false; present must be a boolean.
+   */
+  if (caps.billsWhileStopped !== undefined) {
+    check(typeof caps.billsWhileStopped === 'boolean', 'capabilities.billsWhileStopped must be a boolean when present')
+  }
+  if (caps.simulatedInstances !== undefined) {
+    check(typeof caps.simulatedInstances === 'boolean', 'capabilities.simulatedInstances must be a boolean when present')
+  }
+
   // A provider that cannot deliver user-data cannot place a host key before first contact.
   if (!caps.generatesUserData) {
     check(!caps.canInjectHostKeys, 'canInjectHostKeys requires generatesUserData')
