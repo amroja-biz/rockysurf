@@ -3029,6 +3029,37 @@ main.help section > pre {
   line-height: 1.6;
 }
 
+/* Help glossary (issue #359): a term list, styled like the rest of the page rather than left to
+   the browser's bare <dl> defaults. */
+.help-glossary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 1.5rem;
+  row-gap: 0.75rem;
+  margin: 0;
+}
+
+.help-glossary dt {
+  font-weight: 600;
+  color: var(--rs-heading);
+}
+
+.help-glossary dd {
+  margin: 0;
+  line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .help-glossary {
+    grid-template-columns: 1fr;
+    row-gap: 0.25rem;
+  }
+
+  .help-glossary dd {
+    margin-bottom: 0.5rem;
+  }
+}
+
 /* ── Pack shop ─────────────────────────────────────────────────────────────────────────
    The shop and the pre-install disclosure (rockysurf-arym.5). Reuses the existing tokens
    and primitives — .badge, .button, .modal — rather than introducing a second vocabulary
