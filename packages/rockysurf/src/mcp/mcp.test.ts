@@ -65,10 +65,12 @@ describe('scopes', () => {
   it('advertises only the tools this installation granted', () => {
     // A tool an agent cannot call should not be dangled in front of it.
     expect(visibleTools(['read']).map((t) => t.name).sort()).toEqual([
+      'get_provider',
       'get_server',
       'get_ssh_command',
       'list_offerings',
       'list_packs',
+      'list_providers',
       'list_servers',
     ])
     expect(visibleTools(['read', 'stop']).map((t) => t.name)).toContain('stop_server')
@@ -179,6 +181,16 @@ describe('the route each tool calls', () => {
     const { client: c, reads } = recording({ '/api/v1/providers': [] })
     await runTool('list_offerings', {}, ctx(['read'], c))
     expect(reads()).toEqual(['/api/v1/providers'])
+  })
+
+  it('list_providers and get_provider read the same provider route, and nothing else (#351)', async () => {
+    const { client: c, reads } = recording({ '/api/v1/providers': [] })
+    await runTool('list_providers', {}, ctx(['read'], c))
+    expect(reads()).toEqual(['/api/v1/providers'])
+
+    const forGet = recording({ '/api/v1/providers': [{ id: 'fake', displayName: 'Fake' }] })
+    await runTool('get_provider', { provider: 'fake' }, ctx(['read'], forGet.client))
+    expect(forGet.reads()).toEqual(['/api/v1/providers'])
   })
 
   it('list_servers asks for terminated rows only when the agent did', async () => {
@@ -1060,17 +1072,21 @@ describe('create_server can express architecture', () => {
 })
 
 describe('the tool surface', () => {
-  it('is the six tools the bead names plus three added since, each with a scope', () => {
+  it('is the six tools the bead names plus five added since, each with a scope', () => {
     // `list_offerings` was the seventh, added by rockysurf-oeay: `create_server.offering_id` was
     // advertised with no way to learn its values, which made the parameter usable only by an
     // agent a human had already briefed. `list_packs` is the same argument applied to
     // `pack_id`, and `start_server` is the half of stop/start that was missing — both #278.
+    // `list_providers` and `get_provider` are #351: what a cloud CAN DO (capabilities), where
+    // `list_offerings` only ever told an agent what it sells.
     expect(MCP_TOOLS.map((t) => t.name).sort()).toEqual([
       'create_server',
+      'get_provider',
       'get_server',
       'get_ssh_command',
       'list_offerings',
       'list_packs',
+      'list_providers',
       'list_servers',
       'start_server',
       'stop_server',
@@ -1144,6 +1160,71 @@ describe('list_offerings', () => {
   it('names the configured clouds when asked for one that is not configured', async () => {
     // An empty list would read as "this cloud sells nothing", which is a different claim.
     const result = (await runTool('list_offerings', { provider: 'nope' }, ctx(['read'], catalogueClient()))) as {
+      error: string
+      configured: string[]
+    }
+    expect(result.error).toContain('nope')
+    expect(result.configured).toEqual(['fake', 'other'])
+  })
+})
+
+/**
+ * `list_providers` and `get_provider` (#351).
+ *
+ * Same route as `list_offerings`, full fidelity: capabilities and tierPreferences ride along
+ * rather than being narrowed away, because the job here is "what can this cloud do", not "what
+ * does it sell".
+ */
+describe('list_providers and get_provider', () => {
+  const PROVIDERS = [
+    {
+      id: 'fake',
+      displayName: 'Fake Cloud',
+      capabilities: {
+        stop: true,
+        ipStableAcrossStop: true,
+        canInjectHostKeys: true,
+        userDataMaxBytes: 16384,
+        generatesUserData: true,
+      },
+      offerings: [{ id: 'f1.small', cpu: 2, memoryGb: 2, arch: 'arm64', available: true, hourly: null, region: 'r1' }],
+      tierPreferences: { small: 'f1.small' },
+    },
+    {
+      id: 'other',
+      displayName: 'Other Cloud',
+      capabilities: {
+        stop: false,
+        ipStableAcrossStop: false,
+        canInjectHostKeys: false,
+        userDataMaxBytes: 0,
+        generatesUserData: false,
+      },
+      offerings: [],
+    },
+  ]
+  const providersClient = () => client({ get: (async () => PROVIDERS) as CoreClient['get'] })
+
+  it('list_providers is readable with the read scope alone, and passes capabilities through untouched', async () => {
+    // Nothing here spends money or changes anything, and none of it is a credential —
+    // capabilities is a fixed set of booleans/numbers, never a provider-specific secret.
+    const result = (await runTool('list_providers', {}, ctx(['read'], providersClient()))) as {
+      providers: typeof PROVIDERS
+    }
+    expect(result.providers).toEqual(PROVIDERS)
+  })
+
+  it('get_provider narrows to one cloud, in full — capabilities and tierPreferences included', async () => {
+    const result = (await runTool('get_provider', { provider: 'fake' }, ctx(['read'], providersClient()))) as {
+      provider: (typeof PROVIDERS)[number]
+    }
+    expect(result.provider).toEqual(PROVIDERS[0])
+  })
+
+  it('get_provider names the configured clouds when asked for one that is not configured', async () => {
+    // Matches list_offerings' treatment of the same miss: name what there is rather than
+    // answering with nothing, which would read like a cloud with an empty id.
+    const result = (await runTool('get_provider', { provider: 'nope' }, ctx(['read'], providersClient()))) as {
       error: string
       configured: string[]
     }

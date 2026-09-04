@@ -612,7 +612,7 @@ someone into setting; config is where an operator reviews it.
 
 | Tool | Scope | Reversible? |
 |---|---|---|
-| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs` | `read` | reads only |
+| `list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_packs`, `list_providers`, `get_provider` | `read` | reads only |
 | `stop_server` | `stop` | yes — disk preserved, `start_server` brings it back |
 | `start_server` | `stop` | yes — `stop_server` pauses it again; resumes hourly billing |
 | `create_server` | `create` | spends money until stopped or terminated |

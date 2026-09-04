@@ -55,6 +55,29 @@ export interface ProviderCatalogue {
 }
 
 /**
+ * One cloud IN FULL, as `GET /api/v1/providers` reports it — what `list_providers` and
+ * `get_provider` pass through (#351).
+ *
+ * `ProviderCatalogue` above is the same route narrowed to pricing alone, for `list_offerings`'
+ * job of picking a `create_server` argument. This is the other job: telling an agent what a
+ * cloud CAN DO before it calls `stop_server` or `start_server` there. Neither field is secret —
+ * `capabilities` is a fixed set of booleans/numbers core itself is only allowed to branch on
+ * (never a credential), and `tierPreferences` names a saved offering id, not a value that
+ * unlocks anything.
+ */
+export interface ProviderRecord extends ProviderCatalogue {
+  capabilities: {
+    stop: boolean
+    ipStableAcrossStop: boolean
+    canInjectHostKeys: boolean
+    userDataMaxBytes: number
+    generatesUserData: boolean
+  }
+  /** The machine type saved for each size on this cloud (issue #124). Absent if none saved. */
+  tierPreferences?: Partial<Record<'small' | 'medium' | 'large', string>>
+}
+
+/**
  * One surge pack, as `GET /api/v1/surge-packs` reports it (#278).
  *
  * Declared as the shape this file READS, like `ProviderCatalogue` above and for the same
@@ -154,6 +177,61 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       const query = args['include_terminated'] ? '?includeTerminated=true' : ''
       const servers = await client.get<unknown[]>(`/api/v1/servers${query}`)
       return { servers, ...(await costContext(client)) }
+    },
+  },
+
+  {
+    /**
+     * THE PROVIDER LIST, because an agent had no way to see what a cloud CAN DO before calling
+     * `stop_server` or `start_server` there (#351).
+     *
+     * `list_offerings` below reads the same route but narrows it to pricing, for the
+     * `create_server` job of picking an `offering_id`. This tool passes `capabilities` and
+     * `tierPreferences` on too, for the different job of checking, say, `capabilities.stop`
+     * before assuming a box can be paused — some clouds cannot.
+     *
+     * Read scope for the reason `list_offerings` has it: nothing here spends money or changes
+     * anything, and none of it is a credential — `capabilities` is a fixed set of
+     * booleans/numbers, never provider-specific, and `tierPreferences` names a saved offering
+     * id rather than a secret.
+     */
+    name: 'list_providers',
+    title: 'List configured cloud providers',
+    description:
+      'Every cloud this installation is configured for, with what it can do (capabilities: ' +
+      'whether it supports stop/start, keeps the same IP address across a stop, and so on), ' +
+      'what it sells, and any saved size preference. Use it to check what a cloud supports ' +
+      'before calling stop_server or start_server on a server there. Use list_offerings ' +
+      'instead if you only need prices for create_server.',
+    scope: 'read',
+    inputSchema: z.strictObject({}),
+    run: async (_args, { client }) => {
+      const providers = await client.get<ProviderRecord[]>('/api/v1/providers')
+      return { providers }
+    },
+  },
+
+  {
+    name: 'get_provider',
+    title: 'Get one cloud provider',
+    description:
+      'Full detail for one configured cloud — the same information list_providers returns, ' +
+      'narrowed to a single provider. Refused, naming the configured clouds, if the id is not ' +
+      'one of them.',
+    scope: 'read',
+    inputSchema: z.strictObject({
+      provider: z.string().min(1).describe('The provider id, as list_providers names it.'),
+    }),
+    run: async (args, { client }) => {
+      const wanted = String(args['provider'])
+      const providers = await client.get<ProviderRecord[]>('/api/v1/providers')
+      const found = providers.find((p) => p.id === wanted)
+      // Matches `list_offerings`' treatment of the same miss: name what there is rather than
+      // answering with nothing, which would read like a cloud with an empty id.
+      if (!found) {
+        return { error: `no configured cloud called "${wanted}"`, configured: providers.map((p) => p.id) }
+      }
+      return { provider: found }
     },
   },
 
