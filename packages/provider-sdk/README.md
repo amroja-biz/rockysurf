@@ -2,7 +2,9 @@
 
 The frozen v0 contract every Rocky Surf compute provider implements. Types plus a few pure
 helpers, with **zero runtime dependencies** — anything this package depends on is inherited by
-every provider and every consumer.
+every provider and every consumer. That is the promise, and it is deliberately not "no code": a
+helper lives here when more than one tree has to agree with the others exactly, which is why
+`ssh-cidr` and `sizing` are here as well as the types.
 
 This is the package you depend on to write a provider Rocky Surf can drive, whether or not it
 lives in the Rocky Surf repository. Nothing here requires it to: depend on this package,
@@ -31,6 +33,8 @@ pnpm add @rockysurf/provider-sdk
 | `provision` | `ProvisionSpec`, and `assertHostnameSafeId` / `isHostnameSafeId` |
 | `managed` | `ManagedResource`, `ResourceOwnership` — what the reconciler reads |
 | `errors` | `ProviderError`, its code list, `isRetryableProviderErrorCode`, `unsupportedOperationError` |
+| `ssh-cidr` | `normalizeSshCidrs`, `opensSshToTheInternet` — the one place three providers have to agree character-for-character (ADR-0021) |
+| `sizing` | The t-shirt size resolver: `SERVER_SIZES`, `SIZE_REQUIREMENTS`, `chooseOffering`, `chooseForSize` and the saved-type rules — shared by core and the browser bundle (ADR-0024) |
 
 The doc comments carry the reasoning, so you can see which rules are load-bearing without
 reading the history behind them. The workflow — what to build, in what order, and what has to be

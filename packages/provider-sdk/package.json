@@ -1,7 +1,7 @@
 {
   "name": "@rockysurf/provider-sdk",
   "version": "0.1.0",
-  "description": "Frozen v0 contract every Rocky Surf compute provider implements. Types only — zero runtime dependencies.",
+  "description": "Frozen v0 contract every Rocky Surf compute provider implements. Types and pure helpers — zero runtime dependencies.",
   "license": "MIT",
   "type": "module",
   "files": [

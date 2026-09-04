@@ -283,6 +283,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.8
         version: 6.43.8
+      '@rockysurf/provider-sdk':
+        specifier: workspace:*
+        version: link:../provider-sdk
       react:
         specifier: ^19.2.8
         version: 19.2.8

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -439,9 +439,24 @@ describe('the freeze holds its exclusions', () => {
     expect(pkg.peerDependencies).toBeUndefined()
   })
 
-  it('imports nothing outside this package', () => {
-    const imports = [...surface.matchAll(/from '([^']+)'/g)].map((m) => m[1]!)
-    expect(imports.every((i) => i.startsWith('./'))).toBe(true)
+  /**
+   * EVERY source file, not only the frozen surface (issue #349).
+   *
+   * The zero-dependency promise is what the `dependencies: {}` assertion above and this one
+   * together mean, and the promise is not "no code": `errors.ts`, `instance.ts`, `provision.ts`,
+   * `ssh-cidr.ts` and `sizing.ts` all ship pure functions, each because more than one tree has
+   * to agree with the others exactly. `sizing.ts` (ADR-0024) makes that promise load-bearing in
+   * a new way — the SPA's bundle imports this package now, so an import added here reaches a
+   * browser. Checking only the six frozen files would not have seen it.
+   */
+  it('imports nothing outside this package, in any source file', () => {
+    const sources = readdirSync(fileURLToPath(new URL('.', import.meta.url)))
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+    expect(sources).toContain('sizing.ts')
+    for (const name of sources) {
+      const imports = [...src(name).matchAll(/from '([^']+)'/g)].map((m) => m[1]!)
+      expect({ name, imports }).toEqual({ name, imports: imports.filter((i) => i.startsWith('./')) })
+    }
   })
 })
 

@@ -1,4 +1,4 @@
-import type { InstanceState } from '@rockysurf/provider-sdk'
+import type { InstanceState, ServerSize } from '@rockysurf/provider-sdk'
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import type { StepRunAs } from '../bootstrap/plan.js'
 
@@ -69,15 +69,19 @@ export type ProvisioningStep = (typeof PROVISIONING_STEPS)[number]
 export const BOOTSTRAP_MODES = ['push', 'callback'] as const
 export type BootstrapMode = (typeof BOOTSTRAP_MODES)[number]
 
-export const SERVER_SIZES = ['small', 'medium', 'large'] as const
-export type ServerSize = (typeof SERVER_SIZES)[number]
+/**
+ * The t-shirt vocabulary, owned by the shared resolver (`@rockysurf/provider-sdk`'s
+ * `sizing.ts`, issue #349 / ADR-0024) and re-exported here because this is where core's
+ * persisted `size` column is declared. One list, so the browser's radio buttons, the settings
+ * inventory's preference fields and this column can never disagree about what a size is.
+ */
+export { SERVER_SIZES, type ServerSize } from '@rockysurf/provider-sdk'
 
 /**
  * What a row's `size` column actually holds (rockysurf-kh3u, issue #24 PR 1).
  *
- * `ServerSize` stays the 3-value t-shirt vocabulary — `Record<ServerSize, Requirements>` in
- * `servers/offerings.ts` and its SPA twin stay exhaustive, and `scripts/check-size-table.mjs`
- * keeps comparing exactly those three rows. `'custom'` is the fourth thing the COLUMN can hold:
+ * `ServerSize` stays the 3-value t-shirt vocabulary — `Record<ServerSize, Requirements>` in the
+ * shared resolver stays exhaustive. `'custom'` is the fourth thing the COLUMN can hold:
  * a server created by naming an `offeringId` directly, with no t-shirt size behind it at all.
  *
  * NO MIGRATION. The column is a plain `text()` with no `CHECK` constraint, so widening what it
