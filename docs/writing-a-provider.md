@@ -17,7 +17,8 @@ core.
 
 A package that default-exports a `ProviderFactory` — an id, a display name, a config schema, and
 a synchronous `createProvider(config)` that does no I/O — whose provider implements **nine
-methods** and declares five capabilities.
+methods** (plus the optional `syncSshAccess()`, ADR-0021) and declares five capabilities, with three
+optional ones it declares only when true.
 
 ```
 packages/provider-<id>/
@@ -125,8 +126,15 @@ const capabilities: ProviderCapabilities = {
   canInjectHostKeys: true,    // can the box come up presenting a host key core minted?
   userDataMaxBytes: 16384,    // hard ceiling on the rendered document, before transport encoding
   generatesUserData: true,    // does the provider deliver user-data at all?
+  // Optional — absent means false. Declare one only when it is true of the cloud:
+  //   managesSshAccess: true,   // a shared firewall object core pushes sshAllowedCidr at (ADR-0021)
+  //   billsWhileStopped: true,  // a stopped machine bills at the running rate (ADR-0025)
 }
 ```
+
+`billsWhileStopped` is the one that decides money: with it, core's meter keeps running through
+`stopped` and the server page says so. It means the RUNNING rate — a cloud that charges a reduced
+rate while stopped must not set it, and needs a capability that does not exist yet.
 
 **There are zero `provider.id` conditionals in shared code, and tests enforce that.** So this
 object is not an implementation detail — it is the complete set of behavioural differences core
@@ -168,7 +176,8 @@ import { assertProviderShape, assertFactoryShape, assertOfferingsShape } from '@
 ```
 
 It checks the mechanical contract: the id is lowercase and non-empty, all nine methods exist,
-the five capability fields have the right types, `canInjectHostKeys` implies `generatesUserData`,
+the five capability fields have the right types and the optional ones are booleans when declared,
+`canInjectHostKeys` implies `generatesUserData`, `managesSshAccess` and `syncSshAccess()` agree,
 offerings and managed-resource records have the right shape, errors are `ProviderError`s with a
 valid code, and `createProvider` does no I/O. It also carries the absence-grace probe, which is
 how the `describe()` grace rule gets asserted rather than assumed.

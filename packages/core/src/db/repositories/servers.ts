@@ -157,15 +157,31 @@ export function listServersByStatus(db: Db, statuses: ServerStatus[]): ServerRow
 }
 
 /**
- * The provider states in which a machine costs money (rockysurf-4byx).
+ * The provider states in which a machine costs money on EVERY provider (rockysurf-4byx).
  *
  * `stopping` is in the list for the reason 55fx.15 gave for keeping the ROW `running` through a
  * stop: a machine shutting down is still a machine, and the meter runs until the provider says
- * `stopped`. `stopped` is out because compute billing ends there on every provider core speaks
- * to — the disk keeps costing something, but core has never priced disks and inventing a figure
- * for them would be the same sin in the other direction.
+ * `stopped`. `stopped` is out of THIS list because compute billing ends there on every provider
+ * that does not say otherwise — the disk keeps costing something, but core has never priced
+ * disks and inventing a figure for them would be the same sin in the other direction.
+ *
+ * "Does not say otherwise" is `capabilities.billsWhileStopped` (ADR-0025): a powered-off
+ * DigitalOcean droplet bills at the full compute rate, and a provider declares that rather than
+ * lying about `stop`. Read `billingStatesFor` for the per-row answer, not this constant.
  */
 export const BILLING_INSTANCE_STATES: readonly InstanceState[] = ['pending', 'running', 'stopping']
+
+/**
+ * The provider states in which THIS machine costs money.
+ *
+ * The base list plus `stopped` when the provider said a stopped instance still bills. The flag
+ * is read from the row rather than from the registry on purpose — see the column's comment in
+ * `db/schema.ts`: the case this has to get right is a cloud switched off in the config while it
+ * still has stopped, billing machines, and at that point there is no provider left to ask.
+ */
+export function billingStatesFor(row: Pick<ServerRow, 'billsWhileStopped'>): readonly InstanceState[] {
+  return row.billsWhileStopped ? [...BILLING_INSTANCE_STATES, 'stopped'] : BILLING_INSTANCE_STATES
+}
 
 /**
  * Is this row's machine costing money right now?
@@ -180,7 +196,8 @@ export const BILLING_INSTANCE_STATES: readonly InstanceState[] = ['pending', 'ru
  *     is the case that read zero forever: a bootstrap that fails leaves the row `failed` and
  *     the EC2 running (failed boxes are kept for diagnosis, and the cap doctrine never stops
  *     servers), so the one state where a user pays for nothing at all was the one state the
- *     ticker skipped.
+ *     ticker skipped. Which states count is per row (`billingStatesFor`): `stopped` is one of
+ *     them exactly when the provider said so (ADR-0025).
  *
  * `terminated` is absorbing and short-circuits both: the row is gone, and a stale
  * `providerState` from the last read before termination must not keep the meter running.
@@ -188,11 +205,13 @@ export const BILLING_INSTANCE_STATES: readonly InstanceState[] = ['pending', 'ru
  * A provider core cannot currently reach keeps its LAST answer, so an unreachable cloud goes on
  * accruing rather than silently going quiet. That direction is deliberate: over-reporting a
  * cost is a user who terminates something they did not need, and under-reporting it is the bug.
+ * A pure function of the row, and kept that way: the ticker, the spend tracker and every front
+ * end's `billing` block ask it the same question and must get the same answer.
  */
 export function isBillingRow(row: ServerRow): boolean {
   if (row.status === 'terminated') return false
   if (row.status === 'running') return true
-  return row.providerState !== null && BILLING_INSTANCE_STATES.includes(row.providerState)
+  return row.providerState !== null && billingStatesFor(row).includes(row.providerState)
 }
 
 /**
@@ -224,13 +243,33 @@ export function listBillingServers(db: Db): ServerRow[] {
  * turn "we could not check" into "the meter has stopped" — silently zeroing the cost of the
  * one machine nobody can currently see. The last real answer stands, with its original stamp,
  * so how stale the claim is stays visible.
+ *
+ * `billsWhileStopped` is the provider's `capabilities.billsWhileStopped` at the time of the
+ * read (ADR-0025), recorded beside the state it qualifies so `isBillingRow` can stay a pure
+ * function of the row. Callers pass what the provider in hand declares; absent means the
+ * provider said nothing, which is `false`. It is written even on an `unknown` read — the
+ * capability is a fact about the provider, not about this read — so a row created before the
+ * column existed picks it up at the first sync after upgrade.
  */
-export function recordProviderState(db: Db, id: string, state: InstanceState, at: string = nowIso()): ServerRow {
+export function recordProviderState(
+  db: Db,
+  id: string,
+  state: InstanceState,
+  at: string = nowIso(),
+  billsWhileStopped: boolean = false,
+): ServerRow {
   const current = requireServer(db, id)
-  if (state === 'unknown') return current
+  if (state === 'unknown') {
+    if (current.billsWhileStopped === billsWhileStopped) return current
+    const [flagged] = db.update(servers).set({ billsWhileStopped }).where(eq(servers.id, id)).returning().all()
+    if (!flagged) throw new Error(`recordProviderState wrote no row for ${id}`)
+    return flagged
+  }
 
-  const patch: Partial<ServerRow> = { providerState: state, providerStateAt: at, updatedAt: at }
-  if (!current.billingSince && BILLING_INSTANCE_STATES.includes(state)) patch.billingSince = at
+  const patch: Partial<ServerRow> = { providerState: state, providerStateAt: at, updatedAt: at, billsWhileStopped }
+  // The anchor follows the same per-row rule as the predicate: a machine whose first confirmed
+  // state is `stopped` on a cloud that bills while stopped is metering from that moment.
+  if (!current.billingSince && billingStatesFor({ billsWhileStopped }).includes(state)) patch.billingSince = at
 
   const [updated] = db.update(servers).set(patch).where(eq(servers.id, id)).returning().all()
   if (!updated) throw new Error(`recordProviderState wrote no row for ${id}`)

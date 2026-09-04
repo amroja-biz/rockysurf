@@ -448,8 +448,14 @@ Your installation fetches its provider's document at runtime and caches it (`pri
 default 6), so a price a cloud changes today reaches you on the next publish plus one cache
 refresh — no upgrade involved. Every estimate in the UI carries the feed's own "as of" stamp.
 
-Five things worth knowing:
+Six things worth knowing:
 
+- **A stopped server stops costing on every cloud that ships here — and not on every cloud.** The
+  estimate follows what the provider says a stopped machine costs: on a cloud whose provider
+  declares that a stopped machine still bills at the running rate
+  ([ADR-0025](adr/0025-billing-while-stopped-is-a-capability.md)), the meter keeps running through
+  `stopped`, the server page says "Stopped, and still billing", and only terminating ends the
+  charge. None of the five shipped providers is such a cloud; DigitalOcean is.
 - **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
   is deliberately no stale bundled fallback: creating, stopping and terminating servers all
   work, the create form says prices are unavailable, and the spend cap reports the affected

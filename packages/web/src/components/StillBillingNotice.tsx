@@ -25,7 +25,9 @@ import { formatDateTime } from '../lib/format'
  * GATED ON `failed`, NOT ON `billing` ALONE (issue #218). Core sends the `billing` block for any
  * row whose provider says the instance is metering and whose STATUS does not already say so —
  * `isBillingRow(row) && row.status !== 'running'`, with `pending`, `running` and `stopping` the
- * metering states. That is a wider set than this notice has anything to say about:
+ * metering states on every cloud — plus `stopped` on a cloud whose provider declared
+ * `billsWhileStopped` (ADR-0025), which the server page reports with its own one-line notice
+ * rather than through this one. That is a wider set than this notice has anything to say about:
  *
  *  - `requested` / `provisioning` — a box coming up on purpose. The instance meters from the
  *    moment it is asked for, so a first launch carried this notice while the "Launching server"

@@ -468,6 +468,21 @@ export function ServerDetailPage() {
         {/* After the reason, because "diagnose" only means something once you can read what
             broke — and before the action buttons, which is where "terminate" lives. */}
         <StillBillingNotice server={server} detailed />
+        {/*
+          A STOPPED machine that is still billing (ADR-0025). Core sends the `billing` block for a
+          `stopped` row only when the provider declared `billsWhileStopped` — every shipped cloud
+          stops the meter at `stopped`, so this line never appears for them, and it is driven by the
+          capability core recorded on the row rather than by anything this page knows about a cloud.
+          Not folded into `StillBillingNotice`, whose gate is `failed` on purpose (issue #218): this
+          is not a surprise to diagnose, it is a fact about the cloud to know before deciding
+          between Start and Terminate.
+        */}
+        {server.status === 'stopped' && server.billing?.live && (
+          <p className="warning" role="status" data-testid="stopped-still-billing">
+            Stopped, and still billing: {providerName ?? server.provider} charges for a stopped machine at
+            the running rate. Terminate it to stop the charge.
+          </p>
+        )}
       </section>
 
       {/* Every button is disabled for the whole of a transition, not just for the request: a

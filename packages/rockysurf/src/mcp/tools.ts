@@ -72,6 +72,15 @@ export interface ProviderRecord extends ProviderCatalogue {
     canInjectHostKeys: boolean
     userDataMaxBytes: number
     generatesUserData: boolean
+    /**
+     * The three OPTIONAL capabilities, absent meaning false — passed through because an agent
+     * deciding whether `stop_server` saves money needs `billsWhileStopped` (ADR-0025): on a
+     * cloud that sets it, a stopped machine bills at the running rate and only `terminate_server`
+     * ends the charge.
+     */
+    billsWhileStopped?: boolean
+    managesSshAccess?: boolean
+    simulatedInstances?: boolean
   }
   /** The machine type saved for each size on this cloud (issue #124). Absent if none saved. */
   tierPreferences?: Partial<Record<'small' | 'medium' | 'large', string>>
@@ -228,10 +237,12 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     title: 'List configured cloud providers',
     description:
       'Every cloud this installation is configured for, with what it can do (capabilities: ' +
-      'whether it supports stop/start, keeps the same IP address across a stop, and so on), ' +
+      'whether it supports stop/start, keeps the same IP address across a stop, whether a ' +
+      'stopped server still bills at the running rate (billsWhileStopped), and so on), ' +
       'what it sells, and any saved size preference. Use it to check what a cloud supports ' +
-      'before calling stop_server or start_server on a server there. Use list_offerings ' +
-      'instead if you only need prices for create_server.',
+      'before calling stop_server or start_server on a server there — on a cloud with ' +
+      'billsWhileStopped, stopping saves nothing and only terminate_server ends the charge. ' +
+      'Use list_offerings instead if you only need prices for create_server.',
     scope: 'read',
     inputSchema: z.strictObject({}),
     run: async (_args, { client }) => {

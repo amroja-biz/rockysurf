@@ -1833,6 +1833,15 @@ export function CreateServerPage() {
         {provider && !provider.capabilities.stop && (
           <p className="hint">{provider.displayName} servers cannot be stopped and restarted — only terminated.</p>
         )}
+        {/* Also capability-driven (ADR-0025): a cloud that bills a stopped machine at the running
+            rate has to say so BEFORE the machine exists, because "stop it to save money" is the
+            habit every other cloud teaches. */}
+        {provider && provider.capabilities.stop && provider.capabilities.billsWhileStopped === true && (
+          <p className="hint" data-testid="bills-while-stopped">
+            Stopping a {provider.displayName} server does not stop its charges — a stopped machine bills at the
+            running rate there. Only terminating ends the charge.
+          </p>
+        )}
 
         {submitError &&
           (typeof submitError === 'string' ? <p className="error">{submitError}</p> : <ProviderErrorNotice error={submitError} />)}

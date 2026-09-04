@@ -118,4 +118,34 @@ export interface ProviderCapabilities {
    * declares costs them nothing.
    */
   managesSshAccess?: boolean
+
+  /**
+   * A `stopped` instance still accrues compute charges, at the SAME hourly rate as a running one.
+   *
+   * Added by ADR-0025 (issue #294, amendment E17 to ADR-0003). **Additive and optional; absent
+   * means `false`**, which is what every shipped provider declares by saying nothing: AWS, GCP and
+   * Hetzner stop the compute meter at `stopped`, and Azure's provider chooses `deallocate` over
+   * `powerOff` for exactly this reason.
+   *
+   * It exists because the first cloud the `adding-providers` skill was pointed at broke the
+   * assumption core's billing predicate had written down — "`stopped` is out because compute
+   * billing ends there on every provider core speaks to". A powered-off DigitalOcean droplet keeps
+   * billing at the full rate, and DigitalOcean offers no call that releases the compute while
+   * keeping the disk. Without this flag such a provider had two answers and both were lies:
+   * `stop: true` made core stop accruing while the cloud went on charging (under-reporting, which
+   * `isBillingRow` names as THE bug), and `stop: false` denied a real capability and threw away
+   * the idle auto-stop cost lever.
+   *
+   * What core does with it: the meter keeps running through `stopped`, the server page says so,
+   * and the New Server page warns before a machine is created. The value is recorded on the server
+   * row beside the provider's last reported state, so a provider later disabled or removed cannot
+   * silently stop the meter on a machine it is still charging for.
+   *
+   * MUST: set it when a stopped instance is charged at the running rate. MUST NOT set it for a
+   * cloud that charges a REDUCED rate while stopped — core accrues the running rate and would
+   * over-report; that cloud needs a new capability, which is an ADR question, never an
+   * approximation. A cloud that offers both a billing and a non-billing off-state MUST use the
+   * non-billing call and leave this absent, as Azure does.
+   */
+  billsWhileStopped?: boolean
 }

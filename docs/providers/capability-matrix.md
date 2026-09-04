@@ -23,6 +23,7 @@ and the two real-cloud capstone transcripts beside it.
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
 | `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent |
 | `simulatedInstances` | absent | absent | absent | absent | absent |
+| `billsWhileStopped` | absent | absent | absent | absent | absent |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
 real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
@@ -339,6 +340,27 @@ Surf from.
 **A provider must not set this while reporting addresses that resolve to real hosts.** Core takes
 it as permission to skip the SSH drive entirely, so a provider that lied here would report a box
 as installed with nothing on it.
+
+### `billsWhileStopped`
+
+**Absent in every shipped column, and the row exists for a cloud that is not in this table yet.**
+Added by [ADR-0025](../adr/0025-billing-while-stopped-is-a-capability.md) (ADR-0003 amendment
+E17). `true` means a `stopped` instance is charged at the SAME hourly rate as a running one, and
+core's meter keeps running through `stopped` on the strength of it.
+
+The five shipped clouds say nothing, which means `false`, and the evidence is per cloud: AWS stops
+compute charges at `stopped` (the EBS volume keeps costing, which core has never priced — see
+`BILLING_INSTANCE_STATES`); GCP and Hetzner likewise; **Azure** has both a billing off-state
+(`powerOff`, Stopped/Allocated) and a non-billing one (`deallocate`), and the shipped provider
+chooses `deallocate` — confirmed on the real-cloud run of 2026-08-26 — which is why it leaves the
+flag absent rather than setting it; BYO's machines are the operator's own and cost Rocky Surf
+nothing to count.
+
+The first cloud that needs it is **DigitalOcean**: a powered-off droplet bills at the full rate and
+there is no `deallocate`-shaped call to choose instead (issue #294, gap S1). A provider for it
+declares `stop: true, billsWhileStopped: true`. A cloud that charges a REDUCED rate while stopped
+must not set this flag — core would accrue the running rate — and needs a capability that does not
+exist yet, which is an ADR question rather than an approximation.
 
 ## Differences this table cannot express
 

@@ -925,6 +925,20 @@ describe('capability flags drive provider-specific controls', () => {
     expect(await screen.findByText(/cannot be stopped/i)).toBeTruthy()
   })
 
+  it('warns before creating when a stopped server on this cloud still bills (ADR-0025)', async () => {
+    vi.mocked(api.listProviders).mockResolvedValue([
+      { ...FAKE_PROVIDER, capabilities: { ...FAKE_PROVIDER.capabilities, stop: true, billsWhileStopped: true } },
+    ])
+    renderPage()
+    expect(await screen.findByText(/does not stop its charges/i)).toBeTruthy()
+  })
+
+  it('says nothing about stopped billing when the provider does not declare it', async () => {
+    renderPage()
+    await findResolved(/small-arm/)
+    expect(screen.queryByText(/does not stop its charges/i)).toBeNull()
+  })
+
   it('hides the provider picker when there is only one', async () => {
     renderPage()
     await findResolved(/small-arm/)

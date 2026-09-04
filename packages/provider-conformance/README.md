@@ -2,7 +2,8 @@
 
 The shared checks every Rocky Surf compute provider runs against itself. It takes a provider you
 built and asserts that it honours the [`@rockysurf/provider-sdk`](https://www.npmjs.com/package/@rockysurf/provider-sdk)
-contract — nine methods present, five capabilities well-formed, offerings and managed-resource
+contract — nine methods present, the five required capabilities well-formed and the optional ones
+booleans when declared, offerings and managed-resource
 records the right shape, errors carrying frozen codes, and `describe()` observing the absence
 grace. It is **test-only**: nothing here belongs in a runtime path, and it never becomes a
 dependency of your shipped provider.

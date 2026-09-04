@@ -11,7 +11,9 @@ E11 below is the one this ADR said to revisit "if a second provider needs the sa
 three do — it arrives as `capabilities.managesSshAccess` plus `syncSshAccess()`, the first
 OPTIONAL method on the interface, which is a deliberate exception to A2's required-and-throwing
 precedent. Core still branches on the flag and never on the method's presence, so A2's central
-property is untouched.
+property is untouched. **Amended by
+[ADR-0025](0025-billing-while-stopped-is-a-capability.md) (2026-09-04):** amendment E17 below,
+`capabilities.billsWhileStopped`, in the E15 shape — additive, optional, absent means false.
 
 ## Context
 
@@ -385,6 +387,29 @@ Two provider-side notes the field forces into the open:
 
 The field carries no secret: instance ids and regions are identifiers, and the link lands on the
 provider's own sign-in page. It is the same posture as showing the address.
+
+### E17 — `ProviderCapabilities.billsWhileStopped`, because one cloud's off-state is not free
+
+Added 2026-09-04 by [ADR-0025](0025-billing-while-stopped-is-a-capability.md) (issue #294).
+**Additive and optional; absent means `false`**, which is what all five shipped providers declare
+by saying nothing, and no provider package changed.
+
+Core's billing predicate had written down that `stopped` costs nothing "on every provider core
+speaks to". A powered-off DigitalOcean droplet bills at the full compute rate and DigitalOcean has
+no non-billing off-state to choose instead, so a provider for it could say `stop: true` and watch
+core stop the meter, or `stop: false` and lie about the API. E15's reasoning applies unchanged:
+core is not permitted to learn this from a provider id, so it learns it from a capability, and the
+struct's own doc comment prescribed exactly that.
+
+Two things the flag deliberately does not do:
+
+1. **It does not model a reduced rate.** `true` means the running rate. A cloud that charges less
+   while stopped MUST NOT set it and needs a capability that does not exist yet — an ADR question,
+   never an approximation.
+2. **It does not reach the meter live.** Core records the provider's answer on the server row
+   beside `providerState`, so a cloud switched off in the config cannot silently stop the meter on
+   a machine it is still charging for. The reasoning, and the rejected live-lookup shape, are in
+   ADR-0025.
 
 ## Consequences
 
