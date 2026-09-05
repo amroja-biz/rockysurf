@@ -200,10 +200,16 @@ lifecycle that differ (which credential to read, what to preflight, how to build
 config that run boots on is validated on every pull request by `packages/rockysurf/src/e2e-config.test.ts`
 (#346), so extend that when you add config keys.
 
-**A provider without a nightly leg ships a fully daggered column, and says so.** That is honest and
-allowed — the `byo` column is the model — but say it plainly in the README's "Verified" section and
-in the PR rather than letting the next reader discover it. The leg is separate, larger work than the
-package, and should be its own issue.
+**A nightly real-cloud leg is for OFFICIAL providers only** — the ones composed into
+`packages/rockysurf/src/compose.ts`. This repository does not spend its money proving somebody
+else's package works, so a PERSONAL provider gets no leg: it ships a fully daggered column,
+verified by its author and by whoever installs it, against their own account. The `byo` column is
+the model for how that reads. Say it plainly in the README's "Verified" section and in the PR
+rather than letting the next reader discover it, and record what was actually run when someone
+runs it. (Owner ruling, 2026-09-05, on the reverted DigitalOcean leg.)
+
+For an official provider that has no leg yet, the same fully-daggered column applies until one
+exists; the leg is separate, larger work than the package, and should be its own issue.
 
 ## Tests that enumerate providers and will fail until updated
 
