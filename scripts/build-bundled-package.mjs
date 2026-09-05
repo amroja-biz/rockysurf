@@ -6,13 +6,12 @@
  * WHY A SECOND BUILD SCRIPT. `scripts/build-package.mjs` compiles a package that resolves its
  * `@rockysurf/*` imports at runtime from the installation's own `node_modules`, which is right
  * for everything shipped inside the `rockysurf` CLI. A PERSONAL provider (ADR-0026) is not
- * shipped inside anything: it is extracted under `<dataDir>/providers` by an operator or by the
- * provider shop, and the shop's installer deliberately never runs `npm install` — it checks that
- * every runtime dependency the manifest declares resolves from the install directory and refuses
- * the install naming any that do not. A personal provider therefore has to declare NO runtime
- * dependencies and carry what it needs, which for a Rocky Surf provider means the SDK's handful
- * of pure runtime helpers (`ProviderError`, `assertHostnameSafeId`, `normalizeSshCidrs`,
- * `DESCRIBE_ABSENCE_GRACE`).
+ * shipped inside anything: it is extracted under `<dataDir>/providers` by an operator running
+ * `tar -xzf`, and nothing in that step resolves a dependency for them (ADR-0028 as amended by
+ * issue #394 — Rocky Surf has no installer at all). A personal provider therefore has to declare
+ * NO runtime dependencies and carry what it needs, which for a Rocky Surf provider means the
+ * SDK's handful of pure runtime helpers (`ProviderError`, `assertHostnameSafeId`,
+ * `normalizeSshCidrs`, `DESCRIBE_ABSENCE_GRACE`).
  *
  * BUNDLING IS WHY THE SDK MAY BE A devDependency HERE, and the SDK is built for it: it has zero
  * runtime dependencies of its own and no export whose meaning depends on object identity

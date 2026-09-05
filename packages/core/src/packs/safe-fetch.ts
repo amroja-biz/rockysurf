@@ -31,9 +31,6 @@ export type Refusal = { ok: false; reason: string }
 
 export type SafeFetchResult = { ok: true; text: string } | Refusal
 
-/** The bytes as they arrived, plus the URL the last hop actually answered from. */
-export type SafeFetchBytesResult = { ok: true; bytes: Buffer; url: string } | Refusal
-
 export interface SafeFetchDeps {
   /** DNS seam for tests: must return every address the name resolves to. */
   resolve?: Resolver
@@ -54,15 +51,6 @@ export interface SafeFetchDeps {
    * name, not for wherever it chooses to send us.
    */
   allowHosts?: ReadonlySet<string>
-  /**
-   * The body cap, in bytes. Defaults to the 2 MiB an import gets.
-   *
-   * Raised by exactly one caller: the provider shop's tarball fetch (ADR-0028), where the thing
-   * on the wire is a packed npm package rather than a YAML file. It is still a cap — a
-   * "provider" that is a multi-gigabyte tarpit is refused before it reaches the disk — and it
-   * is set by the CALLER rather than by the URL, so nothing a registry publishes can raise it.
-   */
-  maxBytes?: number
 }
 
 /* ------------------------------------------------------------------- address screening */
@@ -191,8 +179,8 @@ async function screenUrl(url: URL, resolve: Resolver, allowHosts?: ReadonlySet<s
   return undefined
 }
 
-async function readCapped(response: Response, maxBytes: number): Promise<Buffer | undefined> {
-  if (!response.body) return Buffer.alloc(0)
+async function readCapped(response: Response): Promise<string | undefined> {
+  if (!response.body) return ''
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
   let total = 0
@@ -200,26 +188,22 @@ async function readCapped(response: Response, maxBytes: number): Promise<Buffer 
     const { done, value } = await reader.read()
     if (done) break
     total += value.byteLength
-    if (total > maxBytes) {
+    if (total > MAX_BODY_BYTES) {
       await reader.cancel().catch(() => {})
       return undefined
     }
     chunks.push(value)
   }
-  return Buffer.concat(chunks)
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 /**
- * Fetch an operator-supplied URL with the SSRF guard applied at every hop, as BYTES.
- *
- * The same walk `fetchPublicText` performs — it is now a thin decoder over this — split out
- * because a provider tarball (ADR-0028) is not text and decoding it as UTF-8 would corrupt it.
- * Never throws; every failure comes back as `{ ok: false, reason }` fit for a 400 body.
+ * Fetch an operator-supplied URL with the SSRF guard applied at every hop.
+ * Never throws — every failure comes back as `{ ok: false, reason }` fit for a 400 body.
  */
-export async function fetchPublicBytes(rawUrl: string, deps: SafeFetchDeps = {}): Promise<SafeFetchBytesResult> {
+export async function fetchPublicText(rawUrl: string, deps: SafeFetchDeps = {}): Promise<SafeFetchResult> {
   const resolve = deps.resolve ?? defaultResolver
   const fetchImpl = deps.fetchImpl ?? fetch
-  const maxBytes = deps.maxBytes ?? MAX_BODY_BYTES
 
   let url: URL
   try {
@@ -254,20 +238,11 @@ export async function fetchPublicBytes(rawUrl: string, deps: SafeFetchDeps = {})
       await response.body?.cancel().catch(() => {})
       return { ok: false, reason: `Could not fetch ${url.href}` }
     }
-    const bytes = await readCapped(response, maxBytes)
-    if (bytes === undefined) return { ok: false, reason: `${url.href} is larger than the ${maxBytes} byte import limit` }
-    return { ok: true, bytes, url: url.href }
+    const text = await readCapped(response)
+    if (text === undefined) return { ok: false, reason: `${url.href} is larger than the ${MAX_BODY_BYTES} byte import limit` }
+    return { ok: true, text }
   }
   return { ok: false, reason: 'Too many redirects' }
-}
-
-/**
- * Fetch an operator-supplied URL with the SSRF guard applied at every hop.
- * Never throws — every failure comes back as `{ ok: false, reason }` fit for a 400 body.
- */
-export async function fetchPublicText(rawUrl: string, deps: SafeFetchDeps = {}): Promise<SafeFetchResult> {
-  const fetched = await fetchPublicBytes(rawUrl, deps)
-  return fetched.ok ? { ok: true, text: fetched.bytes.toString('utf8') } : fetched
 }
 
 /* -------------------------------------------------------------------------- the probe */

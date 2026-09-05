@@ -9,6 +9,13 @@ Builds on ADR-0026 (a personal provider is a package named in the config file) a
 provider declares its settings). Applies ADR-0006's split-horizon rule to a second kind of
 artifact, and amends nothing in it.
 
+**Amended 2026-09-05** (owner ruling, issue [#394](https://github.com/amroja-biz/rockysurf/issues/394)):
+the registry still distributes providers, but **Rocky Surf neither lists nor installs them**. The
+in-app Providers tab and the whole in-app installer are gone, the page is called Surge Packs
+again, and the app links to the registry's providers section instead. Decisions 3 and 5 below are
+superseded; decisions 1, 2 and 4 hold with the actor changed from the installer to the operator.
+See [the amendment below](#amendment--the-app-links-to-the-listing-rather-than-installing-from-it-2026-09-05-owner-ruling).
+
 ## Context
 
 ADR-0026 made a provider Rocky Surf did not ship installable: a package under `<dataDir>/providers`,
@@ -73,6 +80,11 @@ in their own config file, exactly as for packs, and `official` remains a value n
 
 ### 3. Installing is fetch, verify, unpack, and two lines in the config file — never execution
 
+> **Superseded 2026-09-05 (issue #394).** The steps below describe an installer inside Rocky Surf
+> that no longer exists. What survives is the shape of the operation and its order — fetch over
+> https, check the digest, unpack, then two lines in the config file, then restart — now performed
+> by the operator at a command line. See the amendment at the end.
+
 In order, and any failure stops before the previous state changes:
 
 1. the `tarball` URL is **https only**, refused at the schema and again at the installer;
@@ -109,6 +121,9 @@ whose package is gone cannot describe, stop or terminate the machines it made, a
 nothing can act on is worse than refusing.
 
 ### 5. The listing lives on the Shop page, and the page is now called Shop
+
+> **Superseded 2026-09-05 (issue #394).** The page is called Surge Packs, it has three tabs, and
+> it holds nothing about providers. See the amendment at the end.
 
 The Surge Packs page gains a fourth tab, Providers, and its title changes from "Surge Packs" to
 "Shop". The route is unchanged: `/packs` still opens it, and every link and document naming it
@@ -194,14 +209,84 @@ job behind would be theatre. The obligation that replaces it is the sentence in 
 - **Risk:** a removal that strands machines. **Mitigation:** refused while any non-terminated row
   names that provider, with the count in the message.
 
+## Amendment — the app links to the listing rather than installing from it (2026-09-05, owner ruling)
+
+**2026-09-05, owner ruling on issue #394: the tab is "Surge Packs", providers are not on that
+page, and Rocky Surf points at the registry rather than listing or installing providers itself.**
+
+Three things the original decision got wrong, in the order the owner named them.
+
+**The page is called Surge Packs.** Decision 5 renamed it on the reasoning that a title naming
+only packs would lie once a fourth tab was about providers. The premise was the mistake, not the
+conclusion drawn from it: the fourth tab did not belong there. The route `/packs` never changed
+and does not change now.
+
+**Providers are configured in Settings, so that is where anything about them belongs.** A
+provider's panel has been on the Settings page since ADR-0026, built from its own declaration
+since ADR-0027, and identical for a personal provider and a shipped one. Putting the *finding* of
+a provider on a different page from the *configuring* of it split one job across two places.
+
+**Installing one is a command-line step, so a button cannot be the whole of it.** ADR-0026 loads a
+personal provider's package once, before boot, from `<dataDir>/providers`. Every install therefore
+ends at a restart the operator performs at a shell. An in-app installer took the two steps before
+that restart and left the last one — which bought a click and cost this repository a tar reader, a
+tarball fetch path, an SSRF cap raised to 16 MiB, a staged-install routine, a registry index
+schema, four routes, a client and a page, all to avoid `tar -xzf`.
+
+### What changes
+
+1. **The Providers tab is gone and the page is titled Surge Packs**, with its three tabs
+   (Official, Community, Personal). `packages/web/src/components/ProviderShop.tsx` and its tests
+   are deleted, as is `packages/web/e2e/shop-providers.e2e.ts`.
+2. **The in-app installer is gone entirely**, because with no caller it is dead code:
+   `providers/install.ts`, `providers/tarball.ts`, `providers/tar.fixture.ts`,
+   `providers/shop.ts`, `providers/shop-index.ts` and `providers/shop-routes.ts` are deleted with
+   their tests, the routes are unmounted from `app.ts`, `countServersOnProvider` goes with the
+   removal route that was its only caller, and `packs/safe-fetch.ts` returns to text-only with no
+   `maxBytes` — nothing raises the 2 MB import cap any more.
+3. **`resolvePackageEntry`, `PERSONAL_PROVIDERS_DIRNAME`, `PERSONAL_PROVIDER_TRUST_SENTENCE` and
+   `PersonalProviderManifest` stay in core**, where this ADR moved them. The loader in the
+   composition root is a real caller and re-exports them; only the installer's exports go.
+4. **The pointer lives on the Settings page's provider tabs**: one plain line linking to the
+   providers section of `amroja-biz/rockysurf-shop`, saying that a provider Rocky Surf does not
+   ship is installed from the command line and configured here once it loads. On the provider
+   tabs and not once at the top of the page, because the other tabs are core's own sections.
+5. **The trust sentence keeps its job and loses one venue.** It is still Rocky Surf's constant and
+   still refused as a registry field; it is said on every provider panel and in the boot log
+   rather than on a listing this app no longer renders.
+
+### What does not change
+
+`providers.json` is still how a registry distributes providers, still a separate document from
+`index.json` for decision 1's compatibility reason, and still carries no trust field for decision
+2's reason. Its format is now checked by the registry's own CI alone, since nothing here parses
+it. Decision 4's substance survives as operator instructions: an update replaces the package
+directory, and a provider whose package is gone cannot describe, stop or terminate the machines it
+made — so terminate them first.
+
+### Considered and rejected
+
+**Keeping the core-side installer for a CLI subcommand.** Rejected: nothing calls it, and code
+kept for a caller that does not exist yet is code nobody maintains against a use nobody has
+described. `tar -xzf` is the CLI path, it is two lines in `docs/self-hosting.md`, and the pack-and-
+load test in `packages/rockysurf/src/personal-provider-tarball.test.ts` still proves a real
+`pnpm pack` artifact loads — through the documented extraction rather than through core.
+
+**Keeping the Providers tab as a read-only listing that links out.** Rejected. It would still
+fetch a third party's document on page load, still need the schema, the client, the routes and
+the SSRF path, and would put the reading of a provider on a different page from the configuring of
+it — which is the split the owner asked to remove.
+
 ## References
 
+- GitHub issue [#394](https://github.com/amroja-biz/rockysurf/issues/394) — the amendment
 - GitHub issue [#374](https://github.com/amroja-biz/rockysurf/issues/374) — the commission
 - GitHub issue [#294](https://github.com/amroja-biz/rockysurf/issues/294) — the settled direction,
   item 5, and the full-trust ruling the sentence comes from
 - [`SECURITY.md`](../../SECURITY.md) § Server-side fetch policy, and § Installing a provider from
   the shop
-- [`docs/self-hosting.md`](../self-hosting.md) § The pack registry — the operator-facing half
+- [`docs/self-hosting.md`](../self-hosting.md) §§ Personal providers, Providers in the shop — the
+  operator-facing half
 - [`docs/writing-a-provider.md`](../writing-a-provider.md) § Publishing to the shop — the author's
 
 ## Related decisions

@@ -37,6 +37,7 @@ import {
   type RawTokenEntry,
   type TokenEntry,
 } from '../lib/githubTokens'
+import { SHOP_PROVIDERS_URL } from '../lib/links'
 
 /**
  * Settings — a GUI over `rockysurf.config.yaml` (rockysurf-m29b, streamlined by rockysurf-5qzg).
@@ -2510,6 +2511,24 @@ export function SettingsPage() {
                 aria-labelledby={`settings-tab-${tab}`}
                 hidden={tab !== active}
               >
+                {/*
+                  WHERE A PROVIDER ROCKY SURF DID NOT SHIP COMES FROM (issue #394, amending
+                  ADR-0028). The app used to list and install providers on the Surge Packs page;
+                  it does not any more, because installing one is a command-line step the browser
+                  cannot take. The pointer lives here, on the provider tabs, because Settings is
+                  where a provider is configured once it loads — and it is a link, not an
+                  installer, on every provider tab rather than once at the top of the page, since
+                  the other tabs are core's own sections and have nothing to do with it.
+                */}
+                {tab.startsWith('providers.') && (
+                  <p className="hint" data-provider-shop-pointer>
+                    Providers Rocky Surf does not ship are installed from the command line — the{' '}
+                    <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
+                      providers section of the Rocky Surf Shop
+                    </a>{' '}
+                    has the packages and the steps — and are configured here once they load.
+                  </p>
+                )}
                 {cardsOn(tab).map((id) => {
                   const contents = handWritten[id] ?? genericList(id)
                   const extras = leftoversIn(id).map((spec) => fallbackField(spec))

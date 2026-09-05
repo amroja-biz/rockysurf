@@ -50,6 +50,34 @@ test('a personal provider has a panel with controls, titled by the name its pack
   await expect(page.locator('[data-advisory="providers.nimbus"]')).toHaveText('Nimbus is a fixture: its machines exist only in memory.')
 })
 
+/**
+ * WHERE A PROVIDER COMES FROM, SAID WHERE ONE IS CONFIGURED (issue #394).
+ *
+ * The app used to list and install providers on the Surge Packs page. It does not any more —
+ * installing one is a command-line step — so what is left is a pointer, and it belongs on the
+ * provider tabs of this page because this is where a provider is configured once it loads. In a
+ * browser because the claim is that a person on a provider tab can see and follow it.
+ */
+test('every provider tab points at the shop for a provider Rocky Surf did not ship', async ({ page }) => {
+  await page.goto('/settings?section=providers.nimbus')
+
+  const pointer = page.locator('[data-provider-shop-pointer]:visible')
+  await expect(pointer).toHaveCount(1)
+  await expect(pointer).toContainText('installed from the command line')
+  await expect(pointer.getByRole('link', { name: /providers section of the Rocky Surf Shop/ })).toHaveAttribute(
+    'href',
+    'https://github.com/amroja-biz/rockysurf-shop#providers',
+  )
+
+  /* And on a provider that DID ship, because the instruction is the same wherever it is read. */
+  await page.goto('/settings?section=providers.byo')
+  await expect(page.locator('[data-provider-shop-pointer]:visible')).toHaveCount(1)
+
+  /* Never on one of core's own sections: they have nothing to do with providers. */
+  await page.goto('/settings?section=server')
+  await expect(page.locator('[data-provider-shop-pointer]:visible')).toHaveCount(0)
+})
+
 test('switching it on from the panel puts it in the registry without a restart', async ({ page, controlPlane }) => {
   await page.goto('/settings?section=providers.nimbus')
   await page.locator('#providers\\.nimbus\\.enabled').check()

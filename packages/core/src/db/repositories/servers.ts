@@ -1,5 +1,5 @@
 import type { InstanceState } from '@rockysurf/provider-sdk'
-import { and, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { Db } from '../client.js'
 import { buildIdempotencyKey, newServerId } from '../ids.js'
 import type { StepRunAs } from '../../bootstrap/plan.js'
@@ -154,23 +154,6 @@ export function listServersByUser(db: Db, userId: string): ServerRow[] {
 
 export function listServersByStatus(db: Db, statuses: ServerStatus[]): ServerRow[] {
   return db.select().from(servers).where(inArray(servers.status, statuses)).all()
-}
-
-/**
- * How many rows still name this provider and are not finished with it (ADR-0028).
- *
- * `terminated` is the only status excluded, and the exclusions matter more than the inclusions:
- * a `failed` row may still have a machine behind it that nobody has cleaned up, and a `requested`
- * one may be seconds away from having one. Removing the provider that made them would leave
- * nothing able to describe, stop or terminate any of them, so the provider-removal route counts
- * this and refuses rather than stranding them.
- */
-export function countServersOnProvider(db: Db, providerId: string): number {
-  return db
-    .select()
-    .from(servers)
-    .where(and(eq(servers.provider, providerId), ne(servers.status, 'terminated')))
-    .all().length
 }
 
 /**

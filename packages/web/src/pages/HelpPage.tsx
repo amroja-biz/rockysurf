@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { AppShell } from '../components/AppShell'
-import { GITHUB_URL, repoDocUrl } from '../lib/links'
+import { GITHUB_URL, SHOP_PROVIDERS_URL, repoDocUrl } from '../lib/links'
 
 /**
  * The in-app Help page (issue #16). Each section summarizes and links; the document it links —
@@ -619,7 +619,7 @@ export function HelpPage() {
         <p>
           A Surge Pack is the software a box is created with, written as YAML: a list of tools
           with idempotent, architecture-aware install scripts, plus the author&rsquo;s post-boot
-          guide. The Tools and Shop admin pages let you inspect and edit what this
+          guide. The Tools and Surge Packs admin pages let you inspect and edit what this
           installation offers. Writing your own is a contract, and CI enforces the mechanical half
           of it:{' '}
           <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
@@ -643,13 +643,16 @@ export function HelpPage() {
           box.
         </p>
         <p>
-          The same registries also distribute <strong>providers</strong> — the clouds Rocky Surf
-          can create servers on — on the Shop page&rsquo;s Providers tab. Each listing states what
-          the provider will ask you to configure, what its machines can and cannot do, and the one
-          sentence that applies to all of them: a provider runs with Rocky Surf&rsquo;s full access
-          — install ones you trust. Installing one writes a package under the data directory and a
-          section in your config file, and runs nothing; the provider&rsquo;s code first runs at
-          the restart the page asks you for.
+          The same repository also lists <strong>providers</strong> — the clouds Rocky Surf can
+          create servers on. Rocky Surf does not install those: unpack the package under the data
+          directory&rsquo;s <code>providers</code> folder, name it in your config file, and
+          restart. The steps and the packages are in the providers section of the{' '}
+          <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
+            Rocky Surf Shop
+          </a>
+          . Once one loads it gets its own panel on the Settings page, the same as a provider that
+          shipped with the release. A provider runs with Rocky Surf&rsquo;s full access — install
+          ones you trust.
         </p>
       </section>
 
