@@ -96,7 +96,7 @@ export const providerSettingSummarySchema = z.strictObject({
 
 /**
  * The capability answers, as the provider declares them — the questions the research protocol in
- * `.agents/skills/adding-providers` makes an author answer, shown before anybody installs.
+ * `.agents/skills/add-provider` makes an author answer, shown before anybody installs.
  *
  * Present in the listing rather than discovered after install because they are the facts that
  * decide whether this provider is usable at all on this installation: whether a machine can be

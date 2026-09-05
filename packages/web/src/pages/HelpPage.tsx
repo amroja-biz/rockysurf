@@ -110,7 +110,7 @@ export function HelpPage() {
               The repository ships skills a compatible coding agent picks up with no install step
               inside a checkout: <code>create-surge-pack</code> interviews you and writes a pack
               that passes the real smoke harness, <code>register-a-tool</code> does the same for a
-              single tool, and <code>adding-providers</code> covers enabling a cloud Rocky Surf
+              single tool, and <code>add-provider</code> covers enabling a cloud Rocky Surf
               does not support yet. Outside a checkout, copy one in:
             </p>
             <pre>

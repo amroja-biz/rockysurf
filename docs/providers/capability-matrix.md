@@ -141,7 +141,7 @@ ones a run would most plausibly contradict are worth naming:
   plausible: DigitalOcean's droplet-create endpoint documents `user_data` as "plain text and may
   not exceed 64 KiB in size". Because it is plain text there is no encoding step to be conservative
   about, unlike Azure's ambiguous 64 KB. Worth knowing for the next author: the *user-data how-to
-  page* publishes no ceiling at all, which is where the `adding-providers` skill's worked example
+  page* publishes no ceiling at all, which is where the `add-provider` skill's worked example
   had looked.
 - **`billsWhileStopped: true`** is the first `true` in this row and the reason the row exists.
   DigitalOcean's own pricing page: "You are still billed for bundled-plan CPU Droplets that are

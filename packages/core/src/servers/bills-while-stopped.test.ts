@@ -26,7 +26,7 @@ import { createEventsService, type EventsService } from '../services/events.js'
  * A STOPPED MACHINE ON A CLOUD THAT BILLS WHILE STOPPED KEEPS METERING (ADR-0025, issue #294).
  *
  * `BILLING_INSTANCE_STATES` used to say `stopped` is out "because compute billing ends there on
- * every provider core speaks to", and the first cloud the `adding-providers` skill was pointed
+ * every provider core speaks to", and the first cloud the `add-provider` skill was pointed
  * at — DigitalOcean, whose powered-off droplets bill at the full rate — made that sentence false.
  * The provider now says so through `capabilities.billsWhileStopped`, the lifecycle records it on
  * the row beside the provider's state, and everything that answers "is this machine costing

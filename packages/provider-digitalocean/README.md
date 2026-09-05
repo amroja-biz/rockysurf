@@ -215,5 +215,5 @@ not on that list and cannot be: no API call answers it. Read an invoice.
 
 The contract is `@rockysurf/provider-sdk`: its README ships inside the tarball, and the type
 definitions carry the reasoning behind every field. The workflow standard is
-`docs/writing-a-provider.md` in the Rocky Surf repository, and the `adding-providers` skill walks
+`docs/writing-a-provider.md` in the Rocky Surf repository, and the `add-provider` skill walks
 it end to end.

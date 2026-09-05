@@ -630,7 +630,7 @@ network from `sshAllowedCidr` takes effect in one step**, because a DigitalOcean
 carries no record of who wrote it and Rocky Surf therefore owns the whole firewall object it named.
 
 Writing one is described in [`docs/writing-a-provider.md`](writing-a-provider.md), and the
-`adding-providers` skill in `.agents/skills/` walks an agent through it.
+`add-provider` skill in `.agents/skills/` walks an agent through it.
 
 #### The nightly real-cloud run (maintainers)
 

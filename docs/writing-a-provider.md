@@ -485,7 +485,7 @@ like.
 
 ## A skill that walks through all of this
 
-`.agents/skills/adding-providers/` is an agent skill covering both jobs the word "provider"
+`.agents/skills/add-provider/` is an agent skill covering both jobs the word "provider"
 covers: configuring one of the five that ship, and authoring a new one. It carries the procedure
 this page describes, the trap checklist, and the full registration list — which is longer than
 [Wiring it in](#wiring-it-in) above suggests.

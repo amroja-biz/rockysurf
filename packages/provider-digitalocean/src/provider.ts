@@ -33,7 +33,7 @@ import type {
 /**
  * `@rockysurf/provider-digitalocean` — DigitalOcean droplets, as plain REST calls.
  *
- * Written by running the `adding-providers` skill's research protocol against DigitalOcean's own
+ * Written by running the `add-provider` skill's research protocol against DigitalOcean's own
  * documentation (read 2026-09-04) and mapping every answer to a capability, a field or a setting.
  * Three of those answers are the reason this package exists at all, and each one is a rule
  * somewhere below rather than a comment:
