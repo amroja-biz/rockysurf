@@ -328,9 +328,9 @@ jobs:
     # it cannot find there (rockysurf-rkh3). $RUNNER_TEMP rather than the workspace, so a
     # checkout cannot carry a stale one in and nothing tempts anybody to commit it.
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -444,7 +444,7 @@ jobs:
           # leak: it cleans so the next run starts from zero, and fails so somebody finds out.
           [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: hetzner-lifecycle-log
@@ -479,9 +479,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -489,7 +489,7 @@ jobs:
       - run: pnpm -r build
 
       - name: Assume the OIDC entry role
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -528,7 +528,7 @@ jobs:
       # than starting another web-identity exchange.
       - name: Assume the published provider role
         if: vars.AWS_PROVIDER_ROLE_ARN != ''
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_PROVIDER_ROLE_ARN }}
           role-chaining: true
@@ -644,7 +644,7 @@ jobs:
           ROCKYSURF_E2E_AWS_PROFILE: ''
         run: node scripts/e2e/aws-ssh-sweep.mjs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: aws-lifecycle-log-${{ matrix.arch }}
@@ -687,9 +687,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -846,7 +846,7 @@ jobs:
           # it cleans so the next run starts from zero, and fails so somebody finds out.
           [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: gcp-lifecycle-log-${{ matrix.arch }}
@@ -889,9 +889,9 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -916,7 +916,7 @@ jobs:
       # `az` is preinstalled on the runner image and `azure/login` drives it; there is no
       # setup-az to pin, which is the one place this leg is less defended than the GCP one.
       - name: Authenticate the CI-only sweep identity, into the az CLI only
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_NIGHTLY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT }}
@@ -1077,7 +1077,7 @@ jobs:
           # it cleans so the next run starts from zero, and fails so somebody finds out.
           [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: azure-lifecycle-log-${{ matrix.arch }}
