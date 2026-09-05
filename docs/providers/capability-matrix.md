@@ -169,7 +169,7 @@ OFFICIAL providers only. A personal provider ships a fully daggered column, and 
 whoever installs it are the ones who verify it, the way the `byo` column was verified before its
 transcript was committed.
 
-For this column that is issues #372 (build the provider through the `adding-providers` skill and
+For this column that is issues #372 (build the provider through the `add-provider` skill and
 install it as a personal provider) and #373 (create, stop, start, SSH into and terminate a real
 droplet through Rocky Surf). A dagger comes off when somebody records what they ran and what came
 back, in this file, the way every other column's evidence is recorded. `userDataMaxBytes` needs a

@@ -210,7 +210,7 @@ without touching a cloud — the pack-and-install test in
 `packages/rockysurf/src/personal-provider-tarball.test.ts` — stay with it.
 
 Where this is written for the people it applies to: `docs/writing-a-provider.md` ("Before it
-merges" and "Out of tree: a personal provider"), `.agents/skills/adding-providers/references/wiring.md`
+merges" and "Out of tree: a personal provider"), `.agents/skills/add-provider/references/wiring.md`
 §13, and the DigitalOcean section of `docs/providers/capability-matrix.md`.
 
 ## References
