@@ -17,7 +17,7 @@ export const BILLING_INSTANCE_STATES: readonly InstanceState[] = ['pending', 'ru
 
 and its comment said why `stopped` was absent: *"compute billing ends there on every provider core
 speaks to."* That sentence was true of the five shipped providers and false of the first cloud the
-`adding-providers` skill was pointed at. A powered-off DigitalOcean droplet keeps billing at the
+`add-provider` skill was pointed at. A powered-off DigitalOcean droplet keeps billing at the
 full compute rate, because the hypervisor resources stay reserved, and DigitalOcean offers no
 `deallocate`-shaped call to choose instead. Azure has both (`powerOff` bills, `deallocate` does
 not) and the shipped provider chooses `deallocate`; DigitalOcean offers only the one that bills.
@@ -48,7 +48,7 @@ anchor `recordProviderState` stamps. All four read `isBillingRow(row)`, a pure f
 2. **A provider MUST set it when a stopped instance is charged at the running rate, and MUST NOT
    set it for a cloud that charges a reduced rate while stopped.** Core accrues the running rate
    and would over-report; a reduced-rate cloud needs a capability that does not exist yet, which is
-   an ADR question and never an approximation — the hard rule the `adding-providers` skill teaches.
+   an ADR question and never an approximation — the hard rule the `add-provider` skill teaches.
    A cloud that offers both a billing and a non-billing off-state MUST use the non-billing call and
    leave the flag absent, as Azure does.
 3. **Core records the provider's answer on the server row**, `servers.bills_while_stopped`

@@ -329,7 +329,7 @@ never the one converged.
 
 Anti-lockout is unchanged under either shape: provision is additive and never revokes, only an
 explicit confirmed sync revokes, and what is missing is authorized before what is extra is removed.
-The `adding-providers` skill's `references/ssh-access.md` carries the two shapes and how to tell
+The `add-provider` skill's `references/ssh-access.md` carries the two shapes and how to tell
 which one a cloud is.
 
 ## References

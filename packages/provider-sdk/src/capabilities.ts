@@ -127,7 +127,7 @@ export interface ProviderCapabilities {
    * Hetzner stop the compute meter at `stopped`, and Azure's provider chooses `deallocate` over
    * `powerOff` for exactly this reason.
    *
-   * It exists because the first cloud the `adding-providers` skill was pointed at broke the
+   * It exists because the first cloud the `add-provider` skill was pointed at broke the
    * assumption core's billing predicate had written down — "`stopped` is out because compute
    * billing ends there on every provider core speaks to". A powered-off DigitalOcean droplet keeps
    * billing at the full rate, and DigitalOcean offers no call that releases the compute while

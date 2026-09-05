@@ -76,7 +76,7 @@ export const hetznerProviderFactory: ProviderFactory<HetznerProviderConfig> = {
    * moved verbatim — the matchers in the page tests follow it.
    *
    * Hetzner is the first shipped provider to declare, deliberately: it is the token-shaped cloud
-   * the `adding-providers` skill tells authors to copy, so it should be the shape they copy.
+   * the `add-provider` skill tells authors to copy, so it should be the shape they copy.
    */
   settings: {
     title: 'Hetzner',

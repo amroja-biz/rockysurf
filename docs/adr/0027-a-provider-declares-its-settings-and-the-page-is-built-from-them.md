@@ -127,7 +127,7 @@ guard. What the schema knows and what a page needs are different things.
    `hetznerProviderFactory.settings` (with `credentialField`/`credentialEnv` from ADR-0026). One
    shipped provider on the declared path is what keeps that path exercised by the product rather
    than by a fixture — the `ssh.keys` lesson of ADR-0019's amendment. It is Hetzner because it is the
-   token-shaped cloud the `adding-providers` skill tells authors to copy, so it should be the shape
+   token-shaped cloud the `add-provider` skill tells authors to copy, so it should be the shape
    they copy. The other four are a follow-on issue, GCP first (the firewall shape).
 10. **The two core-local properties keep both halves tested.** `fields.test.ts` names Hetzner in
     `DECLARED_BY_PROVIDER` (its own set — `DELIBERATELY_ABSENT` means "not manageable from the page",
