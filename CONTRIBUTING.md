@@ -326,7 +326,10 @@ put a secret, credential, IP address, or account ID in either one.
   request.
 - Run the gate before pushing — `pnpm run check:parallel` is the same work in appreciably less
   time, and `pnpm run check` is the reference if the two ever disagree. If a package you did not
-  touch is failing, say so explicitly rather than silently working around it.
+  touch is failing, say so explicitly rather than silently working around it. For a small change
+  (docs-only, a rename, copy, a config tweak, a single-file fix) run only the checks that can see
+  it and let the pull request's CI be the full gate — see
+  [`docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md`](docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md).
 - A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/`, `.agents/skills/`
   or `.pass-along/` runs typecheck, the unit tests, the secret scan and the browser suite, and
   nothing else. `UI (browser)` runs on **every** pull request regardless of paths — it is the

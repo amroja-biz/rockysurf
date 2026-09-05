@@ -13,6 +13,10 @@
 
 ## Engineering practice
 
+- [small-changes-run-only-relevant-checks](2026-09-05-small-changes-run-only-relevant-checks.md):
+  [active] for a docs-only edit, rename, copy or config tweak, or a single-file fix, run only
+  the lint and tests that can see the change and let PR CI be the full gate; core/SDK/multi-package
+  changes and every keep-both conflict resolution still get `check:parallel`.
 - [orchestrating-issue-agent-teams](2026-08-26-orchestrating-issue-agent-teams.md): how one
   session closed twenty issues with a team of worktree-isolated agents — triage by component,
   model per issue, a shared brief, four concurrent, ≤12-line reports, and what to do when
