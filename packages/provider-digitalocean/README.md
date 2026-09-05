@@ -160,23 +160,6 @@ tested against a fake of that API. Every value in the table above and every valu
 capability matrix is therefore marked as reasoned rather than measured. A fake asserts that the
 provider does what its author believed; only real infrastructure asserts that the belief was right.
 
-### The nightly that will settle most of it
-
-Rocky Surf's repository now carries a real-cloud leg for this provider — `digitalocean` in
-`.github/workflows/nightly-real-cloud.yml`. It creates one `s-2vcpu-2gb` droplet in `nyc3`, boots
-the shipped binary on it, SSHes in, pushes the SSH allow-list at the firewall through
-`syncSshAccess()`, stops and starts the machine, destroys it, and sweeps for anything it left.
-It installs THIS PACKAGE FROM ITS PACKED TARBALL, into the run's own data directory, with no
-package manager — so what it tests is the artifact you would install, not a build from source.
-
-**It has not run.** It skips with a notice until the repository's owner runs
-`deploy/digitalocean/setup-nightly.sh` against a DigitalOcean team, which is why every value above
-is still marked unverified. When it does go green it will settle `stop`, `ipStableAcrossStop`,
-`canInjectHostKeys`, `generatesUserData` and `managesSshAccess`. It will not settle the other two,
-and Rocky Surf's `docs/providers/capability-matrix.md` says so value by value: `userDataMaxBytes`
-needs a deliberately over-sized create, and `billsWhileStopped` needs an invoice — the nightly can
-only show that Rocky Surf's meter keeps running, which is a fact about Rocky Surf.
-
 ### How to verify live
 
 With a read/write token in `DIGITALOCEAN_TOKEN`, these three calls settle most of the table. None
@@ -206,10 +189,14 @@ a real create with 65,537 bytes of user data and reading the refusal, and Digita
 dry-run on that endpoint. Do it only if you are willing to pay for and destroy the droplet the
 65,536-byte control case creates.
 
-The rest — that `off` really is a restartable droplet, that the address survives a power cycle, and
-that cloud-init honours an injected host key — needs one droplet run through a full lifecycle, and
-that is the nightly leg above rather than a curl. Whether a powered-off droplet keeps billing is
-not on that list and cannot be: no API call answers it. Read an invoice.
+The rest — that `off` really is a restartable droplet, that the address survives a power cycle,
+and that cloud-init honours an injected host key — needs one droplet run through a full lifecycle
+rather than a curl. **That run is yours to make, not Rocky Surf's.** This is a personal provider,
+so no nightly in the Rocky Surf repository drives it; a nightly real-cloud leg there covers the
+official providers, the ones composed into `packages/rockysurf/src/compose.ts`. Whoever writes or
+installs this package is the one who verifies its column, and records what they ran. Whether a
+powered-off droplet keeps billing is not on that list and cannot be: no API call answers it. Read
+an invoice.
 
 ## Writing your own provider
 

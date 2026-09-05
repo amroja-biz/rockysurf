@@ -7,6 +7,10 @@ Accepted — 2026-09-04. Issue #294, item 2 of the settled direction. **Amends
 plugin loading" exclusion, and it adds amendment E18 — `ProviderFactory.credentialEnv` and
 `ProviderFactory.credentialField`, both optional. It also makes `isProviderError` structural.
 
+**Amended 2026-09-05** (owner ruling, reverting PR #390): personal providers are verified by their
+author and installer, not by this repository's nightly. See
+[the amendment below](#amendment--who-verifies-a-personal-provider-2026-09-05-owner-ruling).
+
 ## Context
 
 ADR-0003 cut "dynamic out-of-tree plugin loading" from v0.1 with the rest of the speculative
@@ -186,9 +190,34 @@ is a different class, and every error it threw would have been an unexplained 50
 - **Risk:** `providers.hetzer:` gets worse advice than before. **Mitigation:** the did-you-mean
   refusal runs before the personal-provider instruction and is pinned by a test.
 
+## Amendment — who verifies a personal provider (2026-09-05, owner ruling)
+
+**2026-09-05, owner ruling: personal providers are verified by their author and installer, not by
+this repository's nightly.**
+
+A nightly real-cloud leg in `.github/workflows/nightly-real-cloud.yml` is for OFFICIAL providers —
+the ones composed into `packages/rockysurf/src/compose.ts`. A personal provider ships a fully
+daggered capability column, verified by its author and by whoever installs it against their own
+cloud account; the `byo` column is the model for how that reads.
+
+This settles a question the original decision left open. `packages/provider-digitalocean` is in
+this repository as the worked example of a personal provider (issue #368), and a nightly leg was
+built for it (PR #390) on the reasoning that nothing else in CI ever loads an installed provider.
+That leg was reverted: being the worked example does not make a personal provider official, and
+this repository does not hold a long-lived third-party credential or spend money to prove somebody
+else's package works. The provider itself stays, and the checks that exercise the shipped tarball
+without touching a cloud — the pack-and-install test in
+`packages/rockysurf/src/personal-provider-tarball.test.ts` — stay with it.
+
+Where this is written for the people it applies to: `docs/writing-a-provider.md` ("Before it
+merges" and "Out of tree: a personal provider"), `.agents/skills/adding-providers/references/wiring.md`
+§13, and the DigitalOcean section of `docs/providers/capability-matrix.md`.
+
 ## References
 
 - Issue #294 (the settled direction; the plan and its review, recorded as a comment).
+- Owner ruling of 2026-09-05, reverting PR #390 (the DigitalOcean nightly leg); issues #372 and
+  #373 are the by-hand verification of that provider.
 - `packages/rockysurf/src/personal-providers.ts` — the loader; `personal-providers.test.ts`.
 - `packages/rockysurf/src/compose.ts` — personal wirings and descriptors; `cli.ts` — load once.
 - `packages/core/src/config/personal-providers.ts`, `config/schema.ts` — the catchall and refines.

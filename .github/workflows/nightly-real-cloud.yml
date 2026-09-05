@@ -18,12 +18,6 @@ name: Nightly real-cloud lifecycle
 #                                    see docs/providers/hetzner.md under "The nightly real-cloud
 #                                    run (maintainers)". ./deploy/hetzner/teardown-nightly.sh
 #                                    undoes it.
-#   secrets.DIGITALOCEAN_TOKEN       a DigitalOcean personal access token, read/write, belonging
-#                                    to a DigitalOcean TEAM that exists only for this nightly.
-#                                    One command sets this: ./deploy/digitalocean/setup-nightly.sh
-#                                    — see docs/self-hosting.md under "The nightly real-cloud run
-#                                    (maintainers)". ./deploy/digitalocean/teardown-nightly.sh
-#                                    undoes it.
 #   secrets.AWS_NIGHTLY_ROLE_ARN     the role GitHub's OIDC provider may assume in the CI
 #                                    account. Needs sts:AssumeRole on the provider role below,
 #                                    and nothing else.
@@ -208,56 +202,6 @@ name: Nightly real-cloud lifecycle
 # THE COST of this leg, on the same basis as the numbers in docs/providers/gcp.md: two B-series
 # VMs for roughly five to ten minutes each, billed per minute — about one to two cents a night on
 # top of the existing three and a half.
-#
-# ─── AND DIGITALOCEAN, WHICH IS NEITHER OF THOSE SHAPES (gh issue #369) ──────────────────────
-#
-# DigitalOcean has NO OIDC FEDERATION. There is no workload identity pool, no federated
-# credential, no role to assume: the only way to authenticate is a personal access token, and
-# DigitalOcean publishes no API for minting one either — tokens are created in the control panel
-# by a human, by hand, and that is the whole of the story (checked against DigitalOcean's own
-# documentation on 2026-09-04). So this leg holds a long-lived secret, exactly as Hetzner's does,
-# and unlike Hetzner's it cannot even be narrowed to a project: a DigitalOcean token is scoped to
-# a TEAM. Custom scopes narrow what it may DO, never what it may do it to.
-#
-# The consequence is the one thing this leg asks of the owner that the others do not: the token
-# must belong to a DigitalOcean team that exists ONLY for this nightly. That is not tidiness. It
-# is the same reasoning `vars.GCP_CI_PROJECT` and `vars.AZURE_CI_SUBSCRIPTION` are written down
-# for — a sweep is survivable because of what it is pointed at, not only because of how narrow it
-# is — and here it is the only isolation available at all.
-#
-# THE PROVIDER IS INSTALLED, NOT COMPOSED, AND THAT IS THE POINT (ADR-0026). DigitalOcean is a
-# PERSONAL provider: `packages/provider-digitalocean` is built and tested by CI, and nothing in
-# the repository imports it. `scripts/e2e/lifecycle.mjs` therefore packs it with `pnpm pack` and
-# extracts the tarball into the run's `<dataDir>/providers` with plain `tar` — no package manager
-# at install time — which is the recipe docs/self-hosting.md gives a self-hoster and the one the
-# provider shop's installer follows. So this leg is the only one whose subject is a SHIPPED
-# ARTIFACT rather than a workspace build: if the tarball is wrong, this is where it shows.
-#
-# TWO THINGS THIS LEG EXERCISES THAT NO OTHER ONE DOES:
-#
-#   1. `syncSshAccess()` against a real cloud. Every other leg proves the allow-list is written at
-#      LAUNCH; nothing has ever proved the write a Settings save makes (issue #304). DigitalOcean
-#      is where it matters most, because its inbound rules carry no author — the sync converges
-#      the WHOLE firewall object in one PUT (ADR-0021's amendment S2), and `reported`/`removable`
-#      must therefore always come back empty.
-#   2. `billsWhileStopped` (ADR-0025). DigitalOcean charges a powered-off droplet the full hourly
-#      rate, so the run stops the machine and asserts the row still reports as metering. THAT IS A
-#      CHECK ON THE PRODUCT, NOT ON THE CLOUD: core derives that from the provider's own flag, so
-#      only an invoice settles whether DigitalOcean really charges. The capability matrix says so
-#      and keeps its dagger on that value until somebody reads one.
-#
-# To wire it up — ONE COMMAND, run once, and the only thing it asks of you is that you are signed
-# in with `gh auth login` and have a DigitalOcean token in hand:
-#
-#   ./deploy/digitalocean/setup-nightly.sh --dry-run     # changes nothing; prints every command
-#   ./deploy/digitalocean/setup-nightly.sh
-#
-# It refuses a token whose team already holds droplets it did not make (that is the CI-only-team
-# rule, enforced rather than requested), creates the `rockysurf-nightly` project and READS IT
-# BACK, and only then stores the secret. `./deploy/digitalocean/teardown-nightly.sh` undoes it.
-#
-# THE COST: one `s-2vcpu-2gb` droplet for roughly ten minutes, billed per second — under a cent a
-# night. The firewall, the SSH key and the project are free.
 
 on:
   schedule:
@@ -288,12 +232,10 @@ jobs:
       aws: ${{ steps.probe.outputs.aws }}
       gcp: ${{ steps.probe.outputs.gcp }}
       azure: ${{ steps.probe.outputs.azure }}
-      digitalocean: ${{ steps.probe.outputs.digitalocean }}
     steps:
       - id: probe
         env:
           HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
-          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
           AWS_NIGHTLY_ROLE_ARN: ${{ secrets.AWS_NIGHTLY_ROLE_ARN }}
           AWS_PROVIDER_ROLE_ARN: ${{ vars.AWS_PROVIDER_ROLE_ARN }}
           # GCP's wiring is four VARIABLES and no secret — there is nothing long-lived to hold.
@@ -319,15 +261,6 @@ jobs:
           else
             echo 'hetzner=no' >> "$GITHUB_OUTPUT"
             note 'SKIPPED Hetzner: repository secret HETZNER_TOKEN is not set. Add a Hetzner Cloud API token with read/write on one project.'
-          fi
-
-          # DigitalOcean, the second and last leg holding a long-lived secret — because there is
-          # no other way in (see this workflow's header). One secret, no variables.
-          if [ -n "${DIGITALOCEAN_TOKEN:-}" ]; then
-            echo 'digitalocean=yes' >> "$GITHUB_OUTPUT"
-          else
-            echo 'digitalocean=no' >> "$GITHUB_OUTPUT"
-            note 'SKIPPED DigitalOcean: repository secret DIGITALOCEAN_TOKEN is not set. Run ./deploy/digitalocean/setup-nightly.sh against a token from a CI-ONLY DigitalOcean team — it checks the team is empty and sets the secret itself. See this workflow header.'
           fi
 
           if [ -n "${AWS_NIGHTLY_ROLE_ARN:-}" ]; then
@@ -516,151 +449,6 @@ jobs:
         with:
           name: hetzner-lifecycle-log
           path: hetzner.log
-
-  digitalocean:
-    name: DigitalOcean (s-2vcpu-2gb, amd64)
-    needs: preflight
-    if: needs.preflight.outputs.digitalocean == 'yes'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # ONE ENTRY IN THE MATRIX AND THERE CANNOT BE A SECOND: DigitalOcean sells no ARM droplets, so
-    # unlike AWS and GCP there is no arch-correct-image half of this leg to run. See RUNS in
-    # scripts/e2e/lifecycle.mjs.
-    #
-    # The run-ids file is declared per-step here too — see the Hetzner job's comment for why
-    # job-level `env` cannot do it (rockysurf-8mu5).
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # `pnpm -r build` builds BOTH halves this leg needs, and it needs both for different
-      # reasons: `packages/rockysurf/dist/bin.js` is the shipped binary the run drives, and
-      # `packages/provider-digitalocean/dist` is what `pnpm pack` will put in the tarball the run
-      # installs. A provider package that failed to build would otherwise pack an empty `dist/`
-      # and fail as "provider not installed", which points nowhere near the truth.
-      - run: pnpm -r build
-
-      # NO STEP WRITING A CREDENTIAL TO DISK, unlike the Hetzner leg. DigitalOcean is a personal
-      # provider and its factory declares `credentialEnv: ['DIGITALOCEAN_TOKEN']` (ADR-0026, E18),
-      # so the composition root reads the token out of the environment and the config file this run
-      # writes carries no `token:` key at all. One less copy of a secret, and it exercises the
-      # personal-provider credential path that nothing else in CI touches.
-      #
-      # `set -o pipefail` IS THE STEP, NOT DECORATION (rockysurf-rkh3) — see the Hetzner leg.
-      - name: Lifecycle
-        env:
-          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
-        run: |
-          set -o pipefail
-          node scripts/e2e/lifecycle.mjs digitalocean s-2vcpu-2gb | tee digitalocean.log
-
-      # MANDATORY SWEEP, and the SAME SCOPING RULE as every other leg (rockysurf-rkh3). Read the
-      # long comment on the Hetzner sweep before touching this: `managed-by:rockysurf` is an
-      # ownership claim shared by every Rocky Surf pointed at this DigitalOcean team, so sweeping
-      # on it alone would destroy a live machine somebody else launched. DELETE only what
-      # $ROCKYSURF_E2E_RUN_IDS_FILE names; REPORT everything else and touch none of it.
-      #
-      # TWO DIGITALOCEAN-SPECIFIC POINTS, both of which change what the jq below can look at:
-      #
-      #   * A DIGITALOCEAN TAG IS A FLAT STRING WITH NO `=`. The provider therefore writes
-      #     `key:value` (packages/provider-digitalocean/src/tags.ts), so the ownership claim is
-      #     `managed-by:rockysurf` and the per-server marker is `server-id:<id>` — matched here by
-      #     prefix rather than by an `=`-split, which would find nothing.
-      #   * A DIGITALOCEAN SSH KEY CARRIES NO TAGS AT ALL. The API has nowhere to put them on a key
-      #     object, so the provider writes the same `key:value` pairs into the key's DISPLAY NAME,
-      #     and that name is the only place its ownership is written down. An unreaped key costs
-      #     nothing and is invisible to everything except a later audit that cannot explain it,
-      #     which is precisely how the Hetzner key leak was found.
-      #
-      # THE FIREWALL IS REPORTED, NEVER DELETED. It is `shared` ownership: one object per
-      # installation that every droplet attaches to, so deleting it would close port 22 on every
-      # running box at once — and it is not this run's to reap in any case.
-      - name: Terminate sweep
-        if: always()
-        env:
-          DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-          ROCKYSURF_E2E_RUN_IDS_FILE: ${{ runner.temp }}/rockysurf-e2e-run-ids.txt
-        run: |
-          set -euo pipefail
-          do_api() { curl -sS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" "$@"; }
-
-          # Written by the lifecycle script at create time. Absent or empty means it never got far
-          # enough to make anything — in which case this step deletes nothing at all, which is why
-          # the empty case is spelled out rather than left to jq's failure behaviour.
-          if [ -s "${ROCKYSURF_E2E_RUN_IDS_FILE:-/nonexistent}" ]; then
-            mine=$(jq -R -s 'split("\n") | map(select(length > 0))' "$ROCKYSURF_E2E_RUN_IDS_FILE")
-          else
-            mine='[]'
-          fi
-          echo "droplets this run created: $(echo "$mine" | jq -r 'if length == 0 then "none" else join(", ") end')"
-
-          # `true`  → the ids whose server-id this run recorded: ours to delete.
-          # `false` → everything else, printed with its attribution, for the log only.
-          pick() {
-            # `.[] as $r` BEFORE the filter, not `.[]` — inside `$mine | index(…)` the input is
-            # $mine, so a bare `.owner` there indexes the id ARRAY and jq errors out. The Hetzner
-            # sweep binds for the same reason; this one did not, and reported an empty account.
-            jq -r --argjson mine "$mine" --argjson want "$1" '
-              .[] as $r
-              | select((($mine | index($r.owner)) != null) == $want)
-              | if $want then $r.id
-                else "\($r.id)(\(if $r.owner == "" then "unattributed" else $r.owner end))" end'
-          }
-
-          leaked=''
-
-          # ---- droplets: what bills, so it goes first -------------------------------------------
-          droplets=$(do_api 'https://api.digitalocean.com/v2/droplets?tag_name=managed-by%3Arockysurf&per_page=200' |
-            jq '[ .droplets[]? | {
-                    id: (.id | tostring),
-                    owner: (((.tags // []) | map(select(startswith("server-id:"))) | map(sub("^server-id:"; "")) | first) // "")
-                  } ]')
-          for id in $(echo "$droplets" | pick true); do
-            echo "::warning::sweeping droplet/$id — this run created it and did not clean it up"
-            do_api -X DELETE "https://api.digitalocean.com/v2/droplets/$id" >/dev/null
-            leaked="$leaked droplet/$id"
-          done
-          theirs=$(echo "$droplets" | pick false)
-          if [ -n "$theirs" ]; then
-            echo "::notice::droplets not created by this run, left alone: $(echo $theirs | tr '\n' ' ')"
-          fi
-
-          # ---- ssh keys: attributed by DISPLAY NAME, because a key carries no tags ---------------
-          keys=$(do_api 'https://api.digitalocean.com/v2/account/keys?per_page=200' |
-            jq '[ .ssh_keys[]?
-                  | select((.name // "") | contains("managed-by:rockysurf"))
-                  | {
-                      id: (.id | tostring),
-                      owner: ((((.name // "") | split(" ") | map(select(startswith("server-id:"))) | map(sub("^server-id:"; "")) | first)) // "")
-                    } ]')
-          for id in $(echo "$keys" | pick true); do
-            echo "::warning::sweeping ssh-key/$id — this run created it and did not clean it up"
-            do_api -X DELETE "https://api.digitalocean.com/v2/account/keys/$id" >/dev/null
-            leaked="$leaked ssh-key/$id"
-          done
-          theirs=$(echo "$keys" | pick false)
-          if [ -n "$theirs" ]; then
-            echo "::notice::ssh keys not created by this run, left alone: $(echo $theirs | tr '\n' ' ')"
-          fi
-
-          # ---- the shared firewall: reported, never touched --------------------------------------
-          do_api 'https://api.digitalocean.com/v2/firewalls?per_page=200' |
-            jq -r '.firewalls[]? | "::notice::firewall \(.name) (\(.id)) is shared and is left alone by design"'
-
-          # STILL RED AFTER CLEANING UP. The sweep existing is not permission for the run to leak:
-          # it cleans so the next run starts from zero, and fails so somebody finds out.
-          [ -z "$leaked" ] || { echo "::error::this run left resources behind; the sweep cleaned up:$leaked"; exit 1; }
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: digitalocean-lifecycle-log
-          path: digitalocean.log
 
   aws:
     name: AWS (${{ matrix.offering }}, ${{ matrix.arch }})

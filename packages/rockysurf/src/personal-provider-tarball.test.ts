@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { configSchema, installProviderPackage, loadConfig, type Config } from '@rockysurf/core'
+import { fileURLToPath } from 'node:url'
+import { configSchema, installProviderPackage, type Config } from '@rockysurf/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { composeRegistry } from './compose.js'
 import { loadPersonalProviders } from './personal-providers.js'
@@ -147,61 +147,6 @@ describe('the packed provider tarball', () => {
     expect(provider?.capabilities.managesSshAccess).toBe(true)
     expect(typeof provider?.syncSshAccess).toBe('function')
     expect(composed.notes.some((note) => note.includes('install ones you trust'))).toBe(true)
-  })
-
-  /**
-   * THE NIGHTLY'S OWN CONFIG FILE, AGAINST THE NIGHTLY'S OWN INSTALL (issue #369).
-   *
-   * `e2e-config.test.ts` proves the text parses; this proves the whole leg composes. It takes the
-   * exact file `scripts/e2e/lifecycle.mjs` writes for `digitalocean`, the exact tarball that
-   * script extracts, and the exact environment the workflow step provides — and asserts a working
-   * provider comes out the other side. Three things could each break the leg silently and none of
-   * them has a test anywhere else:
-   *
-   *  - the config names a `package` that is not what the package calls itself, so nothing resolves;
-   *  - the config carries no `token`, so a break in the `credentialEnv` path (ADR-0026, E18) turns
-   *    the whole leg into "provider unavailable: no credential" at 07:00;
-   *  - the CI-only `firewallName` is a key the provider's hand-written schema does not accept,
-   *    which is #343's failure mode reborn on the one provider core has no schema for.
-   *
-   * The token here is a literal, not a credential: it is never sent anywhere, because
-   * `createProvider` makes no network call.
-   */
-  it('composes from the exact config file the nightly writes, with the token in the environment', async () => {
-    const e2eConfigPath = fileURLToPath(new URL('../../../scripts/e2e/e2e-config.mjs', import.meta.url))
-    const e2e = (await import(pathToFileURL(e2eConfigPath).href)) as {
-      buildConfigYaml: (options: Record<string, unknown>) => string
-      CI_FIREWALL_NAME: string
-      CI_REGION: string
-      DIGITALOCEAN_PACKAGE: string
-    }
-
-    const dir = tempDir()
-    const configPath = join(dir, 'rockysurf.config.yaml')
-    writeFileSync(
-      configPath,
-      e2e.buildConfigYaml({
-        cloud: 'digitalocean',
-        port: 3287,
-        dataDir: join(dir, 'data'),
-        cidr: '203.0.113.7/32',
-        digitaloceanPackage: e2e.DIGITALOCEAN_PACKAGE,
-        digitaloceanRegion: e2e.CI_REGION,
-        digitaloceanFirewallName: e2e.CI_FIREWALL_NAME,
-      }),
-    )
-
-    const config = loadConfig({ configPath, env: {} })
-    const personal = await loadPersonalProviders({ config, providersDir })
-    expect([...personal.failures.entries()]).toEqual([])
-
-    const composed = composeRegistry(
-      { config, env: { DIGITALOCEAN_TOKEN: 'do-token-from-the-environment' }, log: () => {} },
-      personal,
-    )
-    const provider = composed.registry.list().find((candidate) => candidate.id === 'digitalocean')
-    expect(provider, [...composed.notes, ...composed.registry.unavailable().map((u) => u.reason)].join('\n')).toBeDefined()
-    expect(provider?.capabilities.managesSshAccess).toBe(true)
   })
 
   /**

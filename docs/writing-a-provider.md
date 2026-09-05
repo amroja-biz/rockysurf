@@ -321,6 +321,11 @@ for one that has been.
       stating — what claiming a host does to it, what a minimal IAM policy looks like, what
       `terminate` deliberately does not do.
 - [ ] `pnpm run check` green, including the dependency lint.
+- [ ] Know which kind of verification your provider gets. **A nightly real-cloud leg is for
+      OFFICIAL providers** — the ones composed into `packages/rockysurf/src/compose.ts`. A
+      **personal provider gets none**: it ships a fully daggered column, verified by its author
+      and by whoever installs it against their own account, the way the `byo` column reads. Do not
+      file a nightly leg for one, and do not promise a nightly in its README.
 - [ ] If your package pulls in a vendor SDK, confirm it did not land in the `npx` install closure
       (`scripts/check-npx-closure.mjs`), and that you took it for the reason
       [Vendor SDKs](#vendor-sdks) allows. Core's cold start is a feature.
@@ -349,6 +354,13 @@ trust**: that is the whole trust model, and your README should say it too.
 lives in this repository, is built and tested by CI, and is deliberately not wired into
 `compose.ts` — it is installed the way any personal provider is. Read it rather than starting from
 a blank file.
+
+**Nobody here will verify it for you.** The nightly real-cloud workflow drives the official
+providers, the ones composed into `packages/rockysurf/src/compose.ts`; a personal provider ships a
+fully daggered capability column and is verified by its author and by whoever installs it, against
+their own cloud account. The `byo` column is the model for what that looks like written down.
+Record what you ran, on what date, against which region — that record is the evidence, and it is
+the only thing that takes a dagger off. (Owner ruling, 2026-09-05.)
 
 Five things a personal package has to get right that an in-tree one gets for free:
 
