@@ -1,6 +1,10 @@
 # Provider capability matrix
 
-What each shipped provider declares in `ProviderCapabilities`, and the evidence behind it.
+What each provider declares in `ProviderCapabilities`, and the evidence behind it. Five of the
+columns are the providers this distribution ships; `digitalocean` is a PERSONAL provider
+([ADR-0026](../adr/0026-personal-providers.md)) that lives in this repository, is built and tested
+by CI, and is installed rather than composed — it is in the table because core branches on these
+values whoever wrote the package.
 
 `ProviderCapabilities` is the **only** thing core is allowed to branch on — there are zero
 `provider.id` conditionals in shared code, and that property is grep-enforced by tests. So this
@@ -14,16 +18,16 @@ and the two real-cloud capstone transcripts beside it.
 
 ## The matrix
 
-| capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` |
-|---|---|---|---|---|---|
-| `stop` | `true` | `true` | `true` | `true` | **`false`** |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` |
-| `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** |
-| `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` |
-| `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** |
-| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent |
-| `simulatedInstances` | absent | absent | absent | absent | absent |
-| `billsWhileStopped` | absent | absent | absent | absent | absent |
+| capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` | `digitalocean` |
+|---|---|---|---|---|---|---|
+| `stop` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
+| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` | `true` † |
+| `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
+| `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` | `65536` † |
+| `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
+| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent | `true` † |
+| `simulatedInstances` | absent | absent | absent | absent | absent | absent |
+| `billsWhileStopped` | absent | absent | absent | absent | absent | **`true`** † |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
 real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
@@ -121,12 +125,54 @@ reached over loopback is a real sshd with a real PAM stack, and it is still not 
 on a real network. The run also needs Docker, so it gates a pull request but `pnpm run check`
 never sees it.
 
+**`digitalocean` is daggered in every row, and that is the whole column.** The package
+(`packages/provider-digitalocean`, issue #368) was written from DigitalOcean's published
+documentation and its public OpenAPI description, read on 2026-09-04, and tested against a fake of
+that API. **No DigitalOcean token has ever been pointed at it**, no droplet has been created, no
+firewall has been written, and there is no nightly leg — the leg is separate, larger work and its
+own issue. So every value above is an inference from a vendor document, and the ones a run would
+most plausibly contradict are worth naming:
+
+- **`canInjectHostKeys`** rests on DigitalOcean's Ubuntu images running stock cloud-init, whose
+  `cc_ssh` module writes the host keys a `#cloud-config` `ssh_keys:` block names. That is upstream
+  behaviour DigitalOcean documents no override of, and it is still a security posture claimed on
+  somebody else's behalf: `true` promises there is no trust-on-first-use window on the connection
+  carrying the secrets file. A run that disproves it makes this `false`.
+- **`userDataMaxBytes: 65536`** is documentation, not a round number picked because it looked
+  plausible: DigitalOcean's droplet-create endpoint documents `user_data` as "plain text and may
+  not exceed 64 KiB in size". Because it is plain text there is no encoding step to be conservative
+  about, unlike Azure's ambiguous 64 KB. Worth knowing for the next author: the *user-data how-to
+  page* publishes no ceiling at all, which is where the `adding-providers` skill's worked example
+  had looked.
+- **`billsWhileStopped: true`** is the first `true` in this row and the reason the row exists.
+  DigitalOcean's own pricing page: "You are still billed for bundled-plan CPU Droplets that are
+  powered off because the compute resources stay reserved on the hypervisor… To end billing,
+  destroy the Droplet." There is no `deallocate`-shaped call to choose instead, so unlike Azure the
+  provider cannot avoid the charge by picking a different action.
+- **`managesSshAccess`** carries the same dagger as the other three columns that declare it, plus
+  one of its own: DigitalOcean is the first WHOLE-OBJECT-authorship cloud after Azure
+  ([ADR-0021](../adr/0021-ssh-access-sync.md)'s amendment), because an inbound rule is
+  `{ protocol, ports, sources }` with no name and no description to stamp. Nothing has yet
+  confirmed that a `PUT /v2/firewalls/{id}` from this provider converges the object the way the
+  documentation says it does.
+
+`packages/provider-digitalocean/README.md` carries a "How to verify live" section naming the calls
+that settle the cheap half of this column.
+
 ## Row by row
 
 ### `stop` — can the instance be stopped and restarted with its disk intact?
 
-All four clouds can. BYO cannot: core does not own the machine's power state, so there is
-nothing to call.
+All four shipped clouds can, and so can DigitalOcean. BYO cannot: core does not own the machine's
+power state, so there is nothing to call.
+
+**DigitalOcean can stop and it does not save you anything**, which is a combination no shipped
+provider has: the disk survives a `shutdown`/`power_on` pair and the meter never pauses. That is
+`billsWhileStopped` below, and it is the reason `stop: true` is honest here rather than generous.
+Its own vocabulary trap is the mirror of GCE's: `off` means "powered off, disk intact,
+restartable", which is the SDK's `stopped`, and mapping it to the SDK's `terminated` would tell
+core a live, billing droplet was gone. `packages/provider-digitalocean` pins that with a test on
+the literal map, like GCP and Azure do.
 
 **No GCP box has ever been stopped and restarted**, which is the one gap left in that column.
 `rockysurf-ev41.8` drove create, bootstrap and terminate on real Compute Engine and deliberately
@@ -240,7 +286,10 @@ capabilities because core has nowhere else to ask.
 AWS's 16,384-byte limit is the binding one; Hetzner's 32,768 has never been approached, and
 GCP's 262,144 — Google's documented ceiling on a single metadata *value*, inside a 512 KB total
 across all entries — is sixteen times AWS's and could not be reached by anything core renders.
-BYO is `0` because there is no pre-boot hook at all.
+BYO is `0` because there is no pre-boot hook at all. DigitalOcean's 65,536 is its create
+endpoint's documented `user_data` ceiling — "plain text and may not exceed 64 KiB in size" — and
+because it is plain text there is no encoding step to read the number two ways, which is what makes
+it a straight transcription rather than Azure's judgement call below.
 
 **Azure declares 49,152, which is deliberately SMALLER than the ceiling Microsoft documents.**
 The docs say `customData` "can't exceed 64 KB" and do not say whether that is measured before or
@@ -288,19 +337,23 @@ needs to install anything. Everything after that point is the ordinary push boot
 
 ### `managesSshAccess` — does the provider own a whitelist Rocky Surf can push to?
 
-**`true` on `aws`, `azure` and `gcp`; absent — which is the answer `false` — on `hetzner` and
-`byo`.** Optional, added by issue #304 and recorded in
+**`true` on `aws`, `azure`, `gcp` and `digitalocean`; absent — which is the answer `false` — on
+`hetzner` and `byo`.** Optional, added by issue #304 and recorded in
 [ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md).
 
 It answers one question: is there a cloud object whose contents are `sshAllowedCidr`, which Rocky
 Surf can rewrite **without provisioning anything**? Three clouds have one — a shared security
-group, a shared NSG's `rockysurf-ssh` rule, a shared firewall rule — and the flag is what lets
+group, a shared NSG's `rockysurf-ssh` rule, a shared firewall rule; DigitalOcean has a fourth
+shape, one cloud firewall named for Rocky Surf and targeting its `managed-by` tag — and the flag is what lets
 `POST /api/v1/network/ssh-access/sync` push the operator's list at every cloud that has one —
 after a save that changed a list, from the Settings page's `Push SSH access to the clouds` button,
 or from `rockysurf network sync` — instead of only at the next launch. The button is not
 redundant with the save: a cloud can drift while the file does not, which is the state GCP has
 been in for every installation, and no save would catch it. What each provider then does with the list differs and the flag deliberately does not say:
-Azure rewrites its rule whole; AWS and GCP widen additively and then CONVERGE on confirmation
+Azure and DigitalOcean rewrite their object whole, because neither cloud's rule carries a
+description or a name to stamp — ADR-0021's "clouds whose rules carry no authorship" amendment,
+which makes `reported` and `removable` always empty and makes removing a CIDR take effect in one
+step; AWS and GCP widen additively and then CONVERGE on confirmation
 (issue #309) — a stamped extra the list no longer names is offered keep-or-remove on the Settings
 page, and remove is a confirmed, itemized revoke (authorize-before-revoke), while a range Rocky Surf
 cannot prove it created is reported with the command that removes it by hand.
@@ -356,9 +409,12 @@ chooses `deallocate` — confirmed on the real-cloud run of 2026-08-26 — which
 flag absent rather than setting it; BYO's machines are the operator's own and cost Rocky Surf
 nothing to count.
 
-The first cloud that needs it is **DigitalOcean**: a powered-off droplet bills at the full rate and
-there is no `deallocate`-shaped call to choose instead (issue #294, gap S1). A provider for it
-declares `stop: true, billsWhileStopped: true`. A cloud that charges a REDUCED rate while stopped
+The cloud it was added for is **DigitalOcean**, and that column now exists: a powered-off droplet
+bills at the full rate and there is no `deallocate`-shaped call to choose instead (issue #294, gap
+S1), so `@rockysurf/provider-digitalocean` declares `stop: true, billsWhileStopped: true` and core
+keeps the meter running through `stopped`. The evidence is DigitalOcean's own pricing page rather
+than a bill anybody has read, so the value is daggered like the rest of that column. A cloud that
+charges a REDUCED rate while stopped
 must not set this flag — core would accrue the running rate — and needs a capability that does not
 exist yet, which is an ADR question rather than an approximation.
 

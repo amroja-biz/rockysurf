@@ -164,6 +164,27 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.3)(jsdom@30.0.1)(lightningcss@1.33.0)(supports-color@7.2.0)(tsx@4.23.12)(yaml@2.9.0)
 
+  packages/provider-digitalocean:
+    devDependencies:
+      '@rockysurf/provider-conformance':
+        specifier: workspace:*
+        version: link:../provider-conformance
+      '@rockysurf/provider-sdk':
+        specifier: workspace:*
+        version: link:../provider-sdk
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.13.3
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@30.0.1)(lightningcss@1.33.0)(supports-color@7.2.0)(tsx@4.23.12)(yaml@2.9.0)
+
   packages/provider-gcp:
     dependencies:
       '@rockysurf/provider-sdk':

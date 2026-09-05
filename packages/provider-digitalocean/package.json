@@ -1,0 +1,50 @@
+{
+  "name": "@rockysurf/provider-digitalocean",
+  "version": "0.1.0",
+  "description": "DigitalOcean compute provider — plain fetch against the public API, shipped as a self-contained personal provider.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amroja-biz/rockysurf.git",
+    "directory": "packages/provider-digitalocean"
+  },
+  "bugs": "https://github.com/amroja-biz/rockysurf/issues",
+  "homepage": "https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-digitalocean#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-bundled-package.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@rockysurf/provider-conformance": "workspace:*",
+    "@rockysurf/provider-sdk": "workspace:*",
+    "@types/node": "^24.10.1",
+    "esbuild": "0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "rockysurf",
+    "provider",
+    "digitalocean"
+  ]
+}

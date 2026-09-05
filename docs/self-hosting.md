@@ -125,7 +125,7 @@ every exit path and never touches a volume you are using.
 npx rockysurf
 ```
 
-> **Not published yet.** This path needs the nine packages on the public npm registry, which
+> **Not published yet.** This path needs the ten packages on the public npm registry, which
 > happens at the v0.1.0 launch ([`RELEASING.md`](RELEASING.md)). Until then, use Compose, or run
 > `pnpm -r build` in a checkout and start `node packages/rockysurf/dist/bin.js` — the same binary
 > `npx` will fetch.
@@ -572,6 +572,52 @@ What to expect:
   can say when it has been detected. Rocky Surf stores none of it.
 - **A misspelled shipped provider is still caught.** `providers.hetzer:` is refused with "did you
   mean hetzner?", not with advice to install a package.
+
+### DigitalOcean, the one this repository ships as a personal provider
+
+`@rockysurf/provider-digitalocean` is a real, complete provider that is deliberately NOT wired into
+Rocky Surf's composition root: it lives in this repository at `packages/provider-digitalocean`, is
+built and tested by CI like any other package, and is installed the way any personal provider is
+(issue #368). It is what a personal provider looks like when it is finished, and it is the one to
+copy.
+
+```bash
+mkdir -p ~/.rockysurf/providers && cd ~/.rockysurf/providers
+npm init -y
+npm install @rockysurf/provider-digitalocean
+```
+
+```yaml
+providers:
+  digitalocean:
+    package: "@rockysurf/provider-digitalocean"
+    enabled: true
+    token: "${DIGITALOCEAN_TOKEN}"
+    region: nyc3
+    sshAllowedCidr:
+      - "203.0.113.7/32"
+```
+
+**It installs without a package manager too**, which matters because it is the artifact the
+provider shop hands you and because an air-gapped or npm-less install is a real one:
+
+```bash
+mkdir -p ~/.rockysurf/providers/node_modules/@rockysurf/provider-digitalocean
+tar -xzf rockysurf-provider-digitalocean-0.1.0.tgz \
+  -C ~/.rockysurf/providers/node_modules/@rockysurf/provider-digitalocean --strip-components=1
+```
+
+That works because the package declares no runtime dependencies at all — the SDK helpers it uses
+are compiled into its `dist/` — so there is nothing left to resolve once the files are on disk. A
+personal provider that needs `npm install` to be usable is one an installer cannot check, and this
+one is the worked example of the other shape. `packages/rockysurf/src/personal-provider-tarball.test.ts`
+packs, extracts and boots it on every CI run, so the property is asserted rather than remembered.
+
+Two things about DigitalOcean itself the provider's README says at more length, and which are the
+reason it exists: **a powered-off droplet keeps billing at the full rate** — only destroying it
+ends the charge, and Rocky Surf's meter and the New Server page both say so — and **removing a
+network from `sshAllowedCidr` takes effect in one step**, because a DigitalOcean firewall rule
+carries no record of who wrote it and Rocky Surf therefore owns the whole firewall object it named.
 
 Writing one is described in [`docs/writing-a-provider.md`](writing-a-provider.md), and the
 `adding-providers` skill in `.agents/skills/` walks an agent through it.
