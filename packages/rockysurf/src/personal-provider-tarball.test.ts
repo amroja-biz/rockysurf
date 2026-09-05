@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { configSchema, loadConfig, type Config } from '@rockysurf/core'
+import { configSchema, installProviderPackage, loadConfig, type Config } from '@rockysurf/core'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { composeRegistry } from './compose.js'
 import { loadPersonalProviders } from './personal-providers.js'
@@ -52,7 +53,7 @@ function tempDir(): string {
  * declare zero runtime dependencies — and `pnpm run check` deliberately runs tests without
  * running builds, so neither `dist/` can be assumed to exist. Both builds are idempotent.
  */
-function installedFromTarball(): { providersDir: string; installedAt: string } {
+function installedFromTarball(): { providersDir: string; installedAt: string; tarball: string } {
   execFileSync(process.execPath, [join(repoRoot, 'scripts', 'build-package.mjs')], {
     cwd: join(repoRoot, 'packages', 'provider-sdk'),
     stdio: 'pipe',
@@ -76,7 +77,7 @@ function installedFromTarball(): { providersDir: string; installedAt: string } {
   const installedAt = join(providersDir, 'node_modules', ...PACKAGE_NAME.split('/'))
   mkdirSync(installedAt, { recursive: true })
   execFileSync('tar', ['-xzf', tarball, '-C', installedAt, '--strip-components=1'], { stdio: 'pipe' })
-  return { providersDir, installedAt }
+  return { providersDir, installedAt, tarball }
 }
 
 const configFor = (providers: Record<string, unknown>): Config => configSchema.parse({ providers })
@@ -84,11 +85,12 @@ const configFor = (providers: Record<string, unknown>): Config => configSchema.p
 describe('the packed provider tarball', () => {
   let providersDir = ''
   let installedAt = ''
+  let tarball = ''
 
   // Two builds and a pack. Generous rather than tight: this is the one test in the suite that
   // compiles a package, and a machine under load should report a real failure, not a timeout.
   beforeAll(() => {
-    ;({ providersDir, installedAt } = installedFromTarball())
+    ;({ providersDir, installedAt, tarball } = installedFromTarball())
   }, 240_000)
 
   it('declares no runtime dependencies, so an installer that never runs npm can accept it', () => {
@@ -200,6 +202,60 @@ describe('the packed provider tarball', () => {
     const provider = composed.registry.list().find((candidate) => candidate.id === 'digitalocean')
     expect(provider, [...composed.notes, ...composed.registry.unavailable().map((u) => u.reason)].join('\n')).toBeDefined()
     expect(provider?.capabilities.managesSshAccess).toBe(true)
+  })
+
+  /**
+   * THE SHOP INSTALLER, AGAINST THE SAME ARTIFACT (ADR-0028).
+   *
+   * Everything above extracts with the `tar` binary, which is the operator's manual path. The shop
+   * installs with core's own reader instead — hand-written so that no symlink, no `..` and no
+   * device node has a code path at all — and every other test of that reader builds its archive
+   * with the fixture writer beside it. Two of my own implementations agreeing proves nothing about
+   * whether either can read what `pnpm pack` actually emits, so this is the test that closes it:
+   * the REAL tarball, through the REAL installer, and then loaded by the loader out of where the
+   * installer put it.
+   */
+  it('installs through the shop installer, and the loader finds it where that put it', async () => {
+    const bytes = readFileSync(tarball)
+    const entry = {
+      providerId: 'digitalocean',
+      name: 'DigitalOcean',
+      description: 'DigitalOcean droplets.',
+      version: JSON.parse(readFileSync(join(installedAt, 'package.json'), 'utf8')).version as string,
+      package: PACKAGE_NAME,
+      tarball: 'https://example.test/rockysurf-provider-digitalocean.tgz',
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      settings: [],
+      capabilities: {
+        stop: true,
+        ipStableAcrossStop: false,
+        canInjectHostKeys: false,
+        generatesUserData: true,
+        userDataMaxBytes: 65536,
+      },
+    }
+
+    const shopDir = join(tempDir(), 'providers')
+    const installed = await installProviderPackage(entry, {
+      providersDir: shopDir,
+      // The only seam: the bytes arrive from disk rather than from the network. Digest,
+      // extraction, manifest check, entry resolution and the dependency check all run for real.
+      fetchBytes: async (url) => ({ ok: true, bytes, url }),
+    })
+
+    expect(installed.ok ? '' : installed.reason).toBe('')
+    if (!installed.ok) return
+    expect(installed.installed.name).toBe(PACKAGE_NAME)
+
+    // And what it wrote is loadable by the thing that will load it at the next restart.
+    const loaded = await loadPersonalProviders({
+      config: configFor({
+        digitalocean: { package: PACKAGE_NAME, enabled: true, token: 'do-token', region: 'nyc3', sshAllowedCidr: '203.0.113.7/32' },
+      }),
+      providersDir: shopDir,
+    })
+    expect([...loaded.failures.entries()]).toEqual([])
+    expect(loaded.factories.get('digitalocean')?.displayName).toBe('DigitalOcean')
   })
 
   it('reports the provider own sentence when its section is wrong, and never fatally', async () => {

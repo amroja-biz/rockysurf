@@ -3,8 +3,23 @@ import { homedir } from 'node:os'
 import * as nodeModule from 'node:module'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { personalProviderSections, type Config } from '@rockysurf/core'
+import {
+  PERSONAL_PROVIDERS_DIRNAME,
+  PERSONAL_PROVIDER_TRUST_SENTENCE,
+  personalProviderSections,
+  resolvePackageEntry,
+  type Config,
+  type PersonalProviderManifest,
+} from '@rockysurf/core'
 import type { ProviderFactory } from '@rockysurf/provider-sdk'
+
+/**
+ * Re-exported rather than declared here since ADR-0028: the shop installer in core has to agree
+ * with this loader about where a package lives, what its manifest points at, and what the
+ * sentence says, so all three moved to `@rockysurf/core`'s `config/personal-providers.ts` and
+ * this module keeps the names its callers already import.
+ */
+export { PERSONAL_PROVIDERS_DIRNAME, PERSONAL_PROVIDER_TRUST_SENTENCE, resolvePackageEntry }
 
 /**
  * LOADING A PROVIDER ROCKY SURF DID NOT SHIP (ADR-0026, issue #294).
@@ -61,12 +76,6 @@ import type { ProviderFactory } from '@rockysurf/provider-sdk'
  * provider with that reason. Nothing here is fatal: the UI is where the operator fixes it.
  */
 
-/** The subdirectory of the data directory personal providers are installed under. */
-export const PERSONAL_PROVIDERS_DIRNAME = 'providers'
-
-/** The one honest sentence. Quoted verbatim in the docs and the boot log; do not paraphrase it. */
-export const PERSONAL_PROVIDER_TRUST_SENTENCE = "a provider runs with Rocky Surf's full access — install ones you trust."
-
 export interface LoadedPersonalProviders {
   /** By provider id (the config key), every factory that loaded, enabled or not. */
   factories: Map<string, ProviderFactory>
@@ -94,80 +103,6 @@ export function isPathSpecifier(spec: string): boolean {
 /** Where personal providers resolve from for a given config. */
 export function personalProvidersDir(config: Config): string {
   return join(config.server.dataDir, PERSONAL_PROVIDERS_DIRNAME)
-}
-
-interface Manifest {
-  name?: unknown
-  exports?: unknown
-  module?: unknown
-  main?: unknown
-}
-
-/**
- * Pick a target out of an `exports` value by condition, `require` last.
- *
- * Handles the shapes real published packages use: a string, an array of fallbacks (first one
- * that resolves wins), a conditions object, and conditions nested inside conditions
- * (`{ "node": { "import": "./x.js" } }`).
- */
-function resolveExportTarget(target: unknown): string | undefined {
-  if (typeof target === 'string') return target
-  if (Array.isArray(target)) {
-    for (const entry of target) {
-      const found = resolveExportTarget(entry)
-      if (found) return found
-    }
-    return undefined
-  }
-  if (target !== null && typeof target === 'object') {
-    const conditions = target as Record<string, unknown>
-    for (const condition of ['import', 'node', 'default', 'require']) {
-      if (condition in conditions) {
-        const found = resolveExportTarget(conditions[condition])
-        if (found) return found
-      }
-    }
-  }
-  return undefined
-}
-
-/**
- * The file a package's manifest says to load: `exports` (the `.` entry, or the sugar form with
- * conditions at the top level), then `module`, then `main`, then `index.js`.
- */
-export function resolvePackageEntry(packageDir: string, manifest: Manifest): string {
-  const relative = (() => {
-    const exports = manifest.exports
-    if (typeof exports === 'string') return exports
-    if (exports !== null && typeof exports === 'object' && !Array.isArray(exports)) {
-      const record = exports as Record<string, unknown>
-      const keys = Object.keys(record)
-      const subpaths = keys.some((key) => key.startsWith('.'))
-      const target = subpaths ? record['.'] : record
-      if (subpaths && target === undefined) {
-        throw new Error(
-          `${join(packageDir, 'package.json')} declares "exports" with no "." entry, so the package has no main entry to load`,
-        )
-      }
-      const found = resolveExportTarget(target)
-      if (found) return found
-      throw new Error(
-        `${join(packageDir, 'package.json')} declares "exports" with no import, node, default or require target for "."`,
-      )
-    }
-    if (Array.isArray(exports)) {
-      const found = resolveExportTarget(exports)
-      if (found) return found
-    }
-    if (typeof manifest.module === 'string') return manifest.module
-    if (typeof manifest.main === 'string') return manifest.main
-    return './index.js'
-  })()
-  const entry = resolve(packageDir, relative)
-  if (!existsSync(entry)) {
-    throw new Error(`${join(packageDir, 'package.json')} points at ${relative}, which does not exist — is the package built?`)
-  }
-  return entry
 }
 
 /** `module.findPackageJSON`, when this Node has it (stability 1.1 — guarded, with a fallback). */
@@ -200,7 +135,7 @@ export function resolveProviderPackage(spec: string, providersDir: string, home:
     if (statSync(absolute).isDirectory()) {
       const manifestPath = join(absolute, 'package.json')
       if (!existsSync(manifestPath)) throw new Error(`${absolute} is a directory with no package.json`)
-      return resolvePackageEntry(absolute, JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest)
+      return resolvePackageEntry(absolute, JSON.parse(readFileSync(manifestPath, 'utf8')) as PersonalProviderManifest)
     }
     return absolute
   }
@@ -213,7 +148,7 @@ export function resolveProviderPackage(spec: string, providersDir: string, home:
         'or name a path to a built package instead.',
     )
   }
-  return resolvePackageEntry(dirname(manifestPath), JSON.parse(readFileSync(manifestPath, 'utf8')) as Manifest)
+  return resolvePackageEntry(dirname(manifestPath), JSON.parse(readFileSync(manifestPath, 'utf8')) as PersonalProviderManifest)
 }
 
 /**

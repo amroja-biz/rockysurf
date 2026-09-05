@@ -386,6 +386,103 @@ What a personal provider does *not* yet get is a Settings panel for its **own** 
 declares them, they are edited in the file, and the panel says so. The operator-facing side is in
 [`docs/self-hosting.md`, "Personal providers"](self-hosting.md#personal-providers).
 
+## Publishing to the shop
+
+A personal provider that would help other people can be listed in a Rocky Surf registry — the same
+`amroja-biz/rockysurf-shop` that distributes Surge Packs — and installed from an operator's Shop
+page in one click
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md)). What you are publishing is
+an **npm-style tarball** plus a **listing entry** that points at it.
+
+### The artifact must be self-contained
+
+**Rocky Surf never runs npm.** The installer fetches your tarball, verifies it, unpacks it under
+`<dataDir>/providers` and stops — no `npm install`, no lifecycle scripts, nothing from your
+package executed at any point. Your code first runs when the operator restarts and the loader
+imports it.
+
+The consequence is a hard requirement: **nothing may be left for a package manager to resolve.**
+The installer reads your manifest's `dependencies` and refuses the install, naming what is
+missing, if any of them is not already present.
+
+This is the fifth bullet of the section above, and `@rockysurf/provider-digitalocean` is the worked
+example of satisfying it: no runtime dependencies at all, a hand-written config schema rather than
+zod, and `scripts/build-bundled-package.mjs` compiling the SDK's runtime helpers into its `dist/`
+with the SDK kept as a devDependency. Copy that shape.
+`devDependencies` are irrelevant here — they are not in the published manifest's `dependencies` and
+are not checked.
+
+### Producing the tarball
+
+```bash
+pnpm -C packages/provider-mycloud build          # or npm run build
+pnpm -C packages/provider-mycloud pack           # writes you-rockysurf-provider-mycloud-1.0.0.tgz
+shasum -a 256 you-rockysurf-provider-mycloud-1.0.0.tgz
+```
+
+`pnpm pack` (and `npm pack`) produce exactly the archive the installer expects: gzipped, ustar,
+every member under `package/`. Check what came out before you publish it — `tar -tzf <file>` — and
+confirm the file your `exports` point at is in the list. A tarball carrying a manifest and no
+`dist/` is the most common way a publish goes wrong, and the installer refuses it with "is the
+package built?" rather than installing something that cannot load.
+
+Then host it somewhere reachable over **https**: an npm registry's tarball URL, a GitHub release
+asset, or any static host. `http` is refused, by the listing format and by the installer.
+
+### The listing entry
+
+Send a pull request to the registry adding one object to its `providers.json`:
+
+```json
+{
+  "providerId": "mycloud",
+  "name": "MyCloud",
+  "description": "MyCloud compute, one API token, four regions.",
+  "version": "1.0.0",
+  "package": "@you/rockysurf-provider-mycloud",
+  "tarball": "https://registry.npmjs.org/@you/rockysurf-provider-mycloud/-/rockysurf-provider-mycloud-1.0.0.tgz",
+  "sha256": "…the shasum above…",
+  "settings": [
+    { "name": "token", "label": "API token variable", "kind": "secret" },
+    { "name": "region", "label": "Region", "kind": "string" }
+  ],
+  "capabilities": {
+    "stop": true,
+    "ipStableAcrossStop": false,
+    "canInjectHostKeys": false,
+    "generatesUserData": false,
+    "userDataMaxBytes": 0,
+    "managesSshAccess": true,
+    "billsWhileStopped": true
+  }
+}
+```
+
+Every field is checked, and four are worth saying more about:
+
+- **`providerId` is the config section key** an operator will end up with, and must equal your
+  `factory.id`. Lowercase letters, digits and hyphens.
+- **`package` must equal your manifest's `name`.** The installer compares them and refuses a
+  listing that disagrees with the artifact it points at.
+- **`settings` is a summary**, not your `ProviderSettings` declaration — the names, labels and
+  kinds an operator will be asked for, so they can decide before installing. The real panel is
+  built from the declaration that arrives with the package (ADR-0027). Keep the two in step.
+- **`capabilities` are your factory's answers**, verbatim. This is where an operator learns that a
+  stopped machine still bills before they install, rather than after.
+
+There is deliberately **no trust or tier field**, and the format refuses one. Every listing already
+carries, from Rocky Surf rather than from the registry, the sentence this document opened with: *a
+provider runs with Rocky Surf's full access — install ones you trust.* Nothing you write can
+soften it, and nothing you write has to repeat it.
+
+### Publishing a new version
+
+Bump the version, build, pack, hash, and update the same entry. An operator's Update button
+re-fetches and **replaces** the installed package, so a file you dropped between versions is
+genuinely gone. Keep the `sha256` in step with the artifact: a mismatch is refused, loudly, with
+both values named — which is exactly what it should do, and exactly what a forgotten hash looks
+like.
+
 ## A skill that walks through all of this
 
 `.agents/skills/adding-providers/` is an agent skill covering both jobs the word "provider"

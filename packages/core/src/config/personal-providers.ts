@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { isHostnameSafeId } from '@rockysurf/provider-sdk'
 import { z } from 'zod'
 
@@ -202,4 +204,116 @@ export function providerEnabled(config: { providers: Record<string, unknown> }, 
 /** The ids of every provider section in the file, shipped first in schema order, then personal. */
 export function providerIdsIn(config: { providers: Record<string, unknown> }): string[] {
   return Object.keys(config.providers)
+}
+
+/* ------------------------------------------------------- where a package lives, and its entry */
+
+/**
+ * The subdirectory of the data directory personal providers are installed under.
+ *
+ * `~/.rockysurf/providers` by default, `/data/providers` in the container. Outside the
+ * application's own `node_modules`, which is the point: `npx rockysurf@latest`, `git pull &&
+ * pnpm -r build`, `./start.sh` and an image rebuild all replace the application and none of them
+ * touch the data directory, so a provider installed once stays installed.
+ */
+export const PERSONAL_PROVIDERS_DIRNAME = 'providers'
+
+/**
+ * The one honest sentence. Quoted verbatim in the docs, the boot log, the Settings panel and
+ * every shop listing; do not paraphrase it.
+ *
+ * IT IS ROCKY SURF'S CONSTANT, NEVER A FIELD A REGISTRY PUBLISHES (ADR-0028). A shop that could
+ * write this sentence could also soften it or leave it out, which is the same self-attestation
+ * ADR-0006 refused for pack trust labels. The client renders this string on every provider
+ * listing, whatever the listing says.
+ */
+export const PERSONAL_PROVIDER_TRUST_SENTENCE =
+  "a provider runs with Rocky Surf's full access — install ones you trust."
+
+/** The parts of a `package.json` that decide what gets imported. */
+export interface PersonalProviderManifest {
+  name?: unknown
+  version?: unknown
+  exports?: unknown
+  module?: unknown
+  main?: unknown
+  dependencies?: unknown
+}
+
+/**
+ * Pick a target out of an `exports` value by condition, `require` last.
+ *
+ * Handles the shapes real published packages use: a string, an array of fallbacks (first one
+ * that resolves wins), a conditions object, and conditions nested inside conditions
+ * (`{ "node": { "import": "./x.js" } }`).
+ */
+function resolveExportTarget(target: unknown): string | undefined {
+  if (typeof target === 'string') return target
+  if (Array.isArray(target)) {
+    for (const entry of target) {
+      const found = resolveExportTarget(entry)
+      if (found) return found
+    }
+    return undefined
+  }
+  if (target !== null && typeof target === 'object') {
+    const conditions = target as Record<string, unknown>
+    for (const condition of ['import', 'node', 'default', 'require']) {
+      if (condition in conditions) {
+        const found = resolveExportTarget(conditions[condition])
+        if (found) return found
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * The file a package's manifest says to load: `exports` (the `.` entry, or the sugar form with
+ * conditions at the top level), then `module`, then `main`, then `index.js`.
+ *
+ * IN CORE RATHER THAN IN THE COMPOSITION ROOT SINCE ADR-0028, because two callers have to agree
+ * exactly: the loader that imports a personal provider at startup, and the shop installer that
+ * decides, before it writes anything into the config file, whether the tarball it has just
+ * unpacked is a package this installation could actually load. Two implementations of "what does
+ * this manifest point at" would eventually accept an artifact the loader then refused, and an
+ * operator would meet that disagreement as a provider that installed cleanly and never appeared.
+ *
+ * `existsAt` is the filesystem seam: the installer checks a staging directory, the loader checks
+ * the installed one, and a test checks neither.
+ */
+export function resolvePackageEntry(
+  packageDir: string,
+  manifest: PersonalProviderManifest,
+  existsAt: (path: string) => boolean = existsSync,
+): string {
+  const manifestPath = join(packageDir, 'package.json')
+  const relative = (() => {
+    const exports = manifest.exports
+    if (typeof exports === 'string') return exports
+    if (exports !== null && typeof exports === 'object' && !Array.isArray(exports)) {
+      const record = exports as Record<string, unknown>
+      const keys = Object.keys(record)
+      const subpaths = keys.some((key) => key.startsWith('.'))
+      const target = subpaths ? record['.'] : record
+      if (subpaths && target === undefined) {
+        throw new Error(`${manifestPath} declares "exports" with no "." entry, so the package has no main entry to load`)
+      }
+      const found = resolveExportTarget(target)
+      if (found) return found
+      throw new Error(`${manifestPath} declares "exports" with no import, node, default or require target for "."`)
+    }
+    if (Array.isArray(exports)) {
+      const found = resolveExportTarget(exports)
+      if (found) return found
+    }
+    if (typeof manifest.module === 'string') return manifest.module
+    if (typeof manifest.main === 'string') return manifest.main
+    return './index.js'
+  })()
+  const entry = resolve(packageDir, relative)
+  if (!existsAt(entry)) {
+    throw new Error(`${manifestPath} points at ${relative}, which does not exist — is the package built?`)
+  }
+  return entry
 }

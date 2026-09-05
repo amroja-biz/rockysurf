@@ -202,6 +202,46 @@ runs with Rocky Surf's full access — install ones you trust.** Its credential 
 as every shipped cloud's: named in the config file as `${VAR}` or read from a variable the provider
 declares, and stored nowhere.
 
+### Installing a provider from the shop
+
+A provider can also be installed from a registry, on the Shop page's Providers tab
+([ADR-0028](docs/adr/0028-providers-are-distributed-through-the-shop.md)). The trust model is the
+one stated immediately above and is not softened by the shop: an installed provider runs with this
+process's full access, and the sentence appears on every listing — served by Rocky Surf as a
+constant, with no field for it in the registry's own document and a strict schema that refuses
+one, so no registry can reword it or leave it out.
+
+What the install does, and does not do:
+
+- **The artifact URL is `https` only.** Refused by the listing format and again by the installer,
+  because a provider is code and over plain http both the artifact and the digest meant to catch a
+  change to it are rewritable in transit.
+- **The fetch goes through the same guard as pack import** (§ Server-side fetch policy): every
+  resolved address must be publicly routable, every redirect is re-screened, and the body is
+  capped on the wire at 16 MiB.
+- **The digest is verified before the archive is opened**, and a mismatch is refused naming both
+  values. It is a pin, not a signature — whoever can write the listing can write both halves —
+  and the honest description of the chain is the registry repository's branch and its host's
+  account controls, exactly as for packs.
+- **Extraction is deliberately narrow.** The reader refuses absolute paths, any `..` segment,
+  symbolic links, hard links, device nodes and FIFOs, requires every member to sit under the
+  archive's `package/` root, and caps both the number of files and the total uncompressed size —
+  the decompression-bomb bound the wire cap cannot see. It is written for this rather than
+  configured for this: there is no code path that produces a link, so none can be enabled by
+  mistake.
+- **Nothing from the package is executed.** No `npm install`, no lifecycle scripts, no import.
+  A `scripts` block in a fetched `package.json` is read and ignored. The package's code first runs
+  at the restart the operator performs afterwards, when the personal-provider loader imports it —
+  which is why the install always says a restart is required rather than implying the provider is
+  already live. A provider published to the shop must therefore be self-contained; an install is
+  refused, naming the packages, if a declared runtime dependency is not already present.
+- **The config write is the settings write.** The two lines it adds go through the same
+  comment-preserving document edit, the same schema validation and the same atomic write (mode
+  preserved) as any change made on the Settings page.
+
+Removal deletes the package and the whole `providers.<id>` section after a confirmation naming
+both, and is refused while any non-terminated server row still names that provider.
+
 ### GitHub tokens
 
 `github.pat` from `rockysurf.config.yaml` — the token that clones private repositories —
@@ -467,7 +507,9 @@ cloud — the classic SSRF shape. `packages/core/src/packs/safe-fetch.ts` is the
 - Redirects are not followed blindly. Each hop is re-screened under the same rule, capped at
   five.
 - The body is capped at 2 MB and the request at 15 seconds, so a "pack file" cannot be a
-  tarpit.
+  tarpit. One caller raises that cap and only one: the provider-shop tarball fetch, to 16 MiB,
+  because the thing on the wire there is a packed npm package rather than a YAML file. The cap is
+  set by the caller, never by the URL, so nothing a registry publishes can raise it.
 
 Its residual risk is documented in the module and repeated below.
 
@@ -478,7 +520,10 @@ the community shop alone): each fetch of an `index.json` and of a pack file goes
 `fetchPublicText`, so a registry URL resolving to a private address is refused however it is
 configured — including an internal registry on an RFC1918 address, because vouching for a host
 is a decision with its own design rather than a default to fall into. Nothing is fetched at
-boot, only when an admin opens the shop.
+boot, only when an admin opens the shop. The same sources also serve the provider listing
+(`providers.json`) and the provider artifacts it names — same guard, same admin-only, same
+nothing-at-boot, and the extra rules that apply to code rather than to a pack file are in
+§ Installing a provider from the shop.
 
 **A source URL must be `https`,** stricter than the import guard's `http`-or-`https` on
 purpose: a source is fetched again and again, and the digest that pins a pack to

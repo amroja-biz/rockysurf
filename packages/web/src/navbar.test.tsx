@@ -174,7 +174,7 @@ describe('the navbar is on every authenticated page', () => {
       // Costs was reachable only by typing the URL until rockysurf-k72k.
       ['Costs', '/costs'],
       ['Tools', '/admin/tools'],
-      ['Surge Packs', '/packs'],
+      ['Shop', '/packs'],
       ['Settings', '/settings'],
       ['Help', '/help'],
       // The brand mark, whose accessible name is its wordmark.
@@ -194,8 +194,8 @@ describe('the navbar is on every authenticated page', () => {
     ['/', 'Servers'],
     ['/servers/new', 'New'],
     ['/servers/srv-abc', 'Servers'],
-    ['/packs', 'Surge Packs'],
-    ['/packs/some-pack', 'Surge Packs'],
+    ['/packs', 'Shop'],
+    ['/packs/some-pack', 'Shop'],
     ['/admin/tools', 'Tools'],
   ] as const)('marks %s current on the %s link, and only that one (#221)', async (path, current) => {
     render(
@@ -205,7 +205,7 @@ describe('the navbar is on every authenticated page', () => {
     )
     await settle()
 
-    for (const name of ['Servers', 'New', 'Costs', 'Tools', 'Surge Packs', 'Settings', 'Help']) {
+    for (const name of ['Servers', 'New', 'Costs', 'Tools', 'Shop', 'Settings', 'Help']) {
       const attr = screen.getByRole('link', { name }).getAttribute('aria-current')
       if (name === current) expect(attr).toBe('page')
       else expect(attr).toBeNull()

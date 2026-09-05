@@ -619,7 +619,7 @@ export function HelpPage() {
         <p>
           A Surge Pack is the software a box is created with, written as YAML: a list of tools
           with idempotent, architecture-aware install scripts, plus the author&rsquo;s post-boot
-          guide. The Tools and Surge Packs admin pages let you inspect and edit what this
+          guide. The Tools and Shop admin pages let you inspect and edit what this
           installation offers. Writing your own is a contract, and CI enforces the mechanical half
           of it:{' '}
           <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
@@ -641,6 +641,15 @@ export function HelpPage() {
           automated checks prove a pack is well-formed and survives being resumed; they cannot
           prove it is safe, because an install script is arbitrary shell running as root on your
           box.
+        </p>
+        <p>
+          The same registries also distribute <strong>providers</strong> — the clouds Rocky Surf
+          can create servers on — on the Shop page&rsquo;s Providers tab. Each listing states what
+          the provider will ask you to configure, what its machines can and cannot do, and the one
+          sentence that applies to all of them: a provider runs with Rocky Surf&rsquo;s full access
+          — install ones you trust. Installing one writes a package under the data directory and a
+          section in your config file, and runs nothing; the provider&rsquo;s code first runs at
+          the restart the page asks you for.
         </p>
       </section>
 
