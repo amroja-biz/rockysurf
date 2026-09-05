@@ -32,7 +32,7 @@ import {
 } from '@rockysurf/provider-sdk'
 ```
 
-## `ComputeProvider` — the nine methods
+## `ComputeProvider` — nine required methods and one optional
 
 ```ts
 interface ComputeProvider {
@@ -49,8 +49,23 @@ interface ComputeProvider {
   listManaged(): Promise<ManagedResource[]>
   stop(data: ProviderData): Promise<void>
   start(data: ProviderData): Promise<void>
+
+  // OPTIONAL — present exactly when capabilities.managesSshAccess is true (ADR-0021).
+  syncSshAccess?(options?: SshAccessSyncOptions): Promise<SshAccessSyncResult>
+}
+
+interface SshAccessSyncOptions { revoke?: readonly string[] }   // extras the operator confirmed for removal
+interface SshAccessSyncResult {
+  status: 'updated' | 'unchanged' | 'skipped' | 'failed'
+  applied: readonly string[]      // what the cloud allows now; empty on skipped/failed
+  reported: readonly string[]     // ranges found and deliberately not touched
+  removable?: readonly string[]   // the subset of reported you CAN revoke if confirmed
+  detail: string                  // one or two plain sentences, remediation included
 }
 ```
+
+`syncSshAccess()` takes NO CIDR list — the provider reads its own config. The rules it must follow
+are in [ssh-access.md](ssh-access.md).
 
 **Who calls `validateSpec`:** core calls it before `provision()`, and **`provision()` must not
 assume it was called.** So validate in both places, or have `provision()` call it — double
@@ -64,6 +79,14 @@ interface ProviderFactory<TConfig> {
   readonly displayName: string
   readonly configSchema: ConfigSchema<TConfig>
   createProvider(config: TConfig): ComputeProvider   // synchronous, no I/O
+
+  // Optional (ADR-0026, E18): where a token lands, and the variables it may arrive under when the
+  // config field is empty. A chain-auth cloud declares neither, or credentialEnv alone.
+  readonly credentialField?: string              // 'token'
+  readonly credentialEnv?: readonly string[]     // ['MYCLOUD_TOKEN']
+
+  // Optional (ADR-0027, E19): what the Settings panel shows. See ProviderSettings below.
+  readonly settings?: ProviderSettings
 }
 
 interface ConfigSchema<TConfig> {
@@ -76,12 +99,53 @@ interface ProviderCapabilities {
   canInjectHostKeys: boolean      // requires generatesUserData
   userDataMaxBytes: number        // integer >= 0
   generatesUserData: boolean
-  simulatedInstances?: boolean    // optional; absent means false. See contract.md
+  // Optional; absent means false. See contract.md for what each one obliges you to.
+  simulatedInstances?: boolean    // no machine at the address reported (test doubles only)
+  managesSshAccess?: boolean      // a shared firewall object core pushes sshAllowedCidr at; requires syncSshAccess()
+  billsWhileStopped?: boolean     // a stopped machine bills at the RUNNING rate
 }
 ```
 
 `ConfigSchema` is structural — just something with a throwing `parse` — precisely so the SDK never
 depends on a validation library. A zod schema satisfies it; so does a hand-written function.
+
+## `ProviderSettings`
+
+What the Settings page draws for your provider (ADR-0027). A DECLARATION beside the schema, not the
+schema: it carries what a page needs and a validator cannot say — labels, sentences, that a `token`
+box takes the NAME of a variable, that the SSH whitelist is one control over two fields.
+
+```ts
+interface ProviderSettings {
+  title: string                      // the panel's title
+  help: string                       // one or two sentences under it — a SENTENCE, conformance checks
+  fields: readonly ProviderSettingField[]   // in the order the panel draws them
+  lists?: readonly ProviderSettingList[]    // the providers.byo.hosts shape
+  offering: { noun: string; example: string }   // 'server type' / 'cpx21' — for the saved-type fields
+  advisories?: readonly { surface: 'settings' | 'create'; text: string }[]
+}
+
+interface ProviderSettingField {
+  name: string                       // the key inside providers.<id>, as configSchema expects it
+  kind: 'string' | 'number' | 'boolean' | 'secret' | 'stringList' | 'sshCidrList'
+  label: string
+  help: string                       // a sentence
+  warning?: string
+  writable?: boolean                 // default true; false needs `reason`
+  reason?: string
+  appliesAt?: 'save' | 'restart'     // default 'save'; 'restart' needs `restartReason`
+  restartReason?: string
+  accepts?: 'envVarName' | 'literal' // secret only; default envVarName
+  example?: string                   // parsed through configSchema by conformance
+}
+```
+
+Rules conformance enforces: every `help` is a sentence; every `example` parses through
+`configSchema` (a secret's substituted with a placeholder — it is a variable NAME); `enabled`,
+`package` and `sizes` are NOT declared (they are the installation's, added to every panel);
+`sshCidrList` is named `sshAllowedCidr`, implies the `allowAllCidr` checkbox (do not declare it), and
+requires `capabilities.managesSshAccess`. `advisories` are for what only a human needs to know —
+anything core computes with is a capability, never a sentence.
 
 `provider.id` must be **lowercase and non-empty**; conformance checks it. Decide it at scaffold
 time, because it is the key of your config section and the name in every error message.
@@ -238,6 +302,9 @@ new ProviderError(code, message, { providerCode, cause })
 - **Keep the cloud's own code in `providerCode`.** Flattening onto nine codes loses information
   that the operator reading the message needs back.
 - **`isProviderError(err)` is the narrowing helper for `catch` blocks**, which receive `unknown`.
+  It is STRUCTURAL (the name `ProviderError` plus one of the nine codes), not `instanceof`: a
+  personal provider carries its own copy of the SDK, so its `ProviderError` is a different class
+  from core's. Do not rely on `instanceof` across that boundary in your own code either.
 - `unsupportedOperationError(providerId, 'stop')` builds the `invalid_spec` error a
   `capabilities.stop: false` provider throws from `stop`/`start`.
 
