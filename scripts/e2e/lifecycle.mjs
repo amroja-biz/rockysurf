@@ -7,6 +7,7 @@
  *   node scripts/e2e/lifecycle.mjs gcp        (needs ROCKYSURF_E2E_GCP_PROJECT)
  *   node scripts/e2e/lifecycle.mjs azure      (needs ROCKYSURF_E2E_AZURE_SUBSCRIPTION
  *                                              and ROCKYSURF_E2E_AZURE_RESOURCE_GROUP)
+ *   node scripts/e2e/lifecycle.mjs digitalocean   (needs DIGITALOCEAN_TOKEN)
  *
  * THIS SPENDS MONEY. It creates one real server per run and destroys it again, and the
  * teardown is in a `finally` so a failure anywhere still cleans up. Exits non-zero if anything
@@ -24,7 +25,7 @@
  * owns that decision and records it.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { appendFileSync, mkdtempSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -36,6 +37,7 @@ import {
   resolveRunCredentials,
 } from './aws-audit-credentials.mjs'
 import { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
+import { CI_FIREWALL_NAME, CI_REGION, DIGITALOCEAN_PACKAGE } from './digitalocean-ci-firewall.mjs'
 import { buildConfigYaml } from './e2e-config.mjs'
 
 /**
@@ -65,12 +67,22 @@ import { buildConfigYaml } from './e2e-config.mjs'
  * memory experiment.
  *
  * Cheapest type per cloud that runs the pack. Budget discipline is not optional here.
+ *
+ * DIGITALOCEAN CARRIES ONE ENTRY AND IT CAN ONLY EVER CARRY ONE (issue #369): DigitalOcean sells
+ * no ARM droplets at all, so `listOfferings()` reports every size as `amd64` and there is no
+ * second leg to run. `s-2vcpu-2gb` is the cheapest Basic slug that meets core's `small` floor —
+ * 2 vCPU and 2 GiB, the same shape the AWS `t3.small` leg has run on for months. It is the one
+ * value here that was written from documentation rather than from a live catalogue, so
+ * `deploy/digitalocean/setup-nightly.sh` checks it against `GET /v2/sizes` — and refuses to enable
+ * the leg if DigitalOcean does not sell it in the region — before a single droplet is ever asked
+ * for. After that, the "is offered" check below is what catches a slug DigitalOcean retires later.
  */
 const RUNS = {
   hetzner: { cpx12: 'amd64' },
   aws: { 't4g.small': 'arm64', 't3.small': 'amd64' },
   gcp: { 't2a-standard-1': 'arm64', 'e2-small': 'amd64' },
   azure: { Standard_D2pls_v6: 'arm64', Standard_D2ls_v6: 'amd64' },
+  digitalocean: { 's-2vcpu-2gb': 'amd64' },
 }
 
 const CLOUD = process.argv[2]
@@ -165,6 +177,93 @@ function hetznerToken() {
 }
 
 /**
+ * DigitalOcean's token, from the environment. Never printed, never written to the config file.
+ *
+ * THE VARIABLE IS THE CREDENTIAL PATH UNDER TEST, not a convenience (ADR-0026, E18). The factory
+ * declares `credentialEnv: ['DIGITALOCEAN_TOKEN']`, so a personal provider whose config section
+ * carries no `token` is composed from this variable — and nothing else in CI exercises that seam.
+ * Read here as well as inherited by the child process, because the direct-build audit below needs
+ * it too, and because a run with no token should stop before it writes anything.
+ */
+function digitaloceanToken() {
+  const token = (process.env.DIGITALOCEAN_TOKEN ?? '').trim()
+  if (!token) {
+    throw new Error(
+      'DIGITALOCEAN_TOKEN is not set. It is the read/write personal access token this run creates ' +
+        'droplets with; there is deliberately no default and no ambient DigitalOcean context to fall ' +
+        'back on. Run ./deploy/digitalocean/setup-nightly.sh to wire the CI one up.',
+    )
+  }
+  return token
+}
+
+/**
+ * Where the personal provider was installed for this run, once it has been.
+ *
+ * Recorded so the zero-orphan audit can build the provider from THE ARTIFACT CORE LOADED rather
+ * than from `packages/provider-digitalocean/dist`. They are the same code today and the point is
+ * that nothing has to trust that: an audit reading the workspace build could pass while the
+ * packed tarball core actually composed was broken, which is the exact failure the tarball test
+ * exists to catch and would be silly to reintroduce here.
+ */
+let digitaloceanInstalledAt = ''
+
+/**
+ * Install `@rockysurf/provider-digitalocean` under this run's `<dataDir>/providers`, with no npm.
+ *
+ * THIS IS THE SHIPPED INSTALL RECIPE, RUN VERBATIM (ADR-0026, issue #368). DigitalOcean is a
+ * personal provider: the composition root does not name it, so unless it is on disk under the
+ * data directory before core boots, `providers.digitalocean.package` resolves to nothing and the
+ * leg proves only that core can report a missing package. `pnpm pack` produces exactly the
+ * artifact the registry and the provider shop hand out, and `tar --strip-components=1` into
+ * `<dataDir>/providers/node_modules/<name>` is exactly what docs/self-hosting.md tells a
+ * self-hoster to type and what `packages/rockysurf/src/personal-provider-tarball.test.ts` asserts.
+ * No package manager runs at install time, which is the property that makes the package
+ * installable at all.
+ *
+ * `ROCKYSURF_E2E_DIGITALOCEAN_TARBALL` skips the pack when a caller already has one. Otherwise the
+ * tarball is built here from the working tree, so what runs is this checkout's provider and not
+ * whatever the registry happens to be serving.
+ */
+function installPersonalProvider() {
+  const providersDir = join(dataDir, 'providers')
+  const installedAt = join(providersDir, 'node_modules', ...DIGITALOCEAN_PACKAGE.split('/'))
+  mkdirSync(installedAt, { recursive: true })
+
+  let tarball = process.env.ROCKYSURF_E2E_DIGITALOCEAN_TARBALL ?? ''
+  if (!tarball) {
+    const packageDir = join(REPO, 'packages/provider-digitalocean')
+    // `files` is `["dist", "README.md"]`, so packing an unbuilt package succeeds and produces a
+    // tarball with no code in it — which surfaces twenty seconds later as core reporting a
+    // provider it could not import, a message that points nowhere near "you did not build".
+    if (!existsSync(join(packageDir, 'dist/index.js'))) {
+      throw new Error(`${packageDir}/dist is missing — run \`pnpm -r build\` before this script`)
+    }
+    const packed = spawnSync('pnpm', ['pack', '--pack-destination', workDir], {
+      cwd: packageDir,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+    if (packed.status !== 0) {
+      throw new Error(`pnpm pack failed in ${packageDir}:\n${packed.stderr ?? ''}${packed.stdout ?? ''}`)
+    }
+    tarball = (packed.stdout ?? '').trim().split('\n').at(-1)?.trim() ?? ''
+    if (!tarball.endsWith('.tgz')) throw new Error(`could not read a tarball path out of pnpm pack:\n${packed.stdout}`)
+  }
+
+  const extracted = spawnSync('tar', ['-xzf', tarball, '-C', installedAt, '--strip-components=1'], {
+    encoding: 'utf8',
+  })
+  if (extracted.status !== 0) throw new Error(`tar failed extracting ${tarball}:\n${extracted.stderr ?? ''}`)
+
+  digitaloceanInstalledAt = installedAt
+  log(`installed ${DIGITALOCEAN_PACKAGE} at ${installedAt} (from ${tarball}, no package manager)`)
+}
+
+/** The exact `sshAllowedCidr` this run wrote, so the converge check can assert on it. */
+let sshCidr = ''
+
+/**
  * Resolve this run's decisions, then hand them to `buildConfigYaml` and write the file.
  *
  * THE TEXT ITSELF IS BUILT IN `e2e-config.mjs`, which takes no network, no filesystem and no
@@ -177,6 +276,7 @@ async function writeConfig() {
   // AWS is the else-branch below, so every non-Hetzner cloud resolves the address the same way.
   const cidr = CLOUD === 'hetzner' ? undefined : `${await currentPublicIp()}/32`
   if (cidr) log(`sshAllowedCidr resolved at run time and written to config: ${cidr}`)
+  sshCidr = cidr ?? ''
 
   const text = buildConfigYaml({
     cloud: CLOUD,
@@ -192,6 +292,9 @@ async function writeConfig() {
     awsRegion: AWS_REGION,
     awsSecurityGroupName: CI_SSH_SG_NAME,
     awsProfile: resolveRunCredentials(process.env).profile,
+    digitaloceanPackage: DIGITALOCEAN_PACKAGE,
+    digitaloceanRegion: CI_REGION,
+    digitaloceanFirewallName: CI_FIREWALL_NAME,
   })
 
   mkdirSync(dataDir, { recursive: true, mode: 0o700 })
@@ -324,10 +427,19 @@ async function main() {
     )
   }
 
+  // And once more for DigitalOcean, whose only credential is this one variable. Free, and it
+  // fails here rather than as a 401 from a provider core has already composed.
+  if (CLOUD === 'digitalocean') digitaloceanToken()
+
   await writeConfig()
   log(`=== ${CLOUD.toUpperCase()} milestone exit run — production stack — ${OFFERING} (${ARCH}) ===`)
   log(`binary ${BIN}`)
   log(`config ${configPath} (dataDir ${dataDir})`)
+
+  // AFTER writeConfig(), because the install lands inside the data directory that call creates,
+  // and BEFORE startCore(), because a personal provider absent at boot is a provider core reports
+  // as missing rather than one it composes (ADR-0026).
+  if (CLOUD === 'digitalocean') installPersonalProvider()
 
   await startCore()
   check(true, 'rockysurf booted from a real config file')
@@ -437,6 +549,8 @@ async function main() {
     check(/\d+\.\d+\.\d+/.test(ssh.stdout ?? ''), 'claude --version over SSH', detail(out[0]))
     check((ssh.stdout ?? '').includes(ARCH), `box architecture is ${ARCH}`, detail(out.at(-1)))
 
+    await checkSshAllowListConverges(provider)
+
     /* ---- stop / start, both clouds support it ---- */
     if (provider.capabilities.stop) {
       // The address BEFORE the stop, so `ipStableAcrossStop` can be checked rather than assumed
@@ -462,6 +576,36 @@ async function main() {
       // so, rather than surfacing EC2's IncorrectInstanceState.
       const settled = await waitForStatus(serverId, 'stopped', 3 * 60_000)
       check(settled, 'instance actually reached stopped before start was attempted')
+
+      /*
+       * WHAT `billsWhileStopped` MAKES THE PRODUCT DO, CHECKED END TO END (ADR-0025, issue #369).
+       *
+       * A stopped row on a cloud that keeps charging must still say so: `GET /api/v1/servers/:id`
+       * carries `billing.live` exactly when the machine is metering and the STATUS does not
+       * already say it. That value crosses four seams — the provider's capability flag, the
+       * `servers.bills_while_stopped` column stamped at the lifecycle call site, `isBillingRow`,
+       * and the route's projection — and no unit test spans all four against a real machine.
+       *
+       * WHAT IT DOES NOT PROVE, AND THE DAGGER STAYS ON UNTIL SOMEBODY DOES. This asserts the
+       * METER keeps running. It does not assert DigitalOcean actually charges for a powered-off
+       * droplet: core derives `billing.live` from the same flag the provider declares, so the two
+       * cannot disagree. Only the invoice settles the charge, which is why
+       * docs/providers/capability-matrix.md keeps `billsWhileStopped` daggered after this leg has
+       * run green and names the invoice as the thing that removes it.
+       */
+      const whileStopped = await (await api(`/api/v1/servers/${serverId}`)).json()
+      if (provider.capabilities.billsWhileStopped) {
+        check(
+          whileStopped.status === 'stopped' && whileStopped.billing?.live === true,
+          'a stopped machine on a cloud that keeps charging still reports as metering',
+          `status=${whileStopped.status} providerState=${whileStopped.billing?.providerState ?? '-'} since=${whileStopped.billing?.since ?? '-'}`,
+        )
+      } else {
+        // Not an assertion: a cloud that does not charge for a stopped box has nothing to report
+        // here, and core's absence of a `billing` block is derived from the same flag. Logged
+        // because it is the line that would look wrong first if a cloud changed its mind.
+        log(`  billsWhileStopped=false; billing block on the stopped row: ${whileStopped.billing ? 'present' : 'absent'}`)
+      }
 
       const started = await (await api(`/api/v1/servers/${serverId}/start`, { method: 'POST' })).json()
       // Symmetrically, this can legitimately still say `stopped`: EC2 keeps answering `stopped`
@@ -529,6 +673,23 @@ async function main() {
   if (audit.foreign.length > 0) log(`  not this run's, left alone: ${audit.foreign.join(', ')}`)
   if (CLOUD === 'hetzner') {
     check(audit.mineSshKeys.length === 0, 'this run\'s ssh-key objects were reaped with its server', audit.mineSshKeys.join(', '))
+  } else if (CLOUD === 'digitalocean') {
+    // BOTH halves, because DigitalOcean's terminate has to clean two objects and only one of them
+    // costs money. The droplet is covered by `audit.mine` above; the SSH KEY is an account-level
+    // object with no owning droplet, attributable only through the `key:value` pairs the provider
+    // writes into its display NAME — DigitalOcean puts no tags on key objects at all. An unreaped
+    // key bills nothing and is invisible to everything except a later audit that cannot explain
+    // it, which is exactly how the Hetzner key leak was found.
+    check(
+      audit.mineSshKeys.length === 0,
+      "this run's ssh-key objects were reaped with its droplet",
+      audit.mineSshKeys.join(', '),
+    )
+    // The cloud firewall is `shared` and is never deleted, by design: it is the one object every
+    // droplet in the account attaches to, so reaping it would close port 22 on all of them at
+    // once. Asserting it SURVIVES is the check — and, on the first run in a fresh account, the
+    // only thing that exercises the firewall-create path at all.
+    check(audit.shared.length >= 1, 'the shared cloud firewall survives, as designed', audit.shared.join(', '))
   } else if (CLOUD === 'azure') {
     // TWO shared resources, not one, and both are asserted (gh issue #170). Azure's analogue of
     // AWS's shared security group is a PAIR — the virtual network and the network security group
@@ -562,6 +723,72 @@ async function main() {
 
   log('--- server log tail ---')
   for (const line of serverStderr.trim().split('\n').slice(-6)) log(`  ${line}`)
+}
+
+/**
+ * Push the config's `sshAllowedCidr` at the cloud object that enforces it, and check the report.
+ *
+ * WHAT THIS EXERCISES THAT NOTHING ELSE DOES (issue #369, ADR-0021 amendment S2). `provision()`
+ * writes the allow-list at launch, and every existing leg proves that path. `syncSshAccess()` is
+ * the OTHER writer — the one a Settings save calls (issue #304) — and until now no real-cloud run
+ * had ever called it. DigitalOcean is the cloud where it matters most, because it is the first
+ * WHOLE-OBJECT-authorship cloud in the nightly: a DigitalOcean inbound rule is
+ * `{ protocol, ports, sources }` with no name and no description, so there is nowhere to stamp a
+ * per-CIDR author, and the sync converges the entire firewall in one `PUT`. That design is only
+ * safe if two things are true on the real API, and both are asserted here:
+ *
+ *  - the object the sync converges is the one Rocky Surf created and NAMED (`firewallName`), which
+ *    the nightly pins to a CI-only name so it can never converge a person's own firewall;
+ *  - `reported` and `removable` come back EMPTY, always. On AWS and GCP they carry stamped extras
+ *    for a keep-or-remove prompt; on a whole-object cloud there is no such thing as a stamped
+ *    extra, and a non-empty list would mean the provider had invented an authorship claim it
+ *    cannot support.
+ *
+ * It runs TWICE. The first sync says the object matches the config; the second says the first one
+ * converged rather than merely reported — a converge that is not idempotent is one that flaps a
+ * firewall every time an operator opens Settings.
+ *
+ * Scoped to DigitalOcean deliberately rather than run everywhere: on AWS and GCP a sync in the
+ * middle of a run would interact with the shared group the SSH-rule sweep is aimed at, and that
+ * is a change to those legs rather than a check of this one.
+ */
+async function checkSshAllowListConverges(provider) {
+  if (CLOUD !== 'digitalocean') return
+  if (!provider?.capabilities?.managesSshAccess) {
+    check(false, 'the provider claims managesSshAccess, so the sync route targets it')
+    return
+  }
+
+  const sync = async () => {
+    const res = await api('/api/v1/network/ssh-access/sync', { method: 'POST' })
+    if (!res.ok) throw new Error(`ssh-access sync failed: ${res.status}`)
+    const body = await res.json()
+    return (body.synced ?? []).find((report) => report.provider === CLOUD)
+  }
+
+  const first = await sync()
+  check(!!first, 'the SSH allow-list sync reports on this provider')
+  if (!first) return
+  // `skipped` here would be a real finding, not a shrug: the firewall is created by a launch, and
+  // this run has launched. It would mean the provider could not find the object it just made.
+  check(
+    first.status === 'updated' || first.status === 'unchanged',
+    'SSH allow-list sync reached the firewall',
+    `status=${first.status}${first.detail ? ` — ${first.detail}` : ''}`,
+  )
+  check(
+    JSON.stringify(first.applied ?? []) === JSON.stringify([sshCidr]),
+    'the firewall now allows exactly the networks the config names',
+    `applied=${(first.applied ?? []).join(', ') || '-'} expected=${sshCidr}`,
+  )
+  check(
+    (first.reported ?? []).length === 0 && (first.removable ?? []).length === 0,
+    'whole-object authorship leaves nothing to report or offer for removal (ADR-0021 S2)',
+    `reported=${(first.reported ?? []).join(', ') || 'none'} removable=${(first.removable ?? []).join(', ') || 'none'}`,
+  )
+
+  const second = await sync()
+  check(second?.status === 'unchanged', 'the converge is idempotent — a second sync changes nothing', `status=${second?.status}`)
 }
 
 /**
@@ -673,6 +900,29 @@ async function buildProviderDirectly() {
     const { hetznerProviderFactory } = await import(`${REPO}/packages/provider-hetzner/dist/index.js`)
     return hetznerProviderFactory.createProvider(
       hetznerProviderFactory.configSchema.parse({ token: hetznerToken(), location: 'fsn1' }),
+    )
+  }
+  if (CLOUD === 'digitalocean') {
+    /*
+     * IMPORTED FROM THE INSTALL, NOT FROM THE WORKSPACE. `digitaloceanInstalledAt` is the
+     * directory the packed tarball was extracted into and the directory core resolved
+     * `providers.digitalocean.package` to, so the audit reads the account through the exact bytes
+     * that ran. Reaching into `packages/provider-digitalocean/dist` instead would audit a build
+     * nothing under test had loaded.
+     */
+    const entry = pathToFileURL(join(digitaloceanInstalledAt, 'dist/index.js')).href
+    const { digitaloceanProviderFactory } = await import(entry)
+    return digitaloceanProviderFactory.createProvider(
+      digitaloceanProviderFactory.configSchema.parse({
+        token: digitaloceanToken(),
+        region: CI_REGION,
+        // The same CI-only object the run converged, so `listManaged()` reports the firewall this
+        // run is responsible for rather than one a person owns.
+        firewallName: CI_FIREWALL_NAME,
+        // The audit only reads. A CIDR is required by the schema — deliberately, so nobody creates
+        // a server without deciding who may reach it — and this one authorizes nothing.
+        sshAllowedCidr: '127.0.0.1/32',
+      }),
     )
   }
   if (CLOUD === 'gcp') {

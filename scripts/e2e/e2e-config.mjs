@@ -24,11 +24,14 @@
 /** The CI-only SSH group name, so the config the test builds names the group the nightly names. */
 export { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
 
+/** The same idea on DigitalOcean, plus the package name and region that leg boots on (#369). */
+export { CI_FIREWALL_NAME, CI_REGION, DIGITALOCEAN_PACKAGE } from './digitalocean-ci-firewall.mjs'
+
 /**
  * Build the config text for one cloud.
  *
  * @param {object} options
- * @param {'aws'|'azure'|'gcp'|'hetzner'} options.cloud
+ * @param {'aws'|'azure'|'gcp'|'hetzner'|'digitalocean'} options.cloud
  * @param {number} options.port                 the port core listens on for this run
  * @param {string} options.dataDir              the run's scratch data directory
  * @param {string} [options.cidr]               `sshAllowedCidr`, already resolved by the caller
@@ -41,6 +44,9 @@ export { CI_SSH_SG_NAME } from './aws-ci-ssh-sg.mjs'
  * @param {string} [options.awsRegion]          AWS only
  * @param {string} [options.awsSecurityGroupName] AWS only — the SSH group this run may fill
  * @param {string} [options.awsProfile]         AWS only; omit for the default credential chain
+ * @param {string} [options.digitaloceanPackage]      DigitalOcean only — the npm name to compose
+ * @param {string} [options.digitaloceanRegion]       DigitalOcean only
+ * @param {string} [options.digitaloceanFirewallName] DigitalOcean only — the CI-only firewall
  * @returns {string} the complete file, newline-terminated
  */
 export function buildConfigYaml({
@@ -49,6 +55,9 @@ export function buildConfigYaml({
   dataDir,
   cidr,
   hetznerToken,
+  digitaloceanPackage,
+  digitaloceanRegion,
+  digitaloceanFirewallName,
   gcpProject,
   gcpZone,
   azureSubscription,
@@ -62,6 +71,35 @@ export function buildConfigYaml({
 
   if (cloud === 'hetzner') {
     lines.push(`  hetzner:`, `    enabled: true`, `    token: ${hetznerToken}`, `    location: fsn1`)
+  } else if (cloud === 'digitalocean') {
+    /*
+     * THE ONLY SECTION HERE THAT IS NOT A SHIPPED PROVIDER (issue #369, ADR-0026).
+     *
+     * DigitalOcean is a PERSONAL provider: the composition root does not name it, so core reads
+     * this section through the catchall, resolves `package` against `<dataDir>/providers`, and
+     * hands everything else to the package's own hand-written schema. The run therefore has to
+     * install the package into that directory before it starts core — `installPersonalProvider()`
+     * in lifecycle.mjs does it, by extracting the packed tarball with plain `tar`, which is the
+     * recipe docs/self-hosting.md gives a self-hoster and the one the shop's installer follows.
+     *
+     * NO `token` KEY, AND THAT IS DELIBERATE. The factory declares `credentialEnv: ['DIGITALOCEAN_TOKEN']`
+     * (E18), so the composition root reads the token out of the environment when the field is
+     * absent. Writing it here instead would work and would be worse twice over: it puts a live
+     * credential in a file for no reason, and it would leave the personal-provider credential path
+     * — the one thing about this provider's wiring that nothing else in CI exercises — unproven.
+     *
+     * `firewallName` is the CI-only name, for the reason spelled out in digitalocean-ci-firewall.mjs:
+     * a DigitalOcean sync converges the whole object, so a nightly pointed at the provider's
+     * default would replace a person's allow-list with a runner address that expires by lunchtime.
+     */
+    lines.push(
+      `  digitalocean:`,
+      `    enabled: true`,
+      `    package: "${digitaloceanPackage}"`,
+      `    region: ${digitaloceanRegion}`,
+      `    firewallName: ${digitaloceanFirewallName}`,
+      `    sshAllowedCidr: ${cidr}`,
+    )
   } else if (cloud === 'gcp') {
     // NO `keyFile`, ever. The credential comes from the ambient ADC chain, which in CI is the
     // federated credential file `google-github-actions/auth` wrote from GitHub's own OIDC token
