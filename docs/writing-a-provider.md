@@ -378,9 +378,9 @@ Five things a personal package has to get right that an in-tree one gets for fre
   one core imported. Core's `isProviderError` is structural — the name and one of the nine codes —
   so this works; do not rely on `instanceof` across the boundary in your own code either.
 - **Prefer a package that installs with no package manager.** An operator who runs `npm install`
-  in `<dataDir>/providers` gets your dependencies resolved for them; an installer that only
-  extracts a tarball — which is the shape a provider shop takes — does not, and refuses an install
-  whose manifest names a dependency it cannot resolve. `@rockysurf/provider-digitalocean` declares
+  in `<dataDir>/providers` gets your dependencies resolved for them; one who unpacks a tarball —
+  which is how a provider from the shop is installed — does not, and your package then fails to
+  import at their next start. `@rockysurf/provider-digitalocean` declares
   **no runtime dependencies at all**: its config schema is hand-written rather than zod (the SDK's
   `ConfigSchema<T>` is structurally `{ parse }` precisely so that is allowed), and
   `scripts/build-bundled-package.mjs` bundles the SDK's runtime helpers into its `dist/` with the
@@ -401,21 +401,27 @@ declares them, they are edited in the file, and the panel says so. The operator-
 ## Publishing to the shop
 
 A personal provider that would help other people can be listed in a Rocky Surf registry — the same
-`amroja-biz/rockysurf-shop` that distributes Surge Packs — and installed from an operator's Shop
-page in one click
-([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md)). What you are publishing is
-an **npm-style tarball** plus a **listing entry** that points at it.
+`amroja-biz/rockysurf-shop` that distributes Surge Packs
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issue #394). What
+you are publishing is an **npm-style tarball** plus a **listing entry** that points at it.
+
+**Rocky Surf itself does not fetch that listing.** An operator installs your provider from the
+command line — the two commands in [`docs/self-hosting.md`,
+"Personal providers"](self-hosting.md#personal-providers) — and Rocky Surf's part begins at the
+next restart, when the loader imports the package and the Settings page draws its panel. So the
+listing is a page somebody reads, and everything below about keeping it honest is about what a
+person will do with their hands after reading it.
 
 ### The artifact must be self-contained
 
-**Rocky Surf never runs npm.** The installer fetches your tarball, verifies it, unpacks it under
-`<dataDir>/providers` and stops — no `npm install`, no lifecycle scripts, nothing from your
-package executed at any point. Your code first runs when the operator restarts and the loader
-imports it.
+**The documented install is `tar -xzf`.** It unpacks your tarball under `<dataDir>/providers` and
+stops — no `npm install`, no lifecycle scripts, nothing from your package executed at any point.
+Your code first runs when the operator restarts and the loader imports it.
 
 The consequence is a hard requirement: **nothing may be left for a package manager to resolve.**
-The installer reads your manifest's `dependencies` and refuses the install, naming what is
-missing, if any of them is not already present.
+A dependency your manifest names and the operator does not already have is an import that throws
+at their next start — reported on the New Server page and in the boot log rather than fatally, but
+your provider will not be there.
 
 This is the fifth bullet of the section above, and `@rockysurf/provider-digitalocean` is the worked
 example of satisfying it: no runtime dependencies at all, a hand-written config schema rather than
@@ -432,14 +438,14 @@ pnpm -C packages/provider-mycloud pack           # writes you-rockysurf-provider
 shasum -a 256 you-rockysurf-provider-mycloud-1.0.0.tgz
 ```
 
-`pnpm pack` (and `npm pack`) produce exactly the archive the installer expects: gzipped, ustar,
-every member under `package/`. Check what came out before you publish it — `tar -tzf <file>` — and
-confirm the file your `exports` point at is in the list. A tarball carrying a manifest and no
-`dist/` is the most common way a publish goes wrong, and the installer refuses it with "is the
-package built?" rather than installing something that cannot load.
+`pnpm pack` (and `npm pack`) produce exactly the archive an operator unpacks: gzipped, ustar,
+every member under `package/`, which is what `--strip-components=1` assumes. Check what came out
+before you publish it — `tar -tzf <file>` — and confirm the file your `exports` point at is in the
+list. A tarball carrying a manifest and no `dist/` is the most common way a publish goes wrong,
+and the loader refuses it at the operator's next start with "is the package built?".
 
 Then host it somewhere reachable over **https**: an npm registry's tarball URL, a GitHub release
-asset, or any static host. `http` is refused, by the listing format and by the installer.
+asset, or any static host. The registry's own checks refuse an `http` URL.
 
 ### The listing entry
 
@@ -474,26 +480,29 @@ Every field is checked, and four are worth saying more about:
 
 - **`providerId` is the config section key** an operator will end up with, and must equal your
   `factory.id`. Lowercase letters, digits and hyphens.
-- **`package` must equal your manifest's `name`.** The installer compares them and refuses a
-  listing that disagrees with the artifact it points at.
+- **`package` must equal your manifest's `name`.** It is what the operator writes on the
+  `package:` line, so a listing that disagrees with its own artifact sends them to a package that
+  is not there.
 - **`settings` is a summary**, not your `ProviderSettings` declaration — the names, labels and
-  kinds an operator will be asked for, so they can decide before installing. The real panel is
-  built from the declaration that arrives with the package (ADR-0027). Keep the two in step.
+  kinds an operator will be asked for, so they can decide before installing anything. The real
+  panel is built from the declaration that arrives with the package (ADR-0027). Keep the two in
+  step.
 - **`capabilities` are your factory's answers**, verbatim. This is where an operator learns that a
   stopped machine still bills before they install, rather than after.
 
-There is deliberately **no trust or tier field**, and the format refuses one. Every listing already
-carries, from Rocky Surf rather than from the registry, the sentence this document opened with: *a
-provider runs with Rocky Surf's full access — install ones you trust.* Nothing you write can
-soften it, and nothing you write has to repeat it.
+There is deliberately **no trust or tier field**, and the format refuses one. The sentence this
+document opened with — *a provider runs with Rocky Surf's full access — install ones you trust* —
+is Rocky Surf's, said on every provider panel of the Settings page and in the boot log. A claim
+about trustworthiness written by the party being trusted is worth nothing, so nothing you write
+can soften it, and nothing you write has to repeat it.
 
 ### Publishing a new version
 
-Bump the version, build, pack, hash, and update the same entry. An operator's Update button
-re-fetches and **replaces** the installed package, so a file you dropped between versions is
-genuinely gone. Keep the `sha256` in step with the artifact: a mismatch is refused, loudly, with
-both values named — which is exactly what it should do, and exactly what a forgotten hash looks
-like.
+Bump the version, build, pack, hash, and update the same entry. An operator updates by unpacking
+the new tarball over the installed directory and restarting, so say in your release notes if a
+file has moved — nothing deletes the old one for them. Keep the `sha256` in step with the
+artifact: it is the only thing they can check the download against, and a stale one turns a good
+release into a refused one.
 
 ## A skill that walks through all of this
 

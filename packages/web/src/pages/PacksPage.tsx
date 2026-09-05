@@ -5,7 +5,6 @@ import { AppShell } from '../components/AppShell'
 import { Shore } from '../components/etched'
 import { PackDisclosurePanel } from '../components/PackDisclosure'
 import { PackIcon } from '../components/PackIcon'
-import { ProviderShop } from '../components/ProviderShop'
 import { Tabs } from '../components/Tabs'
 import { ToolList } from '../components/ToolList'
 import { TrustBadge } from '../components/TrustBadge'
@@ -168,24 +167,21 @@ function readStoredCommunityFilter(): CommunityFilter {
 }
 
 /**
- * The sections as tabs (issue #204), routed like Settings' own (issue #122):
+ * The three sections as tabs (issue #204), routed like Settings' own (issue #122):
  * `?tab=<key>` in the URL is the only place the active tab lives. Official first, matching the
  * order the stacked layout read top to bottom.
  *
- * PROVIDERS IS THE FOURTH (ADR-0028, issue #374), and it is why the page is now called Shop
- * rather than Surge Packs. The shop distributes two kinds of thing from the same registries, and
- * an operator who has been told "it is in the shop" should find both in one place; three tabs
- * about packs and a fourth about providers under a title naming only packs would have been a
- * title that lied. The route is unchanged — `/packs` still opens this page, and every link and
- * document that names it still works.
+ * THREE, NOT FOUR (issue #394). ADR-0028 put a Providers tab here and retitled the page "Shop";
+ * the owner's ruling reverses both. A provider is configured on the Settings page, and a
+ * community provider is installed from the shop repository with a command-line step, so the
+ * pointer at that repository lives beside the panels that configure one rather than here.
  */
-type PacksTab = 'official' | 'community' | 'personal' | 'providers'
+type PacksTab = 'official' | 'community' | 'personal'
 const PACKS_TAB_PARAM = 'tab'
 const PACKS_TABS: readonly { key: PacksTab; label: string; controls: string }[] = [
   { key: 'official', label: 'Official', controls: 'packs-panel-official' },
   { key: 'community', label: 'Community', controls: 'packs-panel-community' },
   { key: 'personal', label: 'Personal', controls: 'packs-panel-personal' },
-  { key: 'providers', label: 'Providers', controls: 'packs-panel-providers' },
 ]
 const PACKS_TAB_KEYS = PACKS_TABS.map((t) => t.key)
 
@@ -1107,7 +1103,7 @@ export function PacksPage(): React.JSX.Element {
 
   if (loading) {
     return (
-      <AppShell title="Shop">
+      <AppShell title="Surge Packs">
         <p>Loading…</p>
       </AppShell>
     )
@@ -1115,7 +1111,7 @@ export function PacksPage(): React.JSX.Element {
 
   if (error) {
     return (
-      <AppShell title="Shop">
+      <AppShell title="Surge Packs">
         <p role="alert">{error}</p>
       </AppShell>
     )
@@ -1126,7 +1122,7 @@ export function PacksPage(): React.JSX.Element {
     const view = views.find((v) => v.packId === packId)
     if (!view) {
       return (
-        <AppShell title="Shop">
+        <AppShell title="Surge Packs">
           <p>No such pack.</p>
           <p>
             <Link to="/packs">← All Surge Packs</Link>
@@ -1302,17 +1298,15 @@ export function PacksPage(): React.JSX.Element {
   const showCommunityCatalog = communityFilter !== 'installed'
 
   return (
-    <AppShell title="Shop">
+    <AppShell title="Surge Packs">
       <p className="hint">
         A Surge Pack decides which tools a new box is set up with. Official packs shipped with
         this Rocky Surf release; Community packs come from a Pack Shop registry, installed here
-        or not yet; Personal packs were created or imported on this installation. Providers are
-        the clouds Rocky Surf can create servers on, and the same registries distribute those
-        too.
+        or not yet; Personal packs were created or imported on this installation.
       </p>
 
       <Tabs
-        label="Shop sections"
+        label="Surge Pack sections"
         panelId="packs"
         className="packs-tabs"
         tabs={PACKS_TABS}
@@ -1566,19 +1560,6 @@ export function PacksPage(): React.JSX.Element {
             ))}
           </ul>
         )}
-      </section>
-
-      {/* The fourth tab (ADR-0028): the same registries, their other kind of listing. Mounted
-          like the others so half-typed state elsewhere survives a look at it, and told whether
-          it is the active one so it fetches nothing until somebody opens it. */}
-      <section
-        className="shop-section"
-        role="tabpanel"
-        id="packs-panel-providers"
-        aria-labelledby="packs-tab-providers"
-        hidden={activeTab !== 'providers'}
-      >
-        <ProviderShop active={activeTab === 'providers'} isAdmin={isAdmin} />
       </section>
 
       {selectedRegistryPack && (

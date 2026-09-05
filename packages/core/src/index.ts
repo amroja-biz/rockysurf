@@ -64,26 +64,6 @@ export {
   type UnavailableProvider,
 } from './providers/registry.js'
 export { makeFakeProvider, type FakeProvider, type FakeProviderOptions } from './providers/fake.js'
-/**
- * The shop installer (ADR-0028), exported so the composition root's tarball test can run the REAL
- * `pnpm pack` output of `@rockysurf/provider-digitalocean` through it and then load the result.
- * Core's own tests build their archives with a fixture writer, and two of this repository's own
- * implementations agreeing says nothing about whether either reads what npm actually emits.
- */
-export {
-  installProviderPackage,
-  installedProviderManifest,
-  providerPackageDir,
-  providersDirFor,
-  removeProviderPackage,
-  type InstalledProviderPackage,
-  type ProviderInstallResult,
-} from './providers/install.js'
-export {
-  providerRegistryIndexSchema,
-  type ProviderRegistryEntry,
-  type ProviderRegistryIndex,
-} from './providers/shop-index.js'
 // Which environment variables supply each provider's credential — the composition root's
 // fallback when the config field is empty, and the setup state's detection (issue #280).
 export { PROVIDER_CREDENTIAL_ENV } from './setup/state.js'
@@ -99,9 +79,8 @@ export {
   personalProviderSections,
   providerEnabled,
   type PersonalProviderSection,
-  // Where a personal provider's package lives and what its manifest points at (ADR-0028): the
-  // composition root's loader and core's shop installer resolve a package the same way, so the
-  // resolver and the trust sentence live here and the composition root re-exports them.
+  // Where a personal provider's package lives and what its manifest points at: the composition
+  // root's loader resolves a package from these, and re-exports them under its own names.
   PERSONAL_PROVIDERS_DIRNAME,
   PERSONAL_PROVIDER_TRUST_SENTENCE,
   resolvePackageEntry,

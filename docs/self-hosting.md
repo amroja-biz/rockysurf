@@ -523,10 +523,13 @@ you install and name in the config file
 inside the same process as your database, your master key and every cloud credential in your
 environment. Nothing fences it, on purpose; the decision is yours, made when you install it.
 
-There are two ways to install one: **from the shop**, which does everything below for you, or **by
-hand**, which is what the shop does. The shop is described in
-[Providers in the shop](#providers-in-the-shop); the rest of this section is the manual path, and
-it is worth reading either way, because it is what ends up on disk.
+Installing one is a command-line step, and Rocky Surf does not do it for you
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issue #394). What
+the app owns is the configuration afterwards: once a package loads, its section gets a Settings
+panel like any provider that shipped with the release. Providers other people have published are
+listed in the [providers section of the Rocky Surf
+Shop](https://github.com/amroja-biz/rockysurf-shop#providers), with the package and the steps for
+each; the rest of this section is what those steps come to.
 
 Install the package under the data directory's `providers` folder, which is where a package name
 in the config file is looked up. That folder is outside the application, so upgrading Rocky Surf
@@ -1296,7 +1299,7 @@ All three end in the same place: a database row the boot reconcile never overwri
 deletes. What differs is who else can get the pack, and whether Rocky Surf remembers where it
 came from.
 
-Shop (`/packs`) → **Personal** → **New Surge Pack** opens a chooser between the first and
+Surge Packs (`/packs`) → **Personal** → **New Surge Pack** opens a chooser between the first and
 third of these; the second is a config-file thing, not a button on this page.
 
 1. **Upload a file.** One `.yaml` file, one time, nothing recorded about its origin because there
@@ -1389,58 +1392,28 @@ The shop page shows bundled and registry packs together, each labelled with wher
 
 ### Providers in the shop
 
-A registry distributes **providers** as well as packs
-([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md)). They are listed in a
-separate file, `providers.json`, beside `index.json` and served by the same sources — so the same
-`registry.sources` list, the same trust label you wrote, and the same rule that nothing is fetched
-until you open the tab. A source whose URL is a single `.yaml` file is one pack and publishes no
-providers; that shelf says so.
+The same repository that distributes community packs also lists **providers** — the clouds Rocky
+Surf can create servers on
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issue #394). It is
+a link, not a tab: **Rocky Surf does not list or install providers in the app**, because installing
+one is a command-line step — a package unpacked under `<dataDir>/providers` and a section added to
+your config file — and a button that could not take that step would only be able to describe it.
 
-**Shop** (`/packs`) → **Providers** is the tab. Before you install anything, each entry shows:
+The listing, and the install command for each entry, is the [providers section of the Rocky Surf
+Shop](https://github.com/amroja-biz/rockysurf-shop#providers). The [Personal
+providers](#personal-providers) section above is the same steps written out, and is what the app's
+Settings page links to.
 
-- what the provider is called and what it does, its version, and the npm package that would land
-  on this machine;
-- **what it will ask you to configure** — the fields it declares, with credentials marked as such;
-- **its capability answers** — whether machines can be stopped, whether a stopped one still bills,
-  whether the address survives a stop, whether it manages the SSH whitelist, and whether it takes
-  a start-up script;
-- and one sentence, on every entry, that never varies: **a provider runs with Rocky Surf's full
-  access — install ones you trust.**
+The sentence that goes with all of them does not change and is not the registry's to write: **a
+provider runs with Rocky Surf's full access — install ones you trust.** Rocky Surf says it on
+every provider panel of the Settings page and in the boot log. What you install is code that runs
+inside the process holding your database, your master key and every cloud credential in your
+environment, and no check anywhere decides that it is benign — you do, before you unpack it.
 
-That sentence is Rocky Surf's, not the registry's. There is no field for it in `providers.json`
-and the format refuses one, for the same reason there is no trust label in a pack index: a claim
-about trustworthiness written by the party being trusted is worth nothing.
-
-**What Install does**, in order, stopping at the first thing that is not right:
-
-1. fetches the artifact — **https only**, through the same guard every registry fetch goes
-   through, with a size cap;
-2. checks its SHA-256 against the one the listing published, and refuses a mismatch naming both;
-3. unpacks it, refusing any archive containing an absolute path, a `..`, a symlink, a hard link,
-   a device node, or anything outside the package directory — and refusing one that unpacks to
-   more than it should;
-4. checks the package is the one the listing named, and that its entry point resolves the way the
-   loader will resolve it at startup;
-5. checks every runtime dependency it declares is already there — **Rocky Surf never runs npm**,
-   so a provider published to the shop has to carry what it needs;
-6. writes it under `<dataDir>/providers`, exactly where the manual instructions above put it;
-7. adds `providers.<id>.package` and `enabled: true` to your config file, through the same write
-   the Settings page uses — comments and everything else in the file are left alone;
-8. tells you to restart.
-
-**Nothing from the package runs at any point in that list.** A `package.json` `scripts` block is
-read and ignored. The provider's code runs when you restart Rocky Surf and its loader imports the
-package — which is the moment you chose. Configure it on the Settings page after the restart.
-
-**Update** is the same button: it re-fetches and replaces the whole package directory, so nothing
-of the old version survives. The version shown as installed is read from the package on disk, so
-it is right even if you have since installed something there by hand.
-
-**Remove** deletes the package and the whole `providers.<id>` section — including anything you
-configured in it — after asking. It is **refused while servers created with that provider still
-exist**, because a provider whose package is gone cannot describe, stop or terminate them.
-Terminate those first. Removing also needs a restart to take the provider out of the running
-process.
+Once the package is on disk and named in the config file, restart. From there it is configured on
+the **Settings** page, on its own tab, exactly like AWS or Hetzner: the fields it declares, its
+credentials as credentials, its SSH whitelist if it has one, and whatever notes its author wrote
+for you.
 
 ### What the checks prove
 
@@ -1454,13 +1427,12 @@ Before installing anything from a registry the admin UI shows you every script i
 verbatim, along with which steps run as root and every URL they fetch. That disclosure is the
 control. Read it.
 
-It lives at **Shop** (`/packs`), which is also where you can see what you already have and
+It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
 for anything that arrived from off this machine, and `local` for packs you created yourself. Three
 tabs carry those three words as their name — **Official**, **Community**, **Personal**, Official
 shown first — and a card's badge reads the same word its tab does (`registry` shows as COMMUNITY,
-`local` as PERSONAL; the value behind the badge does not change, only what you read). A fourth
-tab, **Providers**, is the same registries' other listing and is described below. The tab is
+`local` as PERSONAL; the value behind the badge does not change, only what you read). The tab is
 in the URL (`?tab=community`), so a link lands on the one it names.
 
 Two different marks can appear on a pack's icon, and they mean different things. A small bright
