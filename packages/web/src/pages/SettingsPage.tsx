@@ -411,7 +411,7 @@ export function SettingsPage() {
   }, [view])
 
   const sections = useMemo(() => {
-    const map = new Map<string, { title: string; help: string }>()
+    const map = new Map<string, { title: string; help: string; advisories?: string[] }>()
     for (const section of view?.sections ?? []) map.set(section.id, section)
     return map
   }, [view])
@@ -1083,7 +1083,9 @@ export function SettingsPage() {
   function fallbackField(spec: SettingsField): ReactNode {
     if (spec.hidden) return null
     const path = spec.path.split('.')
-    const label = humanize(path[path.length - 1] ?? spec.path)
+    // A row from a provider's declared settings carries its own label (ADR-0027); a core row the
+    // blocks below did not draw falls back to its path. Same for the placeholder.
+    const label = spec.label ?? humanize(path[path.length - 1] ?? spec.path)
     if (!spec.writable) return readOnlyField(path, label)
     // A saved type is a string field with a catalogue behind it (issue #212). Recognised by the
     // SHAPE of its path rather than named cloud by cloud, so this stays a rule about a kind of
@@ -1097,7 +1099,11 @@ export function SettingsPage() {
       case 'number':
         return textField(path, label, 'number')
       case 'secret':
-        return secretField(path, label, 'A_VARIABLE_NAME')
+        return secretField(path, label, spec.example ?? 'A_VARIABLE_NAME')
+      // The two-act SSH whitelist a provider DECLARED (ADR-0027): the same control the
+      // hand-written clouds get, keyed on the provider id in the path, never on a name.
+      case 'sshCidrList':
+        return cidrListField(String(path[1]), label)
       // A list and a whole optional block are the two shapes a generic control would have to
       // guess at — how many entries, and what half a block means — so this says what the file
       // holds and where to change it rather than offering a box that would write the wrong
@@ -1978,6 +1984,13 @@ export function SettingsPage() {
       <header className="settings-section-header" data-section={id}>
         <h2>{section?.title ?? humanize(id.split('.').pop() ?? id)}</h2>
         {section?.help && <p className="field-help">{section.help}</p>}
+        {/* What the PROVIDER wrote for the operator (ADR-0027) — quirks worth knowing before the
+            controls below, never something this page computes with. */}
+        {section?.advisories?.map((text) => (
+          <p key={text} className="hint settings-advisory" data-advisory={id}>
+            {text}
+          </p>
+        ))}
       </header>
     )
   }
@@ -1998,20 +2011,6 @@ export function SettingsPage() {
   // drawn twice, once here and once as a leftover.
   draw('limits.spendCap')
   draw('mcp.scopes')
-
-  /**
-   * The SSH whitelist and its second act, for every cloud that has one (issue #304).
-   *
-   * Both halves enter the ledger by hand, and `allowAllCidr` does so even when it is not on
-   * screen. That is the `group` doctrine applied to a pair that is not a `group`: the CIDR list
-   * OWNS the checkbox, and a block written and removed whole must not have its hidden half
-   * reappear at the bottom of the tab as a leftover — which is a permanent, unexplained offer to
-   * open SSH to the internet, sitting away from the list that gives it its meaning.
-   */
-  for (const cloud of ['aws', 'azure', 'gcp']) {
-    draw(`providers.${cloud}.sshAllowedCidr`)
-    draw(`providers.${cloud}.allowAllCidr`)
-  }
 
   /**
    * THE HAND-WRITTEN BLOCKS, keyed by the section id core gave them.
@@ -2124,19 +2123,13 @@ export function SettingsPage() {
       </>
     ),
 
-    'providers.hetzner': (
-      <>
-        {boolField(['providers', 'hetzner', 'enabled'], 'Enabled')}
-        {/*
-          THE SAME POLICY AS THE TOKEN LIST, and the same label. It is the same kind of thing —
-          a provider credential in a file that gets backed up — so a second rule here would be a
-          second rule for no reason. (rockysurf-4o3o, directive 3.)
-        */}
-        {secretField(['providers', 'hetzner', 'token'], 'Token Environment Variable', 'HETZNER_TOKEN')}
-        {textField(['providers', 'hetzner', 'location'], 'Location')}
-        {textField(['providers', 'hetzner', 'consoleProjectId'], 'Console project id', 'number')}
-      </>
-    ),
+    /*
+      `providers.hetzner` IS DELIBERATELY ABSENT (ADR-0027). Its rows arrive from the factory's
+      declared settings with their own labels and placeholder, and the generic renderer below
+      draws them — a secret box that takes a variable name, a location, a number. It is the first
+      shipped provider to take the path a personal provider takes, for the reason `ssh.keys` is
+      absent too: a path only a fixture exercises is a path the product can break unnoticed.
+    */
 
     'providers.aws': (
       <>
@@ -2338,6 +2331,25 @@ export function SettingsPage() {
    * that authority; a group core adds that nothing here knows about does not get to hide its own
    * fields, so its halves render as ordinary settings rather than as nothing at all.
    */
+  /**
+   * The SSH whitelist and its second act, for every cloud that has one (issue #304) — DERIVED
+   * from the inventory rather than from a list of cloud names (ADR-0027), so a provider that
+   * declares one, personal or shipped, gets the same treatment with no edit here.
+   *
+   * Both halves enter the ledger, and `allowAllCidr` does so even when it is not on screen. That
+   * is the `group` doctrine applied to a pair that is not a `group`: the CIDR list OWNS the
+   * checkbox, and a block written and removed whole must not have its hidden half reappear at the
+   * bottom of the tab as a leftover — a permanent, unexplained offer to open SSH to the internet,
+   * sitting away from the list that gives it its meaning. The list itself is marked drawn only
+   * where a hand-written block drew it; a declared list is a leftover `fallbackField` draws.
+   */
+  for (const field of view.fields) {
+    const cloud = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(field.path)?.[1]
+    if (!cloud) continue
+    draw(`providers.${cloud}.allowAllCidr`)
+    if (handWritten[`providers.${cloud}`]) draw(field.path)
+  }
+
   const ownedByADrawnGroup = (path: string) =>
     view.fields.some((f) => f.kind === 'group' && drawn.has(f.path) && path.startsWith(`${f.path}.`))
 

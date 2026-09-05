@@ -560,10 +560,13 @@ What to expect:
   not a provider factory, an id that does not match the section key: each is reported on the New
   Server page and in the boot log, in a sentence naming the section, and everything else keeps
   working.
-- **The Settings page shows the section**, with its Enabled switch and the package it loads from.
-  The provider's own settings are edited in the file until the provider declares them; a value
-  under a personal section that Rocky Surf has not been told about is masked on that page, never
-  shown, because it could be a credential.
+- **The Settings page shows the section**, with its Enabled switch and the package it loads from —
+  and, when the provider declares its settings
+  ([ADR-0027](adr/0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md)), its
+  own fields too: a token box that takes a variable name, its regions and options, the SSH
+  whitelist if it has one, saved machine types under Preferences, and any notes its author wrote
+  for you. A value under a personal section that the provider has not declared is masked on that
+  page, never shown, because it could be a credential; edit it in the file.
 - **Credentials work the way they do for Hetzner.** A token named in the file as `${VAR}` is read
   from your environment; a provider may also name the variable itself, so the first-run wizard
   can say when it has been detected. Rocky Surf stores none of it.

@@ -21,6 +21,32 @@ const factory = {
   displayName: 'Nimbus Cloud',
   credentialField: 'token',
   credentialEnv: ['NIMBUS_TOKEN'],
+  /**
+   * The panel, DECLARED (ADR-0027): a secret that takes a variable name, a plain string, and the
+   * two-act SSH whitelist — the control the browser suite has to see drawn for a provider no block
+   * in the SPA has ever heard of. `allowAllCidr` is not declared; the list implies it.
+   */
+  settings: {
+    title: 'Nimbus Cloud',
+    help: 'A fixture cloud for the browser suite: everything it does is in memory, nothing is billed.',
+    fields: [
+      { name: 'token', kind: 'secret', label: 'API token variable', example: 'NIMBUS_TOKEN', help: 'The NAME of an environment variable holding a Nimbus API token.' },
+      { name: 'region', kind: 'string', label: 'Region', example: 'sky-1', help: 'Which Nimbus region new servers are created in.' },
+      {
+        name: 'sshAllowedCidr',
+        kind: 'sshCidrList',
+        label: 'SSH allowed from',
+        example: '203.0.113.7/32',
+        help: 'Which networks may reach SSH on the boxes Nimbus creates here, as CIDRs.',
+        warning: 'This is a firewall rule: removing a CIDR ends new SSH connections from that network.',
+      },
+    ],
+    offering: { noun: 'droplet size', example: 'n-small' },
+    advisories: [
+      { surface: 'settings', text: 'Nimbus is a fixture: its machines exist only in memory.' },
+      { surface: 'create', text: 'A stopped Nimbus machine keeps its address, and nothing here is billed.' },
+    ],
+  },
   configSchema: {
     parse(input) {
       if (input === null || typeof input !== 'object') throw new Error('nimbus: config must be an object')
@@ -44,6 +70,13 @@ const factory = {
         userDataMaxBytes: 0,
         generatesUserData: false,
         simulatedInstances: true,
+        // Declared because the settings declare an sshCidrList (ADR-0027): the control's promise
+        // is that a save reaches the cloud, so the sync method below exists.
+        managesSshAccess: true,
+      },
+      async syncSshAccess() {
+        const cidrs = Array.isArray(config.sshAllowedCidr) ? config.sshAllowedCidr : config.sshAllowedCidr ? [config.sshAllowedCidr] : []
+        return { status: 'unchanged', applied: cidrs.map(String), reported: [], detail: 'Nimbus keeps its whitelist in memory; nothing to push.' }
       },
       async validateCredentials() {},
       async validateSpec() {},

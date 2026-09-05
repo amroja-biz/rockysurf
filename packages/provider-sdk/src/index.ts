@@ -64,6 +64,17 @@ export {
 export { normalizeSshCidrs, opensSshToTheInternet } from './ssh-cidr.js'
 
 export {
+  RESERVED_PROVIDER_SETTING_NAMES,
+  SSH_ALLOW_ALL_FIELD,
+  type ProviderAdvisory,
+  type ProviderSettingField,
+  type ProviderSettingKind,
+  type ProviderSettingList,
+  type ProviderSettingListItemField,
+  type ProviderSettings,
+} from './settings.js'
+
+export {
   SSH_ACCESS_SYNC_STATUSES,
   type SshAccessSyncOptions,
   type SshAccessSyncResult,

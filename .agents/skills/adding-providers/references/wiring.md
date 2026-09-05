@@ -199,5 +199,11 @@ variables may supply it; and errors are `ProviderError`s from your own SDK copy,
 structural `isProviderError` accepts. The operator-facing side is `docs/self-hosting.md`, "Personal
 providers" (in the checkout).
 
-What it does not yet get is a Settings panel for its own fields — those are edited in the file
-until the provider declares them.
+Its Settings panel comes from `factory.settings` (ADR-0027): declare your fields with kinds, labels
+and help, the cloud's machine-type vocabulary, and any advisories, and the page is built from them —
+including the two-act SSH whitelist (`kind: 'sshCidrList'`, which requires `managesSshAccess`).
+Conformance parses every declared `example` through your `configSchema`. Items 7 and 8 above are
+therefore NOT needed for a declared provider, in tree or out: Hetzner has no rows in `fields.ts` and
+no block in `SettingsPage.tsx` for exactly this reason, and is the shape to copy. (This reference is
+refreshed in full by the skill's next revision; the standard is `docs/writing-a-provider.md`,
+"Declare your settings".)

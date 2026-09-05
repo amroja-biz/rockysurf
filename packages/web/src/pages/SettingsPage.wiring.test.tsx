@@ -67,10 +67,13 @@ const FIELDS: SettingsField[] = (
     { path: 'github.tokens.*.repo', kind: 'string', writable: true },
     { path: 'github.tokens.*.host', kind: 'string', writable: true },
     { path: 'github.tokens.*.pat', kind: 'secret', writable: true, accepts: 'literal' },
-    { path: 'providers.hetzner.enabled', kind: 'boolean', writable: true },
-    { path: 'providers.hetzner.token', kind: 'secret', writable: true },
-    { path: 'providers.hetzner.location', kind: 'string', writable: true },
-    { path: 'providers.hetzner.consoleProjectId', kind: 'number', writable: true },
+    // Hetzner's rows arrive DECLARED (ADR-0027): core builds them from the factory's settings,
+    // label and placeholder included, and the page has no hand-written block for them — so these
+    // carry the label the page is expected to show, exactly as the wire does.
+    { path: 'providers.hetzner.enabled', kind: 'boolean', writable: true, label: 'Enabled' },
+    { path: 'providers.hetzner.token', kind: 'secret', writable: true, label: 'Token Environment Variable', example: 'HETZNER_TOKEN' },
+    { path: 'providers.hetzner.location', kind: 'string', writable: true, label: 'Location' },
+    { path: 'providers.hetzner.consoleProjectId', kind: 'number', writable: true, label: 'Console project id' },
     { path: 'providers.aws.enabled', kind: 'boolean', writable: true },
     { path: 'providers.aws.region', kind: 'string', writable: true },
     { path: 'providers.aws.profile', kind: 'string', writable: true },

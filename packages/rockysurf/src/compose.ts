@@ -246,7 +246,12 @@ export function composeRegistry(
   }
 
   for (const wiring of WIRINGS) {
-    descriptors.push({ id: wiring.factory.id, displayName: wiring.factory.displayName })
+    descriptors.push({
+      id: wiring.factory.id,
+      displayName: wiring.factory.displayName,
+      // What the factory declares about its Settings panel (ADR-0027, E19), when it does.
+      ...(wiring.factory.settings ? { settings: wiring.factory.settings } : {}),
+    })
     compose(wiring, wiring.section(config))
   }
 
@@ -279,6 +284,7 @@ export function composeRegistry(
       id,
       displayName: factory.displayName,
       ...(factory.credentialEnv ? { credentialEnv: factory.credentialEnv } : {}),
+      ...(factory.settings ? { settings: factory.settings } : {}),
     })
     const source = personal.sources.get(id)
     notes.push(`${id}: personal provider "${section.package}"${source ? ` from ${source}` : ''} — ${PERSONAL_PROVIDER_TRUST_SENTENCE}`)

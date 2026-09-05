@@ -11,6 +11,7 @@ import {
   SETTINGS_SECTIONS,
   specFor,
 } from './fields.js'
+import { buildSettingsInventory } from './inventory.js'
 import { secretView } from './view.js'
 
 /**
@@ -54,6 +55,22 @@ const NOT_CREDENTIALS: Record<string, string> = {
   tokens: 'the LIST of per-repository entries — each entry\'s `pat` is classified, the list is not',
 }
 
+/**
+ * PROVIDERS WHOSE ROWS ARE DECLARED, NOT WRITTEN HERE (ADR-0027).
+ *
+ * Name → the factory that declares the rows. Two properties in this file consult it — the
+ * credential scan and the provider enumeration — and each keeps its other half in the composition
+ * root (`packages/rockysurf/src/settings-parity.test.ts`), which can import the factory and assert
+ * it declares what this file no longer carries. NOT `DELIBERATELY_ABSENT`: that set means "an
+ * operator cannot manage the provider from the page at all", which would be a lie about Hetzner.
+ */
+const DECLARED_BY_PROVIDER: Record<string, string> = {
+  hetzner: 'hetznerProviderFactory.settings in packages/provider-hetzner/src/index.ts declares token, location and consoleProjectId',
+}
+
+/** The credential-named fields the declared factories carry; their secrecy is asserted in the composition root. */
+const DECLARED_CREDENTIALS = new Set(['token'])
+
 describe('secret classification tracks config/schema.ts', () => {
   const fields = declaredFields(SCHEMA_SOURCE)
 
@@ -68,7 +85,8 @@ describe('secret classification tracks config/schema.ts', () => {
       SETTINGS_FIELDS.filter((f) => f.kind === 'secret').map((f) => f.path.split('.').pop()!),
     )
     const unclassified = fields.filter(
-      (name) => isSecretKeyName(name) && !classifiedNames.has(name) && !(name in NOT_CREDENTIALS),
+      (name) =>
+        isSecretKeyName(name) && !classifiedNames.has(name) && !(name in NOT_CREDENTIALS) && !DECLARED_CREDENTIALS.has(name),
     )
 
     expect(
@@ -87,11 +105,10 @@ describe('secret classification tracks config/schema.ts', () => {
     expect(stale, `${stale.join(', ')} is classified secret but no longer declared in the schema`).toEqual([])
   })
 
-  it('names the three credential fields v0.1 actually has', () => {
+  it("names the two credential fields core itself declares — Hetzner's token is declared by its factory", () => {
     expect(SETTINGS_FIELDS.filter((f) => f.kind === 'secret').map((f) => f.path)).toEqual([
       'github.pat',
       'github.tokens.*.pat',
-      'providers.hetzner.token',
     ])
   })
 
@@ -229,7 +246,7 @@ describe('every provider the config schema declares appears in the settings inve
   it('gives every provider at least its enabled switch, and a section to draw it in', () => {
     const fieldPaths = new Set(SETTINGS_FIELDS.map((f) => f.path))
     const sectionIds = new Set(SETTINGS_SECTIONS.map((s) => s.id))
-    for (const name of providerNames.filter((n) => !(n in DELIBERATELY_ABSENT))) {
+    for (const name of providerNames.filter((n) => !(n in DELIBERATELY_ABSENT) && !(n in DECLARED_BY_PROVIDER))) {
       expect(
         fieldPaths.has(`providers.${name}.enabled`),
         `config/schema.ts declares providers.${name}, but fields.ts has no providers.${name}.enabled — ` +
@@ -247,6 +264,16 @@ describe('every provider the config schema declares appears in the settings inve
     for (const [name, reason] of Object.entries(DELIBERATELY_ABSENT)) {
       expect(providerNames, `${name} is excluded but the schema no longer declares it`).toContain(name)
       expect(reason.length, `${name} is excluded without a reason worth the name`).toBeGreaterThan(20)
+    }
+  })
+
+  it('names the factory for every provider whose rows are declared rather than written here', () => {
+    for (const [name, reason] of Object.entries(DECLARED_BY_PROVIDER)) {
+      expect(providerNames, `${name} is declared-by-provider but the schema no longer declares it`).toContain(name)
+      expect(reason, `${name}'s entry must name the factory that declares it`).toMatch(/ProviderFactory/)
+      // And nothing static remains for it — two homes would drift.
+      expect(SETTINGS_FIELDS.some((f) => f.path.startsWith(`providers.${name}.`)), `${name} still has static rows`).toBe(false)
+      expect(SETTINGS_SECTIONS.some((s) => s.id === `providers.${name}`), `${name} still has a static section`).toBe(false)
     }
   })
 })
@@ -285,7 +312,36 @@ describe('every setting on the page explains itself', () => {
    * rather than an exemption from this one.
    */
   it('tells every env-var credential box that it takes a variable name rather than a token', () => {
-    const envVarSecrets = SETTINGS_FIELDS.filter((f) => f.kind === 'secret' && f.accepts !== 'literal')
+    // The only env-var credential box a shipped provider has is Hetzner's, and Hetzner declares its
+    // rows on its factory (ADR-0027) — so the rule is checked over the inventory the page really
+    // draws from, built with the same declaration `settings.test.ts` uses. The words are the
+    // provider's now; the rule about them is still core's, and still enforced here.
+    const built = buildSettingsInventory({
+      tree: {},
+      describeProvider: (id) =>
+        id === 'hetzner'
+          ? {
+              displayName: 'Hetzner Cloud',
+              settings: {
+                title: 'Hetzner',
+                help: 'The quickest provider to start with.',
+                fields: [
+                  {
+                    name: 'token',
+                    kind: 'secret',
+                    label: 'Token Environment Variable',
+                    example: 'HETZNER_TOKEN',
+                    help:
+                      'The NAME of an environment variable holding a read/write API token from console.hetzner.com ' +
+                      '— `HETZNER_TOKEN`, not the token itself.',
+                  },
+                ],
+                offering: { noun: 'server type', example: 'cpx21' },
+              },
+            }
+          : undefined,
+    })
+    const envVarSecrets = built.fields.filter((f) => f.kind === 'secret' && f.accepts !== 'literal')
     expect(envVarSecrets.length, 'the rule has no fields left to govern, which makes this vacuous').toBeGreaterThan(
       0,
     )
@@ -337,7 +393,8 @@ describe('every setting on the page explains itself', () => {
       'github',
       'ssh',
       'ssh.keys',
-      'providers.hetzner',
+      // `providers.hetzner` is NOT here: it is declared on the factory and spliced in FIRST by
+      // `settings/inventory.ts` (see `inventory.test.ts`, which pins the merged order).
       'providers.aws',
       'providers.azure',
       'providers.gcp',
@@ -345,7 +402,7 @@ describe('every setting on the page explains itself', () => {
       'providers.byo.hosts',
       'limits',
       'preferences',
-      'preferences.tiers.hetzner',
+      // Likewise `preferences.tiers.hetzner`.
       'preferences.tiers.aws',
       'preferences.tiers.azure',
       'preferences.tiers.gcp',
@@ -369,7 +426,7 @@ describe('every setting on the page explains itself', () => {
    */
   it('offers a saved machine type for every size on every cloud', () => {
     const paths = SETTINGS_FIELDS.filter((f) => f.path.startsWith('preferences.tiers.')).map((f) => f.path)
-    for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
+    for (const cloud of ['aws', 'azure', 'gcp', 'byo']) {
       for (const size of ['small', 'medium', 'large']) {
         const path = `preferences.tiers.${cloud}.${size}`
         const field = SETTINGS_FIELDS.find((f) => f.path === path)
@@ -379,9 +436,11 @@ describe('every setting on the page explains itself', () => {
         expect(field!.help, `${path}'s help does not say what happens when it is blank`).toContain('blank')
       }
     }
-    expect(paths).toHaveLength(15)
+    // Four clouds in the static table: Hetzner's three come from its declaration (ADR-0027) and
+    // are pinned, sentence included, in `inventory.test.ts`.
+    expect(paths).toHaveLength(12)
     // Every one of them is a real machine type in that cloud's own words, not "a machine type".
-    const examples = ['cpx21', 't4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']
+    const examples = ['t4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']
     for (const example of examples) {
       expect(
         SETTINGS_FIELDS.some((f) => f.path.startsWith('preferences.tiers.') && f.help.includes(example)),
