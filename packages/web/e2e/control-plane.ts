@@ -93,6 +93,14 @@ async function freePort(): Promise<number> {
  * outbound fetches on page load, and a suite whose result depends on GitHub being up is a
  * suite that will be muted within a month.
  */
+/**
+ * The personal provider fixture (ADR-0026): a plain-JS package beside these tests, named by PATH
+ * in the config below. DISABLED, so every test that was written against a BYO-only installation
+ * still sees exactly one loaded provider; what it adds is a personal section for the Settings
+ * page to draw, and a factory the binary has loaded so a test can switch it on from that page.
+ */
+const personalProviderDir = fileURLToPath(new URL('./fixtures/personal-provider', import.meta.url))
+
 function configYaml(port: number, dataDir: string, sshPort: number): string {
   return [
     'server:',
@@ -105,6 +113,11 @@ function configYaml(port: number, dataDir: string, sshPort: number): string {
     '      - name: workshop',
     '        host: 127.0.0.1',
     `        port: ${sshPort}`,
+    '  nimbus:',
+    `    package: ${personalProviderDir}`,
+    '    enabled: false',
+    '    token: "${NIMBUS_TOKEN}"',
+    '    region: sky-1',
     'registry:',
     '  enabled: false',
     'pricing:',
@@ -157,6 +170,9 @@ async function boot(): Promise<ControlPlane> {
       // Not inherited: a contributor with a real installation would otherwise hand this
       // instance their own master key, and every secret it writes would be readable with it.
       ROCKYSURF_SECRET_KEY: '',
+      // The personal fixture's credential (`token: "${NIMBUS_TOKEN}"` above). A reference the
+      // environment cannot satisfy is a boot error, so the variable exists; the value is nothing.
+      NIMBUS_TOKEN: 'nimbus-fixture-token',
     },
   })
 

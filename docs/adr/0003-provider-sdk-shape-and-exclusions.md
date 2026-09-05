@@ -14,6 +14,12 @@ precedent. Core still branches on the flag and never on the method's presence, s
 property is untouched. **Amended by
 [ADR-0025](0025-billing-while-stopped-is-a-capability.md) (2026-09-04):** amendment E17 below,
 `capabilities.billsWhileStopped`, in the E15 shape — additive, optional, absent means false.
+**Amended by
+[ADR-0026](0026-a-personal-provider-is-a-package-named-in-the-config-file.md) (2026-09-04):** the
+"dynamic out-of-tree plugin loading" exclusion below is lifted — a provider named by
+`providers.<id>.package` in the config file is loaded by the composition root before boot — and
+amendment E18 adds `ProviderFactory.credentialEnv` and `credentialField`, both optional. The
+central property is untouched: a personal provider is one more `ComputeProvider` in the registry.
 
 ## Context
 
@@ -198,7 +204,10 @@ was made because generalizing from zero implementations with no out-of-tree cons
 premature, and the memo confirms nothing has changed: there is still no second implementation to
 generalize from. Spot also loses on product grounds — an interrupted box with an agent mid-task
 undercuts the persistence positioning, and idle auto-stop is the cost lever instead. Also out:
-live pricing APIs, dynamic out-of-tree plugin loading, and per-server IAM.
+live pricing APIs, dynamic out-of-tree plugin loading, and per-server IAM. *(Dynamic out-of-tree
+loading was lifted by ADR-0026 on 2026-09-04, once issue #294 settled that users add providers to
+their own installation without touching this repository; the reasoning for the original cut —
+nothing to generalize from — had expired.)*
 
 ## Amendments after acceptance
 
@@ -410,6 +419,28 @@ Two things the flag deliberately does not do:
    beside `providerState`, so a cloud switched off in the config cannot silently stop the meter on
    a machine it is still charging for. The reasoning, and the rejected live-lookup shape, are in
    ADR-0025.
+### E18 — `ProviderFactory.credentialEnv` and `credentialField`, because the composition root can no longer write the row by hand
+
+Added 2026-09-04 by [ADR-0026](0026-a-personal-provider-is-a-package-named-in-the-config-file.md)
+(issue #294). **Additive and optional**; absent means the credential is named in the config file or
+comes from an ambient chain the provider resolves itself, which is what every shipped factory
+declares by saying nothing.
+
+Each of the five rows in `compose.ts` names, by hand, the config field a credential belongs in and
+the environment variables it may arrive under (`PROVIDER_CREDENTIAL_ENV`). A provider Rocky Surf
+did not ship has no row. Two fields on the factory carry the same two facts: `credentialEnv`, the
+variables in the order to try them, and `credentialField`, where a value found there lands in the
+input to `configSchema.parse`. They sit on the FACTORY rather than the provider because the
+composition root has the factory before any provider exists, and a chain-auth cloud names variables
+without having any field.
+
+Two things they deliberately do not do:
+
+1. **They store nothing.** A value read from a variable goes into the parse input and nowhere
+   else — the same path the Hetzner row has always taken, and the reason "Rocky Surf stores no
+   cloud credentials" stays unconditional for a provider from outside this repository.
+2. **They do not override the shipped table.** `PROVIDER_CREDENTIAL_ENV` stays authoritative for
+   the five, so the wizard's detection and the composition's fallback keep reading one list.
 
 ## Consequences
 

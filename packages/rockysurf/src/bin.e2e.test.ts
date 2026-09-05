@@ -227,6 +227,71 @@ describe('the rockysurf binary', () => {
     }
   }, 120_000)
 
+  /**
+   * A PERSONAL PROVIDER, LOADED BY THE REAL BINARY (ADR-0026). The unit tests prove the loader
+   * and the composition each do their half; this is the whole-boot wiring test the repository's
+   * own memory demands — the seam between `runRockysurfCli` loading once and `boot()` awaiting
+   * the first composition is exactly the kind of gap unit tests cannot see.
+   */
+  it('loads a personal provider named by path in the config, and says so with the trust sentence', async () => {
+    const dir = tempDir()
+    const dataDir = join(dir, 'data')
+    const port = 41000 + Math.floor(Math.random() * 2000)
+    const providerDir = join(dir, 'nimbus-provider')
+    mkdirSync(providerDir)
+    writeFileSync(join(providerDir, 'package.json'), JSON.stringify({ name: 'nimbus', type: 'module', exports: { '.': { import: './index.js' } } }))
+    writeFileSync(
+      join(providerDir, 'index.js'),
+      `export default {
+  id: 'nimbus',
+  displayName: 'Nimbus Cloud',
+  configSchema: { parse: (input) => input },
+  createProvider: () => ({
+    id: 'nimbus', displayName: 'Nimbus Cloud',
+    capabilities: { stop: true, ipStableAcrossStop: true, canInjectHostKeys: false, userDataMaxBytes: 0, generatesUserData: false, simulatedInstances: true },
+    validateCredentials: async () => {}, validateSpec: async () => {},
+    listOfferings: async () => [{ id: 'n-1', cpu: 2, memoryGb: 4, arch: 'amd64', hourly: null, available: true, region: 'sky' }],
+    provision: async () => ({ data: { id: '1' }, initial: { state: 'running', publicIp: '203.0.113.9' } }),
+    describe: async () => ({ state: 'running', publicIp: '203.0.113.9' }),
+    terminate: async () => {}, listManaged: async () => [], stop: async () => {}, start: async () => {},
+  }),
+}
+`,
+    )
+    const configPath = join(dir, 'rockysurf.config.yaml')
+    writeFileSync(
+      configPath,
+      `server:\n  port: ${port}\n  dataDir: ${dataDir}\nproviders:\n  nimbus:\n    package: ${providerDir}\n    enabled: true\n`,
+    )
+
+    const password = 'test-admin-password'
+    const server = await startServer({ args: ['--config', configPath], port, cwd: repoRoot, env: { ROCKYSURF_ADMIN_PASSWORD: password } })
+    try {
+      expect(server.read()).toContain(`nimbus: personal provider "${providerDir}"`)
+      expect(server.read()).toContain("a provider runs with Rocky Surf's full access — install ones you trust.")
+      expect(server.read()).toContain('nimbus: ready')
+
+      const health = (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { providers: string[] }
+      expect(health.providers).toEqual(['nimbus'])
+
+      const login = await fetch(`http://127.0.0.1:${port}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const cookie = login.headers.get('set-cookie')?.split(';')[0] ?? ''
+      const providers = (await (await fetch(`http://127.0.0.1:${port}/api/v1/providers`, { headers: { cookie } })).json()) as {
+        id: string
+        displayName: string
+        offerings: { id: string }[]
+      }[]
+      expect(providers.map((p) => [p.id, p.displayName])).toEqual([['nimbus', 'Nimbus Cloud']])
+      expect(providers[0]?.offerings.map((o) => o.id)).toEqual(['n-1'])
+    } finally {
+      await stopServer(server)
+    }
+  }, 120_000)
+
   it('boots, serves, and shuts down cleanly — then does not regenerate the password', async () => {
     const dir = tempDir()
     const dataDir = join(dir, 'data')

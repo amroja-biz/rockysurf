@@ -68,6 +68,20 @@ export {
 } from './live-config.js'
 
 export {
+  SHIPPED_PROVIDER_IDS,
+  isShippedProviderId,
+  missingPackageMessage,
+  nearestShippedProviderId,
+  personalProviderIdsIn,
+  personalProviderSectionSchema,
+  personalProviderSections,
+  providerEnabled,
+  providerIdsIn,
+  type PersonalProviderSection,
+  type ShippedProviderId,
+} from './personal-providers.js'
+
+export {
   DEFAULT_REGISTRY_URL,
   REGISTRY_TRUST,
   configSchema,

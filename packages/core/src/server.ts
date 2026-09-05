@@ -80,8 +80,17 @@ export interface BootOptions extends LoadConfigOptions {
    *
    * Omitted, core falls back to the fake provider, which is what makes `npx` usable with no
    * cloud account at all.
+   *
+   * MAY RETURN A PROMISE (ADR-0026). A personal provider is a package the composition root has to
+   * `import()` before it can compose, and `import()` is asynchronous — so the FIRST composition,
+   * at boot, is awaited. Every later composition (a config change rebuilding the registry, issue
+   * #264) must be synchronous: the settings save adopts the file and answers, and the SSH-access
+   * sync that follows it reads the registry as it stands, so a registry that arrived a moment
+   * later would be a race the page could not report on. The composition root keeps that promise
+   * by loading once, caching the loaded factories, and composing synchronously from then on; a
+   * personal section that appears in the file after boot is reported "restart to load it".
    */
-  providers?: (context: ProviderCompositionContext) => ProviderRegistry
+  providers?: (context: ProviderCompositionContext) => ProviderRegistry | Promise<ProviderRegistry>
 }
 
 /** What a composition root gets to build the registry from. */
@@ -213,7 +222,8 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
   // app factory stays a pure function of its dependencies and tests can point it anywhere.
   const publicDir = resolvePublicDir()
 
-  const registry = options.providers?.({ config, log })
+  // Awaited here, at boot, and nowhere else — see `BootOptions.providers`.
+  const registry = options.providers ? await options.providers({ config, log }) : undefined
 
   /**
    * REBUILT WHEN THE PROVIDER CONFIGURATION CHANGES (issue #264).
@@ -234,7 +244,16 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
       if (JSON.stringify([next.providers, next.pricing]) === JSON.stringify([previous.providers, previous.pricing])) {
         return
       }
-      registry.replaceWith(compose({ config: next, log }))
+      const rebuilt = compose({ config: next, log })
+      if (rebuilt instanceof Promise) {
+        // The composition root's contract is that only the FIRST composition is asynchronous. A
+        // promise here means that contract was broken; adopt the result when it lands rather than
+        // dropping it, and say so, because the registry is briefly behind the file.
+        log('[providers] composition returned a promise on a config change — the registry lags the file until it settles')
+        void rebuilt.then((r) => registry.replaceWith(r))
+        return
+      }
+      registry.replaceWith(rebuilt)
     })
   }
 

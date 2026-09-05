@@ -9,6 +9,8 @@ import {
   ConfigError,
   configSchema,
   expandTilde,
+  personalProviderSections,
+  SHIPPED_PROVIDER_IDS,
   interpolateEnv,
   interpolateTreeLeniently,
   loadConfig,
@@ -614,13 +616,65 @@ describe('validation errors name the offending field', () => {
     expect(err.message).toContain('serrver')
   })
 
-  it('rejects an unknown provider entirely', () => {
+  it('rejects an unknown provider with no package, and says what a personal provider would need (ADR-0026)', () => {
     // Deliberately a name no cloud has. This test used `gcp` until `@rockysurf/provider-gcp`
     // landed (rockysurf-ev41.6) and it started asserting the opposite of what it meant — the
     // hazard of illustrating "unknown" with a real product's name on a roadmap that has more
-    // providers on it.
+    // providers on it. Since ADR-0026 an unknown key CAN be a personal provider, so the refusal
+    // is now for the missing `package:` and is worded as the instruction, not merely a mention.
     const err = configErrorFrom(() => parseConfig('providers:\n  nimbus:\n    enabled: true\n', 'test.yaml', {}))
-    expect(err.message).toContain('providers.nimbus')
+    expect(err.message).toContain(
+      'providers.nimbus is not a provider Rocky Surf ships. A personal provider needs `package:` naming the npm package',
+    )
+  })
+
+  it('catches a misspelled shipped provider with "did you mean", not with advice to install a package', () => {
+    const err = configErrorFrom(() => parseConfig('providers:\n  hetzer:\n    enabled: true\n', 'test.yaml', {}))
+    expect(err.message).toContain('providers.hetzer is not a provider Rocky Surf ships — did you mean hetzner?')
+    expect(err.message).not.toContain('needs `package:`')
+  })
+
+  it('accepts a personal provider section that names its package, and reads it back typed', () => {
+    const config = parseConfig(
+      'providers:\n  nimbus:\n    package: "@someone/rockysurf-provider-nimbus"\n    enabled: true\n    token: t\n    region: r\n    sizes: [small]\n',
+      'test.yaml',
+      {},
+    )
+    const personal = personalProviderSections(config)
+    expect(personal['nimbus']).toMatchObject({
+      package: '@someone/rockysurf-provider-nimbus',
+      enabled: true,
+      token: 't',
+      region: 'r',
+      sizes: ['small'],
+    })
+    // `enabled` defaults to false, like every shipped section.
+    const off = parseConfig('providers:\n  nimbus:\n    package: p\n', 'test.yaml', {})
+    expect(personalProviderSections(off)['nimbus']?.enabled).toBe(false)
+    // The five shipped sections keep their own types — no index signature widened them.
+    expect(config.providers.hetzner.location).toBe('fsn1')
+  })
+
+  it('refuses a personal id that is not a lowercase hostname-safe name, or a bad core field', () => {
+    const upper = configErrorFrom(() => parseConfig('providers:\n  Nimbus:\n    package: p\n', 'test.yaml', {}))
+    expect(upper.message).toContain('providers.Nimbus: a provider id is lowercase letters, digits and hyphens')
+    const bad = configErrorFrom(() => parseConfig('providers:\n  nimbus:\n    package: p\n    enabled: yes-please\n', 'test.yaml', {}))
+    expect(bad.message).toContain('providers.nimbus.enabled')
+  })
+
+  it('admits preferences.tiers for a personal provider and still refuses a key naming no provider', () => {
+    const ok = parseConfig(
+      'providers:\n  nimbus:\n    package: p\npreferences:\n  tiers:\n    nimbus:\n      small: s-1vcpu-1gb\n',
+      'test.yaml',
+      {},
+    )
+    expect((ok.preferences.tiers as Record<string, { small?: string }>)['nimbus']?.small).toBe('s-1vcpu-1gb')
+    const err = configErrorFrom(() => parseConfig('preferences:\n  tiers:\n    awz:\n      small: t4g.small\n', 'test.yaml', {}))
+    expect(err.message).toContain('preferences.tiers.awz names no provider in this file')
+  })
+
+  it('pins SHIPPED_PROVIDER_IDS to the keys the schema declares by name', () => {
+    expect([...SHIPPED_PROVIDER_IDS].sort()).toEqual(Object.keys(configSchema.parse({}).providers).sort())
   })
 
   it('ACCEPTS an enabled hetzner with no token — the credential may live in the secrets store', () => {

@@ -173,16 +173,31 @@ These do not indicate a mistake; they are the enumeration working. Update them:
 - `packages/core/src/config/config.test.ts`
 - `packages/core/src/settings/fields.test.ts`
 
-## Out of tree
+## Out of tree: a personal provider
 
-An out-of-tree provider skips almost all of the above, because there is no shared composition root
-to edit — you construct your own registry in your own composition root, and you own those decisions
-instead of amending someone else's.
+An out-of-tree provider skips all of the above. Since ADR-0026 it does not build its own
+composition root either: the operator installs the package under `<dataDir>/providers` (or points
+at a path) and names it in their config file —
+
+```yaml
+providers:
+  mycloud:
+    package: "@you/rockysurf-provider-mycloud"
+    enabled: true
+    token: "${MYCLOUD_TOKEN}"
+```
+
+— and Rocky Surf loads it at start, composes it beside the shipped five, and gives it a Settings
+panel with its Enabled switch. The trust model is one sentence and your README should carry it: **a
+provider runs with Rocky Surf's full access — install ones you trust.**
 
 What still applies: the SDK contract, conformance, the trap checklist, and the honesty rules about
-capabilities and verification. What does not: items 1 through 11, which are the cost of being *in*
-this distribution.
+capabilities and verification. What a personal package must add: the default export IS the factory
+and `factory.id` equals the config key; the manifest's entry resolves (import-only `exports` are
+fine); `credentialField` and `credentialEnv` on the factory say where a token lands and which
+variables may supply it; and errors are `ProviderError`s from your own SDK copy, which core's
+structural `isProviderError` accepts. The operator-facing side is `docs/self-hosting.md`, "Personal
+providers" (in the checkout).
 
-The list above doubles as the list of things you are taking responsibility for yourself. In
-particular you still need somewhere to answer "which fields does this provider accept, and which of
-them are secret" — that is what items 3 and 7 do here.
+What it does not yet get is a Settings panel for its own fields — those are edited in the file
+until the provider declares them.

@@ -57,7 +57,12 @@ export { openDatabase, defaultDatabasePath, type Db, type OpenedDatabase } from 
 
 /* ------------------------------------------------------------------------- providers */
 
-export { ProviderRegistry, createDefaultRegistry, type UnavailableProvider } from './providers/registry.js'
+export {
+  ProviderRegistry,
+  createDefaultRegistry,
+  type ProviderDescriptor,
+  type UnavailableProvider,
+} from './providers/registry.js'
 export { makeFakeProvider, type FakeProvider, type FakeProviderOptions } from './providers/fake.js'
 // Which environment variables supply each provider's credential — the composition root's
 // fallback when the config field is empty, and the setup state's detection (issue #280).
@@ -68,6 +73,12 @@ export { PROVIDER_CREDENTIAL_ENV } from './setup/state.js'
 export {
   DEFAULT_REGISTRY_URL,
   REGISTRY_TRUST,
+  // Personal providers (ADR-0026): which `providers:` keys are shipped, and how to read the rest.
+  SHIPPED_PROVIDER_IDS,
+  isShippedProviderId,
+  personalProviderSections,
+  providerEnabled,
+  type PersonalProviderSection,
   configSchema,
   loadConfig,
   loadConfigLenientlyOrExit,

@@ -278,21 +278,52 @@ for one that has been.
       (`scripts/check-npx-closure.mjs`), and that you took it for the reason
       [Vendor SDKs](#vendor-sdks) allows. Core's cold start is a feature.
 
-## Out of tree
+## Out of tree: a personal provider
 
-Nothing here requires your provider to live in this repository. `@rockysurf/provider-sdk` is
-published precisely so it does not have to: depend on it, implement the factory, and construct
-your own registry in your own composition root. The SDK has **zero runtime dependencies**, which
-is deliberate — anything it depended on would be inherited by every provider and every consumer.
+Nothing here requires your provider to live in this repository, and since
+[ADR-0026](adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md) nothing requires
+a fork to run it either. `@rockysurf/provider-sdk` is published precisely so a provider does not
+have to be here: depend on it, implement the factory, publish (or build) the package, and an
+operator names it in their config file —
+
+```yaml
+providers:
+  mycloud:
+    package: "@you/rockysurf-provider-mycloud"   # installed under <dataDir>/providers, or a path
+    enabled: true
+    token: "${MYCLOUD_TOKEN}"
+```
+
+— and Rocky Surf loads it at start, composes it beside the shipped five, and gives it a Settings
+panel with its Enabled switch. **A provider runs with Rocky Surf's full access — install ones you
+trust**: that is the whole trust model, and your README should say it too.
+
+Four things a personal package has to get right that an in-tree one gets for free:
+
+- **The default export is the factory**, and `factory.id` equals the config key the operator will
+  use. A mismatch is reported as "rename the section to providers.<id>".
+- **Your manifest's entry must resolve.** `exports` (import-only is fine — every shipped provider
+  is import-only), `module`, or `main`; Rocky Surf reads your manifest rather than asking
+  `require` to resolve you.
+- **Credentials.** Declare `credentialField` (the config key your schema expects, e.g. `'token'`)
+  and `credentialEnv` (the variables it may arrive under) on the factory. A value in the config
+  file wins; with the field empty, the composition root reads the first non-empty variable and
+  hands it to your schema under that field. Nothing is stored. A chain-auth cloud declares
+  neither, or `credentialEnv` alone for the wizard's detection.
+- **Errors are `ProviderError`s from YOUR copy of the SDK**, which is a different class from the
+  one core imported. Core's `isProviderError` is structural — the name and one of the nine codes —
+  so this works; do not rely on `instanceof` across the boundary in your own code either.
+
+The SDK has **zero runtime dependencies**, which is deliberate — anything it depended on would be
+inherited by every provider and every consumer — and no export whose meaning depends on object
+identity, for the reason just given.
 
 `@rockysurf/provider-conformance` is published for the same reason, so the acceptance bar above is
 one you can actually run rather than one you have to take on trust. It depends only on the SDK.
 
-What an out-of-tree provider does *not* get is the wiring: the checklist above assumes a
-composition root, a core config section and a settings inventory that are all in this repository.
-Building your own registry means you own those decisions instead —
-[`.agents/skills/adding-providers/references/wiring.md`](../.agents/skills/adding-providers/references/wiring.md)
-lists every in-tree touch point, which doubles as the list of things you are replacing.
+What a personal provider does *not* yet get is a Settings panel for its **own** fields: until it
+declares them, they are edited in the file, and the panel says so. The operator-facing side is in
+[`docs/self-hosting.md`, "Personal providers"](self-hosting.md#personal-providers).
 
 ## A skill that walks through all of this
 

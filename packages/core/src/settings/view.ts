@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { isSecretPath } from './fields.js'
+import { isSecretPath as isSecretPathInStaticInventory } from './fields.js'
 
 /**
  * THE REDACTED VIEW: what the settings API is allowed to say about a config file.
@@ -47,13 +47,22 @@ export function secretView(value: unknown): SecretView {
  * keys the schema does not recognise, because a file the editor is being used to REPAIR is
  * precisely one that does not validate, and a view that dropped the offending key would hide
  * the thing the operator has to fix.
+ *
+ * WHICH PATHS ARE SECRET IS AN ARGUMENT (ADR-0026), because it depends on the file: a personal
+ * provider's section is masked by default, and only the inventory built from this file knows
+ * which sections those are. The static inventory's answer is the default, so a caller with no
+ * personal providers in play — and every existing test — reads exactly as before.
  */
-export function redactTree(value: unknown, path: readonly (string | number)[] = []): unknown {
+export function redactTree(
+  value: unknown,
+  path: readonly (string | number)[] = [],
+  isSecretPath: (path: readonly (string | number)[]) => boolean = isSecretPathInStaticInventory,
+): unknown {
   if (path.length > 0 && isSecretPath(path)) return secretView(value)
-  if (Array.isArray(value)) return value.map((item, i) => redactTree(item, [...path, i]))
+  if (Array.isArray(value)) return value.map((item, i) => redactTree(item, [...path, i], isSecretPath))
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {}
-    for (const [key, item] of Object.entries(value)) out[key] = redactTree(item, [...path, key])
+    for (const [key, item] of Object.entries(value)) out[key] = redactTree(item, [...path, key], isSecretPath)
     return out
   }
   return value

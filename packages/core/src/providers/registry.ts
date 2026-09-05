@@ -23,12 +23,36 @@ export interface UnavailableProvider {
   reason: string
 }
 
+/**
+ * What the composition root knows about a provider FACTORY, whether or not a provider was built
+ * from it (ADR-0026).
+ *
+ * A registry holds constructed providers, and a provider exists only when its section is enabled
+ * and its config parsed. Two things core has to say about a cloud do not wait for that: the
+ * setup wizard names a cloud that is switched off or failed to load, and it reports which
+ * environment variable would supply the credential so the export-and-restart loop can say when
+ * it closed. For the shipped five those facts live in core's own tables; for a personal provider
+ * they live on the factory the composition root loaded, and this is how they travel without core
+ * ever importing the package.
+ */
+export interface ProviderDescriptor {
+  id: string
+  displayName: string
+  /** `ProviderFactory.credentialEnv` (E18) — the variables the composition root reads. */
+  credentialEnv?: readonly string[]
+}
+
 export class ProviderRegistry {
   private readonly byId = new Map<string, ComputeProvider>()
   private readonly unavailableById = new Map<string, UnavailableProvider>()
+  private readonly descriptorsById = new Map<string, ProviderDescriptor>()
 
-  constructor(providers: ComputeProvider[] = [], unavailable: UnavailableProvider[] = []) {
-    this.fill(providers, unavailable)
+  constructor(
+    providers: ComputeProvider[] = [],
+    unavailable: UnavailableProvider[] = [],
+    descriptors: ProviderDescriptor[] = [],
+  ) {
+    this.fill(providers, unavailable, descriptors)
   }
 
   /**
@@ -52,12 +76,24 @@ export class ProviderRegistry {
   replaceWith(next: ProviderRegistry): void {
     this.byId.clear()
     this.unavailableById.clear()
-    this.fill(next.list(), next.unavailable())
+    this.descriptorsById.clear()
+    this.fill(next.list(), next.unavailable(), next.descriptors())
   }
 
-  private fill(providers: ComputeProvider[], unavailable: UnavailableProvider[]): void {
+  private fill(providers: ComputeProvider[], unavailable: UnavailableProvider[], descriptors: ProviderDescriptor[]): void {
     for (const provider of providers) this.byId.set(provider.id, provider)
     for (const entry of unavailable) this.unavailableById.set(entry.id, entry)
+    for (const descriptor of descriptors) this.descriptorsById.set(descriptor.id, descriptor)
+  }
+
+  /** Every factory the composition root knows, loaded or not. See `ProviderDescriptor`. */
+  descriptors(): ProviderDescriptor[] {
+    return [...this.descriptorsById.values()]
+  }
+
+  /** What the composition root knows about one factory, when it told us anything. */
+  describe(id: string): ProviderDescriptor | undefined {
+    return this.descriptorsById.get(id)
   }
 
   /** Throws `invalid_spec` for an unknown id, which the routes map to 400. */

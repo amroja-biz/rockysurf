@@ -12,3 +12,16 @@
  */
 export { composeRegistry, type ComposeResult } from './compose.js'
 export { runRockysurfCli } from './cli.js'
+/**
+ * Personal providers (ADR-0026): how a `providers.<id>.package` becomes a factory. Exported for an
+ * embedder building its own boot sequence — load once, then compose synchronously from the result.
+ */
+export {
+  PERSONAL_PROVIDERS_DIRNAME,
+  PERSONAL_PROVIDER_TRUST_SENTENCE,
+  loadPersonalProviders,
+  noPersonalProviders,
+  personalProvidersDir,
+  type LoadedPersonalProviders,
+  type LoadPersonalProvidersOptions,
+} from './personal-providers.js'
