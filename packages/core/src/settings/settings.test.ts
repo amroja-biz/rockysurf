@@ -25,6 +25,7 @@ import {
   type ConfigStore,
 } from '../config/index.js'
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
+import { ProviderRegistry } from '../providers/registry.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
 import { applyChanges } from './document.js'
 
@@ -92,6 +93,31 @@ let store: ConfigStore
 
 const config: Config = configSchema.parse({})
 
+/** A registry knowing Hetzner's factory declaration — the three fields fields.ts used to carry. */
+function hetznerDeclared(): ProviderRegistry {
+  return new ProviderRegistry(
+    [],
+    [],
+    [
+      {
+        id: 'hetzner',
+        displayName: 'Hetzner Cloud',
+        credentialEnv: ['HETZNER_TOKEN', 'HCLOUD_TOKEN'],
+        settings: {
+          title: 'Hetzner',
+          help: 'The quickest provider to start with: an API token from console.hetzner.com is the whole setup.',
+          fields: [
+            { name: 'token', kind: 'secret', label: 'Token Environment Variable', example: 'HETZNER_TOKEN', help: 'The NAME of an environment variable holding the token.' },
+            { name: 'location', kind: 'string', label: 'Location', help: 'Which datacentre new servers are created in.' },
+            { name: 'consoleProjectId', kind: 'number', label: 'Console project id', help: 'Optional; only used for the console link.' },
+          ],
+          offering: { noun: 'server type', example: 'cpx21' },
+        },
+      },
+    ],
+  )
+}
+
 /** The environment the app validates `${VAR}` references against. */
 const ENV = {
   GITHUB_PAT: 'gh-pat-value',
@@ -111,7 +137,10 @@ beforeEach(async () => {
   secrets = new MemorySecretStore()
   await ensureLocalAdmin({ db: opened.db, secrets, password: PASSWORD })
   store = createConfigStore({ booted: config, configPath, env: { ...process.env } })
-  created = createApp({ db: opened.db, config, configStore: store, secrets, configPath })
+  // What the composition root records about Hetzner's factory (ADR-0027): its rows are DECLARED,
+  // not written in fields.ts, so a settings app that wants a Hetzner panel says what the factory
+  // says. Core cannot import the real factory (the dependency lint), so this is its declaration.
+  created = createApp({ db: opened.db, config, configStore: store, secrets, configPath, providers: hetznerDeclared() })
 
   const res = await created.app.request('/api/v1/auth/login', {
     method: 'POST',

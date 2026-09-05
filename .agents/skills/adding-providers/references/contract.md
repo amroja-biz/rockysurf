@@ -1,8 +1,9 @@
 # The contract, and the ways it has been got wrong
 
-Nine methods, five capabilities. The authoritative types are in `@rockysurf/provider-sdk` and the
-doc comments there carry the reasoning — read them. This page is what the types cannot say: which
-parts have already cost something, and what to do instead.
+Nine required methods, one optional method, eight capability fields (five required, three optional).
+The authoritative types are in `@rockysurf/provider-sdk` and the doc comments there carry the
+reasoning — read them. This page is what the types cannot say: which parts have already cost
+something, and what to do instead.
 
 Every trap below must be **pinned by a test with literal values**. A comment does not fail CI when
 a maintainer "fixes the typo", and that is exactly the edit these traps invite.
@@ -19,6 +20,7 @@ a maintainer "fixes the typo", and that is exactly the edit these traps invite.
 | `terminate(data)` | idempotent — not-found is success |
 | `listManaged()` | everything you created, each tagged `server-owned` or `shared` |
 | `stop(data)` / `start(data)` | required **even if the cloud cannot stop** |
+| `syncSshAccess(options?)` | **optional** — present exactly when `capabilities.managesSshAccess` is true. Push the operator's saved whitelist at the shared firewall object without provisioning. [ssh-access.md](ssh-access.md) |
 
 `stop`/`start` exist even when unsupported: throw `unsupportedOperationError(providerId, 'stop')`
 and set `capabilities.stop = false`. Core branches on the capability flag and never on
@@ -184,27 +186,58 @@ either by hand.
 
 ---
 
-## Trap 5 — exposure posture
+## Trap 5 — exposure posture, and a whitelist that only reaches the cloud at launch
 
-If the cloud has a firewall model, `sshAllowedCidr` is **required, with no default**. Rocky Surf
-will not infer a firewall rule from whatever address the operator happens to have today.
+If the cloud has a firewall model, `sshAllowedCidr` is **a LIST, required, with no default** (ADR-0021).
+Rocky Surf will not infer a firewall rule from whatever address the operator happens to have today.
+A bare string is read as a list of one; an empty list is refused, because a whitelist allowing
+nothing is a lockout dressed as a setting.
 
-Opening SSH to the whole internet takes **two** keys, deliberately — `sshAllowedCidr: "0.0.0.0/0"`
-*and* `allowAllCidr: true` — because opening SSH to the internet is two decisions, not one. Enforce
-it with a cross-field refine, and write the rejection message as an instruction:
+Opening SSH to the whole internet takes **two** keys, deliberately — `0.0.0.0/0` anywhere in the list
+*and* `allowAllCidr: true` — because opening SSH to the internet is two decisions, not one. Use the
+SDK's `normalizeSshCidrs` and `opensSshToTheInternet` so every provider agrees, enforce it with a
+cross-field refine, and write the rejection message as an instruction:
 
 > `sshAllowedCidr is required: state which network may reach SSH, e.g. "203.0.113.7/32". To open
 > SSH to the whole internet, set allowAllCidr: true as well — deliberately.`
 
-Rewrite the rule on every provision, so that a changed CIDR takes effect rather than sitting stale
-on a resource created earlier.
+**Do NOT "rewrite the rule on every provision" and call it done.** That was this trap's old advice
+and it is the exact defect ADR-0021 fixed for three clouds: the saved list reached the firewall at
+the next launch and not before, so an operator who changed networks was told their change applied
+while every box stayed unreachable. Provision is ADDITIVE and never revokes; the saved list reaches
+the cloud through `syncSshAccess()`, declared by `capabilities.managesSshAccess`, and declared to the
+Settings page as an `sshCidrList`. The whole of it — the result shape, the never-delete and
+authorize-before-revoke rules, and the two proof-of-authorship shapes — is
+[ssh-access.md](ssh-access.md). Read it before writing the firewall half of a provider.
 
 Auto-detecting the operator's address from a what-is-my-IP service was considered and rejected: a
 firewall rule is a security decision, and a rule derived from a DHCP lease is a rule nobody chose.
 
 ---
 
-## The five capabilities
+## Traps for token-and-firewall clouds
+
+Three answers from the research protocol that FIT existing fields but not the way a first reading
+suggests. DigitalOcean produced all three; it will not be the last cloud to.
+
+- **The tag charset.** `ProvisionSpec.tags` is `Record<string, string>` and the provider owns the
+  encoding. A cloud whose tags are flat strings with a restricted charset (letters, digits, `:`,
+  `-`, `_`) cannot write `managed-by=rockysurf`. Choose an encoding that is INJECTIVE for the keys
+  Rocky Surf uses (`managed-by:rockysurf` works because neither key nor value may contain the
+  separator), filter `listManaged()` on the same encoding, and **refuse a spec whose tag values you
+  cannot round-trip** rather than mangling them — trap 3's create-time rule again.
+- **No documented user-data ceiling.** The skill forbids guessing a round number, and it means it: a
+  cloud whose user-data page publishes no limit gives you no honest `userDataMaxBytes`. Either
+  establish it against the real API and say how, or declare the value with a dagger in the matrix
+  and in the README as REASONED. `validateSpec()` still enforces whatever you declare.
+- **No ARM SKUs at all.** Not a capability, and not a reason to omit anything. Report the offerings
+  the cloud sells (all `amd64`), each with its real `available`; core derives the architectures on
+  offer from the catalogue and the New Server page says "this cloud sells no ARM", which is a
+  different sentence from "ARM is sold out this afternoon" and needs to be.
+
+---
+
+## The eight capability fields
 
 ```ts
 const capabilities: ProviderCapabilities = {
@@ -213,21 +246,38 @@ const capabilities: ProviderCapabilities = {
   canInjectHostKeys: true,    // can the box come up presenting a host key core minted?
   userDataMaxBytes: 16384,    // hard ceiling on the rendered document, before transport encoding
   generatesUserData: true,    // does the provider deliver user-data at all?
+  // Optional — absent means false. Declare one only when it is TRUE of the cloud:
+  //   managesSshAccess: true,   // a shared firewall object core pushes sshAllowedCidr at (ADR-0021)
+  //   billsWhileStopped: true,  // a stopped machine bills at the RUNNING rate (ADR-0025)
+  //   simulatedInstances: true, // there is no machine at the address reported (test doubles only)
 }
 ```
 
 **There are zero `provider.id` conditionals in shared code, and tests enforce that.** So this object
 is not an implementation detail — it is the complete set of behavioural differences core is able to
 see. If core needs to do something differently for your cloud and no flag expresses it, that is an
-ADR conversation, not a conditional.
+ADR conversation, not a conditional — and not an approximation either. **An approximated capability
+passes conformance and lies**; `billsWhileStopped` exists because the first author to face a cloud
+that bills a stopped machine stopped and filed the question instead of shipping `stop: false`.
 
 `canInjectHostKeys` requires `generatesUserData`, and conformance checks the dependency: with no
 user-data there is no way to place a key before first contact.
 
-There is a sixth, optional flag — `simulatedInstances` (ADR-0003 amendment E15), which tells core
-this provider's instances have nowhere to connect to, so it drives bootstrap in-process instead of
-over SSH. Absent means `false`, which is what every provider that touches real hardware declares by
-saying nothing.
+**`billsWhileStopped` means the running rate.** Core keeps the meter running through `stopped` at the
+machine's hourly price, the server page says "Stopped, and still billing", and the New Server page
+warns before the machine exists. A cloud that charges a REDUCED rate while stopped fits no
+capability: do not set the flag (over-reporting), do not leave it absent (under-reporting, which
+`isBillingRow`'s own comment calls the bug) — stop and file the ADR question. A cloud with both a
+billing and a non-billing off-state (Azure `powerOff` vs `deallocate`) uses the non-billing call
+and leaves the flag absent.
+
+**`managesSshAccess`** is one claim with `syncSshAccess()`, checked in both directions by
+conformance: the flag without the method crashes at the first save, the method without the flag is
+never called. [ssh-access.md](ssh-access.md).
+
+**`simulatedInstances`** (ADR-0003 amendment E15) tells core this provider's instances have nowhere
+to connect to, so it drives bootstrap in-process instead of over SSH. Absent means `false`, which is
+what every provider that touches real hardware declares by saying nothing.
 
 **Set it if and only if there is no machine at the address you report.** A provider that talks to a
 real cloud leaves it absent. A provider that simulates — a local libvirt stub, a recorded-fixture

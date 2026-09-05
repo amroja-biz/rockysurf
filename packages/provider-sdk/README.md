@@ -52,7 +52,10 @@ environment variables may supply it when the config field is empty. A factory li
 installed into any Rocky Surf as a **personal provider** (`providers.<id>.package` in its config
 file); the operator-facing page is `docs/self-hosting.md`, "Personal providers". Note that such a
 package carries its OWN copy of this SDK, so nothing here depends on object identity —
-`isProviderError` is structural. The provider it returns implements nine required methods (plus
+`isProviderError` is structural. A factory also declares its **Settings panel** — `settings`
+(ADR-0027, E19): fields with kinds, labels and help, the cloud's machine-type vocabulary, and
+advisories for the operator — which is how an installation draws a panel for a provider it has
+never seen; conformance checks the declaration against `configSchema`. The provider it returns implements nine required methods (plus
 the optional `syncSshAccess()`, ADR-0021) and declares five required capabilities; three more are
 optional and absent means `false` — `simulatedInstances` (E15), `managesSshAccess` (ADR-0021) and
 `billsWhileStopped` (ADR-0025).

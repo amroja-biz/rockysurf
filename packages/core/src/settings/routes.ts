@@ -14,7 +14,7 @@ import { badRequest, conflict, forbidden, success } from '../http/responses.js'
 import { validate } from '../http/validate.js'
 import { applyChanges, parseTree, type Change } from './document.js'
 import { patternOf, type FieldSpec, type ListSpec, type SectionSpec } from './fields.js'
-import { buildSettingsInventory, type SettingsInventory } from './inventory.js'
+import { buildSettingsInventory, type DescribedProvider, type SettingsInventory } from './inventory.js'
 import { fingerprint, redactTree } from './view.js'
 
 /**
@@ -70,7 +70,7 @@ export interface SettingsRoutesDeps {
    * panel is titled by the config key, which is the only name anyone has for a package that did
    * not load.
    */
-  describeProvider?: (id: string) => { displayName: string } | undefined
+  describeProvider?: (id: string) => DescribedProvider | undefined
 }
 
 /**

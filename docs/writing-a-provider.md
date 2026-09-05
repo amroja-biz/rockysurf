@@ -150,6 +150,43 @@ verified against a key core generated itself. If you set it `false`, say plainly
 provider's docs what the operator is trusting instead;
 [`docs/providers/byo.md`](providers/byo.md) is the model.
 
+## Declare your settings
+
+A provider's config schema validates the file; it cannot draw a Settings panel. The panel comes from
+`factory.settings` ([ADR-0027](adr/0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md)),
+a declaration beside the schema, and conformance holds the two together by parsing every declared
+`example` through `configSchema`:
+
+```ts
+settings: {
+  title: 'My Cloud',
+  help: 'What this provider drives, and how it authenticates — one or two sentences.',
+  fields: [
+    { name: 'token', kind: 'secret', label: 'Token Environment Variable', example: 'MYCLOUD_TOKEN',
+      help: 'The NAME of an environment variable holding a read/write API token — not the token itself.' },
+    { name: 'region', kind: 'string', label: 'Region', example: 'nyc3', help: 'Which region new servers are created in.' },
+    // The two-act SSH whitelist as ONE kind: the list is declared, `allowAllCidr` is implied and
+    // drawn beside it. Declaring it requires `capabilities.managesSshAccess` (ADR-0021).
+    { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', example: '203.0.113.7/32',
+      help: 'Which networks may reach SSH on the boxes created here, as CIDRs.' },
+  ],
+  offering: { noun: 'droplet size', example: 's-2vcpu-4gb' },   // the saved-type fields speak this
+  advisories: [
+    { surface: 'create', text: 'A stopped droplet bills at the running rate; only terminating ends the charge.' },
+  ],
+}
+```
+
+The kinds are the controls a settings page draws honestly — `string`, `number`, `boolean`, `secret`,
+`stringList`, `sshCidrList` — and nothing else; a shape outside them is edited in the file. Do not
+declare `enabled`, `package` or `sizes`: those are the installation's, and every panel gets them.
+`advisories` are for what only the human needs to know (a quirk, a caveat); anything core has to
+COMPUTE with is a capability, never a sentence.
+
+Hetzner is the worked example (`packages/provider-hetzner/src/index.ts`); it is the first shipped
+provider to declare, and its hand-written rows in core are gone. AWS, Azure, GCP and BYO still carry
+theirs in `packages/core/src/settings/fields.ts` and will move one at a time.
+
 ## Prices and currency
 
 Prices ship **bundled and stamped with `fetchedAt`**; live pricing APIs are out of v0. There is
@@ -264,7 +301,9 @@ for one that has been.
 ## Before it merges
 
 - [ ] Nine methods implemented; `stop`/`start` throw rather than being absent if unsupported.
-- [ ] Conformance suite passes.
+- [ ] `factory.settings` declared, so the provider has a Settings panel; `credentialField` and
+      `credentialEnv` declared if it takes a token.
+- [ ] Conformance suite passes (it checks the declaration against the schema).
 - [ ] A column in [`docs/providers/capability-matrix.md`](providers/capability-matrix.md), filled
       in **in the same pull request**, with a note on how each value was established. A value
       nobody has exercised must say so — the way the `byo` column does.

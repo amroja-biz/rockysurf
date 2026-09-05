@@ -20,8 +20,9 @@ verification script.
 
 | export | asserts |
 |---|---|
-| `assertFactoryShape(factory, validConfig)` | the factory's identity and schema; that `createProvider()` does no I/O and returns a matching id; then the whole provider shape |
-| `assertProviderShape(provider)` | id lowercase and non-empty, all nine methods present, the five capability fields well-typed, `canInjectHostKeys` implies `generatesUserData` |
+| `assertFactoryShape(factory, validConfig)` | the factory's identity and schema; that `createProvider()` does no I/O and returns a matching id; `credentialField`/`credentialEnv` well-formed when present; then the whole provider shape, and the settings declaration when present |
+| `assertProviderShape(provider)` | id lowercase and non-empty, all nine methods present, the five required capability fields well-typed and the optional ones booleans when declared, `canInjectHostKeys` implies `generatesUserData`, `managesSshAccess` and `syncSshAccess()` agree in both directions |
+| `assertSettingsShape(factory, validConfig)` | the declaration (ADR-0027): every `help` a sentence, kinds valid, `reason` behind `writable: false`, the reserved names (`enabled`, `package`, `sizes`) refused, every `example` parsed through `configSchema`, and an `sshCidrList` only on a provider that declares `managesSshAccess` |
 | `assertOfferingsShape(offerings)` | positive cpu/memory, known architecture, non-empty region, and prices either `null` or a finite non-negative amount with an ISO 4217 currency and ISO 8601 `fetchedAt` |
 | `assertManagedShape(resources)` | non-empty `kind`, string native id, `ownership` from the frozen set |
 | `assertProviderErrorShape(err)` | a `ProviderError` with one of the nine frozen codes and a derived boolean `retryable` |
@@ -148,7 +149,7 @@ two documents:
 | **Configuration** | the YAML an operator can paste, then every field with its default. Take both from your own `config.ts` — that schema is what actually parses the section |
 | **Credentials** | where the credential comes from and where it is not kept. A token named in the config file is written `${VAR}` |
 | **What it needs in your account** | permissions, network prerequisites, host preparation. Link the IaC |
-| **Capabilities** | the five values and what each one costs the operator |
+| **Capabilities** | every value the constant declares — the five required and any optional one that is true — and what each costs the operator; a stopped machine that still bills belongs here AND in an advisory |
 | **Prices** | live, bundled with a `fetchedAt`, or `null`. Say which, and say the currency |
 | **Verified** | what has been run against real infrastructure, and when |
 | **Writing your own provider** | one line pointing at the SDK README and the standard |
@@ -157,8 +158,10 @@ Drop a section with nothing true to put in it; do not reorder the ones you keep.
 
 Two carry rules rather than conventions:
 
-**Capabilities are copied, not summarised.** Print the same five values the source declares, and
-check them against the `ProviderCapabilities` constant when you edit either. A README that disagrees
+**Capabilities are copied, not summarised.** Print the same values the source declares — the five
+required, and every optional one you set — and check them against the `ProviderCapabilities`
+constant when you edit either. **And carry the trust sentence** for a personal provider, verbatim:
+*a provider runs with Rocky Surf's full access — install ones you trust.* A README that disagrees
 with the constant is worse than one that omits the section — core branches on the constant, so the
 reader is being told the wrong thing about how their servers will behave.
 
@@ -188,8 +191,10 @@ because a role cannot be scoped to a group that does not exist yet.
 The SDK shape is frozen. If the cloud genuinely does not fit, that is an **amendment in the same
 pull request**, not a special case in core and not a `provider.id` conditional.
 
-The bar is high and it has been cleared five times (E12–E16, in the ADR — read them if you have a
-checkout). The shape is consistent, and the six bullets below are that shape.
+The bar is high and it has been cleared eight times (E12–E19, in the ADR — read them if you have a
+checkout; E17 is `billsWhileStopped`, the one a cloud like DigitalOcean forced). The shape is
+consistent, and the six bullets below are that shape. **The alternative to an amendment is never an
+approximation** — a capability set to the nearest available answer passes conformance and lies.
 
 An amendment that will be accepted looks like this:
 
@@ -209,6 +214,7 @@ An amendment that will be accepted looks like this:
 - **It states any MUST NOT for providers.** A flag that core takes as permission to skip a safety
   step needs the misuse spelled out.
 
-Before writing one, check the amendment is actually needed: the five capability flags, `unknown` as
-an instance state, `null` as an unknown price and `ProviderError`'s frozen codes already absorb most
-of what looks at first like a shape problem.
+Before writing one, check the amendment is actually needed: the eight capability fields, `unknown` as
+an instance state, `null` as an unknown price, `Offering.available` per offering, and
+`ProviderError`'s frozen codes already absorb most of what looks at first like a shape problem. The
+research protocol's table says where each answer lands; an answer with no row is the one to file.

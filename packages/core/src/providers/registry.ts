@@ -1,4 +1,4 @@
-import { ProviderError, type ComputeProvider } from '@rockysurf/provider-sdk'
+import { ProviderError, type ComputeProvider, type ProviderSettings } from '@rockysurf/provider-sdk'
 import { makeFakeProvider } from './fake.js'
 
 /**
@@ -40,6 +40,11 @@ export interface ProviderDescriptor {
   displayName: string
   /** `ProviderFactory.credentialEnv` (E18) — the variables the composition root reads. */
   credentialEnv?: readonly string[]
+  /**
+   * `ProviderFactory.settings` (E19, ADR-0027) — what the provider's Settings panel shows. The
+   * settings inventory is built from this for every factory that declares it, loaded or not.
+   */
+  settings?: ProviderSettings
 }
 
 export class ProviderRegistry {

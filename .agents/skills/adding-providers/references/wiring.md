@@ -42,9 +42,15 @@ Work down this list in order. Paths are from the repository root.
 and every provider schema is a `strictObject`, so passing it through is rejected outright. That
 rejection is the boundary working, not a bug.
 
-**Credentials resolve config-first, then the encrypted secrets store.** A credential written in the
-config file is the one an operator can see, diff and roll back, so it wins. A credential pasted in
-the wizard takes effect at the **next restart**, because providers are constructed at boot.
+**Credentials resolve config-first, then the ENVIRONMENT — and nothing is ever stored** (issue
+#280; `compose.ts`, `resolveCredential`). A credential written in the config file — usually as
+`${MYCLOUD_TOKEN}`, the variable's NAME — is the one an operator can see, diff and roll back, so it
+wins. With the field empty, the composition root reads the variables `PROVIDER_CREDENTIAL_ENV` names
+for a shipped provider, or `factory.credentialEnv` for a personal one, and hands the value straight
+to `configSchema.parse` under `credentialField`. There is no wizard credential box and no
+`provider-token` secret kind — both were deleted in #280 so that "Rocky Surf stores no cloud
+credentials" is unconditionally true. A variable exported after boot takes effect at the **next
+restart**, because a variable cannot appear inside a running process.
 
 A provider that is enabled but cannot be built is **reported and skipped, never fatal** — the
 control plane still starts, because the UI is where an operator fixes it.
@@ -75,10 +81,15 @@ its fields specifically so it would never have that shape.
 
 Recorded as friction in the schema itself: the natural fix is a `configSchema` exported by each
 provider and handed to core at registration time, which would delete this whole class of drift.
-Until someone does that, mirror by hand and check both files.
+Until someone does that, mirror by hand and check both files. In tree, `settings-parity.test.ts`
+(in `packages/rockysurf`) fails when your declared settings and core's mirrored section disagree.
 
-Do **not** bother adding `sizes` to a new section. It is core-only, compose strips it, and on this
-branch nothing consumes it (`rockysurf-j10e`).
+**DO add `sizes`** — as `z.array(z.string().trim().min(1)).nonempty().optional()`, like every other
+section. It is core's allowlist and core DOES consume it: `app.ts` applies it to every catalogue
+before anything resolves against it, `config/schema.ts` cross-validates saved tier preferences
+against it, and the Settings page shows it read-only. (An earlier version of this page said the
+opposite and cited the very ticket, `rockysurf-j10e`, that made it consumed.) Compose strips it
+before the provider's own schema sees the section, along with `enabled`.
 
 ### 4. The dependency lint
 
@@ -103,34 +114,45 @@ provider id, because the lookup falls back to `id`.
 
 ### 6. The credential environment variable
 
-`packages/core/src/secrets/store.ts` — `PROVIDER_CREDENTIAL_ENV`, if an environment variable can
-supply the credential. This drives "env wins, and refuse to persist over it", which is what stops
-the wizard from writing a credential that the environment then silently overrides.
+`packages/core/src/setup/state.ts` — `PROVIDER_CREDENTIAL_ENV`, the variables a shipped provider's
+credential may arrive under. Two readers, kept agreeing by sharing the table: the composition root's
+fallback when the config field is empty (config wins, then env — never the other way round), and the
+wizard's "`MYCLOUD_TOKEN` detected" after the export-and-restart loop. A personal provider declares
+the same list on its factory as `credentialEnv`. There is nothing in `secrets/store.ts` about
+provider credentials any more, and nothing "refuses to persist over" an environment variable,
+because nothing persists.
 
-### 7. The settings inventory
+### 7. The settings inventory — and why a declared provider needs no rows in it
 
-`packages/core/src/settings/fields.ts` — rows in `SETTINGS_FIELDS` **and** an entry in
-`SETTINGS_SECTIONS`. The settings API refuses to save any path not in this inventory: it is not a
-general-purpose YAML writer, and an unknown path returns *"this settings page does not edit that
-field"*.
+`packages/core/src/settings/fields.ts` is the hand-written inventory of what the Settings page edits,
+and since ADR-0027 it is hand-written for CORE'S OWN sections. A provider declares its panel on its
+factory (`settings`: fields with kinds, labels and help, the machine-type vocabulary, advisories) and
+`settings/inventory.ts` merges that declaration with the static rows at request time. **Hetzner has
+no rows in `fields.ts` for exactly this reason**, and is the shape to copy. AWS, Azure, GCP and BYO
+still carry static rows and will move one at a time; do not add a sixth static block.
 
-It is hand-written on purpose. A form generated from the zod schema would produce a control for
-every field the schema happens to have, including ones that must not be editable from a browser,
-and would render a `${VAR}` reference and a literal token as the same text box.
+What is still true: the settings API refuses to save any path not in the merged inventory (*"this
+settings page does not edit that field"*), so a field your declaration does not name is edited in the
+file; and a credential-named field must be declared `kind: 'secret'` — `fields.test.ts` names each
+declared provider in `DECLARED_BY_PROVIDER` and `settings-parity.test.ts` asserts the factory really
+declares its credential secret. The two halves together are what stops `providers.digitalocean.token`
+from ever coming back in a JSON body.
 
-**A credential-named field must appear here or `fields.test.ts` fails by design** — the test exists
-so that adding `providers.digitalocean.token` to the config schema, and forgetting this file,
-cannot start returning a live token in a JSON body. That test also pins the exact secret list, so
-it changes too.
+The three touch points an earlier version of this page missed are gone for a declared provider: the
+`['aws', 'azure', 'gcp']` whitelist loop in the SPA is derived from the inventory; the
+`TIER_PREFERENCE_CLOUDS` table's row is generated from `settings.offering`; and a `SETTINGS_LISTS`
+entry is generated from `settings.lists`.
 
-### 8. The Settings page
+### 8. The Settings page — nothing to do
 
-`packages/web/src/pages/SettingsPage.tsx` — `SECTION_ORDER`, plus a hand-written `<section>` block.
-Not schema-driven; adding a provider means frontend work or it gets no settings UI.
+`packages/web/src/pages/SettingsPage.tsx` draws a declared provider's panel with no edit: labels and
+placeholders from the declaration, the `sshCidrList` kind with the same CIDR control the shipped
+clouds get, advisories at the panel's head. There is no `SECTION_ORDER`; sections come from core in
+the order core sends them, and a declared provider's tab slots into the order the page has always
+had (Hetzner first, then AWS, Azure, GCP, BYO; personal providers after, in file order).
 
-**Proof that this step gets skipped:** GCP is a fully wired provider — compose row, core schema
-section, docs, bundled prices — and has *zero* presence in both `fields.ts` and `SettingsPage.tsx`.
-On this branch GCP is configurable only by hand-editing YAML.
+The only hand-written per-cloud code left in the SPA is the wizard's setup steps
+(`WizardPage.tsx`, the sanctioned exception, with a generic fallback for any id it does not know).
 
 ### 9. Wizard copy (optional)
 
@@ -163,6 +185,23 @@ complete set of behavioural differences core can see.
   rules, with fixture tests proving the check fails in **both** directions when broken. Mirrored in
   `packages/core/src/npx-closure.test.ts`.
 - `scripts/refresh-prices.mjs` — only if prices are bundled.
+
+### 13. Real-cloud verification
+
+"Before it merges" demands a capability-matrix column with per-value evidence, and this is how the
+evidence is obtained: **the nightly real-cloud run**, `.github/workflows/nightly-real-cloud.yml`. It
+is hand-written per cloud — a job per cloud with its own OIDC or token setup, a
+`deploy/<cloud>/setup-nightly.sh` that creates the CI-only identity and reads it back to verify what
+it made (`docs/memories/2026-08-31-setup-scripts-verify-what-they-claimed.md`), a sweep identity
+that reaps leaks, and `CLOUD === '<id>'` branches in `scripts/e2e/lifecycle.mjs` for the parts of a
+lifecycle that differ (which credential to read, what to preflight, how to build the config). The
+config that run boots on is validated on every pull request by `packages/rockysurf/src/e2e-config.test.ts`
+(#346), so extend that when you add config keys.
+
+**A provider without a nightly leg ships a fully daggered column, and says so.** That is honest and
+allowed — the `byo` column is the model — but say it plainly in the README's "Verified" section and
+in the PR rather than letting the next reader discover it. The leg is separate, larger work than the
+package, and should be its own issue.
 
 ## Tests that enumerate providers and will fail until updated
 
@@ -199,5 +238,11 @@ variables may supply it; and errors are `ProviderError`s from your own SDK copy,
 structural `isProviderError` accepts. The operator-facing side is `docs/self-hosting.md`, "Personal
 providers" (in the checkout).
 
-What it does not yet get is a Settings panel for its own fields — those are edited in the file
-until the provider declares them.
+Its Settings panel comes from `factory.settings` (ADR-0027): declare your fields with kinds, labels
+and help, the cloud's machine-type vocabulary, and any advisories, and the page is built from them —
+including the two-act SSH whitelist (`kind: 'sshCidrList'`, which requires `managesSshAccess`).
+Conformance parses every declared `example` through your `configSchema`. Items 7 and 8 above are
+therefore NOT needed for a declared provider, in tree or out: Hetzner has no rows in `fields.ts` and
+no block in `SettingsPage.tsx` for exactly this reason, and is the shape to copy. (This reference is
+refreshed in full by the skill's next revision; the standard is `docs/writing-a-provider.md`,
+"Declare your settings".)

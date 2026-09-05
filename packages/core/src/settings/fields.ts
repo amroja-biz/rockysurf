@@ -5,12 +5,19 @@
  * fields are secret and therefore never leave the process, which are read-only and why, which
  * carry a warning, and — the load-bearing one — which paths a save is allowed to touch at all.
  *
- * IT IS HAND-WRITTEN ON PURPOSE. A form generated from the zod schema would produce a control
- * for every field the schema happens to have, including the three that must not be edited from
- * a browser, and would render a `${VAR}` reference and a literal token as the same text box.
- * The schema stays the validator — a save is checked by `configSchema` itself, server-side, and
- * nothing here re-implements a rule from it — but the schema is not a UI, and pretending it is
- * is how a settings page grows a control that bricks the installation.
+ * IT IS HAND-WRITTEN ON PURPOSE, FOR CORE'S OWN SECTIONS. A form generated from the zod schema
+ * would produce a control for every field the schema happens to have, including the three that
+ * must not be edited from a browser, and would render a `${VAR}` reference and a literal token as
+ * the same text box. The schema stays the validator — a save is checked by `configSchema` itself,
+ * server-side, and nothing here re-implements a rule from it — but the schema is not a UI, and
+ * pretending it is is how a settings page grows a control that bricks the installation.
+ *
+ * PROVIDER SECTIONS ARE THE EXCEPTION, AND IT IS NOT A GENERATED FORM EITHER (ADR-0027). A
+ * provider DECLARES its panel on its factory — `ProviderFactory.settings`: fields with a closed
+ * set of kinds, hand-written labels and sentences, a vocabulary, advisories — and
+ * `settings/inventory.ts` turns that declaration into the same `FieldSpec`s this file writes by
+ * hand, merged with what is here. Hetzner has no rows below for that reason; AWS, Azure, GCP and
+ * BYO still do, and will move one at a time. A personal provider (ADR-0026) was never here at all.
  *
  * SECRET CLASSIFICATION IS BY FIELD, NEVER BY VALUE. A field is secret because of what it
  * holds — a provider credential — not because its contents look like one. `kind: 'secret'`
@@ -46,12 +53,27 @@
  * turning a spend cap off means removing the block, not blanking its two fields. `{ amount: 50 }`
  * with no currency is not a cap with a missing half; it is a config file that will not load.
  */
-export type FieldKind = 'string' | 'number' | 'boolean' | 'secret' | 'stringList' | 'group'
+export type FieldKind = 'string' | 'number' | 'boolean' | 'secret' | 'stringList' | 'group' | 'sshCidrList'
 
 export interface FieldSpec {
   /** Dotted path from the document root. `*` stands for one list index. */
   path: string
+  /**
+   * `sshCidrList` is the two-act SSH whitelist (ADR-0021, ADR-0027): the field is a list of CIDRs
+   * and the page draws it together with the sibling `allowAllCidr` boolean, never as a bare list.
+   * It arrives from a provider's declared settings; core's own hand-written rows still say
+   * `stringList` and the page's hand-written blocks know which of those are the CIDR control.
+   */
   kind: FieldKind
+  /**
+   * The control's label, when the inventory knows it (ADR-0027). Hand-written rows leave it out
+   * and the page's blocks carry their own labels; a row derived from a provider's declared
+   * settings carries the label the provider wrote, so the generic renderer does not have to
+   * invent one from the path.
+   */
+  label?: string
+  /** A placeholder for the box — for a secret, the NAME of a variable (`HETZNER_TOKEN`). */
+  example?: string
   /** False when the editor shows the value but will not write it. `reason` is then required. */
   writable: boolean
   /**
@@ -152,6 +174,12 @@ export interface SectionSpec {
   id: string
   title: string
   help: string
+  /**
+   * Sentences a PROVIDER wrote for the operator, drawn at the head of its panel (ADR-0027) —
+   * the second kind of variability issue #294 named, what only a human needs to know. Never
+   * something core computes with.
+   */
+  advisories?: readonly string[]
 }
 
 /**
@@ -169,7 +197,6 @@ export interface SectionSpec {
  * of thing goes in it is a box people leave empty.
  */
 const TIER_PREFERENCE_CLOUDS: readonly { id: string; label: string; noun: string; example: string }[] = [
-  { id: 'hetzner', label: 'Hetzner', noun: 'server type', example: 'cpx21' },
   { id: 'aws', label: 'AWS', noun: 'instance type', example: 't4g.medium' },
   { id: 'azure', label: 'Azure', noun: 'VM size', example: 'Standard_B2ps_v2' },
   { id: 'gcp', label: 'Google Cloud', noun: 'machine type', example: 't2a-standard-2' },
@@ -178,8 +205,21 @@ const TIER_PREFERENCE_CLOUDS: readonly { id: string; label: string; noun: string
 
 const TIER_PREFERENCE_SIZES = ['small', 'medium', 'large'] as const
 
-const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flatMap((cloud) =>
-  TIER_PREFERENCE_SIZES.map((size) => ({
+/** One cloud's vocabulary for the saved-type fields — the table's row shape, also built from a declaration. */
+export interface TierPreferenceCloud {
+  id: string
+  label: string
+  noun: string
+  example: string
+}
+
+/**
+ * The three saved-type fields for one cloud. Exported so `settings/inventory.ts` can generate the
+ * same rows, with the same sentence, for a provider that DECLARES its vocabulary (ADR-0027) —
+ * Hetzner left this table for that reason, and a personal provider was never in it.
+ */
+export function tierPreferenceFields(cloud: TierPreferenceCloud): FieldSpec[] {
+  return TIER_PREFERENCE_SIZES.map((size) => ({
     path: `preferences.tiers.${cloud.id}.${size}`,
     kind: 'string' as const,
     writable: true,
@@ -189,8 +229,23 @@ const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flat
       `${cloud.example}, for instance. Leave it blank to take the cheapest ${cloud.noun} that ` +
       `meets the ${size} floor, which is what Rocky Surf has always done. A saved type does not ` +
       `have to meet that floor: it is your answer, not a second guess at it.`,
-  })),
-)
+  }))
+}
+
+/** The card under Preferences for one cloud's saved types; same reuse as `tierPreferenceFields`. */
+export function tierPreferenceSection(cloud: TierPreferenceCloud): SectionSpec {
+  return {
+    id: `preferences.tiers.${cloud.id}`,
+    title: cloud.label === 'your own machines' ? 'Your own machines' : cloud.label,
+    help:
+      `Which ${cloud.noun} each size means on ${cloud.label}. Blank is the default: the cheapest ` +
+      `one available that meets the size's floor. A saved ${cloud.noun} that is sold out, ` +
+      `quota-refused or no longer offered falls back to that default, and the New Server page ` +
+      `says which and why rather than substituting in silence.`,
+  }
+}
+
+const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flatMap(tierPreferenceFields)
 
 /**
  * The v0.1 field inventory.
@@ -417,44 +472,13 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   },
 
   /* ----------------------------------------------------------------------- providers */
-  {
-    path: 'providers.hetzner.enabled',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Whether Rocky Surf may create servers at Hetzner. Every provider is off until you turn it ' +
-      'on, so a fresh install cannot spend money by accident.',
-  },
-  {
-    path: 'providers.hetzner.token',
-    kind: 'secret',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'The NAME of an environment variable holding a read/write API token from console.hetzner.com ' +
-      '— `HETZNER_TOKEN`, not the token itself. The token is scoped to one project, which is the ' +
-      'project every server created here appears in.',
-  },
-  {
-    path: 'providers.hetzner.location',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Which datacentre new servers are created in: fsn1/nbg1/hel1 (Germany, Finland), ash/hil ' +
-      '(US), sin (Singapore). ARM (CAX) types are only sold in fsn1, nbg1 and hel1.',
-  },
-  {
-    path: 'providers.hetzner.consoleProjectId',
-    kind: 'number',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Optional, and used only to put a "View in Hetzner Console" link on a server\'s page. The API ' +
-      'never reveals the number, so take it from the console address bar: ' +
-      'console.hetzner.com/projects/1234567/servers. Leave it out and servers simply have no link.',
-  },
+  /*
+   * HETZNER HAS NO ROWS HERE (ADR-0027). Its panel — token, location, console project id — is
+   * declared on `hetznerProviderFactory.settings` and turned into rows by `settings/inventory.ts`
+   * from the descriptor the composition root records. The prose moved there verbatim. It is the
+   * first shipped provider to declare, so that the path a personal provider takes is exercised by
+   * the product and not only by a fixture (the `ssh.keys` lesson, ADR-0019's amendment).
+   */
 
   {
     path: 'providers.aws.enabled',
@@ -912,11 +936,6 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'here does not remove it from boxes it was already authorized on; those you change over SSH.',
   },
   {
-    id: 'providers.hetzner',
-    title: 'Hetzner',
-    help: 'The quickest provider to start with: an API token from console.hetzner.com is the whole setup.',
-  },
-  {
     id: 'providers.aws',
     title: 'AWS',
     help:
@@ -972,15 +991,7 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'that meets them — until you name the type you actually want, and then that is what you ' +
       'get every time. A saved type applies to the very next server you create.',
   },
-  ...TIER_PREFERENCE_CLOUDS.map((cloud) => ({
-    id: `preferences.tiers.${cloud.id}`,
-    title: cloud.label === 'your own machines' ? 'Your own machines' : cloud.label,
-    help:
-      `Which ${cloud.noun} each size means on ${cloud.label}. Blank is the default: the cheapest ` +
-      `one available that meets the size's floor. A saved ${cloud.noun} that is sold out, ` +
-      `quota-refused or no longer offered falls back to that default, and the New Server page ` +
-      `says which and why rather than substituting in silence.`,
-  })),
+  ...TIER_PREFERENCE_CLOUDS.map(tierPreferenceSection),
   /**
    * A TAB, and its sources are a card on it — the same nesting `providers.byo.hosts` uses, for
    * the same reason: switching the shop on and saying what it points at are one errand.

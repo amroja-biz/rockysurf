@@ -20,6 +20,10 @@ property is untouched. **Amended by
 `providers.<id>.package` in the config file is loaded by the composition root before boot — and
 amendment E18 adds `ProviderFactory.credentialEnv` and `credentialField`, both optional. The
 central property is untouched: a personal provider is one more `ComputeProvider` in the registry.
+**Amended by
+[ADR-0027](0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md) (2026-09-04):**
+amendment E19, `ProviderFactory.settings`, optional — what a provider's Settings panel shows,
+declared beside its config schema and checked against it by conformance.
 
 ## Context
 
@@ -441,6 +445,27 @@ Two things they deliberately do not do:
    cloud credentials" stays unconditional for a provider from outside this repository.
 2. **They do not override the shipped table.** `PROVIDER_CREDENTIAL_ENV` stays authoritative for
    the five, so the wizard's detection and the composition's fallback keep reading one list.
+
+### E19 — `ProviderFactory.settings`, because a panel a provider cannot describe is a panel it cannot have
+
+Added 2026-09-04 by
+[ADR-0027](0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md) (issue #294).
+**Additive and optional**; absent, an installation draws a panel with only the fields it owns
+(`enabled`, `sizes`, and `package` for a personal provider) and the provider's own fields are edited
+in the file. Hetzner is the first shipped factory to declare; the other four have not yet.
+
+A declaration, not the config schema: a title and help, fields with a closed set of kinds and their
+labels and sentences, lists, the cloud's machine-type vocabulary, and advisories for the operator.
+Conformance checks that every declared `example` parses through `configSchema`, so the two
+descriptions of one section cannot drift apart unnoticed.
+
+Two things it deliberately does not do:
+
+1. **It does not let a provider declare `enabled`, `package` or `sizes`.** Those are the
+   installation's; a declaration naming one is refused.
+2. **It does not let a provider draw a firewall control it cannot honour.** `sshCidrList` requires
+   `capabilities.managesSshAccess`, checked by constructing the provider — ADR-0021's promise that a
+   saved whitelist reaches the cloud is the control's whole meaning.
 
 ## Consequences
 
