@@ -22,7 +22,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - dolt
     - claude-code
     - amp
@@ -125,7 +124,7 @@ tools:
       # modules per fresh box and gives up on the first stream reset — and it broke three Pack
       # smoke runs in one day, always on the same leg, always green on rerun (#200). Upstream
       # ships goreleaser binaries for exactly the two architectures this project supports, so
-      # the fix is to stop compiling: same idiom as `beads` and `beads-viewer`, a CDN download
+      # the fix is to stop compiling: same idiom as `beads`, a CDN download
       # with bounded retries and a digest.
       #
       # Chosen over `npm i -g @gastown/gt`, which upstream also documents: that package's

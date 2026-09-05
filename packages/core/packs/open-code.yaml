@@ -27,7 +27,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - opencode
   displayOrder: 6
   enabled: true

@@ -26,7 +26,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - pi
   displayOrder: 11
   enabled: true

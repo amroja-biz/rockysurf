@@ -21,7 +21,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - grok-build
   displayOrder: 7
   enabled: true
