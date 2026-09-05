@@ -226,10 +226,14 @@ suggests. DigitalOcean produced all three; it will not be the last cloud to.
   Rocky Surf uses (`managed-by:rockysurf` works because neither key nor value may contain the
   separator), filter `listManaged()` on the same encoding, and **refuse a spec whose tag values you
   cannot round-trip** rather than mangling them — trap 3's create-time rule again.
-- **No documented user-data ceiling.** The skill forbids guessing a round number, and it means it: a
-  cloud whose user-data page publishes no limit gives you no honest `userDataMaxBytes`. Either
-  establish it against the real API and say how, or declare the value with a dagger in the matrix
-  and in the README as REASONED. `validateSpec()` still enforces whatever you declare.
+- **A user-data ceiling that is documented somewhere else.** The skill forbids guessing a round
+  number and it means it — but "the how-to page publishes no limit" is not the same as "the cloud
+  publishes no limit". DigitalOcean's user-data how-to says nothing and its API reference documents
+  the create body's `user_data` as "plain text and may not exceed 64 KiB in size", which is a
+  transcription rather than a guess. **Read the reference before concluding there is no number.**
+  If there genuinely is none, establish it against the real API and say how, or declare the value
+  with a dagger in the matrix and in the README as REASONED. `validateSpec()` enforces whatever you
+  declare either way.
 - **No ARM SKUs at all.** Not a capability, and not a reason to omit anything. Report the offerings
   the cloud sells (all `amd64`), each with its real `available`; core derives the architectures on
   offer from the catalogue and the New Server page says "this cloud sells no ARM", which is a

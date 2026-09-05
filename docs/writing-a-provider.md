@@ -337,7 +337,12 @@ providers:
 panel with its Enabled switch. **A provider runs with Rocky Surf's full access — install ones you
 trust**: that is the whole trust model, and your README should say it too.
 
-Four things a personal package has to get right that an in-tree one gets for free:
+**The worked example is `packages/provider-digitalocean`** (issue #368): a complete provider that
+lives in this repository, is built and tested by CI, and is deliberately not wired into
+`compose.ts` — it is installed the way any personal provider is. Read it rather than starting from
+a blank file.
+
+Five things a personal package has to get right that an in-tree one gets for free:
 
 - **The default export is the factory**, and `factory.id` equals the config key the operator will
   use. A mismatch is reported as "rename the section to providers.<id>".
@@ -352,6 +357,15 @@ Four things a personal package has to get right that an in-tree one gets for fre
 - **Errors are `ProviderError`s from YOUR copy of the SDK**, which is a different class from the
   one core imported. Core's `isProviderError` is structural — the name and one of the nine codes —
   so this works; do not rely on `instanceof` across the boundary in your own code either.
+- **Prefer a package that installs with no package manager.** An operator who runs `npm install`
+  in `<dataDir>/providers` gets your dependencies resolved for them; an installer that only
+  extracts a tarball — which is the shape a provider shop takes — does not, and refuses an install
+  whose manifest names a dependency it cannot resolve. `@rockysurf/provider-digitalocean` declares
+  **no runtime dependencies at all**: its config schema is hand-written rather than zod (the SDK's
+  `ConfigSchema<T>` is structurally `{ parse }` precisely so that is allowed), and
+  `scripts/build-bundled-package.mjs` bundles the SDK's runtime helpers into its `dist/` with the
+  SDK kept as a devDependency. That is safe to do because the SDK has no runtime dependencies of
+  its own and no export whose meaning depends on object identity.
 
 The SDK has **zero runtime dependencies**, which is deliberate — anything it depended on would be
 inherited by every provider and every consumer — and no export whose meaning depends on object

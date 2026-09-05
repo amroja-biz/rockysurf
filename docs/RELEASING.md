@@ -1,6 +1,6 @@
 # Releasing Rocky Surf to npm
 
-Nine packages go to the public registry, in lockstep, from one command. This document is the
+Ten packages go to the public registry, in lockstep, from one command. This document is the
 procedure and the reasons — the reasons matter, because three of the steps look optional and are
 not.
 
@@ -17,12 +17,22 @@ not.
 | `@rockysurf/provider-hetzner` | |
 | `@rockysurf/provider-byo` | |
 | `@rockysurf/provider-conformance` | the acceptance bar a provider runs against itself, so an out-of-tree author can run it too |
+| `@rockysurf/provider-digitalocean` | a PERSONAL provider (ADR-0026): nothing imports it and the CLI does not bundle it, so it is public because installing it is the only way to have it |
 
 | package | why it stays `private: true` |
 |---|---|
 | `@rockysurf/web` | not a library. Its build output is copied into `@rockysurf/core/public` and shipped there |
 
-**Why all nine rather than one bundled tarball.** Bundling the providers and core into the
+**`@rockysurf/provider-digitalocean` is the one package nothing else in the release depends on**,
+and that is what it is for. It is a personal provider (ADR-0026): the composition root does not
+name it, `check-core-deps.mjs` does not require it, and an installation acquires it by putting it
+under `<dataDir>/providers` — with `npm install`, or by extracting the tarball, which works because
+the package declares no runtime dependencies and its build bundles what it uses of the SDK into its
+own `dist/`. `packages/rockysurf/src/personal-provider-tarball.test.ts` packs and extracts it on
+every CI run and boots the loader against the result, so the release cannot quietly stop producing
+an installable artifact.
+
+**Why all ten rather than one bundled tarball.** Bundling the providers and core into the
 `rockysurf` tarball was considered and rejected. `better-sqlite3` and `ssh2` are native modules
 and cannot be bundled; and an out-of-tree provider author needs a real `@rockysurf/provider-sdk`
 on the registry to build against, which means the scope is public regardless. Once the scope is
@@ -41,7 +51,7 @@ It was `private: true` until the ninth slot was added, which meant the acceptanc
 points authors at could not be installed by the out-of-tree authors it was written for — they
 could only vendor the checks or work inside a checkout. Publishing it also removed the reason
 `npm install` inside an *extracted* tarball used to fail: the `devDependency` on it, which appears
-in five published manifests, no longer names a version nobody can install.
+in six published manifests, no longer names a version nobody can install.
 
 ## One-time setup (the owner, once, before the first release)
 
@@ -116,7 +126,7 @@ that check exists for a reason, and `--no-git-checks` should not become habit.
 
 ### `pnpm publish`, never `npm publish`
 
-None of the nine packages contains its own `LICENSE` file. They are MIT because the workspace root
+None of the ten packages contains its own `LICENSE` file. They are MIT because the workspace root
 is, and the text reaches each tarball **only because pnpm copies the root `LICENSE` into packages
 that lack one**. Running `npm publish` from inside `packages/provider-sdk` produces a package that
 claims MIT in its manifest and ships no license text at all — a bare claim, which is worse than no

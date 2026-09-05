@@ -48,6 +48,7 @@ const FORBIDDEN = {
     '@rockysurf/provider-gcp',
     '@rockysurf/provider-hetzner',
     '@rockysurf/provider-byo',
+    '@rockysurf/provider-digitalocean',
     '@rockysurf/web',
   ],
   '@rockysurf/provider-aws': ['@rockysurf/core'],
@@ -55,6 +56,15 @@ const FORBIDDEN = {
   '@rockysurf/provider-gcp': ['@rockysurf/core'],
   '@rockysurf/provider-hetzner': ['@rockysurf/core'],
   '@rockysurf/provider-byo': ['@rockysurf/core'],
+  /*
+   * A PERSONAL provider (ADR-0026, issue #368). It lives here and is built and tested here, and it
+   * is deliberately ABSENT from the composition root's required list below: nothing imports it,
+   * `packages/rockysurf` does not depend on it, and an installation acquires it by putting the
+   * package under `<dataDir>/providers`. The boundary rule is the same one every provider has —
+   * never reach into core — and it is the rule that lets the package be installed beside a
+   * released Rocky Surf rather than inside one.
+   */
+  '@rockysurf/provider-digitalocean': ['@rockysurf/core'],
   // The SDK depends on nothing at all; its own test suite asserts that too.
   '@rockysurf/provider-sdk': [
     '@rockysurf/core',
@@ -63,6 +73,7 @@ const FORBIDDEN = {
     '@rockysurf/provider-gcp',
     '@rockysurf/provider-hetzner',
     '@rockysurf/provider-byo',
+    '@rockysurf/provider-digitalocean',
     '@rockysurf/web',
   ],
 }
