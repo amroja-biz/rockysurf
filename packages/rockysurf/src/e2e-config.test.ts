@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -34,6 +34,9 @@ const e2eConfigPath = fileURLToPath(new URL('../../../scripts/e2e/e2e-config.mjs
 const e2eConfig = (await import(pathToFileURL(e2eConfigPath).href)) as {
   buildConfigYaml: (options: Record<string, unknown>) => string
   CI_SSH_SG_NAME: string
+  CI_FIREWALL_NAME: string
+  CI_REGION: string
+  DIGITALOCEAN_PACKAGE: string
 }
 
 const tempDirs: string[] = []
@@ -72,10 +75,13 @@ const RUN = {
   awsRegion: 'us-east-1',
   awsSecurityGroupName: e2eConfig.CI_SSH_SG_NAME,
   awsProfile: '',
+  digitaloceanPackage: e2eConfig.DIGITALOCEAN_PACKAGE,
+  digitaloceanRegion: e2eConfig.CI_REGION,
+  digitaloceanFirewallName: e2eConfig.CI_FIREWALL_NAME,
 }
 
 describe('the config file the real-cloud lifecycle writes', () => {
-  for (const cloud of ['aws', 'azure', 'gcp', 'hetzner'] as const) {
+  for (const cloud of ['aws', 'azure', 'gcp', 'hetzner', 'digitalocean'] as const) {
     it(`is one core will boot on — ${cloud}`, () => {
       expect(() => validate(e2eConfig.buildConfigYaml({ ...RUN, cloud }))).not.toThrow()
     })
@@ -88,6 +94,50 @@ describe('the config file the real-cloud lifecycle writes', () => {
     expect(text).toContain(`securityGroupName: ${e2eConfig.CI_SSH_SG_NAME}`)
     expect(e2eConfig.CI_SSH_SG_NAME).toBe('rockysurf-nightly-ssh')
     expect(() => validate(text)).not.toThrow()
+  })
+
+  /**
+   * THE DIGITALOCEAN LEG IS THE ONE SECTION CORE HAS NO SCHEMA FOR (issue #369, ADR-0026).
+   *
+   * It is a personal provider, so `loadConfig` reads it through the catchall and the package's own
+   * hand-written schema validates the rest at composition — which happens at boot, on a real cloud
+   * account, twenty minutes and one billing event later. #343's whole point was to stop learning
+   * about a bad config file there, so the properties that can be checked on a pull request are
+   * checked on a pull request.
+   */
+  describe('the DigitalOcean leg, whose provider is installed rather than composed', () => {
+    const text = e2eConfig.buildConfigYaml({ ...RUN, cloud: 'digitalocean' })
+
+    it('names the package by the name the package itself declares', () => {
+      const manifest = JSON.parse(
+        readFileSync(fileURLToPath(new URL('../../provider-digitalocean/package.json', import.meta.url)), 'utf8'),
+      ) as { name: string }
+      // A rename in the package is a rename the nightly has to follow: `package:` is resolved by
+      // NAME under `<dataDir>/providers`, so a stale string here is a leg that skips every night
+      // reporting a provider nobody installed.
+      expect(e2eConfig.DIGITALOCEAN_PACKAGE).toBe(manifest.name)
+      expect(text).toContain(`package: "${manifest.name}"`)
+    })
+
+    it('carries no token, because the credential arrives as DIGITALOCEAN_TOKEN', () => {
+      // The personal-provider credential path (E18): the composition root fills `credentialField`
+      // from `credentialEnv` when the section omits it. Writing the token into the file would
+      // work, put a live credential on disk for no reason, and leave that seam unexercised.
+      expect(text).not.toContain('token:')
+    })
+
+    it('points the converge at the CI-only firewall, never the provider default', () => {
+      // The DigitalOcean sync rewrites the WHOLE firewall object (ADR-0021 S2), so a nightly on
+      // the default name would replace a person's allow-list with a runner address that expires
+      // by lunchtime. Same isolation #327 gave the AWS security group, for a sharper reason.
+      expect(text).toContain(`firewallName: ${e2eConfig.CI_FIREWALL_NAME}`)
+      expect(e2eConfig.CI_FIREWALL_NAME).toBe('rockysurf-nightly-ssh')
+      expect(text).not.toContain('firewallName: rockysurf-ssh\n')
+    })
+
+    it('states a region, since the provider has no default and will not guess one', () => {
+      expect(text).toContain(`region: ${e2eConfig.CI_REGION}`)
+    })
   })
 
   it('names a profile when the run resolves one, and omits the key when it does not', () => {

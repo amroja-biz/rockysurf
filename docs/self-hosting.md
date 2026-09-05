@@ -622,6 +622,58 @@ carries no record of who wrote it and Rocky Surf therefore owns the whole firewa
 Writing one is described in [`docs/writing-a-provider.md`](writing-a-provider.md), and the
 `adding-providers` skill in `.agents/skills/` walks an agent through it.
 
+#### The nightly real-cloud run (maintainers)
+
+This section is for whoever maintains this repository. It has nothing to do with running Rocky
+Surf for yourself, and following it spends money.
+
+`.github/workflows/nightly-real-cloud.yml` creates and destroys one real `s-2vcpu-2gb` droplet in
+`nyc3` every morning, over the same API the provider uses in production — and it installs the
+provider from a packed tarball into the run's own `<dataDir>/providers` first, with no package
+manager, exactly as the recipe above tells you to. It is therefore the only leg of the nightly
+whose subject is a shipped artifact rather than a workspace build. Under a cent a night.
+
+**Start by making a DigitalOcean team.** If you have no DigitalOcean account, that is the first
+step and not an afterthought: make an account, then make a TEAM inside it that will hold nothing
+but this nightly, and generate the token there. This leg asks that of you and the AWS, Azure and
+GCP legs do not, for a reason that no amount of care in the workflow can work around:
+
+- **DigitalOcean has no OIDC federation.** There is no workload identity pool, no federated
+  credential, nothing short-lived to mint. A personal access token is the only way in, so this leg
+  and the Hetzner one are the only two places in the nightly where a long-lived credential exists.
+- **A DigitalOcean token is scoped to a TEAM, and cannot be scoped to a project.** Custom scopes
+  narrow what a token may *do*; nothing narrows what it may do it *to*. A token that can create a
+  droplet in your team can destroy the droplets already there.
+- **DigitalOcean publishes no API for creating a token.** They are made in the control panel, by
+  hand. The setup script cannot mint one and does not pretend to.
+
+So the isolation is the team, and `deploy/digitalocean/setup-nightly.sh` enforces it rather than
+requesting it: it refuses to finish if the token's team already holds droplets, and it checks that
+before it writes the GitHub secret, so a setup that cannot prove what it claimed leaves the leg
+skipping rather than turning a workflow red at 07:00.
+
+```bash
+./deploy/digitalocean/setup-nightly.sh --dry-run     # changes nothing; prints every command
+./deploy/digitalocean/setup-nightly.sh
+```
+
+It probes every read the provider makes and names the missing scope if one is refused, round-trips
+a tag to prove `tag:create`, checks that `s-2vcpu-2gb` really is sold in `nyc3`, creates the
+`rockysurf-nightly` project and reads it back before trusting it, then sets one repository secret —
+`DIGITALOCEAN_TOKEN` — and reads GitHub back to confirm it landed. There are no repository
+variables. `deploy/digitalocean/teardown-nightly.sh` undoes it, and says plainly that revoking the
+token is yours to do: GitHub only ever held a copy.
+
+**The nightly's firewall has a name of its own**, `rockysurf-nightly-ssh`, and that is load-bearing
+rather than tidiness. A DigitalOcean sync rewrites the whole firewall object, so a nightly pointed
+at the `rockysurf-ssh` default would replace your allow-list with a GitHub runner's address, which
+stops existing an hour later. The name lives in `scripts/e2e/digitalocean-ci-firewall.mjs` and
+`packages/rockysurf/src/e2e-config.test.ts` asserts the config still carries it.
+
+**Rotating the token is a diary entry, not a script.** Generate a new one in the same team, run the
+setup script again, then revoke the old one at Account → API. The new token is written before you
+revoke the old one, so the leg never has a gap.
+
 ## SSH access on a new server
 
 ### Saving the keys you reuse
