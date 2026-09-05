@@ -9,6 +9,22 @@ Read the README.md file within this skill, and explore the other available files
 If creating visual artifacts (slides, mocks, throwaway prototypes, etc), copy assets out and create static HTML files for the user to view. If working on production code, you can copy assets and read the rules here to become an expert in designing with this brand.
 If the user invokes this skill without any other guidance, ask them what they want to build or design, ask some questions, and act as an expert designer who outputs HTML artifacts _or_ production code, depending on the need.
 
+## Prerequisites
+
+For mocks, slides and prototypes: **nothing to install**. This skill is files — CSS, tokens,
+assets and component sources — that you read and copy, and a static page opens in any browser. The
+`.jsx`/`.html` sources carry a `.txt` suffix; strip it to open one.
+
+For production work in `packages/web`, the checkout's own toolchain applies and this skill adds
+nothing to it: Node.js 24 or newer (`node --version`; `engines.node` is `>=24`) and pnpm
+(`pnpm --version`), per `CONTRIBUTING.md`, which is the normative statement of both —
+<https://nodejs.org/en/download> and <https://pnpm.io/installation> if either is missing. A UI
+change is verified in a browser, and `pnpm run test:ui` needs a Chromium that Playwright downloads
+once per machine (`pnpm --filter @rockysurf/web exec playwright install chromium`); that download is
+the user's call to make, not something to run past them.
+
+If one of these is missing, say which and stop at the step that needs it rather than installing it.
+
 ## What is in here
 
 | Path | What it is |

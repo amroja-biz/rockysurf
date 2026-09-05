@@ -5,8 +5,8 @@ wrong; the slow one takes minutes, needs Docker, and is the thing that actually 
 the pack works. Use the fast one after every edit and the slow one when you believe you are done.
 
 **Both run from the root of a Rocky Surf checkout** — anchor every invocation, since a working
-directory does not survive between tool calls — and both need a one-time setup, on Node 22 or
-newer:
+directory does not survive between tool calls — and both need a one-time setup, on Node 24 or
+newer with pnpm ([prerequisites.md](prerequisites.md)):
 
 ```bash
 pnpm install && pnpm -r build

@@ -41,9 +41,19 @@ packs from your own projects, install it personally once.
 
 These skills verify their work with this repository's real harnesses rather than a weaker
 substitute of their own, so they will ask for a checkout with `pnpm install && pnpm -r build` run
-once. `create-surge-pack` and `register-a-tool` also need Docker, for the run-twice smoke test.
-Any of them can write the file without those; none can honestly tell you it works, and all are
-written to say so rather than guess.
+once — Node.js 24 or newer and pnpm, as `CONTRIBUTING.md` requires. `create-surge-pack` and
+`register-a-tool` also need Docker, for the run-twice smoke test. `add-provider` needs neither
+Docker nor, for a personal provider, a checkout; a couple of its credential routes name a cloud CLI,
+and it says which ones do not. `rockysurf-design` needs nothing installed unless the change lands in
+`packages/web`. Any of them can write the file without the missing piece; none can then tell you it
+works, and all are written to say so rather than guess.
+
+**Each `SKILL.md` opens with a Prerequisites section** — the tools it assumes, why, and the
+command that checks each one — and a `references/prerequisites.md` beside it with the install page
+for macOS and Ubuntu. A skill names what is missing and hands the user the vendor's install page;
+**no skill installs a tool on the user's machine.** The install commands inside a pack's
+`installScript` are a different machine: they run on the Rocky Surf server the pack builds, where
+installing the tools is the entire job.
 
 ## Adding a skill here
 
@@ -54,6 +64,10 @@ Keep the shape consistent so the set reads as one thing:
   real user would type.
 - `SKILL.md` is a router plus the workflow. Depth goes in `references/*.md`, linked by relative
   path and loaded on demand, each with a stated "read this when".
+- A **Prerequisites** section near the top of `SKILL.md`: every tool the skill assumes on the
+  user's own computer, why it needs it, and the command that checks it — with the install pages in
+  `references/prerequisites.md`. A skill that needs nothing says so in a line. Never install a tool
+  for the user; name what is missing, point at the vendor's page, and stop at the step needing it.
 - `assets/` for files the agent copies rather than reads — templates, skeletons.
 - Label anything that only exists in a checkout as "in the checkout" or "(in tree)". Both skills
   serve people who have neither `docs/` nor `packages/` in front of them.

@@ -75,6 +75,11 @@ put one:
   `GOOGLE_APPLICATION_CREDENTIALS`, or `providers.gcp.keyFile`. `keyFile` is a **path**, never key
   material.
 
+`az` and `gcloud` are separate installs on the operator's machine, and Rocky Surf never calls
+either: it reads each cloud's credential chain in process. Both clouds have a route that needs no
+CLI at all — the environment variables above — so check what is installed before recommending one.
+[prerequisites.md](prerequisites.md) has the install pages and the CLI-free alternatives.
+
 ## `sshAllowedCidr` is required, and has no default
 
 For `aws`, `azure` and `gcp`, enabling the provider without `sshAllowedCidr` means the provider
@@ -139,8 +144,9 @@ and any credential that arrives through an environment variable.
   exported as `HETZNER_TOKEN`. Note that arm64 (CAX) types are sold only in `fsn1`, `nbg1` and
   `hel1`, and stock varies. `consoleProjectId` is optional and only adds a "View in Hetzner
   Console" link — the API never reveals the numeric project id, so it has to be typed in.
-- **Azure** needs the resource group to **exist first** (`az group create`). Rocky Surf does not
-  create it, because a role cannot be scoped to a resource group that does not exist yet.
+- **Azure** needs the resource group to **exist first** (`az group create`, or the portal if the
+  Azure CLI is not installed). Rocky Surf does not create it, because a role cannot be scoped to a
+  resource group that does not exist yet.
 - **GCP** requires `projectId` with no default and no inference: a Google credential can be valid
   for many projects and names none of them, so a guess would create billable machines in a project
   the operator did not pick. Note also that a default VPC ships with Google's own
