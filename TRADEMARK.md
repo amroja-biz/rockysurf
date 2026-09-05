@@ -34,6 +34,3 @@ this repository builds.
 
 Open an issue on [`amroja-biz/rockysurf`](https://github.com/amroja-biz/rockysurf) or
 contact the maintainers. Reasonable requests get reasonable answers.
-
-If you have already done something on this page and did not mean to, we would rather talk about
-it than send you a letter.
