@@ -17,7 +17,7 @@ import {
 } from '@rockysurf/provider-sdk'
 import { DigitaloceanApi } from './api.js'
 import { resolveSshCidrs, type DigitaloceanProviderConfig } from './config.js'
-import { digitaloceanCodeOf, isNotFound } from './errors.js'
+import { isNotFound } from './errors.js'
 import { decodeTags, encodeTag, encodeTags } from './tags.js'
 import type {
   DoAction,
