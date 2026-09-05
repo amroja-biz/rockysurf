@@ -433,9 +433,11 @@ export function makeDigitaloceanProvider(
 
     const current = sshSourcesOf(existing)
     const union = [...current, ...desired.filter((cidr) => !current.includes(cidr))]
+    // The tag is what makes the firewall apply to the droplet about to be created, so a firewall
+    // that has lost it is rewritten even when its CIDRs already match.
     const tagged = (existing.tags ?? []).includes(managedByTag)
     if (union.length === current.length && tagged) return
-    await putFirewall({ ...existing, tags: tagged ? existing.tags : [managedByTag] }, union)
+    await putFirewall(existing, union)
   }
 
   /**

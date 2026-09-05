@@ -343,6 +343,23 @@ describe('provision', () => {
     expect(methodsFor(cloud, 'PUT /firewalls')).toHaveLength(0)
   })
 
+  it('re-tags a firewall that has lost the tag, even when its CIDRs already match', async () => {
+    const cloud = emptyCloud()
+    cloud.firewalls.push({
+      id: 'fw-1',
+      name: 'rockysurf-ssh',
+      tags: [],
+      inbound_rules: [{ protocol: 'tcp', ports: '22', sources: { addresses: ['203.0.113.7/32'] } }],
+    })
+    const { provider } = build(cloud)
+    await provider.provision(SPEC)
+
+    // The tag is what makes the firewall apply to the droplet at all: matching CIDRs on an
+    // object nothing is attached to would be a rule enforcing nothing.
+    expect(cloud.firewalls[0]?.tags).toEqual(['managed-by:rockysurf'])
+    expect(methodsFor(cloud, 'PUT /firewalls')).toHaveLength(1)
+  })
+
   it('creates an ssh key it owns, named with the pairs that prove it', async () => {
     const { cloud, provider } = build()
     const result = await provider.provision(SPEC)
