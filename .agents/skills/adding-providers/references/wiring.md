@@ -127,9 +127,10 @@ because nothing persists.
 `packages/core/src/settings/fields.ts` is the hand-written inventory of what the Settings page edits,
 and since ADR-0027 it is hand-written for CORE'S OWN sections. A provider declares its panel on its
 factory (`settings`: fields with kinds, labels and help, the machine-type vocabulary, advisories) and
-`settings/inventory.ts` merges that declaration with the static rows at request time. **Hetzner has
-no rows in `fields.ts` for exactly this reason**, and is the shape to copy. AWS, Azure, GCP and BYO
-still carry static rows and will move one at a time; do not add a sixth static block.
+`settings/inventory.ts` turns that declaration into rows at request time. **No shipped provider has
+rows in `fields.ts`** — issue #370 moved the last four — so there is no static block to copy and none
+to add. Copy a factory instead: Hetzner for a token cloud, GCP for a firewall cloud, BYO for one with
+a list.
 
 What is still true: the settings API refuses to save any path not in the merged inventory (*"this
 settings page does not edit that field"*), so a field your declaration does not name is edited in the
@@ -138,16 +139,17 @@ declared provider in `DECLARED_BY_PROVIDER` and `settings-parity.test.ts` assert
 declares its credential secret. The two halves together are what stops `providers.digitalocean.token`
 from ever coming back in a JSON body.
 
-The three touch points an earlier version of this page missed are gone for a declared provider: the
-`['aws', 'azure', 'gcp']` whitelist loop in the SPA is derived from the inventory; the
-`TIER_PREFERENCE_CLOUDS` table's row is generated from `settings.offering`; and a `SETTINGS_LISTS`
-entry is generated from `settings.lists`.
+The three touch points an earlier version of this page missed no longer exist at all: the
+`['aws', 'azure', 'gcp']` whitelist loop in the SPA is derived from the inventory, the
+`TIER_PREFERENCE_CLOUDS` table is gone and its rows are generated from `settings.offering`, and the
+`providers.*` entries of `SETTINGS_LISTS` are gone and are generated from `settings.lists`.
 
 ### 8. The Settings page — nothing to do
 
 `packages/web/src/pages/SettingsPage.tsx` draws a declared provider's panel with no edit: labels and
-placeholders from the declaration, the `sshCidrList` kind with the same CIDR control the shipped
-clouds get, advisories at the panel's head. There is no `SECTION_ORDER`; sections come from core in
+placeholders from the declaration, the `sshCidrList` kind with the same CIDR control every shipped
+cloud now gets through that same kind, advisories at the panel's head. There is no hand-written
+provider block left in the file to imitate or to fall back on. There is no `SECTION_ORDER`; sections come from core in
 the order core sends them, and a declared provider's tab slots into the order the page has always
 had (Hetzner first, then AWS, Azure, GCP, BYO; personal providers after, in file order).
 

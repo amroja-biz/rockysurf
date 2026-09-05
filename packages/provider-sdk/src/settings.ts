@@ -66,6 +66,16 @@ export interface ProviderSettingListItemField {
   name: string
   label: string
   kind: 'string' | 'number' | 'boolean' | 'secret'
+  /**
+   * What this box in the entry is for, when the list's own sentence does not cover it.
+   *
+   * Optional, and the default is the LIST's `help` for every item — which is the right answer
+   * for a list whose entries are one idea (`mirrors`: a name and a URL). It is the wrong answer
+   * for `providers.byo.hosts`, where the admin login, the port and the fingerprint each need
+   * their own sentence and repeating "the machines Rocky Surf may claim" under all six boxes
+   * would say nothing about any of them. A sentence when present, checked like every other.
+   */
+  help?: string
 }
 
 /**
@@ -123,6 +133,24 @@ export interface ProviderSettings {
     noun: string
     /** One real id of this cloud's — `t4g.medium`, `cpx21`. */
     example: string
+    /**
+     * How this provider is named INSIDE a sentence, when that is not its `title`.
+     *
+     * Default `title`, which reads correctly for a proper noun ("whenever you ask AWS for a
+     * small box"). BYO is the case that needs the other one: its panel is titled "Your own
+     * machines" and its sentences say "whenever you ask your own machines for a small box",
+     * which a capitalised title would break mid-sentence.
+     */
+    label?: string
+    /**
+     * Whether core's `sizes` allowlist applies to this provider. Default `true`.
+     *
+     * `false` says the provider's catalogue is ALREADY the operator's own list, so a second
+     * allowlist over it would be a control for a config key that does not exist. BYO is the
+     * one: its machine types are the hosts named in `hosts` below, and core's `providers.byo`
+     * section has no `sizes` key for a panel to write.
+     */
+    allowlist?: boolean
   }
   advisories?: readonly ProviderAdvisory[]
 }

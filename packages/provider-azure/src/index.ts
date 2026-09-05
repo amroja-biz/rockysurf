@@ -99,6 +99,71 @@ export const azureProviderFactory: ProviderFactory<AzureProviderConfig> = {
   displayName: 'Microsoft Azure',
   configSchema: azureConfigSchema,
   createProvider: (config) => makeAzureProvider({ config }),
+  /**
+   * THE SETTINGS PANEL, DECLARED HERE (ADR-0027, issue #370). The prose moved verbatim out of
+   * core's `settings/fields.ts` and the SPA's hand-written block, both of which are gone.
+   *
+   * NO CREDENTIAL FIELD, and that is the point. Azure credentials come from the environment, a
+   * managed identity or `az login` — there is nowhere in the config file to put a client secret,
+   * so there is no box here inviting someone to paste one. `allowAzureCli` is the one Azure field
+   * this panel does not offer: it is a trust boundary rather than a setting (docs/providers/azure.md
+   * tells an operator to harden a control plane with `allowAzureCli: false`), and narrowing which
+   * credential sources a process will accept is a decision made in the file it boots from.
+   */
+  settings: {
+    title: 'Azure',
+    help:
+      'Virtual machines in one Azure region, in one resource group you create. Credentials come from ' +
+      'the environment, a managed identity, or `az login`, so there is no credential to type here.',
+    fields: [
+      {
+        name: 'subscriptionId',
+        kind: 'string',
+        label: 'Subscription id',
+        example: '00000000-0000-0000-0000-000000000000',
+        help: 'The Azure subscription every VM, disk, network interface and address is created in.',
+      },
+      {
+        name: 'resourceGroup',
+        kind: 'string',
+        label: 'Resource group',
+        example: 'rocky-surf-rg',
+        help:
+          'The one resource group Rocky Surf owns. You create it — `az group create --name ' +
+          'rocky-surf-rg --location eastus` — because a role cannot be scoped to a group that does not ' +
+          'exist yet, and the published Azure role is granted at exactly this group.',
+      },
+      {
+        name: 'location',
+        kind: 'string',
+        label: 'Location',
+        example: 'eastus',
+        help: 'Which Azure region new VMs are created in, e.g. eastus.',
+      },
+      {
+        name: 'sshAllowedCidr',
+        kind: 'sshCidrList',
+        label: 'SSH allowed from',
+        example: '203.0.113.7/32',
+        help:
+          'Which networks may reach SSH on the boxes Azure creates here, as CIDRs — your own address as ' +
+          'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
+          'Required whenever Azure is enabled, with no default on purpose. Saving pushes the change to ' +
+          'Azure straight away; you do not have to launch a server for it to take effect.',
+        warning:
+          'This is a firewall rule: it decides which networks may reach SSH on every box Azure creates ' +
+          'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
+          'sessions survive.',
+      },
+    ],
+    offering: { noun: 'VM size', example: 'Standard_B2ps_v2' },
+    advisories: [
+      {
+        surface: 'create',
+        text: 'The VM sizes with a `p` in them (B2ps_v2, D2ps_v5) are ARM (Ampere) and are the cheap, fast default here.',
+      },
+    ],
+  },
 }
 
 export default azureProviderFactory
