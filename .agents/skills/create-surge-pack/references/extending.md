@@ -12,8 +12,8 @@ coordinate with each other." Two tools, on top of a base that already ships.
 
 **1. Read the base.** `packs/ai-coding-agents.yaml` — `packId: ai-coding-agents`, `displayOrder:
 1`, `requiresRepos: true`, `requiresRdp: false`, no `desktop`, no `webPort`. Its `pack.tools` is
-fifteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
-`python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`, `beads-viewer`,
+fourteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
+`python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`,
 `claude-code`. Nothing about the two new tools changes any of `requiresRepos`,
 `requiresRdp`, `desktop` or `webPort` — neither is a GUI app or a loopback web server — so those
 flags carry over unchanged.
@@ -22,7 +22,7 @@ flags carry over unchanged.
 shows `displayOrder` 1–9 taken by the nine shipped packs and no `omp` or `mcp-agent-mail` id
 anywhere. `packId: omp-agent-mail`, `displayOrder: 10`.
 
-**3. Copy `pack.tools` verbatim, then append the two new ids** — do not touch the fifteen above:
+**3. Copy `pack.tools` verbatim, then append the two new ids** — do not touch the fourteen above:
 
 ```yaml
 tools:
@@ -39,7 +39,6 @@ tools:
   - playwright-deps
   - playwright
   - beads
-  - beads-viewer
   - claude-code
   - omp
   - mcp-agent-mail

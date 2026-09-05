@@ -163,7 +163,6 @@ if you drop a tool that another one depends on, the dependent breaks:
 | `playwright-deps` | 25 | `nodejs` (runs `npx`) |
 | `playwright` | 30 | `nodejs`, and `playwright-deps` for a browser that actually launches |
 | `beads` | 30 | `curl` |
-| `beads-viewer` | 30 | `curl` |
 | `claude-code` | 40 | `curl` only — **not** `nodejs`; its installer ships its own runtime |
 
 Anything you add yourself follows the same rule, so state its needs in a comment. Say out loud
@@ -272,7 +271,7 @@ these by what you are doing:
 |---|---|
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
 | adding an apt repository (keyring + source list) | the `gh` tool in `packs/ai-coding-agents.yaml` |
-| downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads-viewer` for a checksummed one |
+| downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads` in `packs/ai-coding-agents.yaml` for a checksummed one |
 | tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of installing one instead of compiling, and why |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |

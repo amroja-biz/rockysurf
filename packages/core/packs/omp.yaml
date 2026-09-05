@@ -41,7 +41,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - bun
     - omp
   displayOrder: 10
@@ -100,7 +99,7 @@ tools:
       # PINNED, and fetched from the release download endpoint rather than through the
       # vendor's own bun.sh installer, which is a curl-pipe-to-bash — against this
       # repository's policy no matter who wrote the script. The download endpoint,
-      # like the one `beads` and `beads-viewer` use in packs/ai-coding-agents.yaml, is a
+      # like the one `beads` uses in packs/ai-coding-agents.yaml, is a
       # CDN with no request quota (unlike api.github.com), and the release publishes
       # SHASUMS256.txt so the download can be verified before anything runs it.
       #
