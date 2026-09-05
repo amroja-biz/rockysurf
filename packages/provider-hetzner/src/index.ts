@@ -62,6 +62,64 @@ export const hetznerProviderFactory: ProviderFactory<HetznerProviderConfig> = {
   displayName: 'Hetzner Cloud',
   configSchema: hetznerConfigSchema,
   createProvider: (config) => makeHetznerProvider(config),
+  /**
+   * Where the token comes from when the config field is empty (ADR-0026, E18). The same two
+   * variables core's `PROVIDER_CREDENTIAL_ENV` has always named — `hcloud`'s own tooling reads the
+   * second — so the wizard's detection and the composition's fallback keep agreeing.
+   */
+  credentialField: 'token',
+  credentialEnv: ['HETZNER_TOKEN', 'HCLOUD_TOKEN'],
+  /**
+   * THE SETTINGS PANEL, DECLARED HERE (ADR-0027). Until this, the same three controls and their
+   * sentences were hand-written in core's `settings/fields.ts` and again as a block in the SPA;
+   * both are gone, and this is the one place the words live. The prose is the inventory's,
+   * moved verbatim — the matchers in the page tests follow it.
+   *
+   * Hetzner is the first shipped provider to declare, deliberately: it is the token-shaped cloud
+   * the `adding-providers` skill tells authors to copy, so it should be the shape they copy.
+   */
+  settings: {
+    title: 'Hetzner',
+    help: 'The quickest provider to start with: an API token from console.hetzner.com is the whole setup.',
+    fields: [
+      {
+        name: 'token',
+        kind: 'secret',
+        label: 'Token Environment Variable',
+        example: 'HETZNER_TOKEN',
+        help:
+          'The NAME of an environment variable holding a read/write API token from console.hetzner.com ' +
+          '— `HETZNER_TOKEN`, not the token itself. The token is scoped to one project, which is the ' +
+          'project every server created here appears in.',
+      },
+      {
+        name: 'location',
+        kind: 'string',
+        label: 'Location',
+        example: 'fsn1',
+        help:
+          'Which datacentre new servers are created in: fsn1/nbg1/hel1 (Germany, Finland), ash/hil ' +
+          '(US), sin (Singapore). ARM (CAX) types are only sold in fsn1, nbg1 and hel1.',
+      },
+      {
+        name: 'consoleProjectId',
+        kind: 'number',
+        label: 'Console project id',
+        example: '1234567',
+        help:
+          'Optional, and used only to put a "View in Hetzner Console" link on a server\'s page. The API ' +
+          'never reveals the number, so take it from the console address bar: ' +
+          'console.hetzner.com/projects/1234567/servers. Leave it out and servers simply have no link.',
+      },
+    ],
+    offering: { noun: 'server type', example: 'cpx21' },
+    advisories: [
+      {
+        surface: 'create',
+        text: 'ARM (CAX) server types are sold only in fsn1, nbg1 and hel1, and stock varies by the hour — a sold-out type is listed and marked unavailable rather than hidden.',
+      },
+    ],
+  },
 }
 
 export default hetznerProviderFactory

@@ -3,6 +3,7 @@ import type { InstanceView } from './instance.js'
 import type { ManagedResource } from './managed.js'
 import type { Offering } from './offering.js'
 import type { ProvisionSpec } from './provision.js'
+import type { ProviderSettings } from './settings.js'
 import type { SshAccessSyncOptions, SshAccessSyncResult } from './ssh-access.js'
 
 /**
@@ -275,4 +276,19 @@ export interface ProviderFactory<TConfig = ProviderConfig> {
    * this field wins over the environment — the file is the copy an operator can see and diff.
    */
   readonly credentialField?: string
+
+  /**
+   * What this provider's Settings panel shows (ADR-0027, amendment E19 to ADR-0003). **Additive
+   * and optional.** Absent, an installation still draws a panel with the fields it owns — `enabled`,
+   * `sizes`, and `package` for a personal provider — and the provider's own fields are edited in
+   * the file. Present, the panel is built from it: one control per declared field, in order, with
+   * the declared label, help and warning; the saved-type fields speak the declared `offering`
+   * vocabulary; and `advisories` reach the operator on the page each one names.
+   *
+   * Distinct from `configSchema` on purpose (see `settings.ts`), and checked against it: every
+   * declared field's `example` must parse. This is the mechanism by which a provider that is not
+   * in Rocky Surf's repository gets a Settings page at all, and it is how the shipped providers
+   * lose their hand-written blocks.
+   */
+  readonly settings?: ProviderSettings
 }

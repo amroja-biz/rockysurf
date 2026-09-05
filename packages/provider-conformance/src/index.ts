@@ -4,7 +4,9 @@ import {
   INSTANCE_STATES,
   isProviderError,
   PROVIDER_ERROR_CODES,
+  RESERVED_PROVIDER_SETTING_NAMES,
   RESOURCE_OWNERSHIPS,
+  SSH_ALLOW_ALL_FIELD,
   type ComputeProvider,
   type InstanceView,
   type ManagedResource,
@@ -133,6 +135,139 @@ export function assertFactoryShape<T>(factory: ProviderFactory<T>, validConfig: 
   const provider = factory.createProvider(validConfig)
   check(provider.id === factory.id, `createProvider() returned id '${provider.id}', expected '${factory.id}'`)
   assertProviderShape(provider)
+
+  if (factory.credentialEnv !== undefined) {
+    check(
+      Array.isArray(factory.credentialEnv) && factory.credentialEnv.every((v) => typeof v === 'string' && v.length > 0),
+      'factory.credentialEnv must be an array of variable names when present',
+    )
+  }
+  if (factory.credentialField !== undefined) {
+    check(typeof factory.credentialField === 'string' && factory.credentialField.length > 0, 'factory.credentialField must be a non-empty string when present')
+  }
+  if (factory.settings !== undefined) assertSettingsShape(factory, validConfig)
+}
+
+const SETTING_KINDS = ['string', 'number', 'boolean', 'secret', 'stringList', 'sshCidrList'] as const
+const LIST_ITEM_KINDS = ['string', 'number', 'boolean', 'secret'] as const
+
+/** A sentence, not a placeholder: long enough to say something and ends like one. */
+function isSentence(text: unknown): boolean {
+  return typeof text === 'string' && text.trim().length >= 20 && /[.!?)]$/.test(text.trim())
+}
+
+/**
+ * What a provider DECLARES about its settings agrees with what it VALIDATES (ADR-0027).
+ *
+ * The declaration (`factory.settings`) is what an installation draws a Settings panel from; the
+ * schema (`factory.configSchema`) is what accepts the file. They are two descriptions of one
+ * section and can drift, and the drift shows up as a control the operator fills in that the boot
+ * then refuses — the failure `settings/fields.ts` in the Rocky Surf repository was hand-written to
+ * avoid. So every declared field's `example` is parsed through the schema on top of `validConfig`.
+ *
+ * Two rules are about honesty rather than shape:
+ *
+ * - `sshCidrList` requires `capabilities.managesSshAccess`. The control's promise is that a save
+ *   reaches the cloud (ADR-0021); a provider that draws the control without the capability would
+ *   show a firewall editor whose saves land in a file and nowhere else — the exact defect
+ *   ADR-0021 exists to prevent, now with a nicer control on it.
+ * - `enabled`, `package` and `sizes` cannot be declared. They are the installation's, and a
+ *   provider declaring one would either duplicate a control or fight over its meaning.
+ */
+export function assertSettingsShape<T>(factory: ProviderFactory<T>, validConfig: T): void {
+  const settings = factory.settings
+  check(settings !== undefined && typeof settings === 'object', 'factory.settings must be an object when present')
+  check(typeof settings.title === 'string' && settings.title.length > 0, 'settings.title required')
+  check(isSentence(settings.help), 'settings.help must be a sentence (twenty characters or more, ending in punctuation)')
+  check(
+    typeof settings.offering?.noun === 'string' && settings.offering.noun.length > 0,
+    'settings.offering.noun required — the word for this cloud\'s machine types ("instance type")',
+  )
+  check(typeof settings.offering?.example === 'string' && settings.offering.example.length > 0, 'settings.offering.example required')
+  check(Array.isArray(settings.fields), 'settings.fields must be an array')
+
+  const names = new Set<string>()
+  let sshCidrList = false
+  for (const field of settings.fields) {
+    const where = `settings.fields['${field.name}']`
+    check(typeof field.name === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(field.name), `${where}: name must be an identifier`)
+    check(!names.has(field.name), `${where}: declared twice`)
+    names.add(field.name)
+    check(
+      !(RESERVED_PROVIDER_SETTING_NAMES as readonly string[]).includes(field.name),
+      `${where}: '${field.name}' is the installation's field, not the provider's — do not declare it`,
+    )
+    check((SETTING_KINDS as readonly string[]).includes(field.kind), `${where}: unknown kind '${field.kind}'`)
+    check(typeof field.label === 'string' && field.label.length > 0, `${where}: label required`)
+    check(isSentence(field.help), `${where}: help must be a sentence (twenty characters or more, ending in punctuation)`)
+    if (field.writable === false) check(isSentence(field.reason), `${where}: writable: false needs a reason that is a sentence`)
+    if (field.appliesAt === 'restart') check(isSentence(field.restartReason), `${where}: appliesAt: 'restart' needs a restartReason`)
+    if (field.accepts !== undefined) {
+      check(field.kind === 'secret', `${where}: accepts is only meaningful on a secret`)
+      check(field.accepts === 'envVarName' || field.accepts === 'literal', `${where}: accepts must be envVarName or literal`)
+    }
+    if (field.kind === 'sshCidrList') {
+      check(field.name === 'sshAllowedCidr', `${where}: an sshCidrList field is named sshAllowedCidr — that is the name ADR-0021's helpers and every page agree on`)
+      sshCidrList = true
+    }
+    check(!names.has(SSH_ALLOW_ALL_FIELD) || sshCidrList, `settings.fields['${SSH_ALLOW_ALL_FIELD}'] is drawn by the sshCidrList control — declare the list, not the checkbox`)
+
+    // The example parses: a declared box the schema would refuse is the drift this exists to catch.
+    if (field.example !== undefined) {
+      check(typeof field.example === 'string', `${where}: example must be a string`)
+      const value =
+        field.kind === 'secret' && field.accepts !== 'literal'
+          ? 'conformance-placeholder-credential'
+          : field.kind === 'number'
+            ? Number(field.example)
+            : field.kind === 'boolean'
+              ? field.example === 'true'
+              : field.kind === 'stringList' || field.kind === 'sshCidrList'
+                ? [field.example]
+                : field.example
+      try {
+        factory.configSchema.parse({ ...(validConfig as Record<string, unknown>), [field.name]: value })
+      } catch (err) {
+        throw new ConformanceError(`${where}: example '${field.example}' is refused by configSchema — ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+  }
+  check(!names.has(SSH_ALLOW_ALL_FIELD), `settings.fields['${SSH_ALLOW_ALL_FIELD}'] is drawn by the sshCidrList control — declare the list, not the checkbox`)
+
+  for (const list of settings.lists ?? []) {
+    const where = `settings.lists['${list.name}']`
+    check(typeof list.name === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(list.name), `${where}: name must be an identifier`)
+    check(!names.has(list.name), `${where}: also declared as a field`)
+    check(typeof list.label === 'string' && list.label.length > 0, `${where}: label required`)
+    check(isSentence(list.help), `${where}: help must be a sentence`)
+    check(isSentence(list.empty), `${where}: empty must be a sentence`)
+    check(Array.isArray(list.itemFields) && list.itemFields.length > 0, `${where}: itemFields required`)
+    for (const item of list.itemFields) {
+      check(typeof item.name === 'string' && item.name.length > 0, `${where}: item field name required`)
+      check(typeof item.label === 'string' && item.label.length > 0, `${where}.${item.name}: label required`)
+      check((LIST_ITEM_KINDS as readonly string[]).includes(item.kind), `${where}.${item.name}: unknown kind '${item.kind}'`)
+    }
+    if (list.add) {
+      check(typeof list.add.noun === 'string' && list.add.noun.length > 0, `${where}.add.noun required`)
+      check(Array.isArray(list.add.required), `${where}.add.required must be an array`)
+      const itemNames = new Set(list.itemFields.map((f) => f.name))
+      for (const required of list.add.required) check(itemNames.has(required), `${where}.add.required names '${required}', which is not an item field`)
+      for (const key of Object.keys(list.add.example)) check(itemNames.has(key), `${where}.add.example has '${key}', which is not an item field`)
+    }
+  }
+
+  for (const advisory of settings.advisories ?? []) {
+    check(advisory.surface === 'settings' || advisory.surface === 'create', `settings.advisories: unknown surface '${String(advisory.surface)}'`)
+    check(isSentence(advisory.text), 'settings.advisories: text must be a sentence')
+  }
+
+  if (sshCidrList) {
+    const provider = factory.createProvider(validConfig)
+    check(
+      provider.capabilities.managesSshAccess === true,
+      'settings declares an sshCidrList, so the provider must declare capabilities.managesSshAccess — a firewall control whose saves never reach the cloud is the defect ADR-0021 exists to prevent',
+    )
+  }
 }
 
 /**

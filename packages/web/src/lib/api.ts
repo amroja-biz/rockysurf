@@ -665,6 +665,11 @@ export interface ProviderInfo {
    * Absent for a cloud with nothing saved, which is every cloud until someone saves one.
    */
   tierPreferences?: Partial<Record<'small' | 'medium' | 'large', string>>
+  /**
+   * What the provider wrote for the person creating a server (ADR-0027) — quirks a human should
+   * know, never something the page computes with. Absent when the provider declared none.
+   */
+  advisories?: string[]
 }
 
 export async function listProviders(): Promise<ProviderInfo[]> {
@@ -1049,8 +1054,16 @@ export type SecretView =
 export interface SettingsField {
   /** Dotted path; `*` stands for a list index. */
   path: string
-  /** `group` is a whole optional block — `limits.spendCap` — written and removed as one. */
-  kind: 'string' | 'number' | 'boolean' | 'secret' | 'stringList' | 'group'
+  /**
+   * `group` is a whole optional block — `limits.spendCap` — written and removed as one.
+   * `sshCidrList` is the two-act SSH whitelist a provider DECLARED (ADR-0027): drawn with its
+   * sibling `allowAllCidr` by the same control the hand-written clouds use.
+   */
+  kind: 'string' | 'number' | 'boolean' | 'secret' | 'stringList' | 'group' | 'sshCidrList'
+  /** The control's label, when core knows it — a row from a provider's declared settings (ADR-0027). */
+  label?: string
+  /** A placeholder for the box; for a secret, the NAME of a variable. */
+  example?: string
   writable: boolean
   /** What the setting is for, in operator language. Rendered under every label (rockysurf-5qzg). */
   help: string
@@ -1088,6 +1101,8 @@ export interface SettingsSection {
   id: string
   title: string
   help: string
+  /** Sentences a provider wrote for the operator, drawn at the head of its panel (ADR-0027). */
+  advisories?: string[]
 }
 
 /** How a list collects a new entry: nothing is written until its blank form is filled and saved. */

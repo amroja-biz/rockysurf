@@ -557,10 +557,18 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     return saved.length > 0 ? Object.fromEntries(saved) : undefined
   }
 
+  /**
+   * What a provider wrote for the person creating a server (ADR-0027): the `create`-surface
+   * advisories from its declared settings, as sentences. Never something core computes with.
+   */
+  const advisoriesFor = (providerId: string): string[] =>
+    (registry.describe(providerId)?.settings?.advisories ?? []).filter((a) => a.surface === 'create').map((a) => a.text)
+
   routes.get('/api/v1/providers', async (c) => {
     const providers = await Promise.all(
       registry.list().map(async (p) => {
         const preferences = tierPreferencesFor(p.id)
+        const advisories = advisoriesFor(p.id)
         try {
           return {
             id: p.id,
@@ -568,6 +576,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
             capabilities: p.capabilities,
             offerings: allowedOfferings(await p.listOfferings(), deps.offeringAllowlist?.(p.id)),
             ...(preferences ? { tierPreferences: preferences } : {}),
+            ...(advisories.length > 0 ? { advisories } : {}),
           }
         } catch (err) {
           return {
@@ -577,6 +586,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
             offerings: [],
             offeringsError: isProviderError(err) ? err.message : String(err),
             ...(preferences ? { tierPreferences: preferences } : {}),
+            ...(advisories.length > 0 ? { advisories } : {}),
           }
         }
       }),

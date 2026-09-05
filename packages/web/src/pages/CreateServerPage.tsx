@@ -1833,6 +1833,14 @@ export function CreateServerPage() {
         {provider && !provider.capabilities.stop && (
           <p className="hint">{provider.displayName} servers cannot be stopped and restarted — only terminated.</p>
         )}
+        {/* What the PROVIDER wrote for this moment (ADR-0027): quirks a person should know before
+            creating here — sold-out ARM in three datacentres, an IP that changes. Sentences from the
+            provider's declaration, never something this page computes with. */}
+        {provider?.advisories?.map((text) => (
+          <p key={text} className="hint" data-testid="provider-advisory">
+            {text}
+          </p>
+        ))}
         {/* Also capability-driven (ADR-0025): a cloud that bills a stopped machine at the running
             rate has to say so BEFORE the machine exists, because "stop it to save money" is the
             habit every other cloud teaches. */}
