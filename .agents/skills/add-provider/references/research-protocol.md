@@ -40,8 +40,10 @@ looks broken. The worked example below is the case that produced this rule.
 ## The worked example: DigitalOcean, on paper
 
 Read against the DigitalOcean API as documented in September 2026. Every claim here is a reading of
-their documentation, not an observation — the column a DigitalOcean provider ships would be fully
-daggered until the nightly leg exists (`wiring.md`, "Real-cloud verification").
+their documentation, not an observation — and the column a DigitalOcean provider ships stays fully
+daggered until its author or installer verifies it by hand against a real account. DigitalOcean is
+a PERSONAL provider, so it gets no nightly leg: that is for the official providers, the ones
+composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud verification").
 
 | # | answer | lands in |
 |---|---|---|

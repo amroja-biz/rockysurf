@@ -201,9 +201,11 @@ in `fields.ts` and no block in the SPA.
 
 [references/shipping.md](references/shipping.md): the package README in the fixed section order, and
 the ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
-capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — stated plainly
-rather than discovered after the PR — the nightly real-cloud leg, without which every value in your
-column is daggered ([references/wiring.md](references/wiring.md#real-cloud-verification)).
+capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — for an OFFICIAL
+provider, one composed into `packages/rockysurf/src/compose.ts` — the nightly real-cloud leg,
+without which every value in your column is daggered. A personal provider gets no leg: its author
+and its installer verify it themselves
+([references/wiring.md](references/wiring.md#real-cloud-verification)).
 
 ## Before it merges
 
