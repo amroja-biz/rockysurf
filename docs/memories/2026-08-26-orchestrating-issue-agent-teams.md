@@ -1,7 +1,7 @@
 ---
 KEY: orchestrating-issue-agent-teams
 DATE: 2026-08-26
-UPDATED: 2026-08-30
+UPDATED: 2026-09-05
 STATUS: active
 SOURCE: the 2026-08-26 session that closed twenty issues (#88–#163) with eighteen background agents; pass-along .pass-along/2026-08-26-1324-PASS-ALONG.md
 ---
@@ -121,7 +121,10 @@ Download with `curl -sL -o /tmp/shot.png "<url>"` and view with the Read tool. I
 fails, say so rather than guessing what the image shows.
 
 ## Quality gate and known traps
-- Run <the full gate> before pushing. If a package you did not touch fails, say so explicitly.
+- Run <the full gate> before pushing — unless the change is small (docs-only, a rename, copy, a
+  single-file fix): then run only the checks that can see it and let PR CI be the gate
+  (docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md). If a package you did
+  not touch fails, say so explicitly.
 - <the project's test/tooling traps, one line each>
 
 ## Branch, commits, PR
