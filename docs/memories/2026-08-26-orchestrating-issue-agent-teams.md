@@ -89,6 +89,27 @@ written for the orchestrating session — the one that reads this file — not f
   When an agent's report says "needs a human", check whether the human already did it before
   relaying it as a task.
 
+- **One agent for a multi-PR epic.** (Added 2026-09-05.) A four-PR epic given to one agent —
+  plan, phone-a-friend, then build all four — finished, but at 874k tokens with no room left for
+  the conflict fix its own stacked branches needed; the orchestrator did it by hand. The owner's
+  standing instruction: *anticipate places for parallelism*. The shape that worked the same day:
+  one planning/review pass (or one planning agent), then **one agent per PR**, each in its own
+  worktree, launched together, model chosen per PR, questions sent to `main` via SendMessage
+  with a recommended default while the agent keeps working. Independent PRs run in parallel;
+  a truly dependent one branches from its parent's branch and gets retargeted. Expect runner
+  starvation when several PRs fire the pack-smoke matrix at once — those legs are not required
+  checks; rerun them one PR at a time after the pool drains.
+- **Stacked PRs after a squash-merge.** (Added 2026-09-05.) Once the base PR squash-merges, the
+  stacked branch conflicts: rebase it `--onto origin/main <base PR headRefOid>` (patch-ids differ
+  after the squash, so `git cherry` will not flag the duplicates). Retarget the stacked PR to main
+  *before* merging its base, or merge the base without `--delete-branch` — deleting the base
+  branch makes GitHub close the stacked PR, and a closed PR cannot be reopened onto a deleted
+  base; the only recovery is a fresh PR.
+- **A follow-on list outlives the direction that spawned it.** (Added 2026-09-05.) An issue filed
+  from an audit written before the owner changed direction was executed because it was on the
+  list, and had to be reverted (#369/#390/#391). Re-test each queued item against the current
+  ruling before launching an agent on it.
+
 ## The brief (template)
 
 Write this to the scratchpad as `AGENT-BRIEF.md`, adjust the paths, and reference it from
