@@ -170,16 +170,24 @@ of them creates anything.
 curl -sS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
   'https://api.digitalocean.com/v2/sizes?per_page=200' | head -c 2000
 
-# 2. The user-data ceiling, asserted by the API rather than by a document: a create carrying
-#    65,537 bytes should be refused, and one carrying 65,536 accepted. Add "dry_run": true is NOT
-#    available — run this only if you are willing to pay for the droplet you are about to destroy.
-#    Read the 422 message; that is the evidence.
-
-# 3. The firewall shape, on an object Rocky Surf made: confirm an inbound rule really carries no
-#    name or description field, which is the ruling the whole sync design rests on.
+# 2. The firewall shape: confirm an inbound rule really carries no name and no description
+#    field, which is the ruling the whole sync design rests on.
 curl -sS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
   'https://api.digitalocean.com/v2/firewalls' | head -c 2000
+
+# 3. The tag charset, which decides whether `key:value` round-trips. Creating a tag costs
+#    nothing and deleting it costs nothing.
+curl -sS -X POST -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"managed-by:rockysurf"}' \
+  'https://api.digitalocean.com/v2/tags'
+curl -sS -X DELETE -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+  'https://api.digitalocean.com/v2/tags/managed-by:rockysurf'
 ```
+
+The user-data ceiling is the one cheap-looking check that is not free: settling it means posting
+a real create with 65,537 bytes of user data and reading the refusal, and DigitalOcean has no
+dry-run on that endpoint. Do it only if you are willing to pay for and destroy the droplet the
+65,536-byte control case creates.
 
 The rest — that `off` really is a restartable droplet, that the address survives a power cycle,
 that cloud-init honours an injected host key, and that a powered-off droplet keeps billing — needs
