@@ -128,10 +128,9 @@ never sees it.
 **`digitalocean` is daggered in every row, and that is the whole column.** The package
 (`packages/provider-digitalocean`, issue #368) was written from DigitalOcean's published
 documentation and its public OpenAPI description, read on 2026-09-04, and tested against a fake of
-that API. **No DigitalOcean token has ever been pointed at it**, no droplet has been created, no
-firewall has been written, and there is no nightly leg — the leg is separate, larger work and its
-own issue. So every value above is an inference from a vendor document, and the ones a run would
-most plausibly contradict are worth naming:
+that API. **No DigitalOcean token has ever been pointed at it**, no droplet has been created and no
+firewall has been written. So every value above is an inference from a vendor document, and the
+ones a run would most plausibly contradict are worth naming:
 
 - **`canInjectHostKeys`** rests on DigitalOcean's Ubuntu images running stock cloud-init, whose
   `cc_ssh` module writes the host keys a `#cloud-config` `ssh_keys:` block names. That is upstream
@@ -158,6 +157,29 @@ most plausibly contradict are worth naming:
 
 `packages/provider-digitalocean/README.md` carries a "How to verify live" section naming the calls
 that settle the cheap half of this column.
+
+#### What removes each of these daggers, and what does not (issue #369)
+
+There is now a nightly leg — `digitalocean` in `.github/workflows/nightly-real-cloud.yml`, one
+`s-2vcpu-2gb` droplet in `nyc3` every morning, on a provider installed from its packed tarball the
+way a self-hoster installs it. **It has not run**: it skips with a notice until the repository
+owner runs `deploy/digitalocean/setup-nightly.sh` against a DigitalOcean team, so every dagger
+above is still on. What comes off the morning it goes green, and what does not, is worth writing
+down before anybody reads a green tick as more than it is.
+
+| value | comes off when the leg is green? | why |
+|---|---|---|
+| `stop` | **yes** | the run stops the droplet, waits for `stopped`, starts it and waits for `running` |
+| `ipStableAcrossStop` | **yes** | the address is captured before the stop and compared after the start; the run goes red if it moved |
+| `canInjectHostKeys` | **yes** | not by the run's own `ssh`, which accepts a new host key on sight — by core's BOOTSTRAP, which pins the key it minted and refuses the connection that carries the secrets file if the box presents another. A droplet whose cloud-init ignored the `ssh_keys:` block never reaches `ready`, so `ready` is the assertion |
+| `generatesUserData` | **yes** | nothing boots to `ready` without cloud-init having consumed the document |
+| `managesSshAccess` | **yes** | the run calls `POST /api/v1/network/ssh-access/sync` — the first real-cloud exercise of `syncSshAccess()` on any cloud — and asserts the object converged, that `reported` and `removable` came back empty as whole-object authorship requires, and that a second sync changes nothing |
+| `userDataMaxBytes: 65536` | **no** | the run sends one ordinary document. Settling the ceiling means posting a create with 65,537 bytes and reading the refusal, and DigitalOcean has no dry run on that endpoint — so it costs a droplet, deliberately not spent every night |
+| `billsWhileStopped` | **no** | the run asserts the METER: a stopped row still reports `billing.live`. That is a check on Rocky Surf, not on DigitalOcean — core derives that flag from the provider's own declaration, so the two cannot disagree. **Only an invoice settles whether a powered-off droplet is really charged.** Read one, then remove this dagger |
+
+The distinction in the last two rows is the whole point of the dagger convention: a nightly proves
+that the SHIPPED ARTICLE does what its author believed, and a green run is not evidence for a claim
+the run never made.
 
 ## Row by row
 
