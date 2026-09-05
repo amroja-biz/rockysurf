@@ -20,7 +20,9 @@
 - [orchestrating-issue-agent-teams](2026-08-26-orchestrating-issue-agent-teams.md): how one
   session closed twenty issues with a team of worktree-isolated agents — triage by component,
   model per issue, a shared brief, four concurrent, ≤12-line reports, and what to do when
-  GitHub Actions is down.
+  GitHub Actions is down. Amended 2026-09-05: one agent per PR for a multi-PR epic (never one
+  agent for the whole epic), stacked PRs after a squash-merge, and re-testing a queued follow-on
+  against the current ruling before launching it.
 - [plain-spoken-pr-comments](2026-08-30-plain-spoken-pr-comments.md): [active] Every agent PR gets a plain-language comment for the human administrator; written for the owner-as-merger — an explicit binary "what you must do",
   no optional setup commands, no operator trivia, no warning-shaped reassurance; action items
   become issues, not paragraphs; required setup ships as a run-one-script.
