@@ -18,6 +18,24 @@ how I install my linter."
 deploy button and none is coming. Registering a tool makes it available to put in a pack;
 step 5 is where that happens, and skipping it means the tool exists and installs nowhere.
 
+## Prerequisites
+
+What has to be on **the user's own computer**. Check before step 3, and if one is missing, tell the
+user which and where it comes from — **do not install it for them**.
+
+| Tool | Why this skill needs it | Check |
+|---|---|---|
+| Node.js 24+ | step 4's harness is a Node program, and out of a checkout `npx rockysurf@latest` is the whole toolchain; `engines.node` is `>=24` | `node --version` |
+| Docker | step 4 runs the tool in a real `ubuntu:24.04` container; nothing else proves the script works | `docker version` (a **Server** version, not just a client) |
+| Git and pnpm | only for the in-checkout route: `pnpm install && pnpm -r build`, then the loader test | `git --version`, `pnpm --version` |
+
+Install pages for macOS and Ubuntu, and what to say when one is missing, are in
+[`create-surge-pack`'s prerequisites](../create-surge-pack/references/prerequisites.md). The `npx`
+route needs network access the first time — it downloads the Rocky Surf CLI itself, nothing else.
+
+The `apt-get install` and `npm -g` lines in the tool's own `installScript` run on the Rocky Surf
+server, not here. They are not a prerequisite for anything.
+
 ## Route first
 
 | The user wants | Go |

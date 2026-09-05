@@ -18,6 +18,26 @@ the same container, in a stock `ubuntu:24.04` image with no `sudo` and no packag
 every pack that gets written by hand fails that on the first try. Write for it from the start
 rather than fixing it afterwards.
 
+## Prerequisites
+
+Four tools, all on **the user's own computer**. Check them before step 1 rather than discovering at
+step 4 that the harness cannot run. If one is missing, tell the user which and where it comes from —
+**do not install it for them**, and do not route around it.
+
+| Tool | Why this skill needs it | Check |
+|---|---|---|
+| Git | to get the checkout everything below runs from, and to show a derive changed one file | `git --version` |
+| Node.js 24+ | the loader test and the smoke harness are Node programs; `engines.node` is `>=24` | `node --version` |
+| pnpm | the workspace's package manager: `pnpm install && pnpm -r build`, and the loader test | `pnpm --version` |
+| Docker | step 4 runs the pack in a real `ubuntu:24.04` container; nothing else proves it works | `docker version` (a **Server** version, not just a client) |
+
+[`references/prerequisites.md`](references/prerequisites.md) has the install pages for macOS and
+Ubuntu, the `nvm` note, the emulation the second architecture needs, and what to say when one of
+these is missing.
+
+None of this is about the box the pack builds. The `apt-get install` and `npm install -g` lines you
+will write into an `installScript` run on the Rocky Surf server, which starts empty by design.
+
 ## Before you write anything
 
 Verification needs two things. Establish both now — do not discover at step 4 that the user
@@ -33,16 +53,14 @@ cannot run the harness.
    ```
    Either way, once:
    ```bash
-   node --version                    # 22+; if the machine uses nvm, select it first
    pnpm install && pnpm -r build     # the harness needs the built core
    ```
    If they intend to contribute the pack back, have them fork first and clone the fork.
    **Every command in this skill runs from the root of that checkout**, and your working
    directory may reset between tool calls, so anchor each one.
-2. **Docker**, for the smoke harness. `docker version` should print a server version. Check
-   *both* architectures before you promise anything, because what happens on a non-x86 machine
-   varies — sometimes `linux/amd64` refuses outright, sometimes it runs slowly under emulation
-   and fails in surprising ways:
+2. **Docker**, for the smoke harness — checked above. Check *both* architectures before you
+   promise anything, because what happens on a non-x86 machine varies — sometimes `linux/amd64`
+   refuses outright, sometimes it runs slowly under emulation and fails in surprising ways:
    ```bash
    docker run --rm --platform linux/arm64 ubuntu:24.04 uname -m
    docker run --rm --platform linux/amd64 ubuntu:24.04 uname -m
@@ -476,6 +494,8 @@ check, and anything the guide admits the box cannot do. That honesty is the whol
 
 ## Reference files
 
+- `references/prerequisites.md` — what has to be on the user's own computer, how to check each
+  one, and the install page for macOS and Ubuntu. Read it when a check above came back missing.
 - `references/contract.md` — the frozen v0.1 format, field by field; the four rules; what you may
   not assume about the box; the environment and secrets your scripts get. Read it once before
   authoring; if your pack is headless you can skip its desktop and RDP parts.

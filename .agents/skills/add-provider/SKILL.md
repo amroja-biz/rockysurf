@@ -16,6 +16,22 @@ Two different jobs share that word. Ask which one this is before doing anything:
 | to switch on or adjust a cloud Rocky Surf already ships — AWS, Azure, GCP, Hetzner, BYO | **Configure** | [references/configuring.md](references/configuring.md) |
 | to add a cloud Rocky Surf does not support — DigitalOcean, Vultr, OVH, an internal API | **Author** | the arc below |
 
+## Prerequisites
+
+What has to be on **the user's own computer**. Check what the chosen mode needs, and if something is
+missing, tell the user which tool and where it comes from — **do not install it for them**.
+
+| Tool | Why this skill needs it | Check |
+|---|---|---|
+| Node.js 24+, with npm | a provider is a Node package; `engines.node` is `>=24`, and `npm` is how `@rockysurf/provider-sdk` and `@rockysurf/provider-conformance` reach it | `node --version` |
+| Git and pnpm | in-tree work only: `pnpm install && pnpm -r build`, `pnpm run check`, `pnpm pack`. A personal provider needs neither | `git --version`, `pnpm --version` |
+| A cloud CLI (`az`, `gcloud`) | only on the Configure routes that use one — `az login`, `az group create`, `gcloud auth application-default login`. Every cloud also has a route that needs no CLI | `az version`, `gcloud version` |
+
+Docker is not needed: conformance is unit tests. `tsc` and `vitest` are devDependencies of the
+package, not programs to install onto the machine.
+[references/prerequisites.md](references/prerequisites.md) has the install pages for macOS and
+Ubuntu, the credential routes that avoid a CLI entirely, and what to say when one is missing.
+
 If the request is ambiguous ("add a provider" often is), the deciding question is whether the
 cloud is one of the five already shipped. If it is, they want Configure — writing a package for a
 cloud that already has one is nobody's intent. Ask rather than guess when it is a cloud you do not
