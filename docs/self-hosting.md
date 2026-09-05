@@ -523,6 +523,11 @@ you install and name in the config file
 inside the same process as your database, your master key and every cloud credential in your
 environment. Nothing fences it, on purpose; the decision is yours, made when you install it.
 
+There are two ways to install one: **from the shop**, which does everything below for you, or **by
+hand**, which is what the shop does. The shop is described in
+[Providers in the shop](#providers-in-the-shop); the rest of this section is the manual path, and
+it is worth reading either way, because it is what ends up on disk.
+
 Install the package under the data directory's `providers` folder, which is where a package name
 in the config file is looked up. That folder is outside the application, so upgrading Rocky Surf
 (`npx rockysurf@latest`, `git pull && pnpm -r build`, or rebuilding the container image) leaves it
@@ -612,6 +617,11 @@ are compiled into its `dist/` — so there is nothing left to resolve once the f
 personal provider that needs `npm install` to be usable is one an installer cannot check, and this
 one is the worked example of the other shape. `packages/rockysurf/src/personal-provider-tarball.test.ts`
 packs, extracts and boots it on every CI run, so the property is asserted rather than remembered.
+
+That is not a coincidence and not only an air-gap convenience: it is the requirement
+[Providers in the shop](#providers-in-the-shop) puts on anything published there, because the shop
+installer never runs a package manager either. It refuses an artifact whose declared runtime
+dependencies are not already present, and names them.
 
 Two things about DigitalOcean itself the provider's README says at more length, and which are the
 reason it exists: **a powered-off droplet keeps billing at the full rate** — only destroying it
@@ -1338,7 +1348,7 @@ All three end in the same place: a database row the boot reconcile never overwri
 deletes. What differs is who else can get the pack, and whether Rocky Surf remembers where it
 came from.
 
-Surge Packs (`/packs`) → **Personal** → **New Surge Pack** opens a chooser between the first and
+Shop (`/packs`) → **Personal** → **New Surge Pack** opens a chooser between the first and
 third of these; the second is a config-file thing, not a button on this page.
 
 1. **Upload a file.** One `.yaml` file, one time, nothing recorded about its origin because there
@@ -1429,6 +1439,61 @@ the URL you chose to add.
 
 The shop page shows bundled and registry packs together, each labelled with where it came from.
 
+### Providers in the shop
+
+A registry distributes **providers** as well as packs
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md)). They are listed in a
+separate file, `providers.json`, beside `index.json` and served by the same sources — so the same
+`registry.sources` list, the same trust label you wrote, and the same rule that nothing is fetched
+until you open the tab. A source whose URL is a single `.yaml` file is one pack and publishes no
+providers; that shelf says so.
+
+**Shop** (`/packs`) → **Providers** is the tab. Before you install anything, each entry shows:
+
+- what the provider is called and what it does, its version, and the npm package that would land
+  on this machine;
+- **what it will ask you to configure** — the fields it declares, with credentials marked as such;
+- **its capability answers** — whether machines can be stopped, whether a stopped one still bills,
+  whether the address survives a stop, whether it manages the SSH whitelist, and whether it takes
+  a start-up script;
+- and one sentence, on every entry, that never varies: **a provider runs with Rocky Surf's full
+  access — install ones you trust.**
+
+That sentence is Rocky Surf's, not the registry's. There is no field for it in `providers.json`
+and the format refuses one, for the same reason there is no trust label in a pack index: a claim
+about trustworthiness written by the party being trusted is worth nothing.
+
+**What Install does**, in order, stopping at the first thing that is not right:
+
+1. fetches the artifact — **https only**, through the same guard every registry fetch goes
+   through, with a size cap;
+2. checks its SHA-256 against the one the listing published, and refuses a mismatch naming both;
+3. unpacks it, refusing any archive containing an absolute path, a `..`, a symlink, a hard link,
+   a device node, or anything outside the package directory — and refusing one that unpacks to
+   more than it should;
+4. checks the package is the one the listing named, and that its entry point resolves the way the
+   loader will resolve it at startup;
+5. checks every runtime dependency it declares is already there — **Rocky Surf never runs npm**,
+   so a provider published to the shop has to carry what it needs;
+6. writes it under `<dataDir>/providers`, exactly where the manual instructions above put it;
+7. adds `providers.<id>.package` and `enabled: true` to your config file, through the same write
+   the Settings page uses — comments and everything else in the file are left alone;
+8. tells you to restart.
+
+**Nothing from the package runs at any point in that list.** A `package.json` `scripts` block is
+read and ignored. The provider's code runs when you restart Rocky Surf and its loader imports the
+package — which is the moment you chose. Configure it on the Settings page after the restart.
+
+**Update** is the same button: it re-fetches and replaces the whole package directory, so nothing
+of the old version survives. The version shown as installed is read from the package on disk, so
+it is right even if you have since installed something there by hand.
+
+**Remove** deletes the package and the whole `providers.<id>` section — including anything you
+configured in it — after asking. It is **refused while servers created with that provider still
+exist**, because a provider whose package is gone cannot describe, stop or terminate them.
+Terminate those first. Removing also needs a restart to take the provider out of the running
+process.
+
 ### What the checks prove
 
 A pack in the shop has passed `rockysurf pack lint` and `rockysurf pack check` in the registry's
@@ -1441,12 +1506,13 @@ Before installing anything from a registry the admin UI shows you every script i
 verbatim, along with which steps run as root and every URL they fetch. That disclosure is the
 control. Read it.
 
-It lives at **Surge Packs** (`/packs`), which is also where you can see what you already have and
+It lives at **Shop** (`/packs`), which is also where you can see what you already have and
 where each of it came from: `official` for the packs that shipped with your release, `registry`
 for anything that arrived from off this machine, and `local` for packs you created yourself. Three
 tabs carry those three words as their name — **Official**, **Community**, **Personal**, Official
 shown first — and a card's badge reads the same word its tab does (`registry` shows as COMMUNITY,
-`local` as PERSONAL; the value behind the badge does not change, only what you read). The tab is
+`local` as PERSONAL; the value behind the badge does not change, only what you read). A fourth
+tab, **Providers**, is the same registries' other listing and is described below. The tab is
 in the URL (`?tab=community`), so a link lands on the one it names.
 
 Two different marks can appear on a pack's icon, and they mean different things. A small bright

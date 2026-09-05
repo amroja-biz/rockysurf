@@ -77,6 +77,10 @@ export {
   personalProviderSections,
   providerEnabled,
   providerIdsIn,
+  PERSONAL_PROVIDERS_DIRNAME,
+  PERSONAL_PROVIDER_TRUST_SENTENCE,
+  resolvePackageEntry,
+  type PersonalProviderManifest,
   type PersonalProviderSection,
   type ShippedProviderId,
 } from './personal-providers.js'

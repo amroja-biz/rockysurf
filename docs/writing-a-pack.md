@@ -1115,7 +1115,7 @@ you add a pack.
 Not every pack is for anybody else. Three ways to get one onto a running Rocky Surf, none of
 which needs a pull request here:
 
-1. **Upload it.** Surge Packs (`/packs`) → Personal → New Surge Pack → Upload a pack file, and
+1. **Upload it.** Shop (`/packs`) → Personal → New Surge Pack → Upload a pack file, and
    choose it. It becomes a database row the boot reconcile never overwrites and never deletes.
 2. **Start from an existing pack.** New Surge Pack's third choice: pick any pack already on this
    installation, official, community or personal, and the same create form as "start from

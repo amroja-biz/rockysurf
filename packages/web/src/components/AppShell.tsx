@@ -86,9 +86,12 @@ export function AppShell({
             Tools
           </Link>
           {/* One link where there used to be two (rockysurf-4d8h, issue #51): the consolidated
-              page at /packs is reachable by every signed-in user, not only admins. */}
+              page at /packs is reachable by every signed-in user, not only admins. Called Shop
+              since ADR-0028, because the registries it browses distribute providers as well as
+              Surge Packs; the ROUTE is unchanged, so every link and document naming /packs
+              still works. */}
           <Link to="/packs" aria-current={isCurrentNavLink('/packs', pathname) ? 'page' : undefined}>
-            Surge Packs
+            Shop
           </Link>
           <Link to="/settings" aria-current={isCurrentNavLink('/settings', pathname) ? 'page' : undefined}>
             Settings
