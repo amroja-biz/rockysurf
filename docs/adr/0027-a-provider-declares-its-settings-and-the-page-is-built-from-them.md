@@ -7,6 +7,60 @@ Accepted — 2026-09-04. Issue #294, item 3 of the settled direction. **Amends
 optional — and narrows the "hand-written on purpose" doctrine of `settings/fields.ts` to core's own
 sections.
 
+**Amended 2026-09-05 (issue #370): all shipped providers declare their settings.** Decision 9 below
+said Hetzner migrated and AWS, Azure, GCP and BYO would follow, GCP first. They have, in that order,
+in one change. What that leaves is the end state this ADR named: `settings/fields.ts` holds no
+`providers.*` row, no `providers.*` section, no `preferences.tiers.*` row and no per-cloud table;
+`SETTINGS_LISTS` holds core's three lists and none of a provider's; `SettingsPage.tsx` has no
+hand-written provider block; and the settings inventory is a pure function of the loaded factories
+plus core's own sections. The prose moved verbatim — the labels, the help sentences and the
+firewall warnings an operator reads are the ones they read before.
+
+Five details are worth recording, because each is a place the mechanical migration was not quite
+mechanical:
+
+1. **Three optional additions to the declaration**, each unlocked by one shipped provider and each
+   there to keep prose the migration would otherwise have lost.
+   `ProviderSettingListItemField.help` — BYO's six host boxes each had their own sentence, and a
+   list whose items all repeat the list's sentence says nothing about any of them.
+   `offering.label` — how a provider is named INSIDE a sentence, because "whenever you ask Your own
+   machines for a small box" is not English and "Your own machines" is the right heading.
+   `offering.allowlist: false` — BYO has no `sizes` key in core's schema and should not grow one:
+   its machine types ARE the hosts the operator listed, so an allowlist over them is the list.
+2. **`enabled` keeps core's sentence, and the credential sentence moved to the section.** `enabled`
+   is reserved (decision 2), so the four clouds' own switch help — "Credentials come from the
+   standard AWS chain … and never from this file" — could not travel on it. It travels on
+   `settings.help`, at the head of the panel, where the same words already were.
+3. **The read-only allowlist is labelled from the declared noun.** The hand-written blocks said
+   "Offered instance types" / "Offered VM sizes" / "Offered machine types"; core generates
+   `Offered ${noun}s`, which reproduces all three and gives Hetzner "Offered server types" where the
+   generic renderer had humanized `sizes` to "Sizes". That is the one label this change alters, and
+   it alters it towards the words the other clouds already used.
+4. **The splice points are named rather than found.** `orderedSections` located the provider run by
+   looking for the first `providers.*` section in `SETTINGS_SECTIONS`; with none left there is
+   nothing to find, so the anchors are explicit — provider tabs immediately before `limits`,
+   saved-type cards immediately after `preferences`, which is exactly where they have always been.
+5. **AWS declares `securityGroupName`**, which never had a hand-written row. The provider has
+   accepted it since it was written and core's schema learned it in issue #343; leaving it off the
+   panel would be that issue's lesson in the other direction — a field the file accepts and no page
+   shows.
+
+Two things deliberately did NOT move, and are named here rather than left implicit. **The three
+clouds' credential environment variables** stay in core's `setup/state.ts` `PROVIDER_CREDENTIAL_ENV`:
+AWS, Azure and GCP have no credential FIELD to declare — their credentials arrive from an ambient
+chain and nothing is stored, which is the "Rocky Surf stores no cloud credentials" rule as a panel
+with no box on it — and moving the variable names onto a factory would need a `ProviderSettings`
+level `credentialEnv` this migration did not need. **Azure's `allowAzureCli`** is accepted by both
+schemas and declared by neither: it narrows which credential SOURCES a process will accept, which is
+a decision made in the file a process boots from, not a checkbox on a page. **`WizardPage.tsx`'s
+per-cloud setup steps** remain the sanctioned exception, unchanged and still pinned by its boundary
+test.
+
+The consequence recorded below — that an installation composed without descriptors has no provider
+panel and does not pretend to — now covers all five rather than only Hetzner. The product always
+composes (`packages/rockysurf/src/compose.ts` records a descriptor per wiring, enabled or not); a
+test with a bare registry has to record one too, and two in `server.test.ts` now do.
+
 ## Context
 
 The Settings page's inventory (`packages/core/src/settings/fields.ts`) was hand-written, and said so
@@ -67,7 +121,8 @@ guard. What the schema knows and what a page needs are different things.
    `providers.*.sshAllowedCidr` — the `['aws', 'azure', 'gcp']` loop is gone. `sectionHeader` prints
    the `settings`-surface advisories at the head of the panel; `/api/v1/providers` carries the
    `create`-surface ones and the New Server page prints them for the selected provider.
-9. **Hetzner migrates; AWS, Azure, GCP and BYO do not, yet.** Hetzner's four rows, its section, its
+9. **Hetzner migrates; AWS, Azure, GCP and BYO do not, yet.** *(Superseded by the 2026-09-05
+   amendment above: all five have migrated.)* Hetzner's four rows, its section, its
    tier-table row and its hand-written block are deleted; the prose moved verbatim onto
    `hetznerProviderFactory.settings` (with `credentialField`/`credentialEnv` from ADR-0026). One
    shipped provider on the declared path is what keeps that path exercised by the product rather
@@ -127,7 +182,8 @@ guard. What the schema knows and what a page needs are different things.
   which is one more fixture to keep honest.
 - A settings app built without the composition root's descriptors — an embedded core, a test with a
   bare registry — has no Hetzner panel, and does not pretend to. The product always composes.
-- Four shipped providers keep their hand-written rows for one more release.
+- ~~Four shipped providers keep their hand-written rows for one more release.~~ Retired by the
+  2026-09-05 amendment: none do.
 
 ### Risks and mitigations
 
@@ -138,12 +194,13 @@ guard. What the schema knows and what a page needs are different things.
   verbatim; the page's wiring test still matches `Token Environment Variable`.
 - **Risk:** the merged order differs from the old static order. **Mitigation:** `inventory.test.ts`
   pins the full provider and tier order, including a personal provider's place after `byo`.
-- **Risk:** `sshCidrList` ships exercised only by a fixture. **Mitigation:** stated here rather than
-  hidden; the browser suite drives it on the fixture provider; GCP is next.
+- **Risk:** `sshCidrList` ships exercised only by a fixture. **Mitigation:** retired by issue #370 —
+  three shipped clouds declare it, and `settings-declared-clouds.e2e.ts` drives all three panels and
+  writes a CIDR into a config file that had no `gcp:` section at all.
 
 ## Deliberately unresolved
 
-- Migrating AWS, Azure, GCP and BYO — a follow-on issue, GCP first.
+- ~~Migrating AWS, Azure, GCP and BYO — a follow-on issue, GCP first.~~ Done (issue #370).
 - Letting core validate a shipped section with the provider's own `configSchema`, which would
   collapse three homes to two; it needs the dependency rule revisited and is not this ADR's job.
 - The wizard's per-cloud setup steps (`WizardPage.tsx`, the sanctioned exception) — a `wizard`

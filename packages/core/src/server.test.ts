@@ -29,6 +29,43 @@ function writeConfig(body = ''): void {
 const bootHere = () =>
   boot({ argv: [], cwd: dir, env: {}, listen: false, announce: (m) => announced.push(m) })
 
+/**
+ * WHAT BYO'S SETTINGS PANEL IS MADE OF (ADR-0027, issue #370), abbreviated.
+ *
+ * A provider's rows come from its factory's declaration, recorded on the registry by the
+ * composition root — so a boot with no composition root has no provider panels and does not
+ * pretend to. The two tests below SAVE into `providers.byo`, so they compose the way the product
+ * does: a registry that carries the descriptor. The prose is the provider's and is checked in its
+ * own package; what matters here is that the rows exist to be written.
+ */
+const byoDescriptor = {
+  id: 'byo',
+  displayName: 'Bring your own hosts',
+  settings: {
+    title: 'Your own machines',
+    help: 'Machines you already have, managed over SSH.',
+    fields: [
+      { name: 'identityFile', kind: 'string' as const, label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
+    ],
+    lists: [
+      {
+        name: 'hosts',
+        label: 'Hosts',
+        help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
+        itemFields: [
+          { name: 'name', label: 'Name', kind: 'string' as const },
+          { name: 'host', label: 'Address', kind: 'string' as const },
+          { name: 'user', label: 'Admin login', kind: 'string' as const },
+        ],
+        add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+        labelField: 'name',
+        empty: 'None yet. Enabling this provider requires at least one host.',
+      },
+    ],
+    offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
+  },
+}
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'rockysurf-boot-'))
   announced = []
@@ -386,7 +423,15 @@ describe('settings reach the running process (issue #264)', () => {
 
   it('puts a saved value into force, where a route reading per request can see it', async () => {
     writeConfig('limits:\n  maxServers: 3\n')
-    booted = await bootHere()
+    booted = await boot({
+      argv: [],
+      cwd: dir,
+      env: {},
+      listen: false,
+      announce: (m) => announced.push(m),
+      // Composed, because the BYO save below writes rows the DECLARATION supplies (ADR-0027).
+      providers: () => new ProviderRegistry([], [], [byoDescriptor]),
+    })
     const token = await login()
 
     expect((await save(token, [{ path: ['limits', 'maxServers'], value: 12 }])).status).toBe(200)
@@ -423,6 +468,8 @@ describe('settings reach the running process (issue #264)', () => {
         composedWith.push(config.providers.byo.enabled)
         return new ProviderRegistry(
           config.providers.byo.enabled ? [makeFakeProvider({ bootMs: 1, terminateMs: 1 })] : [],
+          [],
+          [byoDescriptor],
         )
       },
     })

@@ -36,6 +36,29 @@ interface Options {
   signedIn: boolean
 }
 
+interface WorkerOptions {
+  /**
+   * WHICH INSTALLATION THIS FILE RUNS AGAINST, and the one way a file can ask for its own.
+   *
+   * The control plane below is per WORKER, and Playwright gives a worker several files in
+   * whatever order they finish — so two files that write the same part of the config file share
+   * a history that depends on the scheduler. That is not a concurrency problem (a worker runs one
+   * file at a time); it is a HISTORY problem, and it has one shape: a file whose first assertion
+   * is about a fresh installation is only right when it happened to run first.
+   *
+   * It bit `settings-ssh-keys.e2e.ts` and `new-server.e2e.ts`, which both save a public key named
+   * `laptop`: whichever ran second saw a key it did not add — a zero-cards assertion failing, or a
+   * duplicate name refused at the form — and which one that was moved when a file was added
+   * anywhere in the suite (issue #370 added one and made it deterministic rather than latent).
+   *
+   * A worker option is part of Playwright's worker hash, so a file that names its own value gets
+   * its own worker and therefore its own installation. Files that share the default share one, as
+   * before. Use it when a file asserts about state nobody else may have touched; the value is a
+   * name for the installation and only has to be unique.
+   */
+  installation: string
+}
+
 interface WorkerFixtures {
   controlPlane: ControlPlane
   /**
@@ -48,8 +71,10 @@ interface WorkerFixtures {
   adminStorageState: () => Promise<string>
 }
 
-export const test = base.extend<Options, WorkerFixtures>({
+export const test = base.extend<Options, WorkerFixtures & WorkerOptions>({
   signedIn: [true, { option: true }],
+
+  installation: ['shared', { scope: 'worker', option: true }],
 
   /**
    * ONE REAL ROCKY SURF PER WORKER.
@@ -61,7 +86,10 @@ export const test = base.extend<Options, WorkerFixtures>({
    * file at the same time, and the resulting failure would be a mystery in whichever one lost.
    */
   controlPlane: [
-    async ({}, use) => {
+    async ({ installation }, use) => {
+      /* Depended on so the option is part of this worker's hash: a file that names its own
+         `installation` gets its own worker, and so its own installation. See `WorkerOptions`. */
+      void installation
       const plane = await startControlPlane()
       await use(plane)
       await plane.stop()

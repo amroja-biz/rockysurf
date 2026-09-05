@@ -26,11 +26,24 @@ import { describe, expect, it } from 'vitest'
 /** What core's test says is declared, and by whom — kept in step with `fields.test.ts` by the pin below. */
 const DECLARED_BY_PROVIDER: Record<string, ProviderFactory<never>> = {
   hetzner: hetznerProviderFactory as unknown as ProviderFactory<never>,
+  aws: awsProviderFactory as unknown as ProviderFactory<never>,
+  azure: azureProviderFactory as unknown as ProviderFactory<never>,
+  gcp: gcpProviderFactory as unknown as ProviderFactory<never>,
+  byo: byoProviderFactory as unknown as ProviderFactory<never>,
 }
 
 /** A config the provider's own schema accepts, per declared factory. */
 const VALID_CONFIG: Record<string, Record<string, unknown>> = {
   hetzner: { token: 'hz_test' },
+  aws: { region: 'us-east-1', sshAllowedCidr: '203.0.113.7/32' },
+  azure: {
+    subscriptionId: '00000000-0000-0000-0000-000000000000',
+    resourceGroup: 'rocky-surf-rg',
+    location: 'eastus',
+    sshAllowedCidr: '203.0.113.7/32',
+  },
+  gcp: { projectId: 'my-project-123456', zone: 'us-central1-a', sshAllowedCidr: '203.0.113.7/32' },
+  byo: { hosts: [{ name: 'workshop', host: '10.0.0.9' }] },
 }
 
 const SHIPPED: Record<string, ProviderFactory<never>> = {
@@ -54,8 +67,11 @@ describe('every shipped factory named in DECLARED_BY_PROVIDER really declares it
       // schema is strict, so a declared name outside this set would be refused at boot.
       const section = (configSchema.parse({}).providers as Record<string, Record<string, unknown>>)[id] ?? {}
       const coreKeys = new Set(Object.keys(section))
-      const declared = factory.settings!.fields.map((f) => f.name)
-      for (const name of declared) {
+      // A declared LIST is a declared name too — `providers.byo.hosts` is the shape core's copy
+      // carries as a key, and a panel that drew it nowhere would be the same gap in the other
+      // direction (issue #370, the first shipped provider with a list).
+      const declared = [...factory.settings!.fields.map((f) => f.name), ...(factory.settings!.lists ?? []).map((l) => l.name)]
+      for (const name of factory.settings!.fields.map((f) => f.name)) {
         // Prove core accepts the key by parsing a file that sets it to the declared example.
         const field = factory.settings!.fields.find((f) => f.name === name)!
         const value =

@@ -183,9 +183,17 @@ declare `enabled`, `package` or `sizes`: those are the installation's, and every
 `advisories` are for what only the human needs to know (a quirk, a caveat); anything core has to
 COMPUTE with is a capability, never a sentence.
 
-Hetzner is the worked example (`packages/provider-hetzner/src/index.ts`); it is the first shipped
-provider to declare, and its hand-written rows in core are gone. AWS, Azure, GCP and BYO still carry
-theirs in `packages/core/src/settings/fields.ts` and will move one at a time.
+Two more knobs on `offering`, both optional and both for providers whose panel does not read like a
+proper noun: `label` is how the provider is named inside a sentence ("whenever you ask *your own
+machines* for a small box") when that is not the `title` over its panel, and `allowlist: false` says
+this provider has no `sizes` allowlist at all, because its catalogue is already the operator's own
+list. `@rockysurf/provider-byo` sets both; every other shipped provider sets neither. A list's item
+fields may also carry their own `help` — the list's sentence covers them all when they do not.
+
+Every shipped provider is a worked example: Hetzner (`packages/provider-hetzner/src/index.ts`) is the
+token shape, GCP/AWS/Azure are the firewall shape with no credential field at all, and BYO is the one
+with a declared list. There are no provider rows left in `packages/core/src/settings/fields.ts` — it
+is core's own sections and nothing else — so a new provider adds none.
 
 ## Prices and currency
 

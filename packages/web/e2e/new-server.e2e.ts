@@ -12,6 +12,11 @@ import { test, expect } from './fixtures'
  * NOTHING HERE CREATES A SERVER. The form is filled and inspected, never submitted — the BYO
  * host in the test configuration is a loopback port with no listener, deliberately.
  */
+/* ITS OWN INSTALLATION (see `installation` in `fixtures.ts`). This file saves a public key
+   named `laptop`, and so does the other one — whichever ran second on a shared worker saw a
+   key it had not added, and which one that was moved whenever a file was added to the suite. */
+test.use({ installation: 'new-server' })
+
 test.describe.configure({ mode: 'serial' })
 
 const PUBLIC_KEY =

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import type { ProviderSettings } from '@rockysurf/provider-sdk'
 import { describe, expect, it } from 'vitest'
 import { configSchema, PINNED_PATHS } from '../config/index.js'
 import {
@@ -66,7 +67,89 @@ const NOT_CREDENTIALS: Record<string, string> = {
  */
 const DECLARED_BY_PROVIDER: Record<string, string> = {
   hetzner: 'hetznerProviderFactory.settings in packages/provider-hetzner/src/index.ts declares token, location and consoleProjectId',
+  aws: 'awsProviderFactory.settings in packages/provider-aws/src/index.ts declares region, profile, sshAllowedCidr and securityGroupName',
+  azure: 'azureProviderFactory.settings in packages/provider-azure/src/index.ts declares subscriptionId, resourceGroup, location and sshAllowedCidr',
+  gcp: 'gcpProviderFactory.settings in packages/provider-gcp/src/index.ts declares projectId, zone and sshAllowedCidr',
+  byo: 'byoProviderFactory.settings in packages/provider-byo/src/index.ts declares identityFile and the hosts list',
 }
+
+/**
+ * WHAT THOSE FACTORIES DECLARE, ABBREVIATED (issue #370).
+ *
+ * Core cannot import a provider package — the dependency lint — so the properties below that need
+ * a declaration build one. These are DELIBERATELY not copies of the real prose: the words are the
+ * providers' and are held to their own conformance suite, and
+ * `packages/rockysurf/src/settings-parity.test.ts` is where a declaration is checked against
+ * core's schema for the section. What is exercised here is the SHAPE core turns them into.
+ */
+const declaration = (
+  title: string,
+  noun: string,
+  example: string,
+  extra: Partial<ProviderSettings> = {},
+): ProviderSettings => ({
+  title,
+  help: `What ${title} is for, in a sentence long enough to be one.`,
+  fields: [],
+  offering: { noun, example },
+  ...extra,
+})
+
+const SHIPPED_DECLARATIONS: Record<string, ProviderSettings> = {
+  hetzner: declaration('Hetzner', 'server type', 'cpx21', {
+    fields: [
+      { name: 'token', kind: 'secret', label: 'Token Environment Variable', example: 'HETZNER_TOKEN', help: 'The NAME of an environment variable holding the token.' },
+      { name: 'location', kind: 'string', label: 'Location', help: 'Which datacentre new servers are created in.' },
+    ],
+  }),
+  aws: declaration('AWS', 'instance type', 't4g.medium', {
+    fields: [
+      { name: 'region', kind: 'string', label: 'Region', help: 'Which AWS region new instances are created in.' },
+      { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes AWS creates here.' },
+    ],
+  }),
+  azure: declaration('Azure', 'VM size', 'Standard_B2ps_v2', {
+    fields: [
+      { name: 'location', kind: 'string', label: 'Location', help: 'Which Azure region new VMs are created in.' },
+      { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes Azure creates here.' },
+    ],
+  }),
+  gcp: declaration('Google Cloud', 'machine type', 't2a-standard-2', {
+    fields: [
+      { name: 'projectId', kind: 'string', label: 'Project id', help: 'The project every instance lives in.' },
+      { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes GCP creates here.' },
+    ],
+  }),
+  // BYO is the one with a list, no `sizes` key and a lower-case name for the sentences.
+  byo: declaration('Your own machines', 'host', 'the-nuc-under-the-desk', {
+    fields: [{ name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' }],
+    lists: [
+      {
+        name: 'hosts',
+        label: 'Hosts',
+        help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
+        itemFields: [
+          { name: 'name', label: 'Name', kind: 'string' },
+          { name: 'port', label: 'SSH port', kind: 'number', help: 'The SSH port, when it is not 22.' },
+        ],
+        add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+        labelField: 'name',
+        empty: 'None yet. Enabling this provider requires at least one host.',
+      },
+    ],
+    offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
+  }),
+}
+
+/** The inventory the page really draws from: core's own rows merged with all five declarations. */
+const merged = () =>
+  buildSettingsInventory({
+    tree: {},
+    describeProvider: (id) => {
+      const settings = SHIPPED_DECLARATIONS[id]
+      return settings ? { displayName: id, settings } : undefined
+    },
+  })
 
 /** The credential-named fields the declared factories carry; their secrecy is asserted in the composition root. */
 const DECLARED_CREDENTIALS = new Set(['token'])
@@ -146,8 +229,11 @@ describe('the inventory is internally consistent', () => {
 
   it('matches a concrete list path back to its spec', () => {
     expect(specFor(['github', 'tokens', 3, 'pat'])?.kind).toBe('secret')
-    expect(specFor(['providers', 'byo', 'hosts', 0, 'port'])?.kind).toBe('number')
+    expect(specFor(['ssh', 'keys', 0, 'publicKey'])?.kind).toBe('string')
     expect(specFor(['server', 'nonsense'])).toBeUndefined()
+    // A DECLARED list's items match the same way, through the merged inventory — `providers.byo`
+    // is where that path used to be proved and its rows are the provider's now (issue #370).
+    expect(merged().specFor(['providers', 'byo', 'hosts', 0, 'port'])?.kind).toBe('number')
   })
 
   it('declares an item shape for every list the editor offers', () => {
@@ -243,15 +329,21 @@ describe('every provider the config schema declares appears in the settings inve
     expect(providerNames.length).toBeGreaterThanOrEqual(5)
   })
 
+  /**
+   * ASSERTED OVER THE MERGED INVENTORY (issue #370), which is where every provider's rows now
+   * live. Reading `SETTINGS_FIELDS` alone would leave this vacuous the moment the last static
+   * provider moved — five names skipped, nothing checked, and a green test saying so.
+   */
   it('gives every provider at least its enabled switch, and a section to draw it in', () => {
-    const fieldPaths = new Set(SETTINGS_FIELDS.map((f) => f.path))
-    const sectionIds = new Set(SETTINGS_SECTIONS.map((s) => s.id))
-    for (const name of providerNames.filter((n) => !(n in DELIBERATELY_ABSENT) && !(n in DECLARED_BY_PROVIDER))) {
+    const inventory = merged()
+    const fieldPaths = new Set(inventory.fields.map((f) => f.path))
+    const sectionIds = new Set(inventory.sections.map((s) => s.id))
+    for (const name of providerNames.filter((n) => !(n in DELIBERATELY_ABSENT))) {
       expect(
         fieldPaths.has(`providers.${name}.enabled`),
-        `config/schema.ts declares providers.${name}, but fields.ts has no providers.${name}.enabled — ` +
-          'the provider exists and the Settings page cannot even turn it on. Add its fields, or name ' +
-          'it in DELIBERATELY_ABSENT with the reason.',
+        `config/schema.ts declares providers.${name}, but the settings inventory has no ` +
+          `providers.${name}.enabled — the provider exists and the Settings page cannot even turn ` +
+          'it on. Declare its fields on its factory, or name it in DELIBERATELY_ABSENT with the reason.',
       ).toBe(true)
       expect(
         sectionIds.has(`providers.${name}`),
@@ -393,20 +485,12 @@ describe('every setting on the page explains itself', () => {
       'github',
       'ssh',
       'ssh.keys',
-      // `providers.hetzner` is NOT here: it is declared on the factory and spliced in FIRST by
-      // `settings/inventory.ts` (see `inventory.test.ts`, which pins the merged order).
-      'providers.aws',
-      'providers.azure',
-      'providers.gcp',
-      'providers.byo',
-      'providers.byo.hosts',
+      // NO `providers.*` AND NO `preferences.tiers.*` (issue #370). Every one of them is declared
+      // on a factory and spliced into this order by `settings/inventory.ts` — the providers
+      // between `ssh.keys` and `limits`, the saved-type cards between `preferences` and
+      // `registry`. `inventory.test.ts` pins the merged result, which is what an operator sees.
       'limits',
       'preferences',
-      // Likewise `preferences.tiers.hetzner`.
-      'preferences.tiers.aws',
-      'preferences.tiers.azure',
-      'preferences.tiers.gcp',
-      'preferences.tiers.byo',
       'registry',
       'registry.sources',
       'mcp',
@@ -425,25 +509,26 @@ describe('every setting on the page explains itself', () => {
    * not twelve rows of the same placeholder.
    */
   it('offers a saved machine type for every size on every cloud', () => {
-    const paths = SETTINGS_FIELDS.filter((f) => f.path.startsWith('preferences.tiers.')).map((f) => f.path)
-    for (const cloud of ['aws', 'azure', 'gcp', 'byo']) {
+    const fields = merged().fields
+    const paths = fields.filter((f) => f.path.startsWith('preferences.tiers.')).map((f) => f.path)
+    for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
       for (const size of ['small', 'medium', 'large']) {
         const path = `preferences.tiers.${cloud}.${size}`
-        const field = SETTINGS_FIELDS.find((f) => f.path === path)
+        const field = fields.find((f) => f.path === path)
         expect(field, `${path} is missing from the inventory`).toBeDefined()
         expect(field!.kind).toBe('string')
         expect(field!.writable, `${path} would be shown and never written`).toBe(true)
         expect(field!.help, `${path}'s help does not say what happens when it is blank`).toContain('blank')
       }
     }
-    // Four clouds in the static table: Hetzner's three come from its declaration (ADR-0027) and
-    // are pinned, sentence included, in `inventory.test.ts`.
-    expect(paths).toHaveLength(12)
+    // Five providers, three sizes: there is no static table left, so the count is a count of
+    // what the declarations produced (issue #370).
+    expect(paths).toHaveLength(15)
     // Every one of them is a real machine type in that cloud's own words, not "a machine type".
-    const examples = ['t4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']
+    const examples = ['cpx21', 't4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']
     for (const example of examples) {
       expect(
-        SETTINGS_FIELDS.some((f) => f.path.startsWith('preferences.tiers.') && f.help.includes(example)),
+        fields.some((f) => f.path.startsWith('preferences.tiers.') && f.help.includes(example)),
         `no saved-type field names ${example}, so its box says nothing about what goes in it`,
       ).toBe(true)
     }
@@ -482,8 +567,11 @@ describe('a setting that does not exist yet is not drawn', () => {
   })
 
   it('still draws the read-only settings that are real, and says where they are edited', () => {
+    // `providers.<id>.sizes` is the other one and it is generated per provider now (issue #370),
+    // so it is read off the merged inventory rather than from the static rows.
+    const inventory = merged().fields
     for (const path of ['server.dataDir', 'providers.aws.sizes']) {
-      const spec = SETTINGS_FIELDS.find((f) => f.path === path)!
+      const spec = inventory.find((f) => f.path === path)!
       expect(spec.writable).toBe(false)
       expect(spec.hidden, `${path} is a working setting and its value is worth reading`).toBeUndefined()
       // Each names the place the edit actually happens, which is what makes it more than a refusal.

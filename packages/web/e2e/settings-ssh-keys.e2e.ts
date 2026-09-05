@@ -28,6 +28,11 @@ import { test, expect } from './fixtures'
  * their own entries and assert on those entries or on a before/after difference, never on a
  * total that a neighbour could change.
  */
+/* ITS OWN INSTALLATION (see `installation` in `fixtures.ts`). This file saves a public key
+   named `laptop`, and so does the other one — whichever ran second on a shared worker saw a
+   key it had not added, and which one that was moved whenever a file was added to the suite. */
+test.use({ installation: 'ssh-keys' })
+
 test.describe.configure({ mode: 'serial' })
 
 /**

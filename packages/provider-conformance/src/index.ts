@@ -184,6 +184,15 @@ export function assertSettingsShape<T>(factory: ProviderFactory<T>, validConfig:
     'settings.offering.noun required — the word for this cloud\'s machine types ("instance type")',
   )
   check(typeof settings.offering?.example === 'string' && settings.offering.example.length > 0, 'settings.offering.example required')
+  if (settings.offering.label !== undefined) {
+    check(
+      typeof settings.offering.label === 'string' && settings.offering.label.length > 0,
+      'settings.offering.label must be a non-empty string when present — how the provider is named inside a sentence',
+    )
+  }
+  if (settings.offering.allowlist !== undefined) {
+    check(typeof settings.offering.allowlist === 'boolean', 'settings.offering.allowlist must be a boolean when present')
+  }
   check(Array.isArray(settings.fields), 'settings.fields must be an array')
 
   const names = new Set<string>()
@@ -246,6 +255,9 @@ export function assertSettingsShape<T>(factory: ProviderFactory<T>, validConfig:
       check(typeof item.name === 'string' && item.name.length > 0, `${where}: item field name required`)
       check(typeof item.label === 'string' && item.label.length > 0, `${where}.${item.name}: label required`)
       check((LIST_ITEM_KINDS as readonly string[]).includes(item.kind), `${where}.${item.name}: unknown kind '${item.kind}'`)
+      // Optional — the list's own sentence covers an item that does not write one — but a
+      // placeholder where a sentence was intended is the failure this whole file exists to catch.
+      if (item.help !== undefined) check(isSentence(item.help), `${where}.${item.name}: help must be a sentence when present`)
     }
     if (list.add) {
       check(typeof list.add.noun === 'string' && list.add.noun.length > 0, `${where}.add.noun required`)

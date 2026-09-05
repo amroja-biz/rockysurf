@@ -55,14 +55,83 @@ const NIMBUS: ProviderSettings = {
   ],
 }
 
+/**
+ * THE OTHER FOUR SHIPPED PROVIDERS, ABBREVIATED (issue #370).
+ *
+ * They declare too now, so the merged order below is a merge of five declarations rather than one
+ * declaration spliced into four static sections. Kept short on purpose: the real prose is the
+ * provider's and is held to its own conformance suite; what is pinned here is the SHAPE and the
+ * ORDER an operator sees. BYO is the interesting one — a list, no `sizes`, and a lower-case name
+ * for the sentences the saved-type cards are made of.
+ */
+const AWS: ProviderSettings = {
+  title: 'AWS',
+  help: 'EC2 instances in one region, with no credential to type here.',
+  fields: [
+    { name: 'region', kind: 'string', label: 'Region', help: 'Which AWS region new instances are created in.' },
+    { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes AWS creates here.' },
+  ],
+  offering: { noun: 'instance type', example: 't4g.medium' },
+}
+
+const AZURE: ProviderSettings = {
+  title: 'Azure',
+  help: 'Virtual machines in one region, in one resource group you create.',
+  fields: [
+    { name: 'location', kind: 'string', label: 'Location', help: 'Which Azure region new VMs are created in.' },
+    { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes Azure creates here.' },
+  ],
+  offering: { noun: 'VM size', example: 'Standard_B2ps_v2' },
+}
+
+const GCP: ProviderSettings = {
+  title: 'Google Cloud',
+  help: 'Compute Engine instances in one zone, in one project you name.',
+  fields: [
+    { name: 'projectId', kind: 'string', label: 'Project id', help: 'The project every instance lives in.' },
+    { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes GCP creates here.' },
+  ],
+  offering: { noun: 'machine type', example: 't2a-standard-2' },
+}
+
+const BYO: ProviderSettings = {
+  title: 'Your own machines',
+  help: 'Machines you already have, managed over SSH.',
+  fields: [
+    { name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
+  ],
+  lists: [
+    {
+      name: 'hosts',
+      label: 'Hosts',
+      help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
+      itemFields: [
+        { name: 'name', label: 'Name', kind: 'string' },
+        { name: 'user', label: 'Admin login', kind: 'string', help: 'The admin login Rocky Surf claims the machine with.' },
+      ],
+      add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+      labelField: 'name',
+      empty: 'None yet. Enabling this provider requires at least one host.',
+    },
+  ],
+  offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
+}
+
+const SHIPPED: Record<string, { displayName: string; settings: ProviderSettings }> = {
+  hetzner: { displayName: 'Hetzner Cloud', settings: HETZNER },
+  aws: { displayName: 'Amazon EC2', settings: AWS },
+  azure: { displayName: 'Microsoft Azure', settings: AZURE },
+  gcp: { displayName: 'Google Compute Engine', settings: GCP },
+  byo: { displayName: 'Bring your own hosts', settings: BYO },
+}
+
 const describeProvider = (id: string) =>
-  id === 'hetzner'
-    ? { displayName: 'Hetzner Cloud', settings: HETZNER }
-    : id === 'nimbus'
-      ? { displayName: 'Nimbus Cloud', settings: NIMBUS }
-      : id === 'cumulus'
-        ? { displayName: 'Cumulus' }
-        : undefined
+  SHIPPED[id] ??
+  (id === 'nimbus'
+    ? { displayName: 'Nimbus Cloud', settings: NIMBUS }
+    : id === 'cumulus'
+      ? { displayName: 'Cumulus' }
+      : undefined)
 
 const tree = (personal: Record<string, unknown>) => ({ providers: personal })
 
@@ -99,6 +168,12 @@ describe('a declared shipped provider (Hetzner)', () => {
     ])
     const tiers = ids.filter((id) => /^preferences\.tiers\./.test(id))
     expect(tiers).toEqual(PROVIDER_ORDER.map((id) => `preferences.tiers.${id}`))
+    // BYO's card is titled by `title` and its sentences named by `offering.label` — the two
+    // differ for exactly one provider, and a capitalised title read mid-sentence is why.
+    expect(inv.sections.find((s) => s.id === 'preferences.tiers.byo')).toMatchObject({
+      title: 'Your own machines',
+      help: expect.stringContaining('each size means on your own machines'),
+    })
     // And everything around them is where fields.ts puts it.
     expect(ids.indexOf('ssh.keys')).toBeLessThan(ids.indexOf('providers.hetzner'))
     expect(ids.indexOf('providers.byo.hosts')).toBeLessThan(ids.indexOf('limits'))
@@ -110,7 +185,9 @@ describe('a declared shipped provider (Hetzner)', () => {
     const small = inv.specFor(['preferences', 'tiers', 'hetzner', 'small'])!
     expect(small.help).toContain('The server type to use whenever you ask Hetzner for a small box — cpx21, for instance')
     const aws = inv.specFor(['preferences', 'tiers', 'aws', 'small'])!
-    expect(aws.help).toContain('The instance type to use whenever you ask AWS for a small box')
+    expect(aws.help).toContain('The instance type to use whenever you ask AWS for a small box — t4g.medium, for instance')
+    const byo = inv.specFor(['preferences', 'tiers', 'byo', 'small'])!
+    expect(byo.help).toContain('The host to use whenever you ask your own machines for a small box')
     expect(inv.sections.find((s) => s.id === 'preferences.tiers.hetzner')?.title).toBe('Hetzner')
   })
 
@@ -122,6 +199,54 @@ describe('a declared shipped provider (Hetzner)', () => {
     expect(inv.isSecretPath(['providers', 'hetzner', 'token'])).toBe(true)
     expect(inv.isSecretPath(['providers', 'hetzner', 'location'])).toBe(false)
     expect(inv.isSecretPath(['providers', 'hetzner', 'consoleProjectId'])).toBe(false)
+  })
+})
+
+describe('the other four shipped providers, declared (issue #370)', () => {
+  const inv = buildSettingsInventory({ tree: tree({}), describeProvider })
+
+  it('gives each firewall cloud the two-act whitelist as one declared kind plus core\u2019s checkbox', () => {
+    for (const id of ['aws', 'azure', 'gcp']) {
+      expect(inv.specFor(['providers', id, 'sshAllowedCidr'])).toMatchObject({
+        kind: 'sshCidrList',
+        label: 'SSH allowed from',
+      })
+      // Core's words, not the provider's — a provider that could word its own confirmation
+      // could word it away (ADR-0021's two-act guard).
+      expect(inv.specFor(['providers', id, 'allowAllCidr'])).toMatchObject({
+        kind: 'boolean',
+        help: expect.stringContaining('0.0.0.0/0'),
+      })
+      expect(paths(inv).indexOf(`providers.${id}.allowAllCidr`)).toBe(
+        paths(inv).indexOf(`providers.${id}.sshAllowedCidr`) + 1,
+      )
+    }
+  })
+
+  it('labels the read-only allowlist in each cloud\u2019s own vocabulary', () => {
+    expect(inv.specFor(['providers', 'aws', 'sizes'])?.label).toBe('Offered instance types')
+    expect(inv.specFor(['providers', 'azure', 'sizes'])?.label).toBe('Offered VM sizes')
+    expect(inv.specFor(['providers', 'gcp', 'sizes'])?.label).toBe('Offered machine types')
+  })
+
+  it('gives BYO a list and no sizes at all, because its machine types are the hosts', () => {
+    expect(paths(inv).filter((p) => p.startsWith('providers.byo.'))).toEqual([
+      'providers.byo.enabled',
+      'providers.byo.identityFile',
+      'providers.byo.hosts.*.name',
+      'providers.byo.hosts.*.user',
+    ])
+    expect(inv.lists.find((l) => l.path === 'providers.byo.hosts')).toMatchObject({
+      itemFields: ['name', 'user'],
+      labelField: 'name',
+      add: { noun: 'host', required: ['name', 'host'] },
+      empty: 'None yet. Enabling this provider requires at least one host.',
+    })
+    // An item field's own sentence when it wrote one, the list's when it did not.
+    expect(inv.specFor(['providers', 'byo', 'hosts', 0, 'user'])?.help).toContain('admin login')
+    expect(inv.specFor(['providers', 'byo', 'hosts', 0, 'name'])?.help).toContain('Rocky Surf may claim')
+    // And the switch reads as a sentence, which is what `offering.label` is for.
+    expect(inv.specFor(['providers', 'byo', 'enabled'])?.help).toContain('with your own machines')
   })
 })
 

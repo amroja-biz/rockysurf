@@ -25,6 +25,7 @@ import {
   assertOfferingsShape,
   assertProviderErrorShape,
   assertProviderShape,
+  assertFactoryShape,
   type AbsenceGraceHarness,
   type DescribeRead,
 } from '@rockysurf/provider-conformance'
@@ -39,6 +40,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { awsConfigSchema, type AwsProviderConfig } from './config.js'
+import { awsProviderFactory } from './index.js'
 import { mapAwsError } from './errors.js'
 import type { PriceFeedDoc } from './feed.js'
 import { AWS_TYPES } from './prices.generated.js'
@@ -166,6 +168,18 @@ beforeEach(() => {
 })
 
 describe('SDK conformance', () => {
+  /**
+   * THE FACTORY, INCLUDING WHAT IT DECLARES ABOUT ITS SETTINGS PANEL (ADR-0027, issue #370).
+   *
+   * `assertFactoryShape` runs `assertSettingsShape` whenever `settings` is present, which is what
+   * parses every declared `example` through this package's own schema — the drift that would
+   * otherwise show up as a control an operator fills in and the boot then refuses. This package
+   * had no factory-shape case at all until AWS declared; the other four providers already had one.
+   */
+  it('exports a factory whose declaration agrees with its schema', () => {
+    assertFactoryShape(awsProviderFactory, config())
+  })
+
   it('satisfies the shared provider shape checks', () => {
     assertProviderShape(provider)
   })

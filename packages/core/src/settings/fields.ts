@@ -12,12 +12,13 @@
  * server-side, and nothing here re-implements a rule from it — but the schema is not a UI, and
  * pretending it is is how a settings page grows a control that bricks the installation.
  *
- * PROVIDER SECTIONS ARE THE EXCEPTION, AND IT IS NOT A GENERATED FORM EITHER (ADR-0027). A
- * provider DECLARES its panel on its factory — `ProviderFactory.settings`: fields with a closed
- * set of kinds, hand-written labels and sentences, a vocabulary, advisories — and
- * `settings/inventory.ts` turns that declaration into the same `FieldSpec`s this file writes by
- * hand, merged with what is here. Hetzner has no rows below for that reason; AWS, Azure, GCP and
- * BYO still do, and will move one at a time. A personal provider (ADR-0026) was never here at all.
+ * THERE ARE NO PROVIDER SECTIONS LEFT HERE, AND WHAT REPLACED THEM IS NOT A GENERATED FORM
+ * EITHER (ADR-0027, completed by issue #370). A provider DECLARES its panel on its factory —
+ * `ProviderFactory.settings`: fields with a closed set of kinds, hand-written labels and
+ * sentences, a vocabulary, advisories — and `settings/inventory.ts` turns that declaration into
+ * the same `FieldSpec`s this file writes by hand, merged with what is here. All five shipped
+ * providers declare; a personal provider (ADR-0026) was never here at all. So this file is
+ * core's own sections and nothing else, which is what the rule above always meant.
  *
  * SECRET CLASSIFICATION IS BY FIELD, NEVER BY VALUE. A field is secret because of what it
  * holds — a provider credential — not because its contents look like one. `kind: 'secret'`
@@ -61,15 +62,15 @@ export interface FieldSpec {
   /**
    * `sshCidrList` is the two-act SSH whitelist (ADR-0021, ADR-0027): the field is a list of CIDRs
    * and the page draws it together with the sibling `allowAllCidr` boolean, never as a bare list.
-   * It arrives from a provider's declared settings; core's own hand-written rows still say
-   * `stringList` and the page's hand-written blocks know which of those are the CIDR control.
+   * It arrives from a provider's declared settings and from nowhere else — core has no
+   * hand-written CIDR row left, and the page keys the control on the KIND, never on a cloud.
    */
   kind: FieldKind
   /**
-   * The control's label, when the inventory knows it (ADR-0027). Hand-written rows leave it out
-   * and the page's blocks carry their own labels; a row derived from a provider's declared
-   * settings carries the label the provider wrote, so the generic renderer does not have to
-   * invent one from the path.
+   * The control's label, when the inventory knows it (ADR-0027). Core's own hand-written rows
+   * leave it out and the page's blocks carry their own labels; a row derived from a provider's
+   * declared settings carries the label the provider wrote, so the generic renderer does not
+   * have to invent one from the path.
    */
   label?: string
   /** A placeholder for the box — for a secret, the NAME of a variable (`HETZNER_TOKEN`). */
@@ -131,10 +132,10 @@ export interface FieldSpec {
    * the boot path keeps reading it, and a `PUT` that names it is still refused by `routes.ts`
    * with this entry's `reason` rather than with a vaguer "the page does not edit that".
    *
-   * NOT the same as `writable: false`. `server.dataDir` and `providers.aws.sizes` are read-only
-   * and DO render: both are real settings with real values an operator wants to read, and both
-   * reasons say where the edit is actually made. `auth.mode` is the other case — the edit has no
-   * destination, because the mode it would select does not exist.
+   * NOT the same as `writable: false`. `server.dataDir` and every provider's `sizes` are
+   * read-only and DO render: both are real settings with real values an operator wants to read,
+   * and both reasons say where the edit is actually made. `auth.mode` is the other case — the
+   * edit has no destination, because the mode it would select does not exist.
    */
   hidden?: true
   /**
@@ -185,38 +186,38 @@ export interface SectionSpec {
 /**
  * THE SAVED TYPES, one field per (cloud, size) — `preferences.tiers` (issue #124).
  *
- * GENERATED FROM A TABLE, which is the one place this file departs from "hand-written on
- * purpose" and does so for the reason the rule exists. The objection to a generated form is
- * that it produces a control per schema field with nothing to say about any of them; here the
- * words are written by hand, once per cloud, and only the three sizes are looped — the sentence
- * an operator reads is as specific as any other in this file, and writing the same paragraph
- * out twelve times would guarantee that eleven of them drift.
+ * THE TABLE THIS WAS GENERATED FROM IS GONE (issue #370, ADR-0027). It listed the four clouds
+ * whose vocabulary core happened to know — "an instance type on AWS, a VM size on Azure" — and a
+ * cloud that is not in this repository could be in none of it, which is the D4 class of gap
+ * ADR-0027 retired. Every provider now DECLARES its vocabulary (`ProviderSettings.offering`) and
+ * `settings/inventory.ts` puts it through the two generators below, so the sentence an operator
+ * reads is still hand-written once per cloud — it is just written where the cloud is.
  *
  * `example` is that cloud's own vocabulary, because "a machine type" means `t4g.small` on AWS,
  * `cpx21` at Hetzner and `Standard_B2ps_v2` on Azure, and a box that cannot tell you what shape
  * of thing goes in it is a box people leave empty.
  */
-const TIER_PREFERENCE_CLOUDS: readonly { id: string; label: string; noun: string; example: string }[] = [
-  { id: 'aws', label: 'AWS', noun: 'instance type', example: 't4g.medium' },
-  { id: 'azure', label: 'Azure', noun: 'VM size', example: 'Standard_B2ps_v2' },
-  { id: 'gcp', label: 'Google Cloud', noun: 'machine type', example: 't2a-standard-2' },
-  { id: 'byo', label: 'your own machines', noun: 'host', example: 'the-nuc-under-the-desk' },
-]
-
 const TIER_PREFERENCE_SIZES = ['small', 'medium', 'large'] as const
 
-/** One cloud's vocabulary for the saved-type fields — the table's row shape, also built from a declaration. */
+/** One cloud's vocabulary for the saved-type fields, built from a provider's declaration. */
 export interface TierPreferenceCloud {
   id: string
+  /**
+   * How the cloud is named INSIDE the sentences below — "AWS", "your own machines". Distinct
+   * from `title` for exactly one reason: a capitalised panel title read mid-sentence ("whenever
+   * you ask Your own machines for a small box") is wrong, and BYO is the provider that has both.
+   */
   label: string
   noun: string
   example: string
+  /** The card's heading. Defaults to `label`, which is right for every proper noun. */
+  title?: string
 }
 
 /**
  * The three saved-type fields for one cloud. Exported so `settings/inventory.ts` can generate the
  * same rows, with the same sentence, for a provider that DECLARES its vocabulary (ADR-0027) —
- * Hetzner left this table for that reason, and a personal provider was never in it.
+ * which, since issue #370, is every provider this installation has.
  */
 export function tierPreferenceFields(cloud: TierPreferenceCloud): FieldSpec[] {
   return TIER_PREFERENCE_SIZES.map((size) => ({
@@ -236,7 +237,7 @@ export function tierPreferenceFields(cloud: TierPreferenceCloud): FieldSpec[] {
 export function tierPreferenceSection(cloud: TierPreferenceCloud): SectionSpec {
   return {
     id: `preferences.tiers.${cloud.id}`,
-    title: cloud.label === 'your own machines' ? 'Your own machines' : cloud.label,
+    title: cloud.title ?? cloud.label,
     help:
       `Which ${cloud.noun} each size means on ${cloud.label}. Blank is the default: the cheapest ` +
       `one available that meets the size's floor. A saved ${cloud.noun} that is sold out, ` +
@@ -245,13 +246,12 @@ export function tierPreferenceSection(cloud: TierPreferenceCloud): SectionSpec {
   }
 }
 
-const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flatMap(tierPreferenceFields)
-
 /**
  * The v0.1 field inventory.
  *
- * Three fields are deliberately read-only, and each reason is a specific accident rather than
- * caution in general:
+ * Two fields here are deliberately read-only, and each reason is a specific accident rather
+ * than caution in general (a third kind, `providers.<id>.sizes`, is generated per provider by
+ * `settings/inventory.ts` and carries the same posture):
  *
  *  - `server.dataDir` — the database, the master key and the encrypted secrets store live
  *    there and are open in this process right now. Changing the path does not move any of
@@ -261,15 +261,15 @@ const TIER_PREFERENCE_FIELDS: readonly FieldSpec[] = TIER_PREFERENCE_CLOUDS.flat
  *  - `auth.mode` — `local` is the only mode that exists. Switching to `github-device` disables
  *    password login (`app.ts` refuses it by name) and there is no device flow yet to replace
  *    it, so the field's one available edit locks the operator out of the page they made it on.
- *  - `providers.aws.sizes` — an allowlist of opaque instance-type strings, outside the sections
+ *  - `providers.<id>.sizes` — an allowlist of opaque machine-type strings, outside the sections
  *    m29b scoped, and a list editor for it would be surface with no demand behind it. It is
  *    shown so the page tells the truth about the file, and edited in the file.
  *
- * ONE OF THE THREE ALSO DOES NOT RENDER (rockysurf-5qzg), and the split between them is the
- * point. `dataDir` and `sizes` are settings that WORK: their values are facts about the running
- * installation, and their reasons name where the edit is made instead. `auth.mode` is a setting
- * whose only other value has not been built, so a control for it can offer nothing — it is
- * `hidden`, and the page never draws it.
+ * ONE OF THEM ALSO DOES NOT RENDER (rockysurf-5qzg), and the split is the point. `dataDir` and
+ * `sizes` are settings that WORK: their values are facts about the running installation, and
+ * their reasons name where the edit is made instead. `auth.mode` is a setting whose only other
+ * value has not been built, so a control for it can offer nothing — it is `hidden`, and the page
+ * never draws it.
  */
 export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   /* -------------------------------------------------------------------------- server */
@@ -473,291 +473,15 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
 
   /* ----------------------------------------------------------------------- providers */
   /*
-   * HETZNER HAS NO ROWS HERE (ADR-0027). Its panel — token, location, console project id — is
-   * declared on `hetznerProviderFactory.settings` and turned into rows by `settings/inventory.ts`
-   * from the descriptor the composition root records. The prose moved there verbatim. It is the
-   * first shipped provider to declare, so that the path a personal provider takes is exercised by
-   * the product and not only by a fixture (the `ssh.keys` lesson, ADR-0019's amendment).
+   * NO PROVIDER ROWS HERE AT ALL (issue #370, ADR-0027). Every provider's panel — Hetzner, AWS,
+   * Azure, GCP, BYO and any provider installed from npm — is DECLARED on its factory
+   * (`ProviderFactory.settings`) and turned into rows by `settings/inventory.ts` from the
+   * descriptors the composition root records. The prose moved there verbatim.
+   *
+   * That is the end state ADR-0027 named, and it is what makes the hand-written rule above hold
+   * without exception: this file is core's own sections, and provider variability lives with the
+   * provider. A cloud that is not in this repository now gets exactly what a shipped one gets.
    */
-
-  {
-    path: 'providers.aws.enabled',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Whether Rocky Surf may create EC2 instances. Credentials come from the standard AWS chain — ' +
-      'environment, named profile, instance role — and never from this file.',
-  },
-  {
-    path: 'providers.aws.region',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'Which AWS region new instances are created in.',
-  },
-  {
-    path: 'providers.aws.profile',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'A named profile from your shared AWS credentials file. Leave it unset to take whatever the ' +
-      'default AWS chain resolves to.',
-  },
-  {
-    path: 'providers.aws.sshAllowedCidr',
-    kind: 'stringList',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Which networks may reach SSH on the boxes AWS creates here, as CIDRs — your own address as ' +
-      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
-      'Required whenever AWS is enabled, with no default on purpose. Saving pushes the change to ' +
-      'AWS straight away; you do not have to launch a server for it to take effect.',
-    warning:
-      'This is a firewall rule: it decides which networks may reach SSH on every box AWS creates ' +
-      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
-      'sessions survive.',
-  },
-  {
-    path: 'providers.aws.allowAllCidr',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
-      'decisions, not one typo, so the CIDR alone is refused without this.',
-    warning:
-      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
-      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
-      'in front of them.',
-  },
-  {
-    path: 'providers.aws.sizes',
-    kind: 'stringList',
-    writable: false,
-    appliesAt: 'save',
-    help:
-      'The only instance types this installation will create — on the New Server page and through ' +
-      'the API, the CLI and MCP alike. Unset offers everything the region sells; ' +
-      't4g.* are ARM (Graviton) and are the cheap, fast default.',
-    reason: 'An allowlist of instance types, edited in the file — this page does not surface a list editor for it.',
-  },
-
-  {
-    path: 'providers.azure.enabled',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Whether Rocky Surf may create Azure virtual machines. Credentials come from the environment, ' +
-      'from a managed identity, or from the Azure CLI — and never from this file.',
-  },
-  {
-    path: 'providers.azure.subscriptionId',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'The Azure subscription every VM, disk, network interface and address is created in.',
-  },
-  {
-    path: 'providers.azure.resourceGroup',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'The one resource group Rocky Surf owns. You create it — `az group create --name ' +
-      'rocky-surf-rg --location eastus` — because a role cannot be scoped to a group that does not ' +
-      'exist yet, and the published Azure role is granted at exactly this group.',
-  },
-  {
-    path: 'providers.azure.location',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'Which Azure region new VMs are created in, e.g. eastus.',
-  },
-  {
-    path: 'providers.azure.sshAllowedCidr',
-    kind: 'stringList',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Which networks may reach SSH on the boxes Azure creates here, as CIDRs — your own address as ' +
-      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
-      'Required whenever Azure is enabled, with no default on purpose. Saving pushes the change to ' +
-      'Azure straight away; you do not have to launch a server for it to take effect.',
-    warning:
-      'This is a firewall rule: it decides which networks may reach SSH on every box Azure creates ' +
-      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
-      'sessions survive.',
-  },
-  {
-    path: 'providers.azure.allowAllCidr',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
-      'decisions, not one typo, so the CIDR alone is refused without this.',
-    warning:
-      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
-      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
-      'in front of them.',
-  },
-  {
-    path: 'providers.azure.sizes',
-    kind: 'stringList',
-    writable: false,
-    appliesAt: 'save',
-    help:
-      'The only VM sizes this installation will create — on the New Server page and through the ' +
-      'API, the CLI and MCP alike. Unset offers everything the region sells; the ' +
-      'sizes with a `p` in them (B2ps_v2, D2ps_v5) are ARM (Ampere) and are the cheap, fast default.',
-    reason: 'An allowlist of VM sizes, edited in the file — this page does not surface a list editor for it.',
-  },
-
-  {
-    path: 'providers.gcp.enabled',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Whether Rocky Surf may create Compute Engine instances. Credentials come from Application ' +
-      'Default Credentials — the same chain `gcloud` uses — and never from this file.',
-  },
-  {
-    path: 'providers.gcp.projectId',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'The project every instance lives in. Required whenever GCP is enabled, and never inferred: ' +
-      'a Google credential can be valid for many projects and names none of them, so a guess here ' +
-      'would create billable machines in a project you did not pick.',
-  },
-  {
-    path: 'providers.gcp.zone',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'The single zone new instances are created in. The default is us-central1-a rather than -c, ' +
-      'deliberately — arm64 (Tau T2A) exists in only eight zones, and us-central1-c is not one of ' +
-      'them.',
-  },
-  {
-    path: 'providers.gcp.sshAllowedCidr',
-    kind: 'stringList',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Which networks may reach SSH on the boxes GCP creates here, as CIDRs — your own address as ' +
-      'a /32 is the usual answer, and you can keep several so home and the office both work. ' +
-      'Required whenever GCP is enabled, with no default on purpose. Saving pushes the change to ' +
-      'GCP straight away; you do not have to launch a server for it to take effect.',
-    warning:
-      'This is a firewall rule: it decides which networks may reach SSH on every box GCP creates ' +
-      'here. Removing a CIDR immediately ends new SSH connections from that network; existing ' +
-      'sessions survive.',
-  },
-  {
-    path: 'providers.gcp.allowAllCidr',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Confirms that you mean 0.0.0.0/0 in the list above. Opening SSH to the whole internet is two ' +
-      'decisions, not one typo, so the CIDR alone is refused without this.',
-    warning:
-      'Turning this on lets SSH be reachable from the entire internet. These boxes run ' +
-      'agent-authored code and hold your git token. Leave it off unless you have another control ' +
-      'in front of them.',
-  },
-  {
-    path: 'providers.gcp.sizes',
-    kind: 'stringList',
-    writable: false,
-    appliesAt: 'save',
-    help:
-      'The only machine types this installation will create — on the New Server page and through ' +
-      'the API, the CLI and MCP alike. Unset offers everything the zone sells; ' +
-      't2a-standard-* and c4a-standard-* are both ARM, in different zones — see docs/providers/gcp.md ' +
-      'for which one your zone actually has.',
-    reason: 'An allowlist of machine types, edited in the file — this page does not surface a list editor for it.',
-  },
-
-  {
-    path: 'providers.byo.enabled',
-    kind: 'boolean',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Whether machines you already own can be managed over SSH. No cloud API and no provisioning — ' +
-      'Rocky Surf installs onto them and manages them from there.',
-  },
-  {
-    path: 'providers.byo.identityFile',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'A path to the private key used to log in to every host below — never the key itself, which ' +
-      'stays where your own SSH keeps it. Leave it unset to use your SSH agent: if you can already ' +
-      '`ssh` to these machines, that is usually enough.',
-  },
-  {
-    path: 'providers.byo.hosts.*.name',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'What you will call this machine in the UI. It is also how a new server picks the host.',
-  },
-  {
-    path: 'providers.byo.hosts.*.host',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'The hostname or IP address Rocky Surf connects to.',
-  },
-  {
-    path: 'providers.byo.hosts.*.user',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'The admin login Rocky Surf claims the machine with; it needs root or passwordless sudo. This ' +
-      'is not the account it later connects as — that one is `rocky`, and it is created for you.',
-  },
-  {
-    path: 'providers.byo.hosts.*.port',
-    kind: 'number',
-    writable: true,
-    appliesAt: 'save',
-    help: 'The SSH port, when it is not 22.',
-  },
-  {
-    path: 'providers.byo.hosts.*.fingerprint',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help:
-      'Optional host key fingerprint, from `ssh-keyscan` piped through `ssh-keygen -lf`. Supplying it ' +
-      'means even the first connection is verified; omit it to trust the key on first connect.',
-  },
-  /**
-   * A PATH, never key material — the schema says so at its declaration and it is worth
-   * repeating here, because it is the one field in this file that could be mistaken for a
-   * secret. The key stays where the operator's own SSH keeps it.
-   */
-  {
-    path: 'providers.byo.hosts.*.identityFile',
-    kind: 'string',
-    writable: true,
-    appliesAt: 'save',
-    help: 'A private key for this machine alone, overriding the default above. A path, never the key itself.',
-  },
 
   /* -------------------------------------------------------------------------- limits */
   {
@@ -868,8 +592,11 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
       'you can get.',
   },
 
-  /* --------------------------------------------------------------------- preferences */
-  ...TIER_PREFERENCE_FIELDS,
+  /*
+   * NO `preferences.tiers.*` ROWS HERE (issue #370, ADR-0027). Every saved-type field is
+   * generated by `settings/inventory.ts` from the provider's declared `offering`, through
+   * `tierPreferenceFields` above — the same generator, with the words the provider wrote.
+   */
 
   /* ----------------------------------------------------------------------------- mcp */
   {
@@ -935,40 +662,12 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'Each one is a name and the PUBLIC half of a keypair — never the private half. Removing a key ' +
       'here does not remove it from boxes it was already authorized on; those you change over SSH.',
   },
-  {
-    id: 'providers.aws',
-    title: 'AWS',
-    help:
-      'EC2 instances in one region. Credentials come from the standard AWS chain — environment, ' +
-      'named profile, instance role — so there is no credential to type here.',
-  },
-  {
-    id: 'providers.azure',
-    title: 'Azure',
-    help:
-      'Virtual machines in one Azure region, in one resource group you create. Credentials come from ' +
-      'the environment, a managed identity, or `az login`, so there is no credential to type here.',
-  },
-  {
-    id: 'providers.gcp',
-    title: 'Google Cloud',
-    help:
-      'Compute Engine instances in one zone, in one project you name. Credentials come from ' +
-      'Application Default Credentials — the same chain `gcloud` uses — so there is no credential ' +
-      'to type here.',
-  },
-  {
-    id: 'providers.byo',
-    title: 'Your own machines',
-    help:
-      'Machines you already have, managed over SSH. Claiming one creates a `rocky` account on it with ' +
-      'passwordless sudo; releasing it hands it back to the pool and undoes nothing on your machine.',
-  },
-  {
-    id: 'providers.byo.hosts',
-    title: 'Hosts',
-    help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
-  },
+  /*
+   * NO `providers.*` SECTIONS EITHER (issue #370). A provider's panel heading and its sentence
+   * are `ProviderSettings.title`/`help`, spliced in here — between the SSH keys and Limits — by
+   * `settings/inventory.ts` in `PROVIDER_ORDER`. A card nested under a provider's tab
+   * (`providers.byo.hosts`) is its declared list's label and help, through the same path.
+   */
   {
     id: 'limits',
     title: 'Limits',
@@ -991,7 +690,10 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
       'that meets them — until you name the type you actually want, and then that is what you ' +
       'get every time. A saved type applies to the very next server you create.',
   },
-  ...TIER_PREFERENCE_CLOUDS.map(tierPreferenceSection),
+  /*
+   * The saved-type CARDS are generated too, one per provider, by `tierPreferenceSection` — see
+   * the note on the fields above. They slot in here, between Preferences and Pack sources.
+   */
   /**
    * A TAB, and its sources are a card on it — the same nesting `providers.byo.hosts` uses, for
    * the same reason: switching the shop on and saying what it points at are one errand.
@@ -1106,15 +808,11 @@ export const SETTINGS_LISTS: readonly ListSpec[] = [
       'None yet. Add one and the New Server page will offer it — you can still paste a key there ' +
       'without saving it here.',
   },
-  {
-    path: 'providers.byo.hosts',
-    itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
-    // `user` and `port` have schema defaults and the rest are optional, so the form only
-    // insists on the two things a host cannot be reached without.
-    add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
-    labelField: 'name',
-    empty: 'None yet. Enabling this provider requires at least one host.',
-  },
+  /*
+   * `providers.byo.hosts` IS NOT HERE (issue #370). It is BYO's declared `lists` entry — the
+   * first one a shipped provider has — and `settings/inventory.ts` builds this exact spec from
+   * it, `add` placeholders and all.
+   */
   {
     path: 'registry.sources',
     itemFields: ['name', 'url', 'trust'],

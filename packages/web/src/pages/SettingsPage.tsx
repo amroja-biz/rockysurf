@@ -1926,11 +1926,14 @@ export function SettingsPage() {
    * `view.lists` was already being served and simply never read. Now it is: core says which
    * paths are lists, what an entry is made of, what a new one looks like and what to say when
    * there are none, and the page renders that. A hand-written block still wins where one exists
-   * — the token list's bespoke flow, the nicer labels on hosts and pack sources — so this is a
-   * floor under the page rather than a replacement for it.
+   * — the token list's bespoke flow — so this is a floor under the page rather than a
+   * replacement for it.
    *
-   * The labels are `humanize`d field names, which is honestly worse than hand-written ones and
-   * enormously better than nothing.
+   * SINCE ISSUE #370 IT IS ALSO THE CEILING for a provider's lists. `providers.byo.hosts` was the
+   * last hand-written one, and its labels — Address, Admin login, Host key fingerprint — moved
+   * onto the declaration rather than being lost: `oneList` reads a label off the field's spec
+   * when the inventory carries one, and falls back to `humanize` when it does not, which is
+   * honestly worse than a written label and enormously better than nothing.
    */
   function genericList(id: string): ReactNode | undefined {
     /*
@@ -1952,7 +1955,10 @@ export function SettingsPage() {
       const spec = specs.get(`${id}.*.${name}`)
       return {
         name,
-        label: humanize(name),
+        // The label the inventory carries when it has one — a provider that DECLARED this list
+        // wrote "Admin login" and "Host key fingerprint", and humanizing the key would put "User"
+        // and "Fingerprint" over boxes whose own sentences say otherwise (ADR-0027).
+        label: spec?.label ?? humanize(name),
         ...(spec?.kind === 'secret' ? { secret: true } : {}),
       }
     })
@@ -2124,89 +2130,17 @@ export function SettingsPage() {
     ),
 
     /*
-      `providers.hetzner` IS DELIBERATELY ABSENT (ADR-0027). Its rows arrive from the factory's
-      declared settings with their own labels and placeholder, and the generic renderer below
-      draws them — a secret box that takes a variable name, a location, a number. It is the first
-      shipped provider to take the path a personal provider takes, for the reason `ssh.keys` is
-      absent too: a path only a fixture exercises is a path the product can break unnoticed.
+      NO `providers.*` ENTRIES AT ALL (ADR-0027, completed by issue #370). Every provider panel —
+      Hetzner's token box, the three clouds' CIDR control, BYO's hosts card — arrives from the
+      factory's declared settings with its own labels, placeholders and sentences, and the generic
+      renderer below draws it. The blocks that used to be here were the D4 gap: a cloud not in this
+      file had no panel, and a cloud not in this repository could never be added to it.
+
+      `ssh.keys` (issue #302) is absent for the same reason and was absent first: a section whose
+      editor lives here is a section that silently renders as prose the moment core ships ahead of
+      the SPA. What is left in this record is the sections that are genuinely bespoke — a device
+      flow, a token card, a spend cap written whole.
     */
-
-    'providers.aws': (
-      <>
-        {boolField(['providers', 'aws', 'enabled'], 'Enabled')}
-        {textField(['providers', 'aws', 'region'], 'Region')}
-        {textField(['providers', 'aws', 'profile'], 'Profile')}
-        {cidrListField('aws', 'SSH allowed from')}
-        {readOnlyField(['providers', 'aws', 'sizes'], 'Offered instance types')}
-      </>
-    ),
-
-    'providers.azure': (
-      <>
-        {boolField(['providers', 'azure', 'enabled'], 'Enabled')}
-        {/*
-          No credential field, and that is the point. Azure credentials come from the
-          environment, a managed identity or `az login` — there is nowhere in the config file
-          to put a client secret, so there is no box here inviting someone to paste one.
-        */}
-        {textField(['providers', 'azure', 'subscriptionId'], 'Subscription id')}
-        {textField(['providers', 'azure', 'resourceGroup'], 'Resource group')}
-        {textField(['providers', 'azure', 'location'], 'Location')}
-        {cidrListField('azure', 'SSH allowed from')}
-        {readOnlyField(['providers', 'azure', 'sizes'], 'Offered VM sizes')}
-      </>
-    ),
-
-    'providers.gcp': (
-      <>
-        {boolField(['providers', 'gcp', 'enabled'], 'Enabled')}
-        {/*
-          No credential field here either, for the same reason as Azure. GCP credentials come
-          from Application Default Credentials — the same chain `gcloud` uses — and the config
-          file has no field that can hold key material, so there is no box inviting a paste.
-        */}
-        {textField(['providers', 'gcp', 'projectId'], 'Project id')}
-        {textField(['providers', 'gcp', 'zone'], 'Zone')}
-        {cidrListField('gcp', 'SSH allowed from')}
-        {readOnlyField(['providers', 'gcp', 'sizes'], 'Offered machine types')}
-      </>
-    ),
-
-    'providers.byo': (
-      <>
-        {boolField(['providers', 'byo', 'enabled'], 'Enabled')}
-        {textField(['providers', 'byo', 'identityFile'], 'Default private key path')}
-      </>
-    ),
-
-    /*
-      `ssh.keys` (issue #302) is DELIBERATELY ABSENT from this record. It is drawn by
-      `genericList` from what core declares, which is the whole point of that function existing:
-      the hand-written entry this replaced was the only reason the section worked, and a section
-      whose editor lives here is a section that silently renders as prose the moment core ships
-      ahead of the SPA. Leaving one list to the generic path means the generic path is exercised
-      by the product rather than only by a test.
-    */
-
-    /* Nested under `providers.byo`, so it is a second card on that tab rather than a tab of its
-       own: enabling the provider and satisfying its one requirement are the same errand. */
-    'providers.byo.hosts': listSection(
-      ['providers', 'byo', 'hosts'],
-      [
-        { name: 'name', label: 'Name' },
-        { name: 'host', label: 'Address' },
-        { name: 'user', label: 'Admin login' },
-        { name: 'port', label: 'SSH port' },
-        { name: 'fingerprint', label: 'Host key fingerprint' },
-        { name: 'identityFile', label: 'Private key path' },
-      ],
-      (entry, i) => String(entry['name'] || `host ${i + 1}`),
-      // The Add form's noun, placeholders and required fields are core's, like the inventory
-      // this whole page draws from — a hand-written block improves the labels, not the facts.
-      lists.get('providers.byo.hosts')?.add,
-      'None yet. Enabling this provider requires at least one host.',
-      'name',
-    ),
 
     limits: (
       <>
@@ -2336,18 +2270,17 @@ export function SettingsPage() {
    * from the inventory rather than from a list of cloud names (ADR-0027), so a provider that
    * declares one, personal or shipped, gets the same treatment with no edit here.
    *
-   * Both halves enter the ledger, and `allowAllCidr` does so even when it is not on screen. That
-   * is the `group` doctrine applied to a pair that is not a `group`: the CIDR list OWNS the
-   * checkbox, and a block written and removed whole must not have its hidden half reappear at the
-   * bottom of the tab as a leftover — a permanent, unexplained offer to open SSH to the internet,
-   * sitting away from the list that gives it its meaning. The list itself is marked drawn only
-   * where a hand-written block drew it; a declared list is a leftover `fallbackField` draws.
+   * `allowAllCidr` enters the ledger even though nothing above draws it, and that is the whole
+   * point of this loop. It is the `group` doctrine applied to a pair that is not a `group`: the
+   * CIDR list OWNS the checkbox, and the control that draws them both must not have its hidden
+   * half reappear at the bottom of the tab as a leftover — a permanent, unexplained offer to open
+   * SSH to the internet, sitting away from the list that gives it its meaning. The list itself is
+   * NOT marked drawn: `fallbackField` draws it, as the leftover it now always is.
    */
   for (const field of view.fields) {
     const cloud = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(field.path)?.[1]
     if (!cloud) continue
     draw(`providers.${cloud}.allowAllCidr`)
-    if (handWritten[`providers.${cloud}`]) draw(field.path)
   }
 
   const ownedByADrawnGroup = (path: string) =>

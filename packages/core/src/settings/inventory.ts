@@ -33,15 +33,16 @@ import {
  *    the page and the provider can be switched on; its own fields are edited in the file.
  *
  * WHAT STAYS HAND-WRITTEN. Core's own sections (`server`, `github`, `ssh`, `limits`, `registry`,
- * `mcp`, `backup`) — not provider variability. And the shipped providers that have not yet moved
- * to a declaration (AWS, Azure, GCP, BYO) keep their rows in `fields.ts`; a declared and a static
- * provider look identical to the page, which is the point.
+ * `mcp`, `backup`) — not provider variability. Since issue #370 that is the whole of it: all five
+ * shipped providers declare, so every `providers.*` row and every `preferences.tiers.*` row on the
+ * page is built here from a declaration. The merge is kept all the same, because a factory with no
+ * `settings` is still legal (an SDK-only provider from before ADR-0027) and still has to be
+ * switchable on.
  *
  * ORDER IS PRESERVED, NOT DERIVED. The provider tabs have always run hetzner, aws, azure, gcp,
  * byo, and the saved-type cards under Preferences the same way; ordering them by the schema's key
  * order (aws first) would move Hetzner from the first tab to the fourth. `PROVIDER_ORDER` says the
- * order; declared and static sections slot into it alike, and personal providers follow in the
- * order the file lists them.
+ * order; personal providers follow in the order the file lists them.
  *
  * REDACTION. `fields.ts`'s `SECRET_KEY_NAME` masks a field by its NAME as the backstop for a key
  * the schema does not declare. For a personal section that backstop is not enough — `privateKey`,
@@ -114,6 +115,10 @@ function sizesField(id: string, noun: string): FieldSpec {
     kind: 'stringList',
     writable: false,
     appliesAt: 'save',
+    // The label the hand-written cloud blocks carried — "Offered instance types", "Offered VM
+    // sizes", "Offered machine types" — built from the declared noun, so a provider core has
+    // never heard of gets the same sentence-shaped label instead of a humanized `sizes`.
+    label: `Offered ${noun}s`,
     help:
       `The only ${noun}s this installation will create with this provider — on the New Server page and ` +
       'through the API, the CLI and MCP alike. Unset offers everything it sells.',
@@ -123,7 +128,9 @@ function sizesField(id: string, noun: string): FieldSpec {
 
 /**
  * The second act of the SSH whitelist, beside any declared `sshCidrList` (ADR-0021). Core's
- * control, core's words — the same two sentences the hand-written AWS row carries.
+ * control, core's words — the same two sentences the hand-written cloud rows used to carry, kept
+ * here rather than declared, because a provider that could word its own confirmation could word
+ * it away.
  */
 function allowAllCidrField(id: string): FieldSpec {
   return {
@@ -167,12 +174,15 @@ function declaredList(id: string, list: ProviderSettingList): { list: ListSpec; 
       ...(list.labelField ? { labelField: list.labelField } : {}),
       empty: list.empty,
     },
+    // An item's own sentence when it wrote one, and the list's otherwise: six boxes that each
+    // need a different explanation (`providers.byo.hosts`) and two that share one (`mirrors`)
+    // are both ordinary, and neither should have to repeat the other's shape.
     fields: list.itemFields.map((item) => ({
       path: `${path}.*.${item.name}`,
       kind: item.kind,
       writable: true,
       appliesAt: 'save',
-      help: list.help,
+      help: item.help ?? list.help,
       label: item.label,
     })),
     section: { id: path, title: list.label, help: list.help },
@@ -193,7 +203,10 @@ interface ProviderRows {
 /** The rows a DECLARED provider contributes — shipped or personal. */
 function declaredRows(id: string, described: DescribedProvider & { settings: ProviderSettings }, personal: boolean): ProviderRows {
   const { settings } = described
-  const fields: FieldSpec[] = [enabledField(id, settings.title)]
+  // The in-sentence name, not the heading: "create servers with your own machines", not "with
+  // Your own machines". They are the same string for every provider whose title is a proper noun.
+  const inSentence = settings.offering.label ?? settings.title
+  const fields: FieldSpec[] = [enabledField(id, inSentence)]
   if (personal) fields.push(packageField(id))
   const declared = new Set<string>(CORE_PROVIDER_FIELDS)
   const secrets = new Set<string>()
@@ -206,7 +219,9 @@ function declaredRows(id: string, described: DescribedProvider & { settings: Pro
       declared.add('allowAllCidr')
     }
   }
-  fields.push(sizesField(id, settings.offering.noun))
+  // `allowlist: false` says this provider's catalogue IS the operator's own list, so core's
+  // `sizes` key does not exist for it and a read-only control for one would describe nothing.
+  if (settings.offering.allowlist !== false) fields.push(sizesField(id, settings.offering.noun))
 
   const lists: ListSpec[] = []
   const sections: SectionSpec[] = [
@@ -227,7 +242,16 @@ function declaredRows(id: string, described: DescribedProvider & { settings: Pro
     declared.add(list.name)
   }
 
-  const cloud = { id, label: settings.title, noun: settings.offering.noun, example: settings.offering.example }
+  // `label` is how the provider is named inside the saved-type sentences and `title` is what
+  // heads its card; they differ only where a capitalised title would break a sentence ("whenever
+  // you ask your own machines for a small box").
+  const cloud = {
+    id,
+    label: inSentence,
+    noun: settings.offering.noun,
+    example: settings.offering.example,
+    title: settings.title,
+  }
   return { fields, sections, lists, tierFields: tierPreferenceFields(cloud), tierSection: tierPreferenceSection(cloud), declared, secrets }
 }
 
@@ -254,32 +278,31 @@ function undeclaredPersonalRows(id: string, displayName: string | undefined): Pr
 }
 
 /**
- * Splice provider sections into the static order: the contiguous run of `providers.*` sections
- * in `SETTINGS_SECTIONS` is replaced by the ordered set (static or declared, hetzner first), and
- * the run of `preferences.tiers.*` cards likewise.
+ * WHERE THE PROVIDER RUNS GO, now that neither run has a static member to sit among (issue #370).
+ *
+ * Until every provider declared, the splice point was found by looking for the first `providers.*`
+ * section in `SETTINGS_SECTIONS` — there was always at least AWS's to anchor on. There is not any
+ * more, so the two anchors are named: the provider tabs come immediately before `limits` (which is
+ * exactly where AWS through BYO have always sat, after the SSH keys), and the saved-type cards
+ * immediately after `preferences`, which is the tab they are cards on. `fields.test.ts` pins the
+ * static list and `inventory.test.ts` pins the merged result, so a rename of either anchor that
+ * silently sent a run to the bottom of the page fails in both.
+ */
+const PROVIDER_SECTIONS_BEFORE = 'limits'
+const TIER_SECTIONS_AFTER = 'preferences'
+
+/**
+ * The page's sections in the order it draws them: core's own, with the provider tabs and the
+ * saved-type cards spliced in at their anchors, each run in `providerIds` order.
  */
 function orderedSections(
   providerIds: readonly string[],
   sectionsByProvider: Map<string, SectionSpec[]>,
   tierSectionsByProvider: Map<string, SectionSpec>,
 ): SectionSpec[] {
-  const staticProviderSections = new Map<string, SectionSpec[]>()
-  const staticTierSections = new Map<string, SectionSpec>()
-  for (const section of SETTINGS_SECTIONS) {
-    const provider = section.id.match(/^providers\.([^.]+)/)?.[1]
-    if (provider) {
-      const list = staticProviderSections.get(provider) ?? []
-      list.push(section)
-      staticProviderSections.set(provider, list)
-      continue
-    }
-    const tier = section.id.match(/^preferences\.tiers\.([^.]+)$/)?.[1]
-    if (tier) staticTierSections.set(tier, section)
-  }
-
-  const providerRun = providerIds.flatMap((id) => sectionsByProvider.get(id) ?? staticProviderSections.get(id) ?? [])
+  const providerRun = providerIds.flatMap((id) => sectionsByProvider.get(id) ?? [])
   const tierRun = providerIds.flatMap((id) => {
-    const section = tierSectionsByProvider.get(id) ?? staticTierSections.get(id)
+    const section = tierSectionsByProvider.get(id)
     return section ? [section] : []
   })
 
@@ -287,18 +310,17 @@ function orderedSections(
   let providersDone = false
   let tiersDone = false
   for (const section of SETTINGS_SECTIONS) {
-    if (section.id.startsWith('providers.')) {
-      if (!providersDone) out.push(...providerRun)
+    if (section.id === PROVIDER_SECTIONS_BEFORE && !providersDone) {
+      out.push(...providerRun)
       providersDone = true
-      continue
-    }
-    if (/^preferences\.tiers\./.test(section.id)) {
-      if (!tiersDone) out.push(...tierRun)
-      tiersDone = true
-      continue
     }
     out.push(section)
+    if (section.id === TIER_SECTIONS_AFTER && !tiersDone) {
+      out.push(...tierRun)
+      tiersDone = true
+    }
   }
+  // An anchor that is gone means the run still renders, at the end, rather than vanishing.
   if (!providersDone) out.push(...providerRun)
   if (!tiersDone) out.push(...tierRun)
   return out

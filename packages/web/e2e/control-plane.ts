@@ -118,6 +118,15 @@ function configYaml(port: number, dataDir: string, sshPort: number): string {
     '    enabled: false',
     '    token: "${NIMBUS_TOKEN}"',
     '    region: sky-1',
+    /*
+     * A personal section whose `package` is a TYPO (ADR-0026, issue #377). Nothing about it is
+     * fatal — `loadPersonalProviders` records a failure and boots — and the point of having it
+     * here is that the Settings page must still draw a panel with a WRITABLE package box, so the
+     * operator can fix the typo from the page rather than being told the section does not exist.
+     */
+    '  stratus:',
+    `    package: ${personalProviderDir}rr`,
+    '    enabled: false',
     'registry:',
     '  enabled: false',
     'pricing:',

@@ -93,8 +93,16 @@ let store: ConfigStore
 
 const config: Config = configSchema.parse({})
 
-/** A registry knowing Hetzner's factory declaration — the three fields fields.ts used to carry. */
-function hetznerDeclared(): ProviderRegistry {
+/**
+ * A registry knowing what the five shipped factories declare — the rows `fields.ts` used to carry.
+ *
+ * ALL FIVE since issue #370, because that is what the composition root records and what these
+ * routes are asked about: a registry that knew only Hetzner would leave the other four with no
+ * panel at all, and every property below about saving a provider field would be asserting against
+ * an installation nobody ships. Abbreviated on purpose — the prose is the provider's, checked in
+ * its own conformance suite and against core's schema in `settings-parity.test.ts`.
+ */
+function shippedDeclared(): ProviderRegistry {
   return new ProviderRegistry(
     [],
     [],
@@ -112,6 +120,75 @@ function hetznerDeclared(): ProviderRegistry {
             { name: 'consoleProjectId', kind: 'number', label: 'Console project id', help: 'Optional; only used for the console link.' },
           ],
           offering: { noun: 'server type', example: 'cpx21' },
+        },
+      },
+      {
+        id: 'aws',
+        displayName: 'Amazon EC2',
+        settings: {
+          title: 'AWS',
+          help: 'EC2 instances in one region, with no credential to type here.',
+          fields: [
+            { name: 'region', kind: 'string', label: 'Region', help: 'Which AWS region new instances are created in.' },
+            { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes AWS creates here.' },
+          ],
+          offering: { noun: 'instance type', example: 't4g.medium' },
+        },
+      },
+      {
+        id: 'azure',
+        displayName: 'Microsoft Azure',
+        settings: {
+          title: 'Azure',
+          help: 'Virtual machines in one region, in one resource group you create.',
+          fields: [
+            { name: 'location', kind: 'string', label: 'Location', help: 'Which Azure region new VMs are created in.' },
+            { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes Azure creates here.' },
+          ],
+          offering: { noun: 'VM size', example: 'Standard_B2ps_v2' },
+        },
+      },
+      {
+        id: 'gcp',
+        displayName: 'Google Compute Engine',
+        settings: {
+          title: 'Google Cloud',
+          help: 'Compute Engine instances in one zone, in one project you name.',
+          fields: [
+            { name: 'projectId', kind: 'string', label: 'Project id', help: 'The project every instance lives in.' },
+            { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes GCP creates here.' },
+          ],
+          offering: { noun: 'machine type', example: 't2a-standard-2' },
+        },
+      },
+      {
+        id: 'byo',
+        displayName: 'Bring your own hosts',
+        settings: {
+          title: 'Your own machines',
+          help: 'Machines you already have, managed over SSH.',
+          fields: [
+            { name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
+          ],
+          lists: [
+            {
+              name: 'hosts',
+              label: 'Hosts',
+              help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
+              itemFields: [
+                { name: 'name', label: 'Name', kind: 'string' },
+                { name: 'host', label: 'Address', kind: 'string' },
+                { name: 'user', label: 'Admin login', kind: 'string' },
+                { name: 'port', label: 'SSH port', kind: 'number' },
+                { name: 'fingerprint', label: 'Host key fingerprint', kind: 'string' },
+                { name: 'identityFile', label: 'Private key path', kind: 'string' },
+              ],
+              add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+              labelField: 'name',
+              empty: 'None yet. Enabling this provider requires at least one host.',
+            },
+          ],
+          offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
         },
       },
     ],
@@ -140,7 +217,7 @@ beforeEach(async () => {
   // What the composition root records about Hetzner's factory (ADR-0027): its rows are DECLARED,
   // not written in fields.ts, so a settings app that wants a Hetzner panel says what the factory
   // says. Core cannot import the real factory (the dependency lint), so this is its declaration.
-  created = createApp({ db: opened.db, config, configStore: store, secrets, configPath, providers: hetznerDeclared() })
+  created = createApp({ db: opened.db, config, configStore: store, secrets, configPath, providers: shippedDeclared() })
 
   const res = await created.app.request('/api/v1/auth/login', {
     method: 'POST',
