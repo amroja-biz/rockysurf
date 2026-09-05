@@ -9,7 +9,7 @@ There are three routes, and they are not equivalent.
 | route | what it can do | when to use it |
 |---|---|---|
 | the config file | everything | the default answer, and the only route for GCP |
-| the setup wizard | enable a provider and store its credential | first run |
+| the setup wizard | enable a provider, and tell you which variable to export for its credential | first run |
 | the Settings page | edit the fields in the settings inventory | a running install, for the fields it knows |
 
 ## The config file is the source of truth
@@ -50,17 +50,19 @@ as one.
 
 ### Where credentials come from, in order
 
-1. **The config file wins.** A credential written in the file is the one an operator can see, diff
-   and roll back, so it beats the stored one. Silently preferring a stored token would mean a file
-   that lies.
-2. **Then the encrypted secrets store** — what the first-run wizard pasted, for the operator who
-   does not edit files.
-3. **An environment variable supplying the credential beats both at runtime**, and Rocky Surf will
-   refuse to persist a credential over one that the environment is providing, rather than store
-   something the environment would silently override.
+1. **The config file wins.** A credential written in the file — as `${HETZNER_TOKEN}`, the
+   variable's NAME — is the one an operator can see, diff and roll back. Silently preferring an
+   ambient variable would mean a file that lies.
+2. **Then the environment.** With the field empty, the composition root reads the variables the
+   provider names (`HETZNER_TOKEN` or `HCLOUD_TOKEN` for Hetzner) — the path the first-run wizard
+   steers a token cloud to: enable the cloud, export the variable, restart, come back.
+3. **Nothing else.** There is no stored copy anywhere — no wizard credential box, no secret kind;
+   both were deleted in issue #280 so that "Rocky Surf stores no cloud credentials" is
+   unconditionally true.
 
-**A credential pasted in the wizard takes effect at the next restart**, because providers are
-constructed at boot. This surprises people; say it before they ask.
+**A variable exported after Rocky Surf started takes effect at the next restart**, because a
+variable cannot appear inside a running process. Everything else about a provider's configuration
+applies on save (ADR-0017). This surprises people; say it before they ask.
 
 Three providers take **no credential from the config file at all**, by design — there is nowhere to
 put one:
@@ -91,11 +93,12 @@ sshAllowedCidr: "0.0.0.0/0"
 allowAllCidr: true
 ```
 
-> **Known bug — `rockysurf-p5jr`.** Core's config schema does not declare `allowAllCidr` for `aws`
-> or `azure`, so writing the two-line form there is rejected with "unrecognized key" even though
-> `SECURITY.md`, `docs/providers/aws.md`, `docs/providers/azure.md` and the example config all
-> instruct operators to write it. GCP declares both and works. If a user hits this, that is the
-> bead — it is a core schema gap, not their mistake.
+**Since ADR-0021 the value is a LIST**, and saving it on the Settings page pushes it to the cloud
+there and then — no launch needed. A bare string is still read as a list of one. Removing a CIDR
+takes effect in one step on Azure (the rule is rewritten whole); on AWS and GCP a range Rocky Surf
+can prove it created is offered keep-or-remove after the push, default keep, and anything it cannot
+prove it created is reported with the manual command. The "Push SSH access to the clouds" button
+repairs a cloud that drifted while the file stayed the same.
 
 Hetzner and BYO have no security-group model and take neither field.
 
@@ -116,17 +119,19 @@ The common causes, in the order they actually occur: `enabled: false` still set;
 `sshAllowedCidr`; an environment variable named in the config but absent from the environment; and
 a credential pasted in the wizard without a restart since.
 
-## The Settings page does not cover everything
+## The Settings page covers every shipped provider, and a personal one too
 
-The settings inventory is hand-written per provider, not generated from the schema — a generated
-form would produce a control for every field the schema happens to have, including ones that must
-not be editable from a browser, and would render an env reference and a literal token as the same
-box. The API refuses to save any path not in that inventory.
+Every shipped cloud has a panel: its Enabled switch, its fields, its SSH whitelist where it has one,
+and a read-only view of its `sizes` allowlist (edited in the file). Hetzner's panel is built from
+the factory's own declaration (ADR-0027); the other four are still hand-written in core's inventory
+and look the same. A personal provider (ADR-0026) gets a panel too — a full one if its author
+declared its settings, a minimal one (Enabled, and the package it loads from) if not, in which case
+its own fields are edited in the file and any undeclared value is masked on the page.
 
-The consequence for a user right now: **GCP has no Settings-page presence at all**. It is a fully
-wired provider — compose row, config section, docs, bundled prices — with zero rows in the settings
-inventory and no section in the SPA. Configuring GCP means editing YAML by hand. Do not send
-someone hunting through Settings for it.
+The API refuses to save any path not in the inventory — *"this settings page does not edit that
+field"* — so a field with no control is a field to edit in the file, not a bug to report. Two routes
+still need the file or a restart: adding a personal provider section (its package loads at start),
+and any credential that arrives through an environment variable.
 
 ## Provider-specific notes worth volunteering
 

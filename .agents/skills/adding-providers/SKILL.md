@@ -1,6 +1,6 @@
 ---
 name: adding-providers
-description: Add a cloud to Rocky Surf, or configure one it already supports. Use when the user wants to switch on or configure a provider (AWS, Azure, GCP, Hetzner, BYO) — credentials, region, sshAllowedCidr, the setup wizard, the Settings page — or wants to add support for a cloud Rocky Surf does not have yet by writing a new provider package against @rockysurf/provider-sdk. Triggers on "add a provider", "configure AWS/Azure/GCP/Hetzner", "add DigitalOcean/Vultr/Linode/OVH support", "write a compute provider", "new provider package", "provider credentials", "sshAllowedCidr", "my provider isn't showing up", "provider conformance".
+description: Add a cloud to Rocky Surf, or configure one it already supports. Use when the user wants to switch on or configure a provider (AWS, Azure, GCP, Hetzner, BYO) — credentials, region, sshAllowedCidr, the setup wizard, the Settings page — or wants to add support for a cloud Rocky Surf does not have yet by writing a new provider package against @rockysurf/provider-sdk, either as a personal provider installed into their own Rocky Surf or as one shipped in the repository. Triggers on "add a provider", "configure AWS/Azure/GCP/Hetzner", "add DigitalOcean/Vultr/Linode/OVH support", "write a compute provider", "new provider package", "personal provider", "provider credentials", "sshAllowedCidr", "my provider isn't showing up", "provider conformance".
 ---
 
 # Rocky Surf providers
@@ -39,40 +39,53 @@ In a checkout, the workflow standard is
 assume you have either.** Where a step below points at something in-tree, it says so, and says what
 the out-of-tree equivalent is.
 
-If the cloud genuinely does not fit the frozen shape, that is an ADR amendment in the same pull
-request, not a special case in core — see the amendment etiquette in
-[references/shipping.md](references/shipping.md).
+**Where the package lives is not a hard choice any more.** A provider can be a PERSONAL provider —
+an npm package the operator installs under their Rocky Surf's data directory and names in the config
+file as `providers.<id>.package` — and it gets composed, a Settings panel and a place in the wizard
+with no change to this repository (ADR-0026, ADR-0027). That is the default for a cloud one person
+needs. A provider that would help others can be promoted into the repository later; the package is
+the same either way. See [references/wiring.md](references/wiring.md), "Out of tree".
+
+## The fixed majority and the variable parts
+
+Rocky Surf is a majority-fixed architecture with variable components, and the whole of this skill is
+knowing which is which:
+
+- **What core computes with is a typed capability**, never text — `stop`, `ipStableAcrossStop`,
+  `billsWhileStopped`, `managesSshAccess`, and the rest of `ProviderCapabilities`. Core branches on
+  these and never on a provider's id; that is grep-enforced.
+- **What only the human needs to know is an advisory** — a sentence the provider declares and the
+  Settings and New Server pages print. Cheap, safe, no core logic.
+- **What the operator configures is a declared setting** — fields with kinds, labels and help on the
+  factory (`settings`), from which the Settings panel is built.
+
+**THE HARD RULE, learned from DigitalOcean's billing:** when the cloud's honest answer to a question
+below fits no existing capability, **stop and file the ADR question**. Do not pick the nearest flag.
+An approximated capability passes conformance and lies to the spend cap — a conformance-green lie is
+the worst kind, because nothing looks broken. `billsWhileStopped` exists because the first author to
+hit this stopped rather than shipping `stop: false`.
 
 ## Work in this order
 
-The order matters. Steps 2 and 4 are decisions that are expensive to revisit once code exists.
+The order matters. Steps 1, 2 and 4 are decisions that are expensive to revisit once code exists.
 
-### 1. Interview
+### 1. Research the cloud — the protocol, not an interview
 
-Do not start writing until these are answered. Most are answered by the cloud's API docs, and
-looking them up yourself is faster than asking:
+Do not start writing until every question in
+[references/research-protocol.md](references/research-protocol.md) has an answer **with a citation
+into the cloud's own documentation**, and each answer is mapped to the capability, field or setting
+it lands in. The list is fixed on purpose: it is every place two clouds have already been found to
+differ. The reference carries a full worked example for DigitalOcean, including the two answers
+that needed rulings before an honest provider could exist.
 
-- **Which cloud, and what is its compute API?** Get the actual REST reference open.
-- **How does it authenticate?** A bearer token is a different decision from a signed assertion
-  flow — this feeds step 2.
-- **Can an instance be stopped and restarted with its disk intact?** If not, `capabilities.stop`
-  is `false` and `stop`/`start` throw. That is legal and `@rockysurf/provider-byo` is the model.
-- **Does the public IP survive a stop?** → `ipStableAcrossStop`.
-- **Can it take user-data at create time, and what is the hard size ceiling?** →
-  `generatesUserData`, `userDataMaxBytes`. Find the documented limit; do not guess a round number.
-- **Can the box come up presenting a host key we minted?** → `canInjectHostKeys`. This is a
-  security posture, not a feature flag: `true` means there is no trust-on-first-use window on the
-  connection that carries the secrets file. If it is `false`, the provider's docs must say plainly
-  what the operator is trusting instead.
-- **What currency does it bill in?** Not USD unless it really is USD.
-- **How are resources tagged or labelled?** You need a way to find your own instances again, and
-  to distinguish *secondary* resources you own from ones you share. See the ownership trap in
-  [references/contract.md](references/contract.md).
-- **In tree or out of tree?** Ask this early, because it changes steps 3, 5, 6 and 7. In tree means
-  a package inside this repository, shipped in the `rockysurf` CLI, with a composition-root row and
-  a core config section. Out of tree means your own package, your own registry, your own
-  composition root — and none of step 6's edits, none of step 7's in-repo deliverables, and no
-  `pnpm run check`.
+Two of the questions decide the architecture of the package and are the ones to answer first:
+**does a stopped machine still bill** (→ `billsWhileStopped`, ADR-0025), and **what is the
+firewall model, and can a rule carry proof of who wrote it** (→ `managesSshAccess` and how
+`syncSshAccess()` converges, ADR-0021 — see [references/ssh-access.md](references/ssh-access.md)).
+
+And one that decides where the package lives: **in tree or personal?** Personal needs none of the
+in-repository edits and no `pnpm run check`; it needs the factory to carry `credentialField`,
+`credentialEnv` and `settings`, which an in-tree factory should carry anyway.
 
 ### 2. Decide the vendor SDK question — by measuring
 
@@ -87,9 +100,10 @@ is what makes its real behaviour visible.
 ### 3. Scaffold the package
 
 [references/scaffold.md](references/scaffold.md) has the skeleton: `package.json`, `config.ts`,
-`index.ts`, `errors.ts`, and the conformance test file to start from. It flags the two lines of the
-manifest that differ in tree and out of tree — `workspace:*` specifiers and the build script — so
-copying it out of tree does not fail on an unsupported URL protocol.
+`index.ts` (the factory, with `credentialField`, `credentialEnv` and `settings`), `errors.ts`, and
+the conformance test file to start from. It flags the two lines of the manifest that differ in tree
+and out of tree — `workspace:*` specifiers and the build script — so copying it out of tree does not
+fail on an unsupported URL protocol.
 
 [references/types.md](references/types.md) is the companion: every type you will import, its
 fields, the nine error codes, the `ProviderError` constructor, and the dependency seam your tests
@@ -100,13 +114,16 @@ Two rules that are enforced by CI rather than by review:
 - **Nothing in the package may import `@rockysurf/core`**, and core will never import it.
   `scripts/check-core-deps.mjs` enforces both directions.
 - The package depends on `@rockysurf/provider-sdk`, which has **zero runtime dependencies** on
-  purpose.
+  purpose — and no export whose meaning depends on object identity, because a personal package
+  carries its own copy of it.
 
 ### 4. Implement the contract, trap checklist in hand
 
-Nine methods, five capabilities. [references/contract.md](references/contract.md) is the method-by-
-method guide, and it is mostly a list of the ways each one has already been got wrong in this
-repository.
+Nine required methods, one optional method (`syncSshAccess()`, when `managesSshAccess` is true),
+and eight capability fields — five required, three optional (`simulatedInstances`,
+`managesSshAccess`, `billsWhileStopped`; absent means false).
+[references/contract.md](references/contract.md) is the method-by-method guide, and it is mostly a
+list of the ways each one has already been got wrong in this repository.
 
 The traps that have actually cost something, in severity order — every one of these must be
 **pinned by a test with literal values**, not by a comment, because a comment does not fail CI
@@ -114,9 +131,9 @@ when a maintainer "fixes the typo":
 
 1. **The status vocabulary trap.** Your cloud's status strings and the SDK's `InstanceState` may
    share a spelling and mean different things. GCE reports a *stopped* instance as `TERMINATED`;
-   Azure's `deallocated` reads like "gone" and is not. Mapping either onto the SDK's `terminated`
-   tells core a live, billing machine is gone, after which `terminate()` no-ops on the row and
-   nothing reaps it.
+   Azure's `deallocated` reads like "gone" and is not; DigitalOcean's `off` is `stopped`. Mapping
+   any of them onto the SDK's `terminated` tells core a live, billing machine is gone, after which
+   `terminate()` no-ops on the row and nothing reaps it.
 2. **The absence grace.** `describe()` maps absence to `terminated` only after a propagation
    grace. An eventually consistent API reports a just-created instance as missing; believing the
    first not-found marks a healthy instance dead. This shipped once already.
@@ -129,11 +146,22 @@ when a maintainer "fixes the typo":
    time and discovered by a bill.
 4. **Idempotency.** `terminate()` is idempotent and not-found is success, because reconcilers
    retry.
-5. **Exposure posture.** If the cloud has a firewall model, `sshAllowedCidr` is required with no
-   default, and opening SSH to the internet takes a second deliberate flag.
+5. **Exposure posture, and the whitelist that must reach the cloud.** If the cloud has a firewall
+   model, `sshAllowedCidr` is a LIST, required with no default; opening SSH to the internet takes a
+   second deliberate flag; provision is ADDITIVE and never revokes; and the operator's saved list
+   reaches the cloud through `syncSshAccess()`, not only at launch. The whole of this is
+   [references/ssh-access.md](references/ssh-access.md).
 6. **`canInjectHostKeys` honesty**, and its dependency on `generatesUserData`.
+7. **`billsWhileStopped` honesty.** It means the RUNNING rate. A cloud that charges a reduced rate
+   while stopped fits no capability — stop and file the ADR question.
 
-### 5. Run conformance
+### 5. Declare the settings and run conformance
+
+Declare `settings` on the factory — every field an operator sets, with a kind, a label and a
+sentence of help; the cloud's machine-type vocabulary; and any advisories — and `credentialField`
+/ `credentialEnv` if the cloud takes a token. The Settings panel is built from this, in tree or
+out (ADR-0027); nothing in core or the SPA is edited for it. The rules for what may be declared are
+in [references/types.md](references/types.md#providersettings).
 
 ```sh
 npm install --save-dev @rockysurf/provider-conformance
@@ -147,43 +175,57 @@ release will publish.
 
 [references/shipping.md](references/shipping.md) covers wiring up the assertions, including the
 absence-grace harness — the one check that asserts behaviour rather than shape, the one worth wiring
-carefully, and the one whose two probes are **not** symmetrical.
+carefully, and the one whose two probes are **not** symmetrical. `assertFactoryShape` also checks
+your declaration against your schema (every example parses) and that an `sshCidrList` comes with
+`managesSshAccess`.
 
 Passing is necessary and not sufficient. It cannot know whether the cloud does what you said it
 does.
 
-### 6. Wire it in
+### 6. Wire it in — or install it
 
-**Read [references/wiring.md](references/wiring.md) before starting this step.** The standard says
-registration is "one row in `compose.ts`". That is true of the composition root and false of the
-job: a new in-tree provider touches around sixteen places, and several of them fail in ways that
-look like something else — a field missing from core's config section is not merely undocumented,
-it is *unusable*, and the operator gets "unrecognized key" instead of the real problem.
+**Personal:** `mkdir -p ~/.rockysurf/providers && cd ~/.rockysurf/providers && npm init -y && npm
+install <your package>` (or point `package:` at a path while developing), then a `providers.<id>`
+section in the config file with `package:` and `enabled: true`. Restart. That is the whole of it —
+[references/wiring.md](references/wiring.md), "Out of tree", has the exact section and what to
+expect when something is wrong. **The trust model is one sentence and your README should carry it:
+a provider runs with Rocky Surf's full access — install ones you trust.**
 
-Out of tree, you own those decisions instead of editing them; that reference says which is which.
+**In tree:** read [references/wiring.md](references/wiring.md) before starting. Registration is
+"one row in `compose.ts`" for the composition root and more than that for the job — core's config
+section still has to mirror your fields by hand, and a field missing from it is not merely
+undocumented, it is *unusable*. The list is shorter than it was: a declared provider needs no rows
+in `fields.ts` and no block in the SPA.
 
 ### 7. Ship it
 
 [references/shipping.md](references/shipping.md): the package README in the fixed section order, and
 the ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
-capability-matrix column, the `docs/providers/` page and least-privilege IaC.
+capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — stated plainly
+rather than discovered after the PR — the nightly real-cloud leg, without which every value in your
+column is daggered ([references/wiring.md](references/wiring.md#real-cloud-verification)).
 
 ## Before it merges
 
-Everything here is checkable. The first six apply wherever the provider lives; the last three are
+Everything here is checkable. The first seven apply wherever the provider lives; the last three are
 in-tree only, because they are edits to this repository.
 
-- [ ] Nine methods implemented; `stop`/`start` throw rather than being absent if unsupported.
-- [ ] Conformance passes, including the absence-grace harness.
+- [ ] Every research-protocol question answered with a citation, and each answer mapped to a
+      capability, field or setting — or to a filed ADR question. Nothing approximated.
+- [ ] Nine methods implemented; `stop`/`start` throw rather than being absent if unsupported;
+      `syncSshAccess()` present exactly when `managesSshAccess` is declared.
+- [ ] `settings`, `credentialField` and `credentialEnv` declared on the factory.
+- [ ] Conformance passes, including the absence-grace harness and the settings check.
 - [ ] Status mapping pinned by a test with literal values.
-- [ ] A package `README.md` whose capability values match the source constant.
+- [ ] A package `README.md` whose capability values match the source constant and which carries the
+      trust sentence.
 - [ ] A verification section claiming only what has actually been run.
-- [ ] If a vendor SDK was taken, it was taken for a reason the vendor-SDK test allows, and the
-      measurement behind that is written down with the version it measured.
 - [ ] *(in tree)* A capability-matrix column, filled in **in the same pull request**, saying how
       each value was established. A value nobody has exercised must say so.
-- [ ] *(in tree)* `pnpm run check` green, including the dependency lint.
-- [ ] *(in tree)* If a vendor SDK was taken, it did not land in the `npx` install closure.
+- [ ] *(in tree)* `pnpm run check` green, including the dependency lint and the settings parity
+      test.
+- [ ] *(in tree)* If a vendor SDK was taken, it did not land in the `npx` install closure, and it
+      was taken for a reason the vendor-SDK test allows, with the measurement written down.
 
 ## A rule about numbers
 

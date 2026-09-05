@@ -79,25 +79,31 @@ import { z } from 'zod'
 
 const CIDR_V4 = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/
 
+import { normalizeSshCidrs, opensSshToTheInternet } from '@rockysurf/provider-sdk'
+
 export const mycloudConfigSchema = z
   .strictObject({
     token: z.string().min(1),
     region: z.string().min(1),
-    // Required, with NO default: a firewall rule is a security decision.
+    // A LIST, required, with NO default (ADR-0021): a firewall rule is a security decision. A bare
+    // string is read as a list of one so an older file keeps loading; an empty list is refused.
     // `.optional()` here is deliberate and is NOT a contradiction — the refine below is what
     // makes it required, so that the operator sees that message rather than zod's generic one.
-    sshAllowedCidr: z.string().regex(CIDR_V4).optional(),
+    sshAllowedCidr: z
+      .union([z.string().regex(CIDR_V4), z.array(z.string().regex(CIDR_V4))])
+      .transform((v) => normalizeSshCidrs(v))
+      .optional(),
     allowAllCidr: z.boolean().default(false),
     // The label prefix this provider stamps on everything it creates, and the one it REFUSES a
     // spec for if the spec's managed-by tag disagrees. See trap 3.
     managedBy: z.string().default('rockysurf'),
   })
-  .refine((c) => c.sshAllowedCidr !== undefined, {
+  .refine((c) => c.sshAllowedCidr !== undefined && c.sshAllowedCidr.length > 0, {
     message:
       'sshAllowedCidr is required: state which network may reach SSH, e.g. "203.0.113.7/32". ' +
       'To open SSH to the whole internet, set allowAllCidr: true as well — deliberately.',
   })
-  .refine((c) => c.sshAllowedCidr !== '0.0.0.0/0' || c.allowAllCidr, {
+  .refine((c) => !opensSshToTheInternet(c.sshAllowedCidr ?? []) || c.allowAllCidr, {
     message: 'sshAllowedCidr "0.0.0.0/0" also requires allowAllCidr: true. Opening SSH to the internet is two decisions, not one.',
   })
 
@@ -128,6 +134,29 @@ export const mycloudProviderFactory: ProviderFactory<MycloudProviderConfig> = {
   displayName: 'My Cloud',
   configSchema: mycloudConfigSchema,
   createProvider: (config) => makeMycloudProvider(config),
+  // Where a token lands and which variables may supply it when the config field is empty
+  // (ADR-0026). Nothing is stored; the composition root hands the value to configSchema.parse.
+  credentialField: 'token',
+  credentialEnv: ['MYCLOUD_TOKEN'],
+  // The Settings panel, declared (ADR-0027). Every field an operator sets, in order, with a kind,
+  // a label and a sentence; `enabled`, `package` and `sizes` are the installation's — leave them out.
+  settings: {
+    title: 'My Cloud',
+    help: 'Servers at My Cloud, driven with a personal access token from its console.',
+    fields: [
+      { name: 'token', kind: 'secret', label: 'Token Environment Variable', example: 'MYCLOUD_TOKEN',
+        help: 'The NAME of an environment variable holding a read/write API token — not the token itself.' },
+      { name: 'region', kind: 'string', label: 'Region', example: 'nyc3', help: 'Which region new servers are created in.' },
+      // The two-act SSH whitelist as ONE kind; `allowAllCidr` is implied. Requires managesSshAccess.
+      { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', example: '203.0.113.7/32',
+        help: 'Which networks may reach SSH on the boxes created here, as CIDRs — your own address as a /32 is the usual answer.' },
+    ],
+    offering: { noun: 'machine type', example: 'm-2vcpu-4gb' },
+    advisories: [
+      // Only what a HUMAN needs to know. Anything core computes with is a capability.
+      { surface: 'create', text: 'A stopped machine bills at the running rate on this cloud; only terminating ends the charge.' },
+    ],
+  },
 }
 
 export default mycloudProviderFactory

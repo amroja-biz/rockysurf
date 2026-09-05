@@ -309,6 +309,29 @@ and named the push as the half that must not be dropped. Any future version of i
 standing ruling above: the address may be *offered*, never adopted, and the decision still lands
 in the config file after the operator says yes.
 
+## Amendment — clouds whose rules carry no authorship (2026-09-04, issue #294, gap S2)
+
+Clauses 12–14 rest on being able to prove Rocky Surf created a specific range: the AWS ingress
+description stamp, the GCP rule description. The DigitalOcean audit on #294 found the first cloud
+where that is impossible — a DigitalOcean firewall inbound rule is `{ protocol, ports, sources }`
+and has **no description or name field at all** — and so needed a ruling before an honest provider
+could exist.
+
+**The ruling: where a rule cannot carry authorship, authorship belongs to the whole firewall object
+Rocky Surf created and named.** Such a provider converges the object in ONE write to exactly the
+configured list; `removable` is always empty and `reported` is always empty, because there is no
+stamped extra to offer and no unstamped entry to preserve — the object is Rocky Surf's by
+construction, or it is not touched at all. This is Azure's shape (clause 13), which already
+converges `securityRules/rockysurf-ssh` whole, and it is why Azure is the model such a provider
+copies. The operator's protection against surprise is unchanged: the object is created only by a
+launch, is named for Rocky Surf, holds only SSH, and a firewall the operator made themselves is
+never the one converged.
+
+Anti-lockout is unchanged under either shape: provision is additive and never revokes, only an
+explicit confirmed sync revokes, and what is missing is authorized before what is extra is removed.
+The `adding-providers` skill's `references/ssh-access.md` carries the two shapes and how to tell
+which one a cloud is.
+
 ## References
 
 - Issue #304.
