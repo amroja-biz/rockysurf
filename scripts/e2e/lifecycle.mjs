@@ -260,6 +260,9 @@ function installPersonalProvider() {
   log(`installed ${DIGITALOCEAN_PACKAGE} at ${installedAt} (from ${tarball}, no package manager)`)
 }
 
+/** The exact `sshAllowedCidr` this run wrote, so the converge check can assert on it. */
+let sshCidr = ''
+
 /**
  * Resolve this run's decisions, then hand them to `buildConfigYaml` and write the file.
  *
@@ -269,9 +272,6 @@ function installPersonalProvider() {
  * function: the public-address lookup, the Hetzner token, the AWS profile resolution, the log
  * line that records the firewall decision, and the write itself.
  */
-/** The exact `sshAllowedCidr` this run wrote, so the converge check can assert on it. */
-let sshCidr = ''
-
 async function writeConfig() {
   // AWS is the else-branch below, so every non-Hetzner cloud resolves the address the same way.
   const cidr = CLOUD === 'hetzner' ? undefined : `${await currentPublicIp()}/32`
