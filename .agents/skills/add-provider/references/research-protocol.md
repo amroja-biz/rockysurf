@@ -21,7 +21,7 @@ looks broken. The worked example below is the case that produced this rule.
 | 3 | **Does the public IP survive a stop/start?** | `capabilities.ipStableAcrossStop` |
 | 4 | **Can it take user-data at create, and what is the DOCUMENTED size ceiling, before or after encoding?** | `capabilities.generatesUserData`, `capabilities.userDataMaxBytes` (the ceiling on the rendered document, before transport encoding). **No documented ceiling: do not invent a round number** — see the traps in `contract.md` |
 | 5 | **Can the box come up presenting a host key we minted (cloud-init `ssh_keys:` honoured, not stripped)?** | `capabilities.canInjectHostKeys`. `false` is legal and obliges the README to say what the operator trusts instead |
-| 6 | **What is the firewall model? Is there a shared object (security group, NSG rule, firewall)? Can a RULE carry proof of who wrote it (a description, a name)?** | `capabilities.managesSshAccess` and how `syncSshAccess()` converges — per-rule authorship (AWS stamp, GCP description) or whole-object authorship (Azure; DigitalOcean). `ssh-access.md` |
+| 6 | **What is the firewall model? Is there a shared object (security group, NSG rule, firewall)? Can a RULE carry proof of who wrote it (a description, a name)? Does the object carry EGRESS as well as ingress, and does an update MERGE or REPLACE it?** | `capabilities.managesSshAccess` and how `syncSshAccess()` converges — per-rule authorship (AWS stamp, GCP description) or whole-object authorship (Azure; DigitalOcean). The egress and merge-or-replace halves decide what the create body carries and what every update must read back first. `ssh-access.md`, and "Whole-object writes empty what you omit" below |
 | 7 | **Which architectures does it sell, and is availability permanent or a stock level?** | `Offering.arch` and `Offering.available` per offering. A cloud with no ARM SKUs reports amd64 only; core derives the architectures on offer. Not a capability |
 | 8 | **What does it cost, in which currency, and does the API return prices inline on the call `listOfferings()` already makes?** | `Offering.hourly` as `{ amount, currency, fetchedAt }` or `null` (unknown, never free). Inline prices may be used live (the Hetzner exception); otherwise a bundled or fed table with a stamp |
 | 9 | **What is the status vocabulary, and which of its words collide with the SDK's?** | `describe()`'s state map, exported and pinned by literal tests; `terminated` reached by ABSENCE after the grace, never by a status. `contract.md`, trap 1 |
@@ -53,6 +53,46 @@ by `<request or operator>`, `<explicitly | implicitly>`*. Then make each one a t
 starts empty and refuses a reference to an object it does not hold turns a missing precondition
 into a failing unit test, which is the only place it is cheap to find.
 
+## Whole-object writes empty what you omit
+
+Question 21's neighbour, and the one that costs the most when it is missed. **Find out, per write,
+whether the API merges what you send into the object or replaces the object with it.** A replacing
+write — `PUT` on many REST APIs, some `POST`s — sets every field you did not name to its empty
+value, and the API reference usually says so once, in a sentence about the whole method, rather
+than beside the field it will erase.
+
+The rule that follows is one line of policy: **read the object, change the one field, send it all
+back.** Never assemble a body from the fields you happen to care about. Pin it with a test that
+puts something in a field the provider never reads and asserts it survives a write.
+
+This is not theoretical. A firewall updated with a body containing only its inbound rules came
+back with its outbound rules empty and its tags empty — in one request the object stopped allowing
+any egress from the machines it protected and stopped being attached to them at all, and the write
+that did it was a settings save. No unit test written from a rule model that has no field for the
+dropped data can catch it; only asking the question can.
+
+## Read-after-write on objects you just created
+
+The other half of question 21. Having created the object the next request names is not the same as
+that object being visible to the next request: an API with read replicas can answer *not found* for
+something it acknowledged a moment ago, and a provider that assumes otherwise fails on the request
+it just set up. A key created with a `201` and referenced in the very next call was rejected as an
+invalid key id; two reads of it in the same second both said not-found; it was there minutes later.
+
+Two rules, and neither is a `sleep`:
+
+- **After creating an object a later request references, read it back by id until it is visible,
+  bounded** — a handful of attempts with the same delay discipline as the absence grace, then fail
+  with the cloud's own words. Write it as a helper, because a provider with three secondary
+  objects needs it three times.
+- **On the failure path, a delete of an object created in this same call retries on 404 rather
+  than declaring success.** "Idempotent delete: 404 is success" (`contract.md`, trap 4) is right
+  for anything the provider did not just create, and wrong here: the provider holds proof the
+  object exists, so a 404 is the replica lagging, and believing it leaks the object into the
+  operator's account with nobody left holding a handle to it.
+
+The dry run cannot see either of these, because it refuses the create the chain is built around.
+
 ## The worked example: DigitalOcean, on paper
 
 Read against the DigitalOcean API as documented in September 2026. Every claim here is a reading of
@@ -68,7 +108,7 @@ composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud veri
 | 3 | Yes: a droplet's public IPv4 is retained across power off/on | `ipStableAcrossStop: true` |
 | 4 | `user_data` at create, cloud-init on the official Ubuntu images. The user-data HOW-TO page publishes no ceiling — **but the API reference does**, and that is the one to read: the droplet-create body documents `user_data` as "plain text and may not exceed 64 KiB in size". Plain text, so there is no encoding step to read the number two ways and the honest value is 65,536. The lesson generalises: when a how-to says nothing, look in the reference before concluding the cloud published nothing (found while building the provider, issue #368) | `generatesUserData: true`; `userDataMaxBytes: 65_536`, still daggered until a create is actually refused at 65,537 |
 | 5 | Yes: cloud-init on the Ubuntu images honours `ssh_keys:` | `canInjectHostKeys: true` |
-| 6 | **Cloud firewalls exist and a rule is `{ protocol, ports, sources }` with no description or name field.** Per-rule authorship is unprovable, so the AWS stamp and the GCP description have no equivalent. **Ruling (gap S2): authorship belongs to the whole firewall object Rocky Surf created and named** — converge in one write (`PUT`/`POST`/`DELETE /v2/firewalls/{id}/rules` to exactly the list), `removable` always empty, `reported` always empty, the Azure shape. Anti-lockout is unchanged: provision is additive, only an explicit confirmed sync revokes, authorize before revoke | `managesSshAccess: true`; `syncSshAccess()` whole-object; `settings` declares `sshAllowedCidr` as `sshCidrList` |
+| 6 | **Cloud firewalls exist and a rule is `{ protocol, ports, sources }` with no description or name field.** Per-rule authorship is unprovable, so the AWS stamp and the GCP description have no equivalent. **Ruling (gap S2): authorship belongs to the whole firewall object Rocky Surf created and named** — converge in one write (`PUT`/`POST`/`DELETE /v2/firewalls/{id}/rules` to exactly the list), `removable` always empty, `reported` always empty, the Azure shape. Anti-lockout is unchanged: provision is additive, only an explicit confirmed sync revokes, authorize before revoke. **Three things the paper reading missed and the live API supplied** (issue #410): `PUT /v2/firewalls/{id}` REPLACES the object — a body carrying only `inbound_rules` came back with `outbound_rules: []` and `tags: []`, so every write reads the object first and sends all of it back; a firewall created with no `outbound_rules` denies ALL egress, so the create body carries allow-all outbound deliberately; and every rule the API returns also carries `action: "allow"`, which the create body may omit but the fake should model anyway | `managesSshAccess: true`; `syncSshAccess()` whole-object, named `<managedBy>-ssh`; `settings` declares `sshAllowedCidr` as `sshCidrList` |
 | 7 | **No arm64 droplets are sold at all.** `GET /v2/sizes` lists amd64 sizes with an `available` flag per region | every `Offering.arch: 'amd64'`; sold-out sizes reported with `available: false`, never omitted |
 | 8 | `GET /v2/sizes` returns `price_hourly` inline, in USD, on the very call `listOfferings()` makes — the Hetzner exception applies | `Offering.hourly` live, `currency: 'USD'`, `fetchedAt` the moment of the call |
 | 9 | `new` / `active` / `off` / `archive`. `off` is the SDK's `stopped` — never `terminated`; `archive` maps to `unknown` with the cloud's words in `failureReason` | the state map, pinned |

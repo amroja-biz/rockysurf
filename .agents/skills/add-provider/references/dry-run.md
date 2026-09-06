@@ -52,12 +52,18 @@ The first run allows nothing. It walks the reads and stops at the first write, w
 full and refuses. That is the run to read carefully: the first write is the object everything
 after it references, and its body is the first thing the fake never saw.
 
+The commands below are written against DigitalOcean's real paths, the same chain the fresh-account
+test asserts (`scaffold.md`): its instance collection is `/v2/droplets`, and it has no
+`/v2/instances`. **Substitute your own cloud's paths.** A pattern that names a path the cloud does
+not have matches nothing, and the billable create is then refused only by the policy's default —
+which is exactly the "a default is not a decision" case below.
+
 ```sh
-export MYCLOUD_TOKEN=…   # the name the factory declares in credentialEnv
+export DIGITALOCEAN_TOKEN=…   # the name the factory declares in credentialEnv
 node .agents/skills/add-provider/assets/dry-run-provision.mjs \
-  --package ./packages/provider-mycloud \
+  --package ./packages/provider-digitalocean \
   --config-json '{"region":"…","sshAllowedCidr":"203.0.113.7/32"}' \
-  --refuse 'POST /v2/instances$'
+  --refuse 'POST /v2/droplets$'
 ```
 
 Then allow the non-billable objects one collection at a time — the firewall, the key — and run
@@ -69,11 +75,19 @@ in production and what the summary pairs up.
 
 ```sh
 node .agents/skills/add-provider/assets/dry-run-provision.mjs \
-  --package ./packages/provider-mycloud --config ./dry-run-config.json \
-  --allow 'POST /v2/firewalls$' \
+  --package ./packages/provider-digitalocean --config ./dry-run-config.json \
+  --allow 'POST /v2/tags$' \
+  --allow 'POST /v2/firewalls$' --allow 'PUT /v2/firewalls/[0-9a-f-]+$' \
   --allow 'POST /v2/account/keys$' --allow 'DELETE /v2/account/keys/[0-9]+$' \
-  --refuse 'POST /v2/instances$'
+  --refuse 'POST /v2/droplets$'
 ```
+
+**Allow the UPDATE as well as the create for every shared object.** The run that matters is the
+second one, on an account where the firewall already exists — there `provision()` converges the
+existing object instead of creating it, and a set that names only the create stops on a write the
+procedure never mentioned. Two collections is the usual answer for a shared object: `POST` the
+first time, `PUT`/`PATCH` every time after. Put the object back the way you found it afterwards,
+and record what you changed while you did.
 
 `--offering` picks the size (default: the first available one for `--arch`); `--ssh-key` hands
 the spec a real public key instead of a throwaway ed25519 one nobody holds the private half of;

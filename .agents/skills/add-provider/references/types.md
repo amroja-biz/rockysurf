@@ -109,6 +109,13 @@ interface ProviderCapabilities {
 `ConfigSchema` is structural — just something with a throwing `parse` — precisely so the SDK never
 depends on a validation library. A zod schema satisfies it; so does a hand-written function.
 
+**`credentialEnv` is a list because clouds have more than one name in circulation.** List every
+variable the cloud's own CLI and its common tooling read — `DIGITALOCEAN_TOKEN`,
+`DIGITALOCEAN_ACCESS_TOKEN`, `DO_TOKEN` are one cloud's three — in the order to try them, and put
+the **canonical one first**: it is the name the setup wizard and the Settings help print, and the
+one an operator with none of them set should create. Include an alias only if the cloud's own
+documentation or CLI uses it; a name you invented is a name nobody's shell has.
+
 ## `ProviderSettings`
 
 What the Settings page draws for your provider (ADR-0027). A DECLARATION beside the schema, not the
@@ -164,8 +171,9 @@ it. See "where the seen-running memory lives" below, because that constraint dec
 
 ```ts
 interface ProvisionSpec {
-  serverId: string          // core's id. MUST be hostname-safe — assert, never sanitize
-  name: string              // human-facing; becomes the hostname in rendered user-data
+  serverId: string          // core's id. MUST be hostname-safe — assert, never sanitize.
+                            //   This is the name the CLOUD sees.
+  name: string              // the human's display name. Rocky Surf's, never the cloud's
   offeringId: string        // provider-native, from listOfferings()
   arch: Architecture
   sshPublicKeys: string[]   // keys the PROVIDER must register with its own API
@@ -175,8 +183,20 @@ interface ProvisionSpec {
 }
 ```
 
-Four obligations hide in there:
+Five obligations hide in there:
 
+- **The cloud-side name is derived from `serverId`; `spec.name` never reaches the cloud.** These
+  are two different names for two different audiences. `name` is what the human typed — "DO skill
+  retest 2" — and it is free to hold spaces, punctuation and unicode; every cloud's instance-name
+  field is hostname-shaped or narrower. A create sending `spec.name` is refused (*"Only valid
+  hostname characters are allowed"*, on the live run that produced this rule), and it is refused
+  only live, because a fake that stores whatever string it is handed accepts it. Send
+  `spec.serverId`, or a documented derivation of it that stays injective for the same reason
+  sanitizing `serverId` is forbidden below — `<prefix>-<serverId>` is fine, a lossy squeeze of the
+  display name is not. `spec.name` belongs in a description or label field if the cloud has one,
+  and nowhere else. Pin it: a spec whose display name contains a space must produce a create whose
+  name field is the serverId (`assertProvisionNameFromServerId` in
+  `@rockysurf/provider-conformance`).
 - **Assert `serverId`, do not sanitize it.** Call `assertHostnameSafeId(spec.serverId)` from
   `validateSpec`. Sanitizing would need an injective map and cannot have one — two different
   logical servers would collide onto one cloud resource.
@@ -226,7 +246,11 @@ interface InstanceView {
 
 Populate `failureReason` when `state` is `unknown` or `failed` and the API gave you a
 human-readable message. That is exactly the case where somebody needs the cloud's untranslated
-words, because your mapping had nothing to say.
+words, because your mapping had nothing to say. (The SDK's doc comment on the field says "only
+meaningful when `state === 'failed'`" and is narrower than this. Both agree on the part that
+matters — it is free text for humans and **nothing branches on it** — so carrying the cloud's
+words on `unknown` misleads nobody and helps whoever has to read the state your map could not
+place.)
 
 The last three are for providers that adopt machines they did not create. If
 `canInjectHostKeys` is `true`, core minted the host key and shipped it in user-data, so it already
@@ -285,6 +309,25 @@ interface Price { amount: number; currency: string; fetchedAt: string }  // ISO 
 core unable to distinguish "this cloud has no ARM" from "ARM is sold out this afternoon", and those
 need different messages and different fallbacks. Hetzner publishes prices for sold-out types, and
 at one point had zero arm64 stock everywhere — a price is not an offer.
+
+**"Sold out here" and "never sold here" are different answers, and only the first one is
+returned.** An `Offering` carries one `region`, and the catalogue is the catalogue *of the
+configured region*:
+
+- The cloud sells this type in this region and has none right now → **return it**, `available:
+  false`, with an `unavailableReason` in the cloud's own terms. That is the stock level the rule
+  above exists for.
+- The cloud does not sell this type in this region at all → **omit it**. It is not an offering of
+  this installation, and listing it makes the New Server page a catalogue of things nobody here
+  can buy. One cloud publishes 122 sizes of which ~100 are sold nowhere near the configured
+  region; returning all of them with a reason is technically honest and practically a wall.
+- The cloud sells this type nowhere any more → omit it too; it is not on offer.
+
+The distinction the first rule protects is per-ARCHITECTURE, not per-size: as long as some size of
+an architecture the cloud sells here is returned, core can still tell "sold out this afternoon"
+from "this cloud has no ARM". If a whole architecture is sold in the region but out of stock in it,
+return its sizes unavailable rather than omitting them — that is the case the rule was written
+for.
 
 ## Errors
 

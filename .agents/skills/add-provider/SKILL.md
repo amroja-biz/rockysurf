@@ -160,8 +160,9 @@ when a maintainer "fixes the typo":
    that bills forever or a reaper that deletes something in use — a sweep selecting on
    `managed-by` alone once destroyed the repository owner's live server. The create-time half of
    the same rule: refuse a spec whose `managed-by` disagrees with your prefix, and assert
-   `serverId` is hostname-safe rather than sanitizing it. Both failures are committed at create
-   time and discovered by a bill.
+   `serverId` is hostname-safe rather than sanitizing it — and send the CLOUD that `serverId`,
+   never `spec.name`, which is the human's display name and is hostname-shaped for nobody. These
+   failures are committed at create time and discovered by a bill, or by the first live create.
 4. **Idempotency.** `terminate()` is idempotent and not-found is success, because reconcilers
    retry.
 5. **Exposure posture, and the whitelist that must reach the cloud.** If the cloud has a firewall
@@ -179,6 +180,14 @@ when a maintainer "fixes the typo":
    reference to an object nobody created**, so the fresh-account test fails the way the cloud
    would ([references/scaffold.md](references/scaffold.md), "The fake starts empty"). The first
    provider built with this skill shipped without this and failed on its first live create.
+9. **Whole-object writes, and objects too fresh to read.** Find out per write whether the API
+   MERGES what you send or REPLACES the object with it: a replacing write empties every field you
+   omitted, and one such update took a firewall's egress rules and its tags away in a single
+   settings save. Read the object, change the one field, send it all back. Its neighbour is the
+   same lesson from the other side — an object you just created may not be visible to the next
+   request yet, so read it back by id until it is, bounded, and do not read a 404 while reaping
+   something you just made as "already gone"
+   ([references/research-protocol.md](references/research-protocol.md)).
 
 ### 5. Declare the settings and run conformance
 
@@ -260,6 +269,9 @@ in-tree only, because they are edits to this repository.
 - [ ] Every cross-object reference answered under research question 21; the fake starts empty and
       refuses a reference to an object nobody created; one test provisions the whole chain on a
       fake that holds nothing, asserting the order of writes by the cloud's own paths.
+- [ ] The cloud-side name is `spec.serverId`, pinned by a test whose spec carries a display name a
+      hostname could not hold; and every update to a shared object reads it back and sends it whole,
+      pinned by a test on a field the provider never reads.
 - [ ] The live dry run walked `provision()` to the instance create with that create refused, and
       the README's Verified section names the date and region it was run.
 - [ ] A package `README.md` whose capability values match the source constant and which carries the

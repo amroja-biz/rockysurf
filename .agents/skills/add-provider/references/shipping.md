@@ -16,7 +16,10 @@ and throw `ConformanceError`, so they run under vitest, under `node:test`, or fr
 verification script.
 
 `assertFactoryShape` ends by calling `assertProviderShape`, so calling both is redundant; call
-`assertProviderShape` directly only when you have a provider without a factory to hand.
+`assertProviderShape` directly only when you have a provider without a factory to hand. **The same
+goes for `assertSettingsShape`**: `assertFactoryShape` runs it for you whenever the factory carries
+a declaration, so calling it as well is a duplicated assertion rather than a second check. Call it
+directly only to assert a declaration you built somewhere other than on the factory.
 
 | export | asserts |
 |---|---|
@@ -26,6 +29,7 @@ verification script.
 | `assertOfferingsShape(offerings)` | positive cpu/memory, known architecture, non-empty region, and prices either `null` or a finite non-negative amount with an ISO 4217 currency and ISO 8601 `fetchedAt` |
 | `assertManagedShape(resources)` | non-empty `kind`, string native id, `ownership` from the frozen set |
 | `assertProviderErrorShape(err)` | a `ProviderError` with one of the nine frozen codes and a derived boolean `retryable` |
+| `assertProvisionNameFromServerId(spec, sent)` | the cloud-side name came from `spec.serverId` and the human's `spec.name` reached no request. `sent` is whatever your fake captured — bodies, paths, query strings; pass the spec a display name with a space in it or the check refuses to run |
 | `assertInstanceStateValid(state)` | the state is in the frozen set |
 | `assertDescribeAbsenceGrace(harness)` | the absence grace, behaviourally |
 

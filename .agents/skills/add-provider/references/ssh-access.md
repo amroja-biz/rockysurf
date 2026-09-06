@@ -59,9 +59,11 @@ Three pieces, and they are one claim checked in both directions by conformance:
   removing it cuts SSH to every box in the account at once, including the operator's own.
 - **Provision is ADDITIVE and never revokes.** Every configured CIDR is authorized on every launch.
 - **Only remove what you can prove you created, and only what `options.revoke` names.** Everything
-  else goes in `reported` with the manual command.
+  else goes in `reported` with the manual command. *(Reads differently on a whole-object cloud —
+  see "which clause wins" below.)*
 - **Authorize before revoke**, so a sync that dies half-way leaves MORE access than it found, never
-  less. That is the anti-lockout floor, and no shortcut is worth weakening it.
+  less. That is the anti-lockout floor, and no shortcut is worth weakening it. *(Also below: a
+  single converging write has no half-way.)*
 - **Own your deadline** (the shipped REST clients hold 30 seconds), so one unreachable cloud cannot
   hang the caller; return `failed` with "I do not know" rather than "applied".
 - **Skip when the file and the process disagree** — core does this for you at the route
@@ -91,8 +93,49 @@ Surf's by construction, or it is not touched. Azure is the shape to copy. The op
 against surprise is that the object is created ONLY by a launch, is named for Rocky Surf, and holds
 only SSH; a firewall the operator made themselves is never the one Rocky Surf converges.
 
-Which shape you are does not change anti-lockout: provision additive, revoke only under explicit
-confirmation, authorize before revoke.
+### Which clause wins on a whole-object cloud, and what `options.revoke` means there
+
+The two rules above cannot both be obeyed by a single converging write, so this says which one
+gives way. **Whole-object authorship supersedes them, and it is ADR-0021's amendment S2 that says
+so** — it is a ruling about a cloud where per-rule proof does not exist, not a licence to skip
+anti-lockout anywhere else.
+
+- *Only remove what you can prove you created, and only what `options.revoke` names* — on this
+  shape the unit of proof is the whole object, so everything on it is Rocky Surf's, and the write
+  converges to exactly the configured list whether or not `options.revoke` names anything.
+  **`options.revoke` is therefore not load-bearing here**: there is nothing to offer the
+  keep-or-remove prompt (`reported` and `removable` are always empty), so a whole-object provider
+  may ignore the argument. Say that in a comment where `syncSshAccess()` accepts it, so the next
+  reader does not take the empty implementation for an oversight.
+- *Authorize before revoke* — the ordering exists so a sync that dies half-way leaves more access
+  than it found. One write has no half-way: it either lands whole or does not land at all, and
+  what lands is the list the operator just approved. That is the same floor reached by a different
+  route, and it is why the ruling requires ONE write rather than a delete followed by a create.
+
+What does not give way: **provision is still additive and never revokes**, and a sync is still the
+only thing that may narrow access. A provision that converged the object would revoke ranges
+nobody confirmed, on the one code path that runs without anyone looking at it.
+
+### The object's name, and the fields a write must not drop
+
+Two things the ruling leans on that have to be decided, not guessed:
+
+- **Derive the name, do not invent one per run.** The protection above is that the object is
+  *named for Rocky Surf*, which only works if every run of every version derives the same name.
+  Derive it from the configured `managedBy` prefix — `<managedBy>-ssh` — and write the derivation
+  in the README, so an operator can find the object and so a second Rocky Surf on the same account
+  converges the one that is already there instead of creating a rival beside it. Look it up by
+  that name; create it only when the lookup finds nothing.
+- **A whole-object write empties every field you omit.** See "Whole-object writes empty what you
+  omit" in [research-protocol.md](research-protocol.md) — read the object, change the one field,
+  send it all back. On a firewall this is not cosmetic: the fields dropped are usually the egress
+  rules and the tag that attaches the object to the instances it protects.
+- **Egress is a field, and a firewall with no egress rules may deny all of it.** A box that cannot
+  reach a package mirror never finishes bootstrapping, so decide what egress the CREATE body
+  carries (allow-all ICMP/TCP/UDP outbound is the usual answer, and the one to state in the
+  README), and leave a pre-existing object's egress exactly as the operator left it. Answer this
+  under research question 6 alongside the inbound model; a firewall model is two directions, and
+  only one of them is about SSH.
 
 ## The Settings control
 
