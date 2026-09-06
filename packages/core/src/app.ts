@@ -33,6 +33,10 @@ import { createRegistryClient, type RegistryClient } from './packs/registry.js'
 import { createPackRoutes } from './packs/routes.js'
 import type { SecretsStore } from './secrets/store.js'
 import { createDefaultRegistry, type ProviderRegistry } from './providers/registry.js'
+import { providersDirFor } from './providers/install.js'
+import { createProviderShopClient, type ProviderShopClient } from './providers/shop.js'
+import { createProviderShopRoutes } from './providers/shop-routes.js'
+import { countServersOnProvider } from './db/repositories/servers.js'
 import { createJobs, type Jobs } from './jobs/index.js'
 import { createLifecycleService, type LifecycleService } from './servers/lifecycle.js'
 import { preflightRepositories, preflightRepository } from './git/preflight.js'
@@ -430,6 +434,27 @@ export function createApp(deps: AppDeps): CreatedApp {
   // source the operator has just removed is not a listing anybody wants.
   app.route('/', createPackRoutes({ db, registry: deps.registry ?? liveRegistryClient(currentConfig, deps.configStore) }))
 
+  /*
+   * The PROVIDER half of the same shop (ADR-0028), mounted beside the pack half and built the
+   * same way. It fetches a different file from the same sources, and it fetches nothing until an
+   * admin opens the tab. Install and remove write the config file, so they refuse when there is
+   * no config file to write — the routes are still mounted, because a listing is worth showing
+   * to an embedded core even when installing from it is not possible.
+   */
+  app.route(
+    '/',
+    createProviderShopRoutes({
+      db,
+      shop: liveProviderShopClient(currentConfig, deps.configStore),
+      providersDir: () => providersDirFor(currentConfig().server.dataDir),
+      configuredProviderIds: () => Object.keys(currentConfig().providers),
+      countServers: (providerId) => countServersOnProvider(db, providerId),
+      ...(deps.configPath ? { configPath: deps.configPath } : {}),
+      ...(deps.env ? { env: deps.env } : {}),
+      ...(deps.configStore ? { reload: () => deps.configStore!.reload() } : {}),
+    }),
+  )
+
   /* ---------------------------------------------------------------------------- costs */
 
   // Read-only spend view (rockysurf-hzi7.4). Shares the jobs' spend tracker rather than
@@ -754,6 +779,20 @@ function liveRegistryClient(currentConfig: () => Config, store: ConfigStore | un
   return {
     browse: (options) => client.browse(options),
     getPack: (sourceName, packId) => client.getPack(sourceName, packId),
+    describe: () => client.describe(),
+  }
+}
+
+/** The same delegate for the provider half of a registry (ADR-0028), and for the same reasons. */
+function liveProviderShopClient(currentConfig: () => Config, store: ConfigStore | undefined): ProviderShopClient {
+  let client = createProviderShopClient({ config: currentConfig().registry })
+  store?.onChange((next, previous) => {
+    if (JSON.stringify(next.registry) === JSON.stringify(previous.registry)) return
+    client = createProviderShopClient({ config: next.registry })
+  })
+  return {
+    browse: (options) => client.browse(options),
+    getEntry: (sourceName, providerId) => client.getEntry(sourceName, providerId),
     describe: () => client.describe(),
   }
 }
