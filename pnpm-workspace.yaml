@@ -8,6 +8,13 @@ packages:
 # and tsx already resolve, so this also dedupes the tree to a single esbuild. See issue #328.
 overrides:
   esbuild: 0.28.2
+  # qs < 6.16.0 (DoS via attacker-controlled isBuffer; array-limit bypass) and fast-uri < 3.1.6
+  # (four host-confusion / SSRF advisories) both arrive through @modelcontextprotocol/sdk —
+  # qs via express@5 → body-parser, fast-uri via ajv@8. Neither is a direct dependency and
+  # nothing in packages/ pins them, so the override is the only lever until the SDK moves.
+  # Each is the first patched version; fast-uri stays on 3.x because ajv@8 asks for ^3.
+  qs: 6.16.0
+  fast-uri: 3.1.6
 # esbuild is a transitive dev dependency of vitest and needs its install script to link the
 # platform binary. Nothing in packages/ ships it at runtime.
 # better-sqlite3 is a native module — its install script compiles or downloads the binding,
