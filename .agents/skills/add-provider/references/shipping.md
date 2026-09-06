@@ -151,7 +151,7 @@ two documents:
 | **What it needs in your account** | permissions, network prerequisites, host preparation. Link the IaC |
 | **Capabilities** | every value the constant declares — the five required and any optional one that is true — and what each costs the operator; a stopped machine that still bills belongs here AND in an advisory |
 | **Prices** | live, bundled with a `fetchedAt`, or `null`. Say which, and say the currency |
-| **Verified** | what has been run against real infrastructure, and when |
+| **Verified** | what has been run against real infrastructure, and when — the live dry run (`dry-run.md`) with its date and region, and separately any real lifecycle |
 | **Writing your own provider** | one line pointing at the SDK README and the standard |
 
 Drop a section with nothing true to put in it; do not reorder the ones you keep.

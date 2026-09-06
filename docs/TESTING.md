@@ -325,6 +325,9 @@ serving; installs show `price unknown` only once their cache expires.
 - A change that adds a component something else must wire up gets a wiring test at the seam.
 - A change to a page gets a browser test, not only a component test.
 - A change to a provider's config keys extends the nightly parity test.
+- A provider's fake of its cloud starts empty and refuses a reference to an object nobody created;
+  one test provisions the whole chain on it from nothing, and the live dry run in the
+  `add-provider` skill is run before the package is published (#405).
 - A rule worth having is a check that fails when the rule is broken, not a note in a review.
 - A test that cannot fail is worse than no test, and assertions cite what was measured rather than
   what was intended.
