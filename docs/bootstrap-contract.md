@@ -288,6 +288,20 @@ Consequently the agent MUST:
 - normalise architecture itself and export `ARCH` as `amd64` or `arm64` — Debian's spelling,
   not `uname`'s — so no step has to care which it reads;
 - export `DEBIAN_FRONTEND=noninteractive` for every step;
+- give the image's own first-boot apt right of way (issue #404, ADR-0012 amendment). Every
+  Ubuntu cloud image runs `apt-daily`, `unattended-upgrades` and on some clouds the vendor's
+  agent install shortly after first boot, and apt's default on a held dpkg lock is to exit
+  100, not to wait. So, before its first `apt-get` of any kind, the agent writes
+  `/etc/apt/apt.conf.d/90rockysurf-dpkg-lock` (`DPkg::Lock::Timeout "300";`, the one number
+  `ROCKYSURF_APT_LOCK_WAIT_S`, default 300) so that every apt-get on the box — the agent's own,
+  which also pass it explicitly through one `apt_get` wrapper, and every step's, whose text the
+  agent does not rewrite — waits for the lock instead of failing; then, once per run and before
+  the first step that executes, it runs `cloud-init status --wait` (push mode, as root — in
+  callback mode the agent *is* cloud-init's `runcmd`) and polls apt's lock files with `fuser`
+  until they are free, bounded by the same number, naming the holder in `agent.log` and on the
+  journal's `notice` under that step for as long as the wait lasts. A lock still held at the
+  bound is logged and the step proceeds — apt-get then waits its own timeout, and the step has
+  its retry ([Failure semantics](#failure-semantics));
 - establish its own `HOME`, `USER` and `LOGNAME` — from the passwd entry of the user it runs
   as — before any step runs, because a root step inherits the agent's environment and the
   launcher may hand the agent none of them. The transient systemd unit does exactly that:
@@ -664,6 +678,7 @@ These are requirements, not recommendations. Each was learned from something tha
 | Required step fails | records `failed`, attaches `logTail` (plan-level and on the step) and, in callback mode, the agent log's last ~200 lines (`agentLog`, #168), stops the plan, exits 1 | reads the step's whole log and the agent log's last ~200 lines off the box (push) or takes the agent's tails (callback), builds the `BootstrapReport` — the whole install log preserved on the row as `agentLogTail` (#168) — fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
 | Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
 | Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **the apt retry standard, ADR-0012**: the step gets a second and last attempt — **two attempts per step, no more, and every step has its own budget**. Before the retry the agent rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one — that swap happens **at most once per bootstrap**, since afterwards there is nothing left to swap — refreshes the lists, and re-runs the step and its check. When the sources already name the global mirror there is nothing to swap: the failure is then an archive index out of step with its pool (a `404` on one named `.deb`, #129, #188) or the global mirror itself sick, and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower per apt step that flaked on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead. On the second failure the report names the URL(s) apt could not fetch, says the mirror is at fault rather than the pack, and tells the user to test the URL and create the server again once it serves (`bootstrap/failure-report.ts`) |
+| Step fails with a held dpkg lock in its own output (an `E:` line: `Could not get lock`, `Unable to acquire the dpkg frontend lock`, `Unable to lock directory`, `Unable to lock the administration directory` — apt's `Waiting for cache lock:` progress line is not a verdict and does not count) | **the same two-attempts-per-step budget, no mirror swap** (issue #404, ADR-0012 amendment): the lock is the image's doing, not the step's or the mirror's. The agent posts a retry notice in the fetch case's shape (who held the lock, from apt's own line; the wait; the derived bound; the choice), waits for the lock again the way it did before the first step — bounded by `ROCKYSURF_APT_LOCK_WAIT_S` — and re-runs the step and its check once. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap has no journal to announce on and relies on `DPkg::Lock::Timeout` alone | sees one step, slower by at most the wait; `agent.log` says the lock was held, by whom, and how long the agent waited. On the second failure the report's cause is `apt-lock`: it names the holder, says this is timing on the box — the image's own first-boot updates — and not the pack or the settings, and says to create the server again (`bootstrap/failure-report.ts`). The generic `apt` cause, whose advice is "the pack needs fixing", is never used for a held lock |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
@@ -712,6 +727,13 @@ An implementation conforms when all of the following hold.
       the agent waits before the retry, and says so.
 - [ ] A step that fails twice is reported with the URL(s) apt could not fetch named in the
       summary, together with what to check and when to try again.
+- [ ] Every apt-get on the box waits for a held dpkg lock rather than failing on it: the agent's
+      own through one wrapper, the steps' through the drop-in written before the first apt-get
+      of any kind. Before the first step that executes, once per run, the agent waits for
+      cloud-init (push mode) and for apt's locks to be free, bounded, naming the holder in the
+      agent log and on the journal's notice for as long as it waits. A step that still meets the
+      lock gets its second attempt after the same wait, and no mirror swap; one that fails
+      twice is reported as `apt-lock` — timing on the box, not a pack to fix (issue #404).
 - [ ] A failed step's own log tail is journalled on the step entry, and a callback report carries
       `stepStatus` and that tail; core builds one `BootstrapReport` from either topology.
 - [ ] A failed `tool:*` step releases the instance before the row is failed, unless

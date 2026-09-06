@@ -349,6 +349,7 @@ export interface Server {
 /** Mirrors `bootstrap/failure-report.ts` in core (ADR-0010). */
 export type BootstrapFailureCause =
   | 'apt-mirror'
+  | 'apt-lock'
   | 'apt'
   | 'git-auth'
   | 'git-not-found'

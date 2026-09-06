@@ -24,6 +24,11 @@
 #   * NOTHING IS ASSUMED ABOUT THE IMAGE. "Ubuntu 24.04" is not a contract about installed
 #     packages: one cloud's image ships jq and another's does not, so the agent bootstraps its
 #     own JSON parser before it can read its own instructions.
+#   * THE IMAGE'S OWN APT GOES FIRST. Every Ubuntu cloud image runs unattended-upgrades and
+#     the like right after first boot, holding the dpkg lock; apt's default is to die on a
+#     held lock, and a dead first tool step releases the box. Every apt-get on the box waits
+#     for the lock instead, the agent waits once before the first step and says so, and a
+#     step that meets the lock anyway gets its second attempt (issue #404).
 #
 # Usage:  agent.sh [plan.json]        default: $STATE_DIR/plan.json
 #         $ROCKYSURF_STATE_DIR (env)  default: /var/lib/rockysurf
@@ -283,7 +288,7 @@ apt_recover() {
 
   # The step's own `apt-updated` stamp is stale by definition now, but the lists it guards are
   # refreshed here, so the stamp idiom keeps working without every pack knowing about this.
-  if apt-get update -qq 2>&1 | tail -n 5; then
+  if apt_get update -qq 2>&1 | tail -n 5; then
     log "!!! apt lists refreshed"
   else
     log "!!! apt-get update still failing — the retry below will tell"
@@ -350,6 +355,180 @@ retry_notice() {
 }
 
 # --------------------------------------------------------------------------------------
+# the dpkg lock: the image's own first-boot apt
+# --------------------------------------------------------------------------------------
+# EVERY UBUNTU CLOUD IMAGE RUNS ITS OWN APT SHORTLY AFTER FIRST BOOT — the `apt-daily` and
+# `apt-daily-upgrade` timers, `unattended-upgrades`, and on some clouds the vendor's own agent
+# install (DigitalOcean puts `droplet-agent` on the box from a first-boot service). Any
+# provisioning that runs apt in that window races it, and apt's default answer to a held lock
+# is not to wait but to die: `E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by
+# process 1527 (apt-get)`, exit 100. The first apt step of every pack is `build-essential`, so
+# that is where the race lands, and a required tool step that fails releases the box
+# (ADR-0010). Seen on a real droplet during the DigitalOcean UAT (issue #404); cloud-agnostic,
+# since it is Ubuntu doing it. The nightly clouds have not hit it, which is timing, not
+# immunity, and the smoke containers never can — a container has no first boot.
+#
+# Three layers, because the lock can be held at three different moments:
+#
+#   1. APT ITSELF WAITS. `DPkg::Lock::Timeout` (apt >= 1.9.11, so every Ubuntu the packs
+#      target) makes apt-get block for up to that many seconds on a held lock, printing
+#      "Waiting for cache lock: …" while it does, instead of exiting 100. The agent's own
+#      apt-get calls pass it explicitly through `apt_get`; the steps' calls are the packs'
+#      own text, which the agent does not rewrite, so they get the same policy from a drop-in
+#      in /etc/apt/apt.conf.d written before anything runs (`ensure_apt_lock_policy`). Both
+#      routes carry the one number, `APT_LOCK_WAIT_S`.
+#   2. THE AGENT WAITS ONCE, BEFORE THE FIRST STEP, AND SAYS WHY. `cloud-init status --wait`
+#      for the image's first-boot configuration, then the lock itself is polled until it is
+#      free, for a bounded time, with the holder named in the agent log and on the journal's
+#      notice the way the #129 mirror wait is announced — so a user watching "Installing
+#      tools" sees "waiting for the image's own package updates to finish", not silence.
+#   3. A STEP THAT STILL MEETS THE LOCK GETS ITS SECOND ATTEMPT. The same two-attempts-per-
+#      step budget as an apt fetch failure (ADR-0012): the lock is a transient on the box's
+#      side, not the pack's, so it is retried once — after waiting for the lock again — and
+#      never a third time. The failure report classifies it accordingly
+#      (`bootstrap/failure-report.ts`, cause `apt-lock`).
+#
+# The signature is anchored on apt's `E:` verdict lines. While apt waits under layer 1 it
+# prints `Waiting for cache lock: Could not get lock …` as progress, and a step that later
+# fails for its own reasons must not be mistaken for a lock failure on the strength of that.
+
+# How long, in seconds, apt-get waits for a held lock (layer 1) and the agent polls for one
+# (layer 2, and between a step's two attempts). Five minutes covers unattended-upgrades on a
+# fresh image with room to spare. Overridable so a test does not sit through it; a box never
+# sets it.
+APT_LOCK_WAIT_S="${ROCKYSURF_APT_LOCK_WAIT_S:-300}"
+APT_LOCK_POLL_S=2
+APT_LOCK_CONF=/etc/apt/apt.conf.d/90rockysurf-dpkg-lock
+# The files apt and dpkg lock, in the order they are taken. Polled together.
+APT_LOCK_FILES='/var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock'
+
+# EVERY apt-get THE AGENT RUNS ITSELF GOES THROUGH HERE — the jq bootstrap, the list refresh
+# between two attempts — so there is one place the lock policy is spelled.
+apt_get() {
+  apt-get -o DPkg::Lock::Timeout="$APT_LOCK_WAIT_S" "$@"
+}
+
+# The same policy for every apt-get a STEP runs, including a `sudo apt-get` inside a rocky
+# step, which no environment variable would reach. Idempotent: rewritten only when the
+# content differs. Silent where there is no /etc/apt (a developer's laptop running the unit
+# harness); logged, not fatal, where it cannot be written (a harness running as a user) —
+# layer 2 still covers the first step and layer 3 the rest.
+ensure_apt_lock_policy() {
+  [ -d "${APT_LOCK_CONF%/*}" ] || return 0
+  local want="DPkg::Lock::Timeout \"$APT_LOCK_WAIT_S\";"
+  [ "$(cat "$APT_LOCK_CONF" 2>/dev/null)" = "$want" ] && return 0
+  if printf '%s\n' "$want" >"$APT_LOCK_CONF" 2>/dev/null; then
+    log "apt: $APT_LOCK_CONF written — every apt-get on this box now waits up to ${APT_LOCK_WAIT_S}s for a held dpkg lock instead of failing"
+  else
+    log "apt: could not write $APT_LOCK_CONF (not root?) — the steps' own apt-get calls will not wait for a held dpkg lock; the agent's still do"
+  fi
+  return 0
+}
+
+# Prints "process <pid> (<command>)" for whoever holds any of apt's locks; returns 1 when they
+# are free. `fuser` (psmisc) is on every Ubuntu cloud image; `lsof` is the next best; with
+# neither — the stock ubuntu:24.04 container has neither, nor `pgrep` — the locks are taken
+# to be free, and layer 1 is what stands.
+apt_lock_holder() {
+  local pid='' name=''
+  # shellcheck disable=SC2086 # the list is meant to split
+  if command -v fuser >/dev/null 2>&1; then
+    pid=$(fuser $APT_LOCK_FILES 2>/dev/null | awk '{print $1; exit}')
+  elif command -v lsof >/dev/null 2>&1; then
+    pid=$(lsof -t $APT_LOCK_FILES 2>/dev/null | head -n 1)
+  elif command -v pgrep >/dev/null 2>&1; then
+    pid=$(pgrep -x 'apt-get|apt|dpkg|unattended-upgr' 2>/dev/null | head -n 1)
+  fi
+  [ -n "$pid" ] || return 1
+  name=$(ps -o comm= -p "$pid" 2>/dev/null | tr -d ' ')
+  echo "process $pid (${name:-gone})"
+}
+
+# "5 min" on a box, "3 s" under a test's override.
+human_lock_wait() { human_seconds "$APT_LOCK_WAIT_S"; }
+
+# The notice that stands while the first step waits for the lock (layer 2): what is being
+# waited for, who holds it, the bound, and that nothing is stuck — #129's rule, a notice
+# never outlives its cause, is kept by `wait_for_apt_lock` restoring the step's own notice
+# when the wait ends.
+lock_wait_notice() {
+  local name="${1#tool:}" holder="$2"
+  echo "$name is waiting for the image's own package updates to finish — apt's lock is held by $holder. Ubuntu runs unattended-upgrades and the cloud's own agent install on first boot; Rocky Surf gives them up to $(human_lock_wait), then installs. Nothing is stuck."
+}
+
+# WAIT FOR THE LOCK, BOUNDED, ANNOUNCED (layer 2). $1 = the step the wait is charged to.
+# Always returns 0: the wait is a courtesy to the step, and a lock still held at the end of it
+# is apt-get's to wait for next (layer 1) and the retry's to survive (layer 3).
+#
+# `cloud-init status --wait` first, because the image's first-boot apt is started by
+# cloud-init's final stage and the lock is not held until it starts — a poll that finds the
+# lock free ten seconds before unattended-upgrades takes it has proven nothing. Skipped in
+# callback mode, where the agent IS cloud-init's runcmd and would be waiting for itself, and
+# when not root, which is only ever a test harness. Bounded either way.
+wait_for_apt_lock() {
+  local id="$1" holder last_holder='' waited=0 announced=0
+  if [ ! -f "$CALLBACK_FILE" ] && [ "$(id -u)" = 0 ] && command -v cloud-init >/dev/null 2>&1; then
+    log "--- $id: waiting for cloud-init to finish the image's first-boot configuration (up to ${APT_LOCK_WAIT_S}s)"
+    local -a ci=(cloud-init status --wait)
+    command -v timeout >/dev/null 2>&1 && ci=(timeout "$APT_LOCK_WAIT_S" "${ci[@]}")
+    if "${ci[@]}" >/dev/null 2>&1; then
+      log "--- $id: cloud-init done"
+    else
+      log "--- $id: cloud-init did not report done (rc=$?) — going on to the lock itself"
+    fi
+  fi
+  while holder=$(apt_lock_holder); do
+    if [ "$waited" -ge "$APT_LOCK_WAIT_S" ]; then
+      log "!!! $id: apt's lock is still held after ${waited}s ($holder) — going ahead; apt-get itself waits up to ${APT_LOCK_WAIT_S}s more for it (DPkg::Lock::Timeout)"
+      break
+    fi
+    if [ "$announced" = 0 ] || [ "$holder" != "$last_holder" ]; then
+      announced=1
+      last_holder=$holder
+      log "!!! $id: waiting for the image's own package updates to finish before touching apt — apt's lock is held by $holder; giving it up to ${APT_LOCK_WAIT_S}s"
+      # A step on its second attempt already carries the retry notice, which names the wait.
+      [ -z "$STEP_NOTICE" ] && set_notice "$(lock_wait_notice "$id" "$holder")"
+    elif [ $((waited % 30)) -eq 0 ]; then
+      log "!!! $id: apt's lock still held after ${waited}s ($holder)"
+    fi
+    sleep "$APT_LOCK_POLL_S"
+    waited=$((waited + APT_LOCK_POLL_S))
+  done
+  if [ "$announced" = 1 ]; then
+    [ "$waited" -lt "$APT_LOCK_WAIT_S" ] && log "!!! $id: apt's lock is free after ${waited}s"
+    restore_notice
+  fi
+  return 0
+}
+
+# $1 = a log file, $2 = the line count it had before this attempt (see apt_fetch_failed for
+# why only this attempt's output counts). apt's verdict lines for a held lock, and only the
+# verdicts: the `Waiting for cache lock:` progress line apt prints while layer 1 holds it off
+# carries the same words and must not match.
+apt_lock_held() {
+  [ -f "$1" ] || return 1
+  tail -n +"$(($2 + 1))" "$1" | grep -qE \
+    '^E: (Could not get lock|Unable to acquire the dpkg frontend lock|Unable to lock (directory|the administration directory))'
+}
+
+# The retry notice for a held lock (layer 3), in `retry_notice`'s shape and order: what
+# happened and who held the lock (from this attempt's `E:` line, when apt named it), what is
+# being done about it, the bound, and the choice.
+lock_retry_notice() {
+  local id="$1" step_log="$2" before="$3" timeout_s="$4"
+  local name="${id#tool:}" holder budget_s bound
+  holder=$(tail -n +"$((before + 1))" "$step_log" 2>/dev/null | grep -oE 'held by process [0-9]+ \([^)]*\)' | head -n 1)
+  holder=${holder:-"another package manager"}
+  budget_s=$((timeout_s + APT_LOCK_WAIT_S))
+  if [ "$timeout_s" -gt 0 ] 2>/dev/null; then
+    bound="it gives up after $(((budget_s + 59) / 60)) more minutes at most"
+  else
+    bound="this step has no time limit"
+  fi
+  echo "$name could not start — apt's lock was still held by the image's own first-boot package updates ($holder). Rocky Surf is waiting up to $(human_lock_wait) for them to finish, then trying this step once more; $bound. You can wait, or terminate this server now (Terminate, on this page) and launch it on another provider."
+}
+
+# --------------------------------------------------------------------------------------
 # json
 # --------------------------------------------------------------------------------------
 # The plan is JSON, so the agent cannot read its own instructions until jq exists — and
@@ -359,14 +538,15 @@ ensure_jq() {
   command -v jq >/dev/null 2>&1 && return 0
   log "jq missing — bootstrapping it before the plan can be parsed"
   # An image without jq (Hetzner's) on a cloud with a sick mirror would otherwise die here,
-  # before the plan — the same failure as a step's, so it gets the same fallback.
+  # before the plan — the same failure as a step's, so it gets the same fallback. A held dpkg
+  # lock is apt_get's to wait out (#404): there is no journal yet to announce it on.
   local jq_log="$STATE_DIR/steps/jq-bootstrap.log"
-  apt-get update -qq >>"$jq_log" 2>&1 || true
-  apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
+  apt_get update -qq >>"$jq_log" 2>&1 || true
+  apt_get install -y -qq jq >>"$jq_log" 2>&1 && return 0
   if apt_fetch_failed "$jq_log" 0; then
     apt_recover "the jq bootstrap"
     log "jq: retrying once on the fallback mirror"
-    apt-get install -y -qq jq >>"$jq_log" 2>&1 && return 0
+    apt_get install -y -qq jq >>"$jq_log" 2>&1 && return 0
   fi
   log "FATAL: could not install jq"
   tail -n 10 "$jq_log"
@@ -636,6 +816,9 @@ run_step() {
 
 log_lines() { [ -f "$1" ] && wc -l <"$1" | tr -d ' ' || echo 0; }
 
+# The pre-first-step lock wait (#404) happens once per agent run, whichever step is first.
+APT_LOCK_WAITED=0
+
 run_plan() {
   local total i id run_as script check optional timeout_s reports step_log rc before
   total=$(jq '.steps | length' "$PLAN_FILE")
@@ -658,14 +841,37 @@ run_plan() {
     fi
 
     set_step "$id" running
+    # Once per run, before the first step that is going to execute: the image's own first-boot
+    # apt gets its head start here, announced under this step (#404, layer 2). On a resume the
+    # locks are long free and this costs one poll.
+    if [ "$APT_LOCK_WAITED" = 0 ]; then
+      APT_LOCK_WAITED=1
+      wait_for_apt_lock "$id"
+    fi
     before=$(log_lines "$step_log")
     run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
     rc=$?
 
+    # A held dpkg lock is the image's doing, not the step's (#404, layer 3): the same second
+    # and final attempt as a fetch failure, after waiting for the lock again — and no mirror
+    # swap, because nothing about the mirror was wrong.
+    if [ $rc -ne 0 ] && apt_lock_held "$step_log" "$before"; then
+      STEP_NOTICE=$(lock_retry_notice "$id" "$step_log" "$before" "$timeout_s")
+      set_notice "$STEP_NOTICE"
+      log "!!! $id: apt's lock was held by another package manager — on a fresh box, the image's own first-boot updates — waiting for it before this step's second and last attempt"
+      wait_for_apt_lock "$id"
+      log "--- $id: retrying once now that the lock has had its wait (attempt 2 of 2)"
+      run_step "$id" "$run_as" "$script" "$check" "$timeout_s" "$step_log"
+      rc=$?
+      STEP_NOTICE=''
+      clear_notice
+      if [ $rc -ne 0 ]; then
+        log "--- $id: the second attempt failed too — apt is out of retries for this step"
+      fi
     # A fetch failure is the mirror's fault, not the step's, so every step gets a second and
     # final attempt at one — the tool-install retry standard (#188). The signature check comes
     # first: a step that failed for its own reasons is not retried, and never pays the wait.
-    if [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before"; then
+    elif [ $rc -ne 0 ] && apt_fetch_failed "$step_log" "$before"; then
       # The user is told what failed, what happens next, how long it can take at most, and
       # that they may terminate now and go elsewhere (#205) — before the wait, so the wait is
       # never silent, and standing until the second attempt has ended either way.
@@ -710,6 +916,8 @@ main() {
     log "FATAL: no plan at $PLAN_FILE"
     exit 2
   }
+  # Before the first apt-get of any kind, the jq bootstrap's included (#404, layer 1).
+  ensure_apt_lock_policy
   ensure_jq || exit 2
   check_plan_version || exit 2
   load_secrets

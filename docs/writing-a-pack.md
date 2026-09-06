@@ -369,6 +369,19 @@ withdrawn the moment your script prints a line. You need do nothing for this eit
 one more reason to let your script's tools talk: `-qq` on an `apt-get install`, or `-s` on a
 long `curl`, buys a tidier log at the price of a timeline that can only say "still quiet".
 
+The same goes for the **dpkg lock**. Every Ubuntu cloud image runs its own apt shortly after
+first boot — `unattended-upgrades`, the `apt-daily` timers, on some clouds the vendor's agent
+install — and your first `apt-get` can meet it holding the lock. apt's default is to fail on
+that (`E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1527
+(apt-get)`, exit 100). The agent handles it three ways, none of them yours to write: it sets
+`DPkg::Lock::Timeout` for every `apt-get` on the box before anything runs, so yours waits for
+the lock instead of failing; it waits for cloud-init and for the lock itself once, before the
+first step, and tells the user why ("build-essential is waiting for the image's own package
+updates to finish"); and a step that meets the lock anyway gets the same second attempt as a
+fetch failure, after the same wait. If the lock is still held after all of that, the failure
+report says so — timing on the box, not your pack — and says to create the server again. So no
+`while fuser /var/lib/dpkg/lock-frontend; do sleep 1; done` in your script either.
+
 So do **not** write your own apt retry: no `for i in 1 2 3; do apt-get install …; done`, no
 `|| apt-get install …` second chance, and no `Acquire::Retries` drop-in of your own. Yours
 would run inside the agent's first attempt, would not get the fresh `apt-get update` or the
