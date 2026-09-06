@@ -2,10 +2,10 @@
  * `@rockysurf/provider-hetzner` — Hetzner Cloud compute provider.
  *
  * Ported in Milestone 4b from `spike/src/providers/hetzner.ts`, which ran a full verified
- * lifecycle against the real API (`spike/recordings/hetzner-lifecycle.txt`, 20.3s, zero
- * orphans), onto the frozen SDK (ADR-0003). Plain `fetch` against the documented REST API — no
- * vendor SDK, and therefore no transitive dependency tree to audit or to slow an `npx` cold
- * start.
+ * lifecycle against the real API (`docs/history/spike/recordings/hetzner-lifecycle.txt`,
+ * 20.3s, zero orphans), onto the frozen SDK (ADR-0003). Plain `fetch` against the documented
+ * REST API — no vendor SDK, and therefore no transitive dependency tree to audit or to slow an
+ * `npx` cold start.
  *
  * Three behaviours the port preserves, each learned the hard way and each now expressible in
  * the SDK where the spike had to write a comment instead:

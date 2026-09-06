@@ -104,4 +104,5 @@ paths = [
 # --- those two rules entirely — see the header — so there is nothing left for those files to be
 # --- excused from, and an allowlist with no rule to narrow is not an exemption, just dead
 # --- config. The files themselves (docs/adr/, docs/history/DEVLOG.md, scripts/e2e/recordings/,
-# --- spike/recordings/) are unchanged; they simply no longer need a hole punched for them.
+# --- docs/history/spike/recordings/) are unchanged; they simply no longer need a hole punched
+# --- for them.

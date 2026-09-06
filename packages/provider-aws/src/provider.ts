@@ -51,7 +51,7 @@ import { buildOfferings } from './offerings.js'
  * is left is RunInstances plus one shared security group.
  *
  * Ported from `spike/src/providers/aws.ts`, which ran two verified real lifecycles
- * (`spike/recordings/aws-lifecycle.txt`), onto the frozen SDK.
+ * (`docs/history/spike/recordings/aws-lifecycle.txt`), onto the frozen SDK.
  */
 
 /**

@@ -10,9 +10,9 @@
  * this package as well as core.
  *
  * Frozen by ADR-0003 (`docs/adr/0003-provider-sdk-shape-and-exclusions.md`), written from the
- * de-risking spike's findings memo (`docs/spike/findings.md`). Changes require amending that
- * ADR — the doc comments here carry the reasoning so a provider author never has to guess
- * which rules are load-bearing.
+ * de-risking spike's findings memo (`docs/history/spike/findings.md`). Changes require
+ * amending that ADR — the doc comments here carry the reasoning so a provider author never has
+ * to guess which rules are load-bearing.
  */
 
 export type { ProviderCapabilities } from './capabilities.js'

@@ -67,7 +67,7 @@ attempt. Core was never reachable from outside and never needed to be.
 ### Positive
 
 - The control plane runs anywhere Node runs, including a laptop behind NAT with no listener —
-  proven, not asserted (`docs/spike/findings.md`, exit question 2).
+  proven, not asserted (`docs/history/spike/findings.md`, exit question 2).
 - The IAM policy a self-hoster must grant shrinks to what `RunInstances` and a security group
   need.
 - One process means one deploy, one log stream, and an `npx` quickstart.
@@ -94,8 +94,8 @@ attempt. Core was never reachable from outside and never needed to be.
 
 ## References
 
-- `docs/spike/findings.md` — exit questions 1–4, and the evidence table
-- `docs/spike/findings-notes.md` #31 (push needs no inbound anything), #37 (falsely-green sweep)
+- `docs/history/spike/findings.md` — exit questions 1–4, and the evidence table
+- `docs/history/spike/findings-notes.md` #31 (push needs no inbound anything), #37 (falsely-green sweep)
 - `.plan/1-open-source-rocky-surf-v0-1.md` — "Target architecture", "Control plane app",
   "Debate record"
 - Spike implementation: `spike/src/app.ts`, `spike/src/server.ts`, `spike/src/store.ts`

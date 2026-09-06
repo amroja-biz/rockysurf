@@ -8,7 +8,7 @@ human what their script must do, this page tells an implementer what the system 
 
 Every normative statement here is grounded in
 [ADR-0002](adr/0002-push-bootstrap-default-callback-fallback.md) and in the evidence behind it,
-[`spike/findings.md`](spike/findings.md). Amendment ids (`E1`, `E5`…) and finding numbers
+[`history/spike/findings.md`](history/spike/findings.md). Amendment ids (`E1`, `E5`…) and finding numbers
 (`#39`, `#44`…) refer to that memo. Where this document adds a rule the memo did not state, it
 says so explicitly.
 
@@ -765,9 +765,9 @@ An implementation conforms when all of the following hold.
 - [ADR-0003 — provider SDK shape](adr/0003-provider-sdk-shape-and-exclusions.md) — `validateSpec()` (`A7`), capability flags
 - [ADR-0004 — packs are PR-able YAML](adr/0004-packs-as-pr-able-yaml.md) — the `Tool`/`SurgePack` records a plan is rendered from
 - [`writing-a-pack.md`](writing-a-pack.md) — the author-facing contract; **the single source of truth for the four step rules**
-- [`spike/findings.md`](spike/findings.md) — the evidence: exit questions 1–2, amendments `E1`, `E4`–`E10`, `A7`
-- Evidence recordings: `spike/recordings/aws-lifecycle.txt`, `spike/recordings/hetzner-lifecycle.txt`,
-  `spike/recordings/aws-callback-lifecycle.txt`
+- [`history/spike/findings.md`](history/spike/findings.md) — the evidence: exit questions 1–2, amendments `E1`, `E4`–`E10`, `A7`
+- Evidence recordings: `docs/history/spike/recordings/aws-lifecycle.txt`, `docs/history/spike/recordings/hetzner-lifecycle.txt`,
+  `docs/history/spike/recordings/aws-callback-lifecycle.txt`
 - Reference implementation: `spike/bootstrap/agent.sh`, `spike/src/push.ts`, `spike/src/callback.ts`
 
 <!-- APPENDED by rockysurf-55fx.14 (spike-hetzner). This is spike-bootstrap's document; the

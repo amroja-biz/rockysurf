@@ -111,7 +111,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
-      # ASCII ONLY (docs/learnings/aws.md #28): IAM rejects a role description containing anything
+      # ASCII ONLY: IAM rejects a role description containing anything
       # outside printable Latin-1, with a raw regex and no field name in the error. The em dashes
       # this template uses everywhere else would fail the stack at CREATE.
       Description: !Sub 'Rocky Surf nightly CI: GitHub OIDC entry role that assumes ${ProviderRoleName}'

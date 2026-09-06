@@ -94,9 +94,9 @@ which is the evidence that a portable pack format is achievable rather than aspi
 
 ## References
 
-- `docs/spike/findings.md` — amendment E10 ("Ubuntu 24.04" is not a contract about installed
+- `docs/history/spike/findings.md` — amendment E10 ("Ubuntu 24.04" is not a contract about installed
   packages); exit question 1 (one plan, two architectures)
-- `docs/spike/findings-notes.md` #36
+- `docs/history/spike/findings-notes.md` #36
 - `.plan/1-open-source-rocky-surf-v0-1.md` — "Packs as portable files (the community mechanic)",
   risk 1
 - Port anchors: `backend/src/lib/types.ts`, `scripts/seed-tools.sh`,

@@ -5,7 +5,7 @@
 > Statuses: Proposed | Accepted | Deprecated | Superseded by ADR-NNNN | Rejected.
 >
 > ADRs 0001-0004 are the Phase 3 design freeze (`rockysurf-q5lm.1`), written from
-> `docs/spike/findings.md` — the de-risking spike's findings memo, which is the input
+> `docs/history/spike/findings.md` — the de-risking spike's findings memo, which is the input
 > contract for the freeze. Read that memo for the evidence behind any decision here.
 
 ## Control Plane & Runtime

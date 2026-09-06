@@ -27,7 +27,7 @@ declared beside its config schema and checked against it by conformance.
 
 ## Context
 
-`docs/spike/interface-sketch.md` was published as an explicitly non-frozen sketch so the spike
+`docs/history/spike/interface-sketch.md` was published as an explicitly non-frozen sketch so the spike
 had one concrete thing to implement against. Two real providers (AWS EC2, Hetzner Cloud) plus an
 in-memory fake were built on it and run against real infrastructure.
 
@@ -141,7 +141,7 @@ real infrastructure after a real teardown. With the instance genuinely reaped,
 `listManaged()` reported no instances and *still* reported
 `security-group/sg-0a949e8ed67c5a1bd` — a tagged resource that must survive the servers it
 serves, which is the reconciler's hardest case
-(`spike/recordings/aws-callback-lifecycle.txt:55-56`). Without an ownership field, that line is
+(`docs/history/spike/recordings/aws-callback-lifecycle.txt:55-56`). Without an ownership field, that line is
 indistinguishable from an orphan.
 **D2** follows from Hetzner refusing raw key material inline: a crash between creating the key
 object and creating the server orphans a key the database never references, so the reconciler
@@ -532,17 +532,17 @@ The memo lists these as not-yet-decidable, and this ADR does not decide them:
 
 ## References
 
-- `docs/spike/findings.md` — amendments A1–A7, B1–B3, C1–C3, D1–D6, E2/E4, F1–F2; "Deliberately
+- `docs/history/spike/findings.md` — amendments A1–A7, B1–B3, C1–C3, D1–D6, E2/E4, F1–F2; "Deliberately
   unresolved"; exit question 3
-- `docs/spike/findings-notes.md` #1–#27, #37, #38
-- `docs/spike/interface-sketch.md` — the shape being amended
-- `spike/recordings/capability-differences.md` — the eight divergences
+- `docs/history/spike/findings-notes.md` #1–#27, #37, #38
+- `docs/history/spike/interface-sketch.md` — the shape being amended
+- `docs/history/spike/recordings/capability-differences.md` — the eight divergences
 - Spike implementation: `spike/src/sdk.ts`, `spike/src/providers/aws.ts`,
   `spike/src/providers/hetzner.ts`; `spike/verify-aws.run1.log` for A4
-- `spike/recordings/aws-callback-lifecycle.txt:55-56` (commit `5e537b0`) — D1 observed on real
+- `docs/history/spike/recordings/aws-callback-lifecycle.txt:55-56` (commit `5e537b0`) — D1 observed on real
   infrastructure: a shared, intentionally-persistent resource surviving a real teardown
 - The reconciler is the concrete consumer of A3, A4 and D1–D5: follow-up task 3 in
-  `docs/spike/findings.md`, tracked as **`rockysurf-55fx.7`** ("Startup recovery pass +
+  `docs/history/spike/findings.md`, tracked as **`rockysurf-55fx.7`** ("Startup recovery pass +
   reconciler (listManaged vs DB)"), which carries the same D1 evidence. Its acceptance criteria
   are where these amendments get tested — a cloud resource with no DB row flagged as an orphan,
   and a DB row marked terminated when the resource is gone. The shared security group above is
