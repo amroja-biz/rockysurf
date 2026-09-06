@@ -5,29 +5,29 @@ product — Lambda, API Gateway, DynamoDB, CloudFront, Stripe — and the open-s
 in `packages/` is a rewrite of it, not its next version.
 
 The private history of that work is not published (see the note in
-[`CONTRIBUTING.md`](../../CONTRIBUTING.md#a-note-on-this-repositorys-history)). These files are
-what was worth keeping from it.
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md#a-note-on-this-repositorys-history)). What was worth
+keeping from it is [`DEVLOG.md`](DEVLOG.md): the development log, written as it happened — every
+fight with AWS, every wrong turn, every thing that broke in production and why.
 
-| File | What it is |
-|---|---|
-| [`DEVLOG.md`](DEVLOG.md) | The development log, written as it happened. Every fight with AWS, every wrong turn, every thing that broke in production and why. |
-| [`SPEC-P1.md`](SPEC-P1.md) | Phase 1 specification — the dogfooding build. |
-| [`SPEC-P2.md`](SPEC-P2.md) | Phase 2 specification — the SaaS features. |
+The two phase specifications that used to sit beside it (`SPEC-P1.md`, the dogfooding build, and
+`SPEC-P2.md`, the SaaS features) were removed in #339: they specified the hosted product, not
+this one, and nothing in this repository was built from them.
 
-## Read them as history, not as documentation
+## Read it as history, not as documentation
 
 **Nothing here describes the software this repository builds.** The architecture is different,
-the deployment model is different, and much of what these files call "Rocky Surf" no longer
+the deployment model is different, and much of what the log calls "Rocky Surf" no longer
 exists. For how the current system works, start at [`docs/adr/llms.txt`](../adr/llms.txt); for
 running it, [`docs/self-hosting.md`](../self-hosting.md).
 
-They are kept because the reasoning is reusable and the mistakes were expensive. The AWS lessons
-in particular were pulled out into [`docs/learnings/aws.md`](../learnings/aws.md), which *is*
-meant to be read for advice.
+It is kept because the reasoning is reusable and the mistakes were expensive. The AWS lessons in
+it were generalized into the AWS learnings library at
+https://github.com/jbdamask/aws-learnings-library, which *is* meant to be read for advice; the
+copy that used to live at `docs/learnings/aws.md` was removed in #339 as a duplicate of it.
 
 ## Scrubbing
 
-These files were scrubbed before being moved here: an AWS account id, an API Gateway id and a
+This file was scrubbed before being moved here: an AWS account id, an API Gateway id and a
 test box's public IP were replaced with documentation-range placeholders
 (`111111111111`, `abcd1234ef`, `203.0.113.10`). Resource *names* from the old deployment were
 left alone — they are all prefixed `rocky-surf-` and none of them identifies anything reachable.

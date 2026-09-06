@@ -356,8 +356,7 @@ installation ids, deployment identifiers of a running SaaS — and rewriting it 
 would be a scrub of thousands of commits with no way to prove it complete.
 
 So the history is not published, and nothing is lost that mattered: the development story is
-preserved as prose in [`docs/history/`](docs/history/), scrubbed, alongside the original phase
-specifications. The ADRs carry the decisions, and `spike/recordings/` carries the evidence.
+preserved as prose in [`docs/history/`](docs/history/), scrubbed. The ADRs carry the decisions, and `spike/recordings/` carries the evidence.
 
 `gitleaks` runs on every pull request over the full history, which is what keeps the fresh start
 from being a one-time cleanup. If it fires on your branch, do not force-push around it — the
