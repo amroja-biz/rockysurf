@@ -571,7 +571,7 @@ function ServerCard({
       {confirming === 'stop' && (
         <ConfirmModal
           title={`Stop ${server.name}?`}
-          message="The disk is kept, so you can start it again later. You are not billed for a stopped instance's compute."
+          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped servers. If you are using another Provider, check their documentation."
           confirmLabel="Stop"
           onCancel={() => setConfirming(null)}
           onConfirm={() => void run('stop', () => stopServer(server.serverId), `${server.name} is stopping`)}

@@ -808,7 +808,7 @@ export function ServerDetailPage() {
       {confirming === 'stop' && (
         <ConfirmModal
           title={`Stop ${server.name}?`}
-          message="The disk is kept, so you can start it again later."
+          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped servers. If you are using another Provider, check their documentation."
           confirmLabel="Stop"
           onCancel={() => setConfirming(null)}
           onConfirm={() => void run('stop', () => stopServer(server.serverId), 'Stopping')}
