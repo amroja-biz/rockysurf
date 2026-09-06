@@ -1,7 +1,7 @@
 ---
 KEY: orchestrating-issue-agent-teams
 DATE: 2026-08-26
-UPDATED: 2026-09-05
+UPDATED: 2026-09-06
 STATUS: active
 SOURCE: the 2026-08-26 session that closed twenty issues (#88–#163) with eighteen background agents; pass-along .pass-along/2026-08-26-1324-PASS-ALONG.md
 ---
@@ -109,6 +109,40 @@ written for the orchestrating session — the one that reads this file — not f
   from an audit written before the owner changed direction was executed because it was on the
   list, and had to be reverted (#369/#390/#391). Re-test each queued item against the current
   ruling before launching an agent on it.
+
+## Beads: the threshold, and how it works across worktrees (added 2026-09-06)
+
+The owner's standing workflow is GitHub issue → plan → decompose into beads (`bd`) with
+dependencies and acceptance criteria → agents work the beads → PR. The 2026-09-05/06 sessions
+skipped beads entirely, and the owner asked whether that was right. The ruling is a threshold:
+
+- **One PR, no ordering: no beads.** The issue body carries a "What to build" and an
+  "Acceptance" section (write them when filing; #418, #419 and #420 are the shape), the agent
+  gets the issue, and closes it with the PR. A bead for a single-PR issue is ceremony.
+- **More than one PR, or any ordering dependency: beads first.** The planner (a planning agent,
+  or the orchestrator after reading the plan) files one epic with a task per PR, acceptance
+  criteria on each, and `bd dep add` for every ordering edge, *before* any worker launches.
+  Workers launch one per ready bead (`bd ready`), claim it (`bd update <id> --claim`), and
+  close it when the PR is green (`bd close <id>`), so the next `bd ready` shows what is
+  unblocked. This is the fix for the one-agent-for-a-whole-epic failure above: the queue lives
+  in beads, not in one agent's context, and a stalled agent's remaining work is still filed.
+- **Cross-repo or "depends on a merge": still a bead**, with the dependency stated in the bead's
+  description. Today's "#420 after #418 merges" lived in the orchestrator's head and an issue
+  comment, which is exactly the thing beads exists to hold.
+
+**Worktrees need nothing special.** `bd` 1.1.0 discovers the main checkout's `.beads/` through
+the git common directory, so an agent in `.claude/worktrees/agent-*` reads and writes the same
+database as the owner's checkout. Verified 2026-09-06: `bd worktree info` in a fresh worktree
+reported the main repo and "local (no redirect)"; a bead created there was visible and closable
+from the main checkout; no `.beads/` was created in the worktree. Do not symlink or `bd init` in
+a worktree — either would fork the database. The database stays uncommitted and local
+(`.git/info/exclude` lists `.beads/`), per AGENTS.md: beads is the orchestrator's queue for a
+session, never the project's tracker; anything that must outlive the session goes to the GitHub
+issue or PR.
+
+Brief line for workers when beads are in play: *"Your bead is `<id>`: `bd show <id>` for the
+acceptance criteria, `bd update <id> --claim` before you start, `bd close <id>` after CI is
+green. Do not create beads; send scope questions to `main`."*
 
 ## The brief (template)
 
