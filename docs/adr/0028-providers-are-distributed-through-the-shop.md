@@ -16,6 +16,13 @@ again, and the app links to the registry's providers section instead. Decisions 
 superseded; decisions 1, 2 and 4 hold with the actor changed from the installer to the operator.
 See [the amendment below](#amendment--the-app-links-to-the-listing-rather-than-installing-from-it-2026-09-05-owner-ruling).
 
+**Amended again 2026-09-06** (owner ruling, issue [#426](https://github.com/amroja-biz/rockysurf/issues/426)):
+**installing comes back into the app, on a new tab of its own — "Rocky Surf Shop".** The #394
+amendment is narrowed, not reversed: the page is still Surge Packs, providers are still not on it
+and are still configured on Settings; only its third point — that the app links to the registry
+instead of installing from it — is withdrawn. Decisions 3 and 5 are back in force, 5 with the
+page renamed. See [the second amendment below](#second-amendment--installing-comes-back-in-app-on-a-rocky-surf-shop-tab-of-its-own-2026-09-06-owner-ruling).
+
 ## Context
 
 ADR-0026 made a provider Rocky Surf did not ship installable: a package under `<dataDir>/providers`,
@@ -80,10 +87,11 @@ in their own config file, exactly as for packs, and `official` remains a value n
 
 ### 3. Installing is fetch, verify, unpack, and two lines in the config file — never execution
 
-> **Superseded 2026-09-05 (issue #394).** The steps below describe an installer inside Rocky Surf
-> that no longer exists. What survives is the shape of the operation and its order — fetch over
-> https, check the digest, unpack, then two lines in the config file, then restart — now performed
-> by the operator at a command line. See the amendment at the end.
+> **Superseded 2026-09-05 (issue #394), back in force 2026-09-06 (issue #426).** For one day the
+> steps below described an installer that had been deleted, with the operator performing the same
+> sequence at a command line. The installer is restored as written here, with one tightening at
+> step 7: a package that declares ANY runtime dependency is refused, naming them. See the second
+> amendment at the end.
 
 In order, and any failure stops before the previous state changes:
 
@@ -122,8 +130,11 @@ nothing can act on is worse than refusing.
 
 ### 5. The listing lives on the Shop page, and the page is now called Shop
 
-> **Superseded 2026-09-05 (issue #394).** The page is called Surge Packs, it has three tabs, and
-> it holds nothing about providers. See the amendment at the end.
+> **Superseded 2026-09-05 (issue #394); replaced 2026-09-06 (issue #426).** The page is called
+> Surge Packs, it has three tabs, and it holds nothing about providers — that stands. The listing
+> now lives on a tab of its OWN, "Rocky Surf Shop" (`/shop`), which lists and installs community
+> packs and providers together; the Surge Packs Community sub-tab links to it. See the second
+> amendment at the end.
 
 The Surge Packs page gains a fourth tab, Providers, and its title changes from "Surge Packs" to
 "Shop". The route is unchanged: `/packs` still opens it, and every link and document naming it
@@ -277,9 +288,105 @@ fetch a third party's document on page load, still need the schema, the client, 
 the SSRF path, and would put the reading of a provider on a different page from the configuring of
 it — which is the split the owner asked to remove.
 
+## Second amendment — installing comes back in-app, on a Rocky Surf Shop tab of its own (2026-09-06, owner ruling)
+
+**2026-09-06, owner ruling on issue [#426](https://github.com/amroja-biz/rockysurf/issues/426).**
+The ruling, as recorded on the issue:
+
+> Installing a provider from the shop is a manual, error-prone procedure (download, `shasum`,
+> `mkdir`, `tar --strip-components`, a YAML edit, a restart) even though `providers.json` is in
+> the registry Rocky Surf already points at. The owner's words: "It seems to me that the rocky
+> surf UI needs a Rocky Surf Shop tab that makes it easy for users to install community-provided
+> surge packs and providers."
+>
+> Two constraints from the owner:
+> 1. **A new tab**, "Rocky Surf Shop", not a repurposing of the existing Surge Packs tab.
+> 2. **The Community sub-tab on the Surge Packs tab links to the new Shop tab.**
+
+And the owner's framing of how this sits against #394, relayed the same day: #394 ruled three
+things — the tab is called Surge Packs; providers do not live on that page and are configured in
+Settings; and Rocky Surf points at the shop repository instead of installing providers. **The
+first two still stand. Only the third changes:** installs come back in-app, on a separate Rocky
+Surf Shop tab. The #394 amendment is narrowed, not reversed.
+
+### Why
+
+The #394 amendment's argument was that a button could not be the whole of an install, because an
+install ends at a restart — so the in-app installer bought one click and cost a tar reader, a
+fetch path, four routes and a page. A day of installing the DigitalOcean provider by hand (issues
+#375/#376) put a number on the other side of that trade: the manual procedure is six steps, three
+of which (`shasum`, `mkdir -p` of a scoped path, `tar --strip-components=1` into it) are the steps
+people get wrong, and the listing they are copying from is a file in the registry Rocky Surf is
+already configured to read. The restart is still the operator's, and the install still says so;
+what the button takes off them is everything before it.
+
+The #394 objection that installing and configuring should not be split across two pages is kept
+whole: the Shop tab is where a thing is *found and installed*, Settings is where a provider is
+*configured*, and the Surge Packs page is what this installation *has*. Three places, three
+questions, and the Community sub-tab and the Settings pointer both link to the Shop tab so a
+person on either of them can reach the third.
+
+### What changes
+
+1. **A new page, `/shop`, titled "Rocky Surf Shop", with its own nav entry** beside Surge Packs.
+   Two sections. *Surge Packs*: every pack the configured registries list, installed or not —
+   the same `getPackRegistry` read, the same disclosure before consent (ADR-0006), the same
+   install by address so core refetches and re-verifies. *Providers*: `ProviderShop`, restored
+   from #380, one card per entry with name, description, version, package, the declared-settings
+   summary, the capability answers in words (`billsWhileStopped` reads "Still billed at the
+   running rate"), the trust sentence verbatim, and Install / Update / Reinstall / Remove. After
+   an install the card says a restart is needed and links to the provider's Settings tab.
+2. **The Surge Packs page is unchanged** — title, three tabs, the Community sub-tab's own
+   catalogue and filter — except that Community gains one line linking to the Shop tab.
+3. **The #380 installer is restored from `27a083c^`** — `providers/{install,tarball,shop,
+   shop-index,shop-routes}.ts`, their tests and `tar.fixture.ts`, the routes mounted in `app.ts`,
+   `countServersOnProvider`, `fetchPublicBytes` and the caller-set `maxBytes` — with every
+   decision in [3](#3-installing-is-fetch-verify-unpack-and-two-lines-in-the-config-file--never-execution)
+   and [4](#4-updating-is-re-installing-removing-is-refused-while-servers-still-exist) as written:
+   https only, digest verified before anything is written, the purpose-written tar reader, no code
+   from the package executed, staged rename, the two config lines through the settings write path,
+   restart required and said. **One tightening:** step 7 no longer accepts a declared runtime
+   dependency that happens to resolve from `<dataDir>/providers`; a manifest with any
+   `dependencies` is refused, naming them, because a personal provider takes no runtime
+   dependencies (#417) and a copy that resolves today is one that breaks when it is removed by
+   hand.
+4. **The Settings pointer names both ways in**: the Rocky Surf Shop tab, and the command-line
+   steps in the shop repository's providers section. It stays on every provider tab, for #394's
+   reason.
+5. **Proved in a browser, through the shipped path.** `packages/web/e2e/shop.e2e.ts` boots an
+   installation against a fixture registry — `index.json`, a pack file, `providers.json`, and the
+   real `pnpm pack` output of `@rockysurf/provider-digitalocean` — answered from inside the
+   binary's own process by a `--import` preload for one documentation-range origin. The SSRF
+   guard screens that origin exactly as it would a real shop and is not weakened; only the socket
+   is replaced. The test installs the pack, installs the provider, watches a stale digest be
+   refused with nothing written, restarts the control plane, and reads the DigitalOcean panel on
+   Settings.
+
+### What does not change
+
+Everything the first amendment kept: `providers.json` is still a separate document, still
+trust-field-free, still served by the same sources; the trust sentence is still Rocky Surf's
+constant; `resolvePackageEntry` is still shared by the installer and the loader; nothing is fetched
+at boot. And everything #394 ruled about the Surge Packs page and about where a provider is
+configured.
+
+### Considered and rejected
+
+**A fourth tab on Surge Packs**, as #380 had it. Rejected by the ruling's first constraint, and by
+#394's reasoning, which stands: that page is about the packs this installation has.
+
+**Repurposing the Community sub-tab as the shop.** Rejected by the ruling's second constraint: the
+sub-tab keeps showing installed community packs and links to the new tab.
+
+**Weakening the SSRF guard for the browser test** (an allow-loopback flag, or a vouched-for
+`127.0.0.1`). Rejected, as #380 rejected it: a test seam in a security control is a control with a
+seam. The fixture is served by replacing `fetch` inside the test's own child process instead,
+which no production code path can reach.
+
 ## References
 
-- GitHub issue [#394](https://github.com/amroja-biz/rockysurf/issues/394) — the amendment
+- GitHub issue [#426](https://github.com/amroja-biz/rockysurf/issues/426) — the second amendment
+- GitHub issue [#394](https://github.com/amroja-biz/rockysurf/issues/394) — the first amendment
 - GitHub issue [#374](https://github.com/amroja-biz/rockysurf/issues/374) — the commission
 - GitHub issue [#294](https://github.com/amroja-biz/rockysurf/issues/294) — the settled direction,
   item 5, and the full-trust ruling the sentence comes from

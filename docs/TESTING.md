@@ -153,6 +153,19 @@ A test marked `test.fail()` is a reproduction: Playwright runs it and the suite 
 while it fails. When the fix lands the job goes red on purpose, which is the signal to delete the
 `test.fail()` line and leave an ordinary regression test behind.
 
+**The fixture shop.** `shop.e2e.ts` installs a community pack and the real packed
+`@rockysurf/provider-digitalocean` from the Rocky Surf Shop tab, restarts the control plane, and
+reads the provider's panel on Settings. Its installation boots with `registry: 'fixture'` (a worker
+option in `e2e/fixtures.ts`): `control-plane.ts` writes a registry directory — `index.json`, a pack
+file, `providers.json`, `pnpm pack` output — and the binary is started with `--import
+e2e/fixtures/shop-fetch-preload.mjs`, which answers `fetch` for that one origin from those files.
+The origin is a documentation-range address (`203.0.113.10`) rather than loopback because every
+registry fetch goes through the SSRF guard, which refuses loopback by design; the guard screens the
+fixture origin exactly as it would a real shop, and only the socket is replaced. Everything else —
+routes, registry clients, digest checks, the tar reader, the config write, the restart — is the
+shipped code path. `ControlPlane.restart()` exists for this file: it stops the process and starts
+it again on the same port, config file and data directory.
+
 ### Pack smoke
 
 `scripts/pack-smoke.mjs`, and `rockysurf pack check` for pack authors outside this repository.

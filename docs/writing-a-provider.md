@@ -391,9 +391,9 @@ Five things a personal package has to get right that an in-tree one gets for fre
   one core imported. Core's `isProviderError` is structural — the name and one of the nine codes —
   so this works; do not rely on `instanceof` across the boundary in your own code either.
 - **Prefer a package that installs with no package manager.** An operator who runs `npm install`
-  in `<dataDir>/providers` gets your dependencies resolved for them; one who unpacks a tarball —
-  which is how a provider from the shop is installed — does not, and your package then fails to
-  import at their next start. `@rockysurf/provider-digitalocean` declares
+  in `<dataDir>/providers` gets your dependencies resolved for them; an installer that only
+  extracts a tarball — which is the shape a provider shop takes — does not, and refuses an install
+  whose manifest names a dependency it cannot resolve. `@rockysurf/provider-digitalocean` declares
   **no runtime dependencies at all**: its config schema is hand-written rather than zod (the SDK's
   `ConfigSchema<T>` is structurally `{ parse }` precisely so that is allowed), and
   `scripts/build-bundled-package.mjs` bundles the SDK's runtime helpers into its `dist/` with the
@@ -415,7 +415,8 @@ declares them, they are edited in the file, and the panel says so. The operator-
 
 A personal provider that would help other people can be listed in a Rocky Surf registry — the same
 `amroja-biz/rockysurf-shop` that distributes Surge Packs
-([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issue #394). What
+([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issues #394 and
+#426). What
 you are publishing is an **npm-style tarball** plus a **listing entry** that points at it.
 
 **`.agents/skills/contribute-provider/` does all of this**, and it is the shorter route: it packs,
@@ -425,23 +426,26 @@ digest, generates the entry, and opens the pull request on the registry with its
 It refuses to open one on a package with runtime dependencies or a digest that does not match the
 released asset. The rest of this section is the same procedure written for a person.
 
-**Rocky Surf itself does not fetch that listing.** An operator installs your provider from the
-command line — the two commands in [`docs/self-hosting.md`,
-"Personal providers"](self-hosting.md#personal-providers) — and Rocky Surf's part begins at the
-next restart, when the loader imports the package and the Settings page draws its panel. So the
-listing is a page somebody reads, and everything below about keeping it honest is about what a
-person will do with their hands after reading it.
+**Rocky Surf fetches that listing.** An operator opens the Rocky Surf Shop tab, reads your entry,
+and presses Install; Rocky Surf fetches the tarball over https, checks the digest, unpacks it under
+`<dataDir>/providers`, writes the two config lines, and says a restart is needed. Nothing from your
+package runs until that restart, when the loader imports it and the Settings page draws its
+panel. The command-line install in [`docs/self-hosting.md`,
+"Personal providers"](self-hosting.md#personal-providers) does the same steps by hand and remains
+the alternative. Either way, everything below about keeping the entry accurate is about what the
+installer — or a person — will do with it.
 
 ### The artifact must be self-contained
 
-**The documented install is `tar -xzf`.** It unpacks your tarball under `<dataDir>/providers` and
-stops — no `npm install`, no lifecycle scripts, nothing from your package executed at any point.
-Your code first runs when the operator restarts and the loader imports it.
+**Rocky Surf never runs npm.** The installer fetches your tarball, verifies it, unpacks it under
+`<dataDir>/providers` and stops — no `npm install`, no lifecycle scripts, nothing from your
+package executed at any point. Your code first runs when the operator restarts and the loader
+imports it.
 
 The consequence is a hard requirement: **nothing may be left for a package manager to resolve.**
-A dependency your manifest names and the operator does not already have is an import that throws
-at their next start — reported on the New Server page and in the boot log rather than fatally, but
-your provider will not be there.
+The installer reads your manifest's `dependencies` and refuses the install, naming them, if there
+are any at all (issue #426) — not only when one is missing, because a copy that happens to be
+under `<dataDir>/providers` today is one that breaks when it is removed by hand.
 
 This is the fifth bullet of the section above, and `@rockysurf/provider-digitalocean` is the worked
 example of satisfying it: no runtime dependencies at all, a hand-written config schema rather than
@@ -460,14 +464,16 @@ pnpm -C packages/provider-mycloud pack           # writes you-rockysurf-provider
 You do not need to hash it yourself — the command in [The listing entry](#the-listing-entry) below
 digests the file it reads, which is the only digest worth publishing.
 
-`pnpm pack` (and `npm pack`) produce exactly the archive an operator unpacks: gzipped, ustar,
-every member under `package/`, which is what `--strip-components=1` assumes. Check what came out
+`pnpm pack` (and `npm pack`) produce exactly the archive the installer expects and an operator
+unpacks by hand: gzipped, ustar, every member under `package/`, which is what
+`--strip-components=1` assumes. Check what came out
 before you publish it — `tar -tzf <file>` — and confirm the file your `exports` point at is in the
 list. A tarball carrying a manifest and no `dist/` is the most common way a publish goes wrong,
-and the loader refuses it at the operator's next start with "is the package built?".
+and the installer refuses it with "is the package built?" rather than installing something that
+cannot load.
 
 Then host it somewhere reachable over **https**: an npm registry's tarball URL, a GitHub release
-asset, or any static host. The registry's own checks refuse an `http` URL.
+asset, or any static host. `http` is refused, by the listing format and by the installer.
 
 ### The listing entry
 
@@ -533,20 +539,21 @@ entry is a reading of the artifact, and re-running the command after a change is
 keeping it current. And **the digest is of the artifact the command read**: pack, generate, then
 upload that same file.
 
-There is deliberately **no trust or tier field**, and the format refuses one. The sentence this
-document opened with — *a provider runs with Rocky Surf's full access — install ones you trust* —
-is Rocky Surf's, said on every provider panel of the Settings page and in the boot log. A claim
-about trustworthiness written by the party being trusted is worth nothing, so nothing you write
-can soften it, and nothing you write has to repeat it.
+There is deliberately **no trust or tier field**, and the format refuses one. Every listing already
+carries, from Rocky Surf rather than from the registry, the sentence this document opened with: *a
+provider runs with Rocky Surf's full access — install ones you trust.* Nothing you write can
+soften it, and nothing you write has to repeat it.
 
 ### Publishing a new version
 
 Bump the version, build, pack, host, and **re-run `rockysurf-shop-entry` on the new tarball** —
 the entry is regenerated rather than edited, so the version, the digest, the settings summary and
-the capabilities all move together. An operator updates by unpacking the new tarball over the
-installed directory and restarting, so say in your release notes if a file has moved — nothing
-deletes the old one for them. The `sha256` is the only thing they can check the download against,
-and a stale one turns a good release into a refused one.
+the capabilities all move together. An operator's Update button on the Rocky Surf Shop tab
+re-fetches and **replaces** the installed package, so a file you dropped between versions is
+genuinely gone; an operator updating by hand unpacks the new tarball over the installed directory,
+where nothing deletes the old file for them, so say in your release notes if a file has moved.
+Keep the `sha256` in step with the artifact: a mismatch is refused with both values named, and a
+stale one turns a good release into a refused one.
 
 ## A skill that walks through all of this
 
