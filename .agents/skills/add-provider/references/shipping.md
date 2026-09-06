@@ -177,6 +177,15 @@ worked example, in a checkout.
 
 ## Listing it in the shop *(personal and community providers)*
 
+**There is a skill for the whole of this: [`contribute-provider`](../../contribute-provider/SKILL.md).**
+It follows the shop's `CONTRIBUTING.md` walkthrough step for step — pack, check the tarball,
+release it under a tag that stays true in a monorepo, download the asset back and compare the
+digest, generate the entry, fork, validate, open the pull request, watch its one check — and it
+refuses to open a pull request on a package with runtime dependencies or a digest that does not
+match the released asset. Hand off to it once the provider builds and passes conformance. The rest
+of this section is what it does at the entry step, kept here because it is also what you need if
+you are doing it by hand.
+
 The shop is the repository `amroja-biz/rockysurf-shop`. Listing a provider there is one object
 added to its `providers.json` in a pull request. **Do not compose that object.** Nine fields, and
 seven of them are already inside the artifact — transcribing a settings summary and a capability

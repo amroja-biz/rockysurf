@@ -250,7 +250,10 @@ in `fields.ts` and no block in the SPA.
 shop listing entry — which is **generated, never composed by hand**: `npx rockysurf-shop-entry
 <your>.tgz --tarball-url <https URL> --description "<one line>"` reads seven of its nine fields out
 of the artifact, and you print its output with those two options marked as the author's — and the
-ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
+ADR amendment etiquette for when the SDK genuinely lacks something. **Getting the listing merged is
+its own skill:** once the provider builds and passes conformance, hand off to
+[`contribute-provider`](../contribute-provider/SKILL.md), which does the release, the digest round
+trip, the fork and the pull request. In tree, also the
 capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — for an OFFICIAL
 provider, one composed into `packages/rockysurf/src/compose.ts` — the nightly real-cloud leg,
 without which every value in your column is daggered. A personal provider gets no leg: its author
