@@ -1,4 +1,4 @@
-# Conformance, docs, IaC, and amending the ADR
+# Conformance, docs, the shop listing, IaC, and amending the ADR
 
 ## Running conformance
 
@@ -174,6 +174,60 @@ region, the date and where the evidence lives; if a nightly job re-runs it, say 
 lifecycle proved once is a lifecycle that was true once. A provider nobody has pointed at real
 hardware says exactly that, in those words — `@rockysurf/provider-byo`'s Verified section is the
 worked example, in a checkout.
+
+## Listing it in the shop *(personal and community providers)*
+
+The shop is the repository `amroja-biz/rockysurf-shop`. Listing a provider there is one object
+added to its `providers.json` in a pull request. **Do not compose that object.** Nine fields, and
+seven of them are already inside the artifact — transcribing a settings summary and a capability
+struct by hand is how a listing comes to describe a package that no longer looks like that.
+
+Pack, then run the bin the SDK ships:
+
+```sh
+npm pack                        # or pnpm pack — writes <name>-<version>.tgz
+npx rockysurf-shop-entry <name>-<version>.tgz \
+  --tarball-url https://…/<name>-<version>.tgz \
+  --description "<one line>"
+```
+
+Print exactly what it gives you. **The two values the author must supply are the two options** —
+mark them when you show the output:
+
+```json
+{
+  "providerId": "mycloud",
+  "name": "MyCloud",
+  "description": "…",          ← you wrote this, on the command line
+  "version": "1.0.0",
+  "package": "@you/rockysurf-provider-mycloud",
+  "tarball": "https://…",      ← you wrote this, on the command line
+  "sha256": "…",
+  "settings": [ … ],
+  "capabilities": { … }
+}
+```
+
+Everything else was read: `providerId` from `factory.id`, `name` from `settings.title` (falling
+back to `displayName`), `version` and `package` from the manifest, `settings` from the declared
+fields in declared order, `capabilities` from the provider `createProvider()` returns, and
+`sha256` from the bytes of the file named on the command line. Re-run it after any change rather
+than editing the entry — that is the whole of keeping a listing in step with its package.
+
+**Where it goes:** open a pull request on `amroja-biz/rockysurf-shop` adding the object to the
+`providers` array of `providers.json`, and bump that file's `generatedAt`. The shop's
+`provider listing` workflow validates the file and downloads the tarball to compare its digest,
+so a URL that is not yet live, or bytes that are not the ones you generated from, fails there.
+Its `CONTRIBUTING.md` is the contract; read it, because it is the shop's to change.
+
+Two refusals happen before the pull request, which is the point of running this rather than typing
+it: **a package whose manifest declares runtime `dependencies`** is refused with them named — a
+provider is installed by unpacking a tarball and nothing resolves a dependency for it — and **a
+`--tarball-url` that is not https** is refused, because a provider artifact is code.
+
+Before the first SDK release the command is not on the registry: `pnpm pack` in
+`packages/provider-sdk` from a checkout and install that tarball, the same artifact the release
+publishes.
 
 ## Least-privilege IaC *(in tree)*
 
