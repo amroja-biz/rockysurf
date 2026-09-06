@@ -1547,6 +1547,26 @@ reads (`list_servers`, `get_server`, `get_ssh_command`, `list_offerings`, `list_
 `create_server` needs `create`, and `terminate_server` needs `terminate`: both are opt-in,
 because making a box costs money and destroying one costs work that does not come back.
 
+### What those reads hand back
+
+Every one of them is deliberately small, because an MCP result is paid for on every call and
+truncated by the client when it is not (issues #415, #416):
+
+- `list_servers` lists the servers you **have**. Terminated ones are history and are left out
+  unless the agent passes `include_terminated`.
+- `list_providers` reports each configured cloud's capabilities, any saved size preferences,
+  and **how many** machine types it sells — not the types themselves. A cloud that could not be
+  asked at all carries `offeringsError`, which is why its count can be zero.
+- `list_offerings` is where the machine types and prices live, up to 100 per call; when there
+  are more, the result carries a `nextCursor` to pass back. Types the cloud is out of right now
+  are listed with `available: false` unless the agent asks for `available_only`. Types your
+  configured region does not sell are not there at all — a provider reports the catalogue for
+  the region it is configured for.
+
+Nothing is withheld from an agent by any of this. It is a size decision, and every field left
+out of a summary is returned in full by `get_server`, `get_provider` or `list_offerings` on the
+same `read` scope.
+
 **An agent reporting that there is no `create_server` tool is reporting this setting.** The tool
 exists and has since the MCP server did; the default grant withholds it, and a tool the
 installation has not granted is not offered to the client at all. Under a grant that withholds

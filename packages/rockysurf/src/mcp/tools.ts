@@ -84,7 +84,19 @@ export interface ProviderRecord extends ProviderCatalogue {
   }
   /** The machine type saved for each size on this cloud (issue #124). Absent if none saved. */
   tierPreferences?: Partial<Record<'small' | 'medium' | 'large', string>>
+  /**
+   * What this cloud's declared settings say to whoever is about to create a server on it
+   * (ADR-0027) — sentences the provider wrote, never something core computes with. A handful
+   * of lines per cloud, which is why they survive `list_providers`' summary and the catalogue
+   * does not.
+   */
+  advisories?: string[]
 }
+
+/** How many rows `list_offerings` returns when the caller names no `limit`. */
+export const OFFERINGS_PAGE_DEFAULT = 100
+/** The most rows one `list_offerings` call will return, however large a `limit` is asked for. */
+export const OFFERINGS_PAGE_MAX = 500
 
 /**
  * One surge pack, as `GET /api/v1/surge-packs` reports it (#278).
@@ -245,16 +257,58 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     description:
       'Every cloud this installation is configured for, with what it can do (capabilities: ' +
       'whether it supports stop/start, keeps the same IP address across a stop, whether a ' +
-      'stopped server still bills at the running rate (billsWhileStopped), and so on), ' +
-      'what it sells, and any saved size preference. Use it to check what a cloud supports ' +
-      'before calling stop_server or start_server on a server there — on a cloud with ' +
-      'billsWhileStopped, stopping saves nothing and only terminate_server ends the charge. ' +
-      'Use list_offerings instead if you only need prices for create_server.',
+      'stopped server still bills at the running rate (billsWhileStopped), and so on), any ' +
+      'saved size preference, and HOW MANY machine types it sells — not the types themselves. ' +
+      'Use it to check what a cloud supports before calling stop_server or start_server on a ' +
+      'server there — on a cloud with billsWhileStopped, stopping saves nothing and only ' +
+      'terminate_server ends the charge. Call list_offerings for the machine types and prices ' +
+      'themselves, which is what create_server needs.',
     scope: 'read',
     inputSchema: z.strictObject({}),
+    /**
+     * A SUMMARY, BECAUSE THE FULL PASS-THROUGH WAS ~900 KB (#415).
+     *
+     * This tool used to hand back `/api/v1/providers` verbatim, catalogue and all: on a
+     * six-cloud installation that is thousands of machine types — one cloud alone emitted 122
+     * sizes, most of them types it does not sell in the configured region — in a response an
+     * agent pays for on every call and its client then truncates. The truncation is the worst
+     * part: the capabilities this tool exists to report are at the END of each provider object,
+     * so the answer to "can this cloud stop a server" was the part that got cut.
+     *
+     * WHAT SURVIVES IS WHAT THE TOOL IS FOR: identity, capabilities, the saved size
+     * preferences, the provider's own create-time advisories, and — instead of the catalogue —
+     * how big the catalogue is, plus `offeringsError` when a cloud could not be asked at all.
+     * A count is not a stand-in for the list; it is the fact an agent actually uses here
+     * ("this cloud has nothing to sell right now" versus "it has 40 types"), and the list is
+     * one call away in `list_offerings`, which pages.
+     *
+     * Nothing is withheld for safety: every field dropped here is returned in full by
+     * `list_offerings` and `get_provider` on the same `read` scope. This is a size decision.
+     */
     run: async (_args, { client }) => {
       const providers = await client.get<ProviderRecord[]>('/api/v1/providers')
-      return { providers }
+      return {
+        providers: providers.map((provider) => {
+          const offerings = provider.offerings ?? []
+          return {
+            id: provider.id,
+            displayName: provider.displayName,
+            capabilities: provider.capabilities,
+            // Two numbers rather than one: a cloud with 40 types and none of them orderable is
+            // a different situation from a cloud with 40 available, and `available: false`
+            // means the create would be refused (a price is not an offer).
+            offeringsCount: offerings.length,
+            offeringsAvailableCount: offerings.filter((offering) => offering.available).length,
+            ...(provider.tierPreferences ? { tierPreferences: provider.tierPreferences } : {}),
+            ...(provider.advisories?.length ? { advisories: provider.advisories } : {}),
+            // The reason a count of 0 is 0, when there is one: this cloud could not be asked.
+            ...(provider.offeringsError ? { offeringsError: provider.offeringsError } : {}),
+          }
+        }),
+        note:
+          'Machine types and prices are deliberately not in this result — call list_offerings ' +
+          'for them, or get_provider for one cloud in full.',
+      }
     },
   },
 
@@ -262,9 +316,9 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: 'get_provider',
     title: 'Get one cloud provider',
     description:
-      'Full detail for one configured cloud — the same information list_providers returns, ' +
-      'narrowed to a single provider. Refused, naming the configured clouds, if the id is not ' +
-      'one of them.',
+      'Full detail for one configured cloud: everything list_providers summarises for it, plus ' +
+      'the machine types it sells in full — one cloud, so the answer stays small. Refused, ' +
+      'naming the configured clouds, if the id is not one of them.',
     scope: 'read',
     inputSchema: z.strictObject({
       provider: z.string().min(1).describe('The provider id, as list_providers names it.'),
@@ -306,8 +360,12 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     description:
       'The machine types this installation can actually create, per configured cloud, with ' +
       'vCPU, memory, architecture and hourly price. Use it to pick an offering_id for ' +
-      'create_server, or to compare prices before spending. `available: false` means the cloud ' +
-      'is out of that type right now — creating it would be refused. The list is already ' +
+      'create_server, or to compare prices before spending. Every type listed is sold in the ' +
+      'region this installation is configured for; `available: false` means the cloud is out of ' +
+      'that type right now — creating it would be refused — and available_only leaves those ' +
+      `out. Returns at most ${OFFERINGS_PAGE_DEFAULT} types per call by default; when there are ` +
+      'more, the result carries nextCursor and you pass it back as cursor for the next page. ' +
+      'Narrow with provider rather than paging through every cloud. The list is already ' +
       'narrowed to what the operator allows, so anything absent here cannot be created.',
     scope: 'read',
     inputSchema: z.strictObject({
@@ -316,9 +374,54 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         .min(1)
         .optional()
         .describe('Only this cloud. Omit for every configured cloud.'),
+      available_only: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Leave out types the cloud is currently out of. They are listed by default because ' +
+            '"sold out this afternoon" and "this cloud does not sell that" are different facts.',
+        ),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(OFFERINGS_PAGE_MAX)
+        .optional()
+        .describe(
+          `How many machine types to return, at most ${OFFERINGS_PAGE_MAX}. Defaults to ` +
+            `${OFFERINGS_PAGE_DEFAULT}, which is far more than a choice needs.`,
+        ),
+      cursor: z
+        .string()
+        .regex(/^\d+$/, 'cursor must be a value nextCursor gave you')
+        .optional()
+        .describe('Continue from where a previous call stopped: pass its nextCursor verbatim.'),
     }),
+    /**
+     * PAGED, AND WHY THE REGION FILTERING IS NOT DONE HERE (#415).
+     *
+     * `list_providers` used to carry this catalogue on every call and that is what made its
+     * answer ~900 KB, so the catalogue now lives only here — which makes this the tool that has
+     * to be bounded. A page is a slice of the machine types across the clouds asked for, in the
+     * order the route serves them, with `nextCursor` when there are more; the cursor is an
+     * offset rendered as a string, opaque to the caller by contract rather than by encoding.
+     *
+     * TYPES NOT SOLD IN THE CONFIGURED REGION ARE ALREADY GONE BY THE TIME THEY GET HERE, and
+     * that is deliberately not re-done in this file. A provider's `listOfferings()` reports one
+     * region — its own configured one — and the SDK contract has it OMIT a type the region does
+     * not sell while reporting a type that is sold there but out of stock as `available: false`
+     * with a reason (`provider-sdk/src/offering.ts`). A filter here could only guess at the
+     * difference by reading the provider's prose, and guessing wrong in the direction that
+     * hides a type is a machine an agent can no longer ask for. `available_only` is the honest
+     * knob at this layer: it drops what the cloud says it cannot sell right now, whatever the
+     * reason.
+     */
     run: async (args, { client }) => {
       const wanted = args['provider'] === undefined ? undefined : String(args['provider'])
+      const availableOnly = args['available_only'] === true
+      const limit = typeof args['limit'] === 'number' ? args['limit'] : OFFERINGS_PAGE_DEFAULT
+      const start = args['cursor'] === undefined ? 0 : Number(args['cursor'])
+
       const providers = await client.get<ProviderCatalogue[]>('/api/v1/providers')
       const matching = wanted ? providers.filter((p) => p.id === wanted) : providers
 
@@ -331,7 +434,34 @@ export const MCP_TOOLS: McpToolDefinition[] = [
           configured: providers.map((p) => p.id),
         }
       }
-      return { providers: matching }
+
+      const rows = matching.flatMap((provider) =>
+        (provider.offerings ?? [])
+          .filter((offering) => !availableOnly || offering.available)
+          .map((offering) => ({ provider: provider.id, offering })),
+      )
+      const page = rows.slice(start, start + limit)
+      const byProvider = new Map<string, ProviderCatalogue['offerings']>()
+      for (const row of page) {
+        const list = byProvider.get(row.provider) ?? []
+        list.push(row.offering)
+        byProvider.set(row.provider, list)
+      }
+
+      return {
+        // Every cloud asked for is still named, including one whose page is empty: "sold us
+        // nothing on this page" and "is not configured here" are different answers, and the
+        // second one has its own refusal above.
+        providers: matching.map((provider) => ({
+          id: provider.id,
+          displayName: provider.displayName,
+          offerings: byProvider.get(provider.id) ?? [],
+          ...(provider.offeringsError ? { offeringsError: provider.offeringsError } : {}),
+        })),
+        returned: page.length,
+        totalMatching: rows.length,
+        ...(rows.length > start + limit ? { nextCursor: String(start + limit) } : {}),
+      }
     },
   },
 
