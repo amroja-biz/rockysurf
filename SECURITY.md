@@ -733,6 +733,31 @@ Sign out from the web UI. That drops every session, including the MCP token. The
 it is not running and look at Servers and Costs; the reconciler's zero-orphan sweep is what
 tells you whether anything survived that the control plane no longer knows about.
 
+## The npm release path
+
+`npx -y rockysurf` runs whatever the registry serves. Publish rights therefore sit outside every
+protection this repository has — the main-branch ruleset, required CI and pull-request review
+do nothing against a compromised npm account or token publishing a version directly. So the
+publish path is built to need no account and no token at all (issue #275):
+
+- **Only `.github/workflows/release.yml` can publish.** Every package carries an npm Trusted
+  Publisher entry naming this repository, that workflow file and the `npm` environment; the
+  registry authenticates the run by the short-lived OIDC token GitHub mints for it. There is no
+  npm token in a repository secret, on a laptop, or anywhere else, and the account setting
+  `mfa=publish` refuses automation tokens outright.
+- **The workflow runs only on a `v*` tag whose commit is on `main`**, which the ruleset makes
+  PR-plus-green-CI territory, and only after the owner approves the `npm` environment's
+  deployment in the Actions UI. Three things have to agree for a version to exist: the code
+  gate, the identity gate, and a human.
+- **Every version carries provenance.** The attestation on npmjs.com links it to the exact
+  commit and workflow run that built it, so a version that did not come from here is
+  distinguishable from one that did.
+
+What an attacker needs is therefore write access to `main` *and* the owner's approval click, or
+control of the owner's npm account plus its second factor for a manual publish — which would
+also be visible as a version without provenance. The one-time setup, and the bootstrap script
+that attaches the trusted publisher to each package, are in [`docs/RELEASING.md`](docs/RELEASING.md).
+
 ## Residual risks
 
 A control list is incomplete without the controls' known limits; these are the ones we know

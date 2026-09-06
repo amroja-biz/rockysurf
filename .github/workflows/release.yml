@@ -1,0 +1,137 @@
+# Publish the ten packages to npm — the ONLY publish path (issue #275).
+#
+# WHY THIS EXISTS. `npx -y rockysurf` runs whatever the registry serves, so publish rights
+# bypass every protection this repository has: the main-branch ruleset, required CI and PR
+# review mean nothing if a compromised npm account or token publishes directly. The fix is to
+# make publishing something no account and no token can do: npm Trusted Publishing lets the
+# registry accept a publish only from THIS repository's workflow file, proven by a short-lived
+# OIDC token GitHub mints for the run. There is no long-lived npm token anywhere — not in a
+# secret, not on a laptop — and every published version carries a provenance attestation that
+# links it to the exact commit and run that built it.
+#
+# HOW A RELEASE HAPPENS. A maintainer merges the version bump to main (PR, green CI), tags that
+# commit `vX.Y.Z`, pushes the tag, and then approves the `npm` environment in the Actions UI.
+# That approval is the human gate; the ruleset on main is the code gate; the registry's trusted
+# publisher entry is the identity gate. All three have to agree for a version to exist.
+#
+# WHAT IT REFUSES. A tag whose commit is not on main; a tag that does not match the version in
+# every package.json; a tarball set that fails scripts/verify-tarballs.mjs; anything that fails
+# the full `pnpm run check` gate. Refusals happen before the first byte reaches the registry,
+# and `pnpm publish -r` is transactional per package only, so the version check in particular
+# runs first: ten packages with two different versions is the failure that cannot be undone.
+#
+# SETUP THAT LIVES OUTSIDE THIS FILE, done once by the owner (docs/RELEASING.md, "One-time
+# setup"): the trusted publisher entry on every package (`npm trust github <pkg> --file
+# release.yml --repo amroja-biz/rockysurf --env npm --allow-publish`), 2FA-for-writes on each
+# package, and the `npm` environment on this repository with the owner as required reviewer
+# and deployments limited to `v*` tags. The bootstrap script does the npm side in one run.
+name: Release to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  publish:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    # The environment carries the required-reviewer rule and the `v*` tag policy. Nothing in
+    # this job runs until the owner approves the deployment in the Actions UI.
+    environment: npm
+    permissions:
+      contents: read
+      # The OIDC token. This is the whole mechanism: without it there is no way to publish,
+      # because no token exists anywhere else.
+      id-token: write
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: the tag has to be proven reachable from main.
+          fetch-depth: 0
+
+      - name: The tag's commit is on main
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::${GITHUB_REF_NAME} points at ${GITHUB_SHA}, which is not on origin/main. Tags are cut from merged commits only."
+            exit 1
+          fi
+
+      - name: The tag matches every package version
+        run: |
+          set -euo pipefail
+          want="${GITHUB_REF_NAME#v}"
+          bad=0
+          for f in packages/*/package.json; do
+            have=$(node -p "require('./$f').version")
+            if [ "$have" != "$want" ]; then
+              echo "::error file=$f::version is $have, tag says $want"
+              bad=1
+            fi
+          done
+          [ "$bad" = 0 ]
+
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          # Deliberately NO `registry-url` here: setup-node then writes an `_authToken` line
+          # into .npmrc that shadows the OIDC exchange when no NODE_AUTH_TOKEN is set
+          # (actions/setup-node#1551). Trusted publishing needs the default npmrc.
+
+      # Trusted publishing needs npm >= 11.5.1 and pnpm's OIDC support (pnpm 10.x, restored in
+      # 11.x after the 11.0.8 regression, pnpm/pnpm#11513). The repository pins pnpm via
+      # `packageManager`; npm is whatever Node 24 ships, updated here so the floor holds.
+      - name: Toolchain versions
+        run: |
+          set -euo pipefail
+          npm install -g npm@latest
+          node --version; npm --version; pnpm --version
+          npm_v=$(npm --version)
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm ' + process.argv[1] + ' is below 11.5.1, which trusted publishing requires'); process.exit(1) }" "$npm_v"
+
+      - run: pnpm install --frozen-lockfile
+
+      # The same gate main is protected by, run again on the exact commit being shipped. A
+      # release is rare and a few minutes here is cheaper than a broken version on the registry.
+      - run: pnpm run check
+
+      # The WHOLE workspace, never --filter: @rockysurf/core ships public/, which @rockysurf/web
+      # produces (docs/RELEASING.md).
+      - run: pnpm -r build
+
+      - name: Every tarball is complete and the CLI installs from them alone
+        run: node scripts/verify-tarballs.mjs
+
+      # `--no-git-checks` because a tag checkout is a detached HEAD, which pnpm otherwise
+      # refuses; the two checks it would have done (clean tree, on a branch) are replaced by the
+      # is-on-main step above and by this being a fresh checkout. `--provenance` is what the
+      # docs say is automatic under trusted publishing and what experience says to pass anyway.
+      - name: Publish
+        run: pnpm publish -r --access public --provenance --no-git-checks
+
+      # From an empty directory, against the real registry, the way an operator will. Anything
+      # less checks the tarball, not the release (docs/RELEASING.md, "After publishing").
+      - name: Install the published CLI from the registry
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          dir=$(mktemp -d)
+          cd "$dir"
+          for i in 1 2 3 4 5 6; do
+            if npx -y "rockysurf@${ver}" --version; then exit 0; fi
+            echo "not visible yet (attempt $i), waiting for the registry"
+            sleep 20
+          done
+          echo "::error::rockysurf@${ver} did not become installable within two minutes"
+          exit 1
