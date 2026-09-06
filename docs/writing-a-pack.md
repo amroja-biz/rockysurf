@@ -1173,6 +1173,16 @@ Rocky Surf control plane's shop page, without waiting on a release here. `packs/
 repository is Rocky Surf's *own* packs — the ones that ship inside the release, which is what
 "official" means and why a contribution cannot become one ([ADR-0006](adr/0006-pack-registry-split-horizon.md)).
 
+**The procedure is the shop's own
+[`CONTRIBUTING.md`](https://github.com/amroja-biz/rockysurf-shop/blob/main/CONTRIBUTING.md),** and
+the [`contribute-surge-pack`](../.agents/skills/contribute-surge-pack/SKILL.md) agent skill walks
+an agent through it end to end: the shop's gate run on your own machine first (`pack lint`, the
+run-twice `pack check` on both architectures, the naming rule, and the `index.json` regeneration
+the pull request is expected to carry), then the fork, the branch, a pull request body that names
+every URL the scripts fetch, and the checks watched once. It refuses to open the pull request
+until the gate is green, which is the whole reason to use it rather than assembling the pull
+request by hand.
+
 **Your pack defines whatever it installs.** There is no list of approved software: a tool is an id
 you choose, a description, and a shell script you wrote. Nothing has to be added to Rocky Surf
 first and no maintainer has to have heard of it. A pack introducing software this project knows

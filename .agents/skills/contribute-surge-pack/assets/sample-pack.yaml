@@ -1,0 +1,55 @@
+# SAMPLE PACK — the fixture this skill's acceptance run contributes.
+#
+# It is deliberately the smallest pack that still exercises every rule the shop's CI applies:
+# it borrows base tool ids rather than redefining them, defines exactly one tool of its own,
+# installs from apt with the shared `apt-updated` stamp, guards its own second run, and ends by
+# proving the binary is there. Copy it as `packs/<packId>.yaml` into a clone of the shop when
+# you are rehearsing the workflow; it is not a pack anybody should merge.
+#
+# Nothing about it is special-cased anywhere. `rockysurf pack lint`, `pack check`, `pack index`
+# and `pack describe` treat it exactly as they treat a real contribution.
+version: 1
+
+pack:
+  packId: ripgrep-demo
+  name: ripgrep demo
+  tools:
+    - build-essential
+    - curl
+    - git
+    - ripgrep-demo
+  displayOrder: 900
+  enabled: true
+  requiresRepos: false
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    ripgrep
+      rg --version
+      rg 'TODO' ~/            search recursively, respecting .gitignore
+
+      Nothing to authenticate. This pack exists to rehearse the contribution
+      workflow, not to be installed on a box you care about.
+
+tools:
+  - toolId: ripgrep-demo
+    name: ripgrep (demo)
+    description: Recursive line search, installed from Ubuntu's own archive
+    category: base
+    url: https://github.com/BurntSushi/ripgrep
+    installOrder: 10
+    runAs: root
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      # The shared stamp: refresh the package list once per box, so the harness's second run is
+      # a genuine no-op. The literal string `apt-updated` is what the loader test looks for.
+      [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
+      # Unversioned, from the distribution archive: apt is a quota-free channel and `ripgrep`
+      # there is whatever Ubuntu 24.04 ships. Nothing to pin and nothing to bump.
+      apt-get install -y ripgrep
+      # Prove it, because an installer that exits 0 after half-working is the normal failure.
+      rg --version >/dev/null
