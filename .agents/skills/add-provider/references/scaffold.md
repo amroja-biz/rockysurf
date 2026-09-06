@@ -203,6 +203,37 @@ describe('conformance', () => {
 Add `assertDescribeAbsenceGrace` as soon as `describe()` exists — it needs a harness over your read
 path, and wiring it late means writing the read path twice.
 
+And add this one as soon as `provision()` exists, against the fake described in the next section.
+It is required, not optional, and it is the test that would have caught the first live failure of
+a provider built with this skill:
+
+```ts
+import { emptyCloud, fakeFetch } from './fake-cloud.js'
+
+describe('provision on a fresh account', () => {
+  it('builds every object it references, in the order the cloud requires, from nothing', async () => {
+    // NOTHING is seeded. Not the firewall, not a key, not a tag, not a network — the fake holds
+    // exactly what a brand-new account holds, and refuses a reference to anything it does not.
+    const cloud = emptyCloud()
+    const provider = makeMycloudProvider(validConfig, { fetchImpl: fakeFetch(cloud), grace: { attempts: 4, delayMs: 0 } })
+
+    const result = await provider.provision(spec)
+
+    // The chain, in order, by the cloud's own paths: each write before the one that names it.
+    expect(cloud.requests.filter((r) => !r.startsWith('GET '))).toEqual([
+      'POST /v2/tags',         // the tag the firewall targets — created explicitly, because a
+      'POST /v2/firewalls',    //   firewall create does not create it (research question 21)
+      'POST /v2/account/keys',
+      'POST /v2/instances',
+    ])
+    expect(result.initial.state).toBe('pending')
+  })
+})
+```
+
+The literal list of paths is the point. A test that only asserts `provision()` resolved would pass
+against a fake that accepts dangling references, which is the fake this test exists to forbid.
+
 ## A fake for the cloud, not a mock of your own code
 
 Every in-tree provider tests against a fake of the *cloud's API* — a `fetch` route table or an
@@ -219,3 +250,26 @@ the factory call it with none. The pattern, with the grace-floor guard that belo
 Make the fake speak the cloud's own vocabulary. GCP's fake sets `TERMINATED` when an instance is
 stopped, because that is what a really-stopped GCE box reports — a fake that speaks the SDK's
 vocabulary instead would hide exactly the bug the mapping test exists to catch.
+
+### The fake starts empty, and refuses what nobody created
+
+Two rules about the fake, both written after a provider passed seventy-four tests and failed on
+its first real create:
+
+1. **`emptyCloud()` holds what a brand-new account holds** — sizes, regions and images, because
+   the cloud sells those; and no firewall, no key, no tag, no network, no instance, because a
+   fresh account has none. A test may seed the fake to set up a later scenario (a replayed create,
+   a stop from `running`), and the seeding is that test's business. **The fresh-account test
+   seeds nothing** and `provision()` has to build the whole chain from it, in the order the cloud
+   requires.
+2. **A reference to an object the fake does not hold is refused, with the cloud's own status and
+   message.** A firewall create that names a tag not in `cloud.tags`, an instance create that
+   names a key id not in `cloud.keys`, a rule that names a network the fake has never seen — each
+   answers the way the real API does (a 404, a 422 `"tag not found"`), never by inventing the
+   object. Every answer to research question 21 is one such check in the fake, and the check is
+   what turns a missing precondition into a red unit test rather than a refused live create.
+
+A fake that auto-creates whatever a request mentions is comfortable to write and asserts nothing:
+it accepts every chain, including the ones the cloud rejects. The route table should be a little
+pedantic about existence for the same reason it speaks the cloud's vocabulary — the bugs it is
+there to catch are the ones where the author's model of the cloud and the cloud disagree.

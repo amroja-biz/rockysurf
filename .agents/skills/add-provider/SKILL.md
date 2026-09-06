@@ -28,7 +28,9 @@ missing, tell the user which tool and where it comes from — **do not install i
 | A cloud CLI (`az`, `gcloud`) | only on the Configure routes that use one — `az login`, `az group create`, `gcloud auth application-default login`. Every cloud also has a route that needs no CLI | `az version`, `gcloud version` |
 
 Docker is not needed: conformance is unit tests. `tsc` and `vitest` are devDependencies of the
-package, not programs to install onto the machine.
+package, not programs to install onto the machine. The live dry run in step 6 needs only Node and
+the cloud credential exported in the shell that runs it, under the variable name the factory
+declares — no CLI, nothing installed.
 [references/prerequisites.md](references/prerequisites.md) has the install pages for macOS and
 Ubuntu, the credential routes that avoid a CLI entirely, and what to say when one is missing.
 
@@ -170,6 +172,13 @@ when a maintainer "fixes the typo":
 6. **`canInjectHostKeys` honesty**, and its dependency on `generatesUserData`.
 7. **`billsWhileStopped` honesty.** It means the RUNNING rate. A cloud that charges a reduced rate
    while stopped fits no capability — stop and file the ADR question.
+8. **Existence preconditions.** Every name or id one request passes to another is a claim that
+   the object exists at that moment, and some clouds create such objects implicitly on one call
+   and not another. Research question 21 records who creates each one; `provision()` creates or
+   verifies it before the request that names it; and the fake **starts empty and refuses a
+   reference to an object nobody created**, so the fresh-account test fails the way the cloud
+   would ([references/scaffold.md](references/scaffold.md), "The fake starts empty"). The first
+   provider built with this skill shipped without this and failed on its first live create.
 
 ### 5. Declare the settings and run conformance
 
@@ -198,7 +207,20 @@ your declaration against your schema (every example parses) and that an `sshCidr
 Passing is necessary and not sufficient. It cannot know whether the cloud does what you said it
 does.
 
-### 6. Wire it in — or install it
+### 6. Dry-run `provision()` against the real account
+
+Before publishing or installing, and again whenever the provision chain changes: run
+[`assets/dry-run-provision.mjs`](assets/dry-run-provision.mjs) with the credential in the
+environment and the instance create refused by name. It intercepts `fetch` under the real
+provider, lets every read through, refuses every write that is not explicitly allowed, and prints
+each request with the cloud's own answer. Allow the non-billable objects one collection at a time
+until the chain reaches the instance create; that create is never allowed. Nothing billable is
+made, and the cloud's reply to every write the fake never saw is on the screen in under a minute.
+[references/dry-run.md](references/dry-run.md) is the procedure, the exit codes and what each
+outcome obliges you to do. A personal provider gets no nightly leg; this is the verification its
+author and installer can afford, and the README's Verified section records the date it was run.
+
+### 7. Wire it in — or install it
 
 **Personal:** `mkdir -p ~/.rockysurf/providers && cd ~/.rockysurf/providers && npm init -y && npm
 install <your package>` (or point `package:` at a path while developing), then a `providers.<id>`
@@ -213,7 +235,7 @@ section still has to mirror your fields by hand, and a field missing from it is 
 undocumented, it is *unusable*. The list is shorter than it was: a declared provider needs no rows
 in `fields.ts` and no block in the SPA.
 
-### 7. Ship it
+### 8. Ship it
 
 [references/shipping.md](references/shipping.md): the package README in the fixed section order, and
 the ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
@@ -225,7 +247,7 @@ and its installer verify it themselves
 
 ## Before it merges
 
-Everything here is checkable. The first seven apply wherever the provider lives; the last three are
+Everything here is checkable. The first nine apply wherever the provider lives; the last three are
 in-tree only, because they are edits to this repository.
 
 - [ ] Every research-protocol question answered with a citation, and each answer mapped to a
@@ -235,6 +257,11 @@ in-tree only, because they are edits to this repository.
 - [ ] `settings`, `credentialField` and `credentialEnv` declared on the factory.
 - [ ] Conformance passes, including the absence-grace harness and the settings check.
 - [ ] Status mapping pinned by a test with literal values.
+- [ ] Every cross-object reference answered under research question 21; the fake starts empty and
+      refuses a reference to an object nobody created; one test provisions the whole chain on a
+      fake that holds nothing, asserting the order of writes by the cloud's own paths.
+- [ ] The live dry run walked `provision()` to the instance create with that create refused, and
+      the README's Verified section names the date and region it was run.
 - [ ] A package `README.md` whose capability values match the source constant and which carries the
       trust sentence.
 - [ ] A verification section claiming only what has actually been run.

@@ -362,6 +362,15 @@ their own cloud account. The `byo` column is the model for what that looks like 
 Record what you ran, on what date, against which region — that record is the evidence, and it is
 the only thing that takes a dagger off. (Owner ruling, 2026-09-05.)
 
+The cheap half of that verification is the live dry run in the `add-provider` skill
+([`.agents/skills/add-provider/references/dry-run.md`](../.agents/skills/add-provider/references/dry-run.md)):
+`provision()` against the real account under an intercepted `fetch`, every write refused unless
+allowed and the instance create refused by name, every request logged with the cloud's answer. It
+exists because the first personal provider passed its whole unit suite and failed on its first
+real create, on a precondition the fake did not model (#405). Run it before publishing; the fake it
+sits behind must start empty and refuse references to objects nobody created, with one test that
+provisions the whole chain from nothing (the skill's `scaffold.md`).
+
 Five things a personal package has to get right that an in-tree one gets for free:
 
 - **The default export is the factory**, and `factory.id` equals the config key the operator will

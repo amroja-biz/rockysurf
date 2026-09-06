@@ -36,6 +36,22 @@ looks broken. The worked example below is the case that produced this rule.
 | 18 | **What does the base image ship without that the bootstrap agent assumes?** | Nothing in the SDK; a note in the README (Hetzner's Ubuntu has no `jq`). The agent bootstraps what it needs |
 | 19 | **What would a human be surprised by that core does not compute with?** | `settings.advisories` — a sentence on the Settings panel or the New Server page. Never a capability, never text where a number is due |
 | 20 | **Which of these facts has been OBSERVED against the real API, and which are read from documentation?** | The capability-matrix column's daggers, and the README's "Verified" section. A value nobody has exercised says so |
+| 21 | **For every name or id one request passes to another — a tag on a firewall, a key pair or key id on an instance, a VPC on a security group, a network tag on a rule, a label on anything — WHO creates it, WHEN, and does the referencing call create it implicitly?** | `provision()`'s order of creation: the referenced object is created or verified before the request that names it. The fake refuses a reference to an object nobody created, and one test provisions on a fake that holds nothing (`scaffold.md`, "The fake starts empty"). The live dry run (`dry-run.md`) is where an answer the documentation withheld shows up |
+
+## Existence preconditions
+
+Question 21 is a different kind of question from the others: it is not about the cloud's
+behaviour but about the shape of your own request chain, and it has to be answered per reference,
+not per cloud. Every id or name that one call hands to another is a claim that the object exists
+at that moment. Some clouds create such objects implicitly on one call and not another, and their
+documentation rarely says which — the rule was written after a firewall create that named a tag
+was refused, because on that cloud tags come into existence on an instance create and not on a
+firewall create, and nothing on the firewall page said so.
+
+Write the answers down as a list beside the other twenty: *`<request>` names `<object>`, created
+by `<request or operator>`, `<explicitly | implicitly>`*. Then make each one a test: a fake that
+starts empty and refuses a reference to an object it does not hold turns a missing precondition
+into a failing unit test, which is the only place it is cheap to find.
 
 ## The worked example: DigitalOcean, on paper
 
@@ -67,9 +83,12 @@ composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud veri
 | 18 | Not established on paper | a README note once observed |
 | 19 | "A powered-off droplet bills at the full rate — only destroying it ends the charge" belongs on the New Server page as well as in the capability (the capability makes the meter honest; the sentence makes the person informed) | `settings.advisories` (`create`) |
 | 20 | Everything above is reasoned from documentation | every value daggered; the "Verified" section says "not yet run against the real API" |
+| 21 | The firewall names the `managed-by:rockysurf` tag it targets, and a tag on DigitalOcean is created implicitly by a droplet create — NOT by a firewall create, whose reference to a tag nobody has created is refused. On paper this row did not exist; the first live run found it (issue #403), after the fake had accepted the reference | the tag exists before the firewall names it, whichever call makes it so (the fix is issue #403's); the fake refuses an unknown tag; the fresh-account test |
 
-Two things the walk-through shows about the protocol itself. First, questions 2 and 6 are the ones
+Three things the walk-through shows about the protocol itself. First, questions 2 and 6 are the ones
 that needed rulings — one became a capability (ADR-0025), one became a documented convergence shape
 (ADR-0021's amendment on whole-object authorship) — and neither could have been guessed into
 correctness. Second, three answers (4, 7, 12) fit existing fields but not the way the skill used to
-describe them; those are the "traps for token-and-firewall clouds" in `contract.md`.
+describe them; those are the "traps for token-and-firewall clouds" in `contract.md`. Third, row 21 was not on the
+list when this walk-through was written and could not have been answered from the documentation
+if it had been; it is the reason the live dry run (`dry-run.md`) is a step and not a suggestion.
