@@ -1553,7 +1553,10 @@ Every one of them is deliberately small, because an MCP result is paid for on ev
 truncated by the client when it is not (issues #415, #416):
 
 - `list_servers` lists the servers you **have**. Terminated ones are history and are left out
-  unless the agent passes `include_terminated`.
+  unless the agent passes `include_terminated`. Each row is the fleet view — status, address,
+  size, hourly cost, and the bootstrap step while a box is building — not the whole record;
+  `get_server` returns that, including the environment a box was built with, the repositories
+  it cloned and the full bootstrap report of one that failed.
 - `list_providers` reports each configured cloud's capabilities, any saved size preferences,
   and **how many** machine types it sells — not the types themselves. A cloud that could not be
   asked at all carries `offeringsError`, which is why its count can be zero.

@@ -366,6 +366,77 @@ describe('the route each tool calls', () => {
     expect(history.servers).toHaveLength(2)
   })
 
+  /**
+   * THE FLEET VIEW, NOT THE SERVER CARD (#416).
+   *
+   * `/api/v1/servers` serves the SPA's card: the environment the box was built with, the pack
+   * inputs, the repositories, the git-token scopes, and on a failed box the whole captured
+   * bootstrap log. Multiplied by a fleet that is most of the 280 KB this tool was reported
+   * returning, and none of it decides anything an agent does with a list. `get_server` still
+   * carries all of it, which is what its description promises.
+   */
+  it('list_servers carries the fleet fields and leaves the card behind (#416)', async () => {
+    const ROW = {
+      serverId: 'srv-one',
+      name: 'box',
+      provider: 'fake',
+      status: 'running',
+      size: 'small',
+      offeringId: 'f1.small',
+      publicIp: '10.0.0.1',
+      hourlyCost: { amount: 0.02, currency: 'USD', fetchedAt: '2026-09-06T12:00:00.000Z' },
+      estimatedTotalCost: 0.4,
+      totalUptimeSeconds: 72_000,
+      createdAt: '2026-09-06T00:00:00.000Z',
+      // Everything below is the card, and none of it should survive.
+      environment: { EDITOR: 'vim' },
+      packInputs: { region: 'here' },
+      repositories: ['https://example.invalid/repo.git'],
+      githubTokenScopes: [{ host: 'github.com', scope: 'repo' }],
+      carriesFallbackToken: true,
+      bootstrapReport: { log: 'x'.repeat(20_000) },
+      suppliedSshKey: { fingerprint: 'SHA256:abc' },
+      description: 'a long description nobody chooses a server by',
+    }
+    const { client: c } = recording({ '/api/v1/servers': [ROW] })
+    const result = (await runTool('list_servers', {}, ctx(['read'], c))) as {
+      servers: Array<Record<string, unknown>>
+    }
+
+    const [row] = result.servers
+    expect(row!['serverId']).toBe('srv-one')
+    expect(row!['status']).toBe('running')
+    expect(row!['publicIp']).toBe('10.0.0.1')
+    expect(row!['hourlyCost']).toEqual(ROW.hourlyCost)
+    expect(row!['size']).toBe('small')
+    for (const gone of [
+      'environment',
+      'packInputs',
+      'repositories',
+      'githubTokenScopes',
+      'carriesFallbackToken',
+      'bootstrapReport',
+      'suppliedSshKey',
+      'description',
+    ]) {
+      expect(row).not.toHaveProperty(gone)
+    }
+    // 20 KB of captured log for one box is what a fleet multiplies.
+    expect(JSON.stringify(result.servers).length).toBeLessThan(1_000)
+  })
+
+  it('list_servers truncates a runaway error message and says where the rest is', async () => {
+    const { client: c } = recording({
+      '/api/v1/servers': [{ serverId: 'srv-bad', status: 'failed', errorMessage: 'x'.repeat(5_000) }],
+    })
+    const result = (await runTool('list_servers', {}, ctx(['read'], c))) as {
+      servers: Array<Record<string, unknown>>
+    }
+    const message = result.servers[0]!['errorMessage'] as string
+    expect(message.length).toBeLessThan(600)
+    expect(message).toContain('get_server')
+  })
+
   it('get_server and get_ssh_command read the server the agent named', async () => {
     // Not a formality: the stub used to answer every path with the same record, so a tool that
     // fetched `srv-one` while the agent asked about `srv-two` looked correct — the asserted ssh

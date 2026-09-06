@@ -206,6 +206,83 @@ async function savedSshKeys(client: CoreClient): Promise<SavedSshKeyRow[]> {
   return Array.isArray(rows) ? (rows as SavedSshKeyRow[]) : []
 }
 
+/* --------------------------------------------------------------------------- fleet rows */
+
+/**
+ * The fields `list_servers` keeps from a row of `GET /api/v1/servers` (#416).
+ *
+ * That route serves the SPA's server CARD, and a card shows things a list does not: the whole
+ * environment the box was built with, the pack inputs someone typed, the repositories it
+ * cloned, the git-token scopes it carries, and — on a box whose bootstrap failed —
+ * `bootstrapReport`, which contains the captured log in full. Multiplied by a fleet, that is
+ * the other half of the ~280 KB `list_servers` was reported returning, and none of it decides
+ * anything an agent does with a LIST.
+ *
+ * So the list is the fleet view — what is running, where, how big, what it costs — and
+ * `get_server` is unchanged and still returns the row in full, which is what its own
+ * description already promises ("including provisioning progress and cost so far"). Named
+ * explicitly, one key at a time, so a field added to the route in future arrives here as a
+ * decision rather than as silent growth in every agent's context.
+ */
+const FLEET_ROW_FIELDS = [
+  'serverId',
+  'name',
+  'provider',
+  'region',
+  'size',
+  'offeringId',
+  'arch',
+  'status',
+  // What a box that is still building is doing right now — the one provisioning field a list
+  // needs, where `bootstrapReport` is the forensics `get_server` carries.
+  'provisioningStep',
+  'publicIp',
+  'publicDns',
+  'packId',
+  'hourlyCost',
+  'estimatedTotalCost',
+  'totalUptimeSeconds',
+  // Present only when the machine is metering and the status does not say so (ADR-0025): the
+  // reason an agent might stop or terminate a box, so it belongs in the view it decides from.
+  'billing',
+  // Why this row may be stale — the provider could not be asked, and the message names the
+  // remedy. Dropping it would make a stale row look fresh.
+  'syncError',
+  'createdAt',
+  'terminatedAt',
+] as const
+
+/** How much of a failure paragraph a list row carries before it points at `get_server`. */
+const ERROR_MESSAGE_MAX = 400
+
+/**
+ * One row, narrowed. Anything that is not an object is passed through untouched rather than
+ * flattened to `{}` — a route answering something unexpected should be visible, not silently
+ * blanked.
+ */
+function fleetRow(row: unknown): unknown {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return row
+  const source = row as Record<string, unknown>
+  const kept: Record<string, unknown> = {}
+  for (const field of FLEET_ROW_FIELDS) {
+    if (source[field] !== undefined) kept[field] = source[field]
+  }
+  /**
+   * The failure, in one paragraph rather than a page. `errorMessage` is written for a human and
+   * is usually a sentence, but a provider refusal can arrive with a stack or a wall of cloud
+   * XML behind it — and a fleet of failed boxes multiplies whatever it is. Truncated with the
+   * pointer attached, so an agent that needs the rest knows the tool that has it.
+   */
+  const error = source['errorMessage']
+  if (typeof error === 'string' && error.length > 0) {
+    kept['errorMessage'] =
+      error.length > ERROR_MESSAGE_MAX
+        ? `${error.slice(0, ERROR_MESSAGE_MAX)}… (truncated; call get_server for the full message and the bootstrap report)`
+        : error
+  }
+  return kept
+}
+
 /* ------------------------------------------------------------------------------- tools */
 
 const serverIdSchema = z.strictObject({
@@ -217,9 +294,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: 'list_servers',
     title: 'List servers',
     description:
-      'List the servers you own, with status, address and hourly cost. Terminated servers are ' +
-      'left out unless include_terminated is passed. Includes month-to-date spend and the ' +
-      'configured cap.',
+      'List the servers you own, with status, address, size and hourly cost — the fleet view, ' +
+      'one short row each. Terminated servers are left out unless include_terminated is passed. ' +
+      'Call get_server for one server in full: the environment it was built with, the ' +
+      'repositories it cloned, and the whole bootstrap report of a box that failed. Includes ' +
+      'month-to-date spend and the configured cap.',
     scope: 'read',
     inputSchema: z.strictObject({
       include_terminated: z
@@ -233,7 +312,12 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     run: async (args, { client }) => {
       const query = args['include_terminated'] ? '?includeTerminated=true' : ''
       const servers = await client.get<unknown[]>(`/api/v1/servers${query}`)
-      return { servers, ...(await costContext(client)) }
+      // The `Array.isArray` guard `savedSshKeys` has, for its reason: a route answering
+      // something else must degrade to passing that through, never to a TypeError.
+      return {
+        servers: Array.isArray(servers) ? servers.map(fleetRow) : servers,
+        ...(await costContext(client)),
+      }
     },
   },
 
