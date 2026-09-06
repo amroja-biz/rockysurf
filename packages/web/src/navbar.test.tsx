@@ -14,6 +14,7 @@ import { HomePage } from './pages/HomePage'
 import { PacksPage } from './pages/PacksPage'
 import { ServerDetailPage } from './pages/ServerDetailPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ShopPage } from './pages/ShopPage'
 
 /**
  * EVERY AUTHENTICATED PAGE CARRIES THE NAVBAR — and a new page cannot quietly opt out.
@@ -64,6 +65,7 @@ vi.mock('./lib/api', async () => {
     listAdminTools: vi.fn(),
     listAdminSurgePacks: vi.fn(),
     getPackRegistry: vi.fn(),
+    getProviderRegistry: vi.fn(),
     getSettings: vi.fn(),
   }
 })
@@ -92,6 +94,7 @@ beforeEach(() => {
   vi.mocked(api.listAdminTools).mockResolvedValue([])
   vi.mocked(api.listAdminSurgePacks).mockResolvedValue([])
   vi.mocked(api.getPackRegistry).mockResolvedValue({ enabled: true, sources: [], shelves: [] })
+  vi.mocked(api.getProviderRegistry).mockResolvedValue({ enabled: true, sources: [], shelves: [], trustSentence: '' })
   // Settings fails to read here, which is the interesting state for this file: a page must not
   // shed its navigation exactly when it could not load.
   vi.mocked(api.getSettings).mockRejectedValue(new Error('no config file'))
@@ -107,6 +110,7 @@ const AUTHENTICATED_PAGES: Record<string, ComponentType> = {
   SettingsPage,
   AdminToolsPage,
   PacksPage,
+  ShopPage,
   CostsPage,
   HomePage,
   HelpPage,
@@ -175,6 +179,8 @@ describe('the navbar is on every authenticated page', () => {
       ['Costs', '/costs'],
       ['Tools', '/admin/tools'],
       ['Surge Packs', '/packs'],
+      // The shop is its own tab (issue #426): found and installed there, configured elsewhere.
+      ['Rocky Surf Shop', '/shop'],
       ['Settings', '/settings'],
       ['Help', '/help'],
       // The brand mark, whose accessible name is its wordmark.
@@ -196,6 +202,7 @@ describe('the navbar is on every authenticated page', () => {
     ['/servers/srv-abc', 'Servers'],
     ['/packs', 'Surge Packs'],
     ['/packs/some-pack', 'Surge Packs'],
+    ['/shop', 'Rocky Surf Shop'],
     ['/admin/tools', 'Tools'],
   ] as const)('marks %s current on the %s link, and only that one (#221)', async (path, current) => {
     render(
@@ -205,7 +212,7 @@ describe('the navbar is on every authenticated page', () => {
     )
     await settle()
 
-    for (const name of ['Servers', 'New', 'Costs', 'Tools', 'Surge Packs', 'Settings', 'Help']) {
+    for (const name of ['Servers', 'New', 'Costs', 'Tools', 'Surge Packs', 'Rocky Surf Shop', 'Settings', 'Help']) {
       const attr = screen.getByRole('link', { name }).getAttribute('aria-current')
       if (name === current) expect(attr).toBe('page')
       else expect(attr).toBeNull()

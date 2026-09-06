@@ -17,6 +17,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { CostsPage } from './pages/CostsPage'
 import { SetupGate, WizardPage } from './pages/WizardPage'
 import { PacksPage } from './pages/PacksPage'
+import { ShopPage } from './pages/ShopPage'
 import { HomePage } from './pages/HomePage'
 import { HelpPage } from './pages/HelpPage'
 
@@ -138,6 +139,17 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <PacksPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* The Rocky Surf Shop (issue #426, ADR-0028): community Surge Packs and providers,
+                listed and installed from the registries in the config file. Its own page, by the
+                owner's ruling — Surge Packs stays about the packs this installation has. */}
+            <Route
+              path="/shop"
+              element={
+                <ProtectedRoute>
+                  <ShopPage />
                 </ProtectedRoute>
               }
             />

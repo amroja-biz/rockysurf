@@ -88,9 +88,13 @@ export function AppShell({
           {/* One link where there used to be two (rockysurf-4d8h, issue #51): the consolidated
               page at /packs is reachable by every signed-in user, not only admins. It is called
               Surge Packs because that is all it holds: providers are configured on the Settings
-              page, and the shop's provider listing is a link out (issue #394, ADR-0028). */}
+              page (issue #394), and what the shop distributes is found and installed on the
+              Rocky Surf Shop tab beside it (issue #426, ADR-0028). */}
           <Link to="/packs" aria-current={isCurrentNavLink('/packs', pathname) ? 'page' : undefined}>
             Surge Packs
+          </Link>
+          <Link to="/shop" aria-current={isCurrentNavLink('/shop', pathname) ? 'page' : undefined}>
+            Rocky Surf Shop
           </Link>
           <Link to="/settings" aria-current={isCurrentNavLink('/settings', pathname) ? 'page' : undefined}>
             Settings

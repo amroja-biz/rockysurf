@@ -11,9 +11,9 @@ export const GITHUB_URL = 'https://github.com/amroja-biz/rockysurf'
 export const SHOP_URL = 'https://github.com/amroja-biz/rockysurf-shop'
 
 /**
- * The same repository's provider listing (issue #394). Rocky Surf links at it rather than
- * listing or installing providers itself: installing one is a command-line step, and what the
- * app owns is the configuration afterwards.
+ * The same repository's provider listing, where the command-line install steps are written
+ * (issue #394). Since issue #426 the app installs from that listing itself, on the Rocky Surf
+ * Shop tab; this link is the manual alternative, pointed at from Settings and Help.
  */
 export const SHOP_PROVIDERS_URL = `${SHOP_URL}#providers`
 

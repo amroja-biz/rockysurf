@@ -1,6 +1,6 @@
-import { spawn, type ChildProcessByStdio } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { execFileSync, spawn, type ChildProcessByStdio } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -101,7 +101,184 @@ async function freePort(): Promise<number> {
  */
 const personalProviderDir = fileURLToPath(new URL('./fixtures/personal-provider', import.meta.url))
 
-function configYaml(port: number, dataDir: string, sshPort: number): string {
+/**
+ * THE FIXTURE SHOP (issue #426, ADR-0028): a registry the Rocky Surf Shop tab can browse AND
+ * install from, in a real browser, through the shipped code path.
+ *
+ * It is a directory of files — `index.json` and one pack file, `providers.json` and the packed
+ * tarballs it points at — answered from inside the binary's own process by
+ * `fixtures/shop-fetch-preload.mjs` under an origin the SSRF guard accepts. See that file for
+ * why it is not a local HTTP server. `registry.sources` names the origin exactly as an operator
+ * would name a real shop, so the client, the schema, the digest checks, the tar reader and the
+ * config write all run for real; only the socket is missing.
+ *
+ * WHAT IT LISTS. The provider entry is `@rockysurf/provider-digitalocean` — the in-tree package,
+ * packed with `pnpm pack` exactly as it is released, so the shape is the live shop's entry and
+ * the artifact is the real one. A second entry lists the Nimbus fixture package under a digest
+ * that is WRONG, so a test can watch a stale listing be refused with nothing written. The pack
+ * entry is a small pack referencing only base tools every installation has.
+ */
+const SHOP_ORIGIN = 'https://203.0.113.10/shop'
+const SHOP_SOURCE_NAME = 'Fixture Shop'
+const shopPreload = fileURLToPath(new URL('./fixtures/shop-fetch-preload.mjs', import.meta.url))
+const digitaloceanDir = fileURLToPath(new URL('../../provider-digitalocean', import.meta.url))
+
+export type RegistryMode = 'off' | 'fixture'
+
+export interface FixtureShop {
+  /** Where the files live; the preload serves `${origin}/<path>` from here. */
+  dir: string
+  origin: string
+  sourceName: string
+  /** The DigitalOcean entry's version, read from the packed manifest. */
+  digitaloceanVersion: string
+}
+
+const sha256 = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
+
+/** `pnpm pack` one directory into `destination`; returns the tarball path. */
+function pack(packageDir: string, destination: string): string {
+  const pnpm = process.env['ROCKYSURF_PNPM'] ?? 'pnpm'
+  const stdout = execFileSync(pnpm, ['pack', '--pack-destination', destination], {
+    cwd: packageDir,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  const tarball = stdout.trim().split('\n').at(-1)?.trim()
+  if (!tarball?.endsWith('.tgz')) throw new Error(`could not read the tarball path out of \`pnpm pack\`:\n${stdout}`)
+  return tarball
+}
+
+const FIXTURE_PACK_YAML = [
+  '# A community pack for the browser suite: three base tools every installation defines.',
+  'version: 1',
+  '',
+  'pack:',
+  '  packId: shop-fixture',
+  '  name: Shop Fixture',
+  '  tools:',
+  '    - curl',
+  '    - git',
+  '    - tmux',
+  '  displayOrder: 99',
+  '  enabled: true',
+  '  requiresRepos: false',
+  '  requiresRdp: false',
+  '  guide: |',
+  '    A fixture pack installed from the Rocky Surf Shop tab by the browser suite.',
+  '',
+  '# Defines nothing: every tool above is a base tool from packs/ai-coding-agents.yaml.',
+  'tools: []',
+  '',
+].join('\n')
+
+function buildFixtureShop(dir: string): FixtureShop {
+  mkdirSync(join(dir, 'packs'), { recursive: true })
+  mkdirSync(join(dir, 'artifacts'), { recursive: true })
+
+  /* The pack half: one file, listed with its digest, the same shape `index.json` has in the
+     real shop (`packages/core/src/packs/registry-index.ts`). */
+  writeFileSync(join(dir, 'packs', 'shop-fixture.yaml'), FIXTURE_PACK_YAML)
+  writeFileSync(
+    join(dir, 'index.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        generatedAt: '2026-09-06T00:00:00.000Z',
+        packs: [
+          {
+            packId: 'shop-fixture',
+            name: 'Shop Fixture',
+            description: 'A fixture pack: curl, git and tmux, nothing else.',
+            path: 'packs/shop-fixture.yaml',
+            sha256: sha256(FIXTURE_PACK_YAML),
+            definesTools: [],
+            referencesTools: ['curl', 'git', 'tmux'],
+            requiresRepos: false,
+            requiresRdp: false,
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  )
+
+  /* The provider half: the REAL DigitalOcean artifact (the workspace is built before this suite
+     runs, so `dist/` exists and `pnpm pack` is a second or two), listed with the description,
+     settings and capability answers the live shop publishes for it. */
+  const digitaloceanTarball = pack(digitaloceanDir, join(dir, 'artifacts'))
+  const digitaloceanBytes = readFileSync(digitaloceanTarball)
+  const digitaloceanVersion = (JSON.parse(readFileSync(join(digitaloceanDir, 'package.json'), 'utf8')) as { version: string }).version
+
+  /* Nimbus, packed by hand (it is not a workspace package) and listed under a digest that is
+     wrong on purpose. */
+  const nimbusStage = join(dir, 'nimbus-stage', 'package')
+  cpSync(personalProviderDir, nimbusStage, { recursive: true })
+  execFileSync('tar', ['-czf', join(dir, 'artifacts', 'nimbus.tgz'), '-C', join(dir, 'nimbus-stage'), 'package'], { stdio: 'pipe' })
+
+  writeFileSync(
+    join(dir, 'providers.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        generatedAt: '2026-09-06T00:00:00.000Z',
+        providers: [
+          {
+            providerId: 'digitalocean',
+            name: 'DigitalOcean',
+            description:
+              'DigitalOcean droplets over the public REST API — one personal access token, a cloud firewall it keeps in step with your SSH allow-list, and no runtime dependencies.',
+            version: digitaloceanVersion,
+            package: '@rockysurf/provider-digitalocean',
+            tarball: `${SHOP_ORIGIN}/artifacts/${digitaloceanTarball.split('/').at(-1)}`,
+            sha256: sha256(digitaloceanBytes),
+            settings: [
+              { name: 'token', label: 'Token Environment Variable', kind: 'secret' },
+              { name: 'region', label: 'Region', kind: 'string' },
+              { name: 'image', label: 'Base image', kind: 'string' },
+              { name: 'sshAllowedCidr', label: 'SSH allowed from', kind: 'sshCidrList' },
+              { name: 'firewallName', label: 'Firewall name', kind: 'string' },
+              { name: 'vpcUuid', label: 'VPC', kind: 'string' },
+            ],
+            capabilities: {
+              stop: true,
+              ipStableAcrossStop: true,
+              canInjectHostKeys: true,
+              generatesUserData: true,
+              userDataMaxBytes: 65536,
+              managesSshAccess: true,
+              billsWhileStopped: true,
+            },
+          },
+          {
+            providerId: 'stale',
+            name: 'Stale Listing',
+            description: 'A listing whose digest does not match the artifact it points at.',
+            version: '0.0.0',
+            package: 'rockysurf-provider-nimbus',
+            tarball: `${SHOP_ORIGIN}/artifacts/nimbus.tgz`,
+            sha256: 'a'.repeat(64),
+            settings: [],
+            capabilities: {
+              stop: true,
+              ipStableAcrossStop: true,
+              canInjectHostKeys: false,
+              generatesUserData: false,
+              userDataMaxBytes: 0,
+            },
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  )
+
+  return { dir, origin: SHOP_ORIGIN, sourceName: SHOP_SOURCE_NAME, digitaloceanVersion }
+}
+
+function configYaml(port: number, dataDir: string, sshPort: number, registry: RegistryMode): string {
   return [
     'server:',
     `  port: ${port}`,
@@ -128,7 +305,15 @@ function configYaml(port: number, dataDir: string, sshPort: number): string {
     `    package: ${personalProviderDir}rr`,
     '    enabled: false',
     'registry:',
-    '  enabled: false',
+    ...(registry === 'fixture'
+      ? [
+          '  enabled: true',
+          '  sources:',
+          `    - name: ${SHOP_SOURCE_NAME}`,
+          `      url: ${SHOP_ORIGIN}`,
+          '      trust: community',
+        ]
+      : ['  enabled: false']),
     'pricing:',
     '  enabled: false',
     '',
@@ -144,46 +329,65 @@ export interface ControlPlane {
   readonly password: string
   /** The `config.yaml` the settings page reads and writes. */
   readonly configPath: string
+  /** `server.dataDir` — where a provider installed from the shop lands (`providers/`). */
+  readonly dataDir: string
+  /** The fixture registry this instance was booted against, when it was booted with one. */
+  readonly shop: FixtureShop | undefined
   /** Its current contents, re-read from disk — the persistence assertions' evidence. */
   readConfig(): string
   /** Everything the process wrote to stderr, for a failure message worth reading. */
   log(): string
+  /**
+   * Stop the process and start it again on the same port, config file and data directory.
+   *
+   * What an operator does after installing a provider (ADR-0026 loads a package once, before
+   * boot), and the only way a browser test can see the panel that install produces.
+   */
+  restart(): Promise<void>
   stop(): Promise<void>
+}
+
+export interface BootOptions {
+  /** `'fixture'` boots against the fixture shop above; `'off'` (the default) disables the registry. */
+  registry?: RegistryMode
 }
 
 /** How long the binary gets to come up. Generous: CI runners are slow and cold. */
 const BOOT_TIMEOUT_MS = 90_000
 
-async function boot(): Promise<ControlPlane> {
-  const dir = mkdtempSync(join(tmpdir(), 'rockysurf-ui-'))
-  const dataDir = join(dir, 'data')
-  const home = join(dir, 'home')
-  mkdirSync(home, { recursive: true })
-  const configPath = join(dir, 'config.yaml')
-  const port = await freePort()
-  /* The BYO host's SSH port — see `configYaml`. Also from the OS, and deliberately NOT bound:
-     a loopback port with no listener refuses instantly, which is the behaviour wanted here. */
-  const sshPort = await freePort()
-  const password = adminPassword()
-  writeFileSync(configPath, configYaml(port, dataDir, sshPort))
-
-  const child: ServerProcess = spawn(process.execPath, [binPath, '--config', configPath], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    // `cwd` is the repo root so the binary finds the checkout's `packs/`, which is what the
-    // Packs page renders — the same packs a contributor sees when they run it by hand.
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      HOME: home,
-      ROCKYSURF_ADMIN_PASSWORD: password,
-      // Not inherited: a contributor with a real installation would otherwise hand this
-      // instance their own master key, and every secret it writes would be readable with it.
-      ROCKYSURF_SECRET_KEY: '',
-      // The personal fixture's credential (`token: "${NIMBUS_TOKEN}"` above). A reference the
-      // environment cannot satisfy is a boot error, so the variable exists; the value is nothing.
-      NIMBUS_TOKEN: 'nimbus-fixture-token',
+/** Spawn the binary and wait for `/health`; the one routine `boot` and `restart` share. */
+async function spawnAndWait(args: {
+  dir: string
+  home: string
+  configPath: string
+  port: number
+  password: string
+  shop: FixtureShop | undefined
+}): Promise<{ child: ServerProcess; log: () => string }> {
+  const { dir, home, configPath, port, password, shop } = args
+  const child: ServerProcess = spawn(
+    process.execPath,
+    [...(shop ? ['--import', shopPreload] : []), binPath, '--config', configPath],
+    {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // `cwd` is the repo root so the binary finds the checkout's `packs/`, which is what the
+      // Packs page renders — the same packs a contributor sees when they run it by hand.
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        HOME: home,
+        ROCKYSURF_ADMIN_PASSWORD: password,
+        // Not inherited: a contributor with a real installation would otherwise hand this
+        // instance their own master key, and every secret it writes would be readable with it.
+        ROCKYSURF_SECRET_KEY: '',
+        // The personal fixture's credential (`token: "${NIMBUS_TOKEN}"` above). A reference the
+        // environment cannot satisfy is a boot error, so the variable exists; the value is nothing.
+        NIMBUS_TOKEN: 'nimbus-fixture-token',
+        // The fixture shop, when there is one — read by `fixtures/shop-fetch-preload.mjs`.
+        ...(shop ? { ROCKYSURF_UI_SHOP_ORIGIN: shop.origin, ROCKYSURF_UI_SHOP_DIR: shop.dir } : {}),
+      },
     },
-  })
+  )
 
   let stderr = ''
   child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')))
@@ -213,20 +417,51 @@ async function boot(): Promise<ControlPlane> {
     rmSync(dir, { recursive: true, force: true })
     throw new Error(`Rocky Surf never answered /health on ${port} within ${BOOT_TIMEOUT_MS}ms:\n${stderr}`)
   }
+  return { child, log: () => stderr }
+}
+
+async function terminate(child: ServerProcess): Promise<void> {
+  if (child.exitCode !== null) return
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
+  child.kill('SIGTERM')
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 15_000)).then(() => child.kill('SIGKILL'))])
+}
+
+async function boot(options: BootOptions): Promise<ControlPlane> {
+  const dir = mkdtempSync(join(tmpdir(), 'rockysurf-ui-'))
+  const dataDir = join(dir, 'data')
+  const home = join(dir, 'home')
+  mkdirSync(home, { recursive: true })
+  const configPath = join(dir, 'config.yaml')
+  const port = await freePort()
+  /* The BYO host's SSH port — see `configYaml`. Also from the OS, and deliberately NOT bound:
+     a loopback port with no listener refuses instantly, which is the behaviour wanted here. */
+  const sshPort = await freePort()
+  const password = adminPassword()
+  const registry = options.registry ?? 'off'
+  const shop = registry === 'fixture' ? buildFixtureShop(join(dir, 'shop')) : undefined
+  writeFileSync(configPath, configYaml(port, dataDir, sshPort, registry))
+
+  let running = await spawnAndWait({ dir, home, configPath, port, password, shop })
 
   let stopped = false
   return {
-    origin,
+    origin: `http://127.0.0.1:${port}`,
     password,
     configPath,
+    dataDir,
+    shop,
     readConfig: () => readFileSync(configPath, 'utf8'),
-    log: () => stderr,
+    log: () => running.log(),
+    async restart() {
+      if (stopped) throw new Error('cannot restart a control plane that has been stopped')
+      await terminate(running.child)
+      running = await spawnAndWait({ dir, home, configPath, port, password, shop })
+    },
     async stop() {
       if (stopped) return
       stopped = true
-      const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
-      child.kill('SIGTERM')
-      await Promise.race([exited, new Promise((r) => setTimeout(r, 15_000)).then(() => child.kill('SIGKILL'))])
+      await terminate(running.child)
       rmSync(dir, { recursive: true, force: true })
     },
   }
@@ -240,11 +475,11 @@ async function boot(): Promise<ControlPlane> {
  * time. Anything else (a missing build, a config the schema refuses) fails the same way twice
  * and is reported at once rather than after three attempts and a minute of waiting.
  */
-export async function startControlPlane(): Promise<ControlPlane> {
+export async function startControlPlane(options: BootOptions = {}): Promise<ControlPlane> {
   let last: unknown
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await boot()
+      return await boot(options)
     } catch (err) {
       last = err
       const message = err instanceof Error ? err.message : String(err)

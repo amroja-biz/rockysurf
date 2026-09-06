@@ -629,13 +629,15 @@ export function HelpPage() {
           above.
         </p>
         <p>
-          <strong>Pack Shop</strong> is where community packs come from. Packs marked{' '}
-          <em>official</em> shipped with the release you are running; everything else carries the
-          label you gave its registry in your config file, and no registry can call itself
-          official. Installing one takes effect immediately, no restart.
+          The <strong><Link to="/shop">Rocky Surf Shop</Link></strong> tab is where community packs
+          come from. Packs marked <em>official</em> shipped with the release you are running;
+          everything else carries the label you gave its registry in your config file, and no
+          registry can call itself official. Installing one takes effect immediately, no restart;
+          the packs on this installation are on the Surge Packs page, and its Community sub-tab
+          links back to the shop.
         </p>
         <p>
-          Before you install anything from a registry, that page shows you{' '}
+          Before you install anything from a registry, the shop shows you{' '}
           <strong>every script the pack will run, verbatim</strong>, which of them run as root,
           and every URL they download from — read it before you install. The registry&rsquo;s
           automated checks prove a pack is well-formed and survives being resumed; they cannot
@@ -643,10 +645,15 @@ export function HelpPage() {
           box.
         </p>
         <p>
-          The same repository also lists <strong>providers</strong> — the clouds Rocky Surf can
-          create servers on. Rocky Surf does not install those: unpack the package under the data
-          directory&rsquo;s <code>providers</code> folder, name it in your config file, and
-          restart. The steps and the packages are in the providers section of the{' '}
+          The same tab lists <strong>providers</strong> — the clouds Rocky Surf can create servers
+          on. Each card shows the version, what the provider will ask you to configure, and what
+          its machines can do, including whether a stopped machine still bills. Install fetches
+          the package over https, checks its digest against the listing, unpacks it under the data
+          directory&rsquo;s <code>providers</code> folder and writes two lines to the config file;
+          nothing in the package runs until you restart Rocky Surf, and the card says so. A listing
+          whose digest does not match, or that points at an <code>http</code> address, is refused
+          and nothing is written. The same install can be done from the command line — the steps
+          are in the providers section of the{' '}
           <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
             Rocky Surf Shop
           </a>
