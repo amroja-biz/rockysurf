@@ -58,6 +58,7 @@ nothing else. If you did neither, say what you did instead.
 
 ## Everything else
 
+- The testing strategy, layer by layer: [`docs/TESTING.md`](docs/TESTING.md).
 - Architecture decisions: [`docs/adr/`](docs/adr/), indexed at `docs/adr/llms.txt`.
 - Contribution mechanics, commit conventions, and the workspace's import rule:
   [`CONTRIBUTING.md`](CONTRIBUTING.md).

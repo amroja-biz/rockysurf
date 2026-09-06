@@ -202,6 +202,7 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | What each provider can do, and the evidence for it |
 | [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | The pack-author contract |
 | [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Adding a cloud against the frozen SDK |
+| [`docs/TESTING.md`](docs/TESTING.md) | The testing strategy - every layer, where it runs, and the nightly real-cloud run |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, gates, conventions |
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,

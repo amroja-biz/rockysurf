@@ -191,6 +191,10 @@ regression there would be invisible until somebody timed a fresh install.
 
 ## Tests
 
+[`docs/TESTING.md`](docs/TESTING.md) is the map: every testing layer in the project, what each one
+can see, where it runs, and what the nightly real-cloud workflow does. This section is the part a
+contributor has to act on.
+
 Ordinary unit tests are expected, and one extra kind is expected on top of them.
 
 **Every seam between two components gets a whole-app wiring test.** This is a scar, not a
