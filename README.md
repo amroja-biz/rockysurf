@@ -7,21 +7,108 @@
 <!-- HERO GIF: placeholder. Owned by rockysurf-o45s.1 — a <90s clip of compose up → switch on
      Hetzner in the wizard → pick the Claude Code pack → live install feed → ssh in → terminate. -->
 
-**Are your coding agents telling you they need their own space?**
-
-Have they been snooping around your laptop, exposing API keys? Or connecting to other apps without
-being told? And aren't you getting a little tired of killing them when you close your laptop by
-mistake?
-
-Rocky Surf solves this problem by making it easy to run agents where they belong - in cloud
-accounts that you own, preinstalled with your favorite tools and repos.
-
 Rocky Surf creates a Linux box on your own cloud account, installs your coding agents on it, and
-hands you an SSH command. Stop it tonight, start it tomorrow: your repo, your branches and your
-shell history are where you left them. A stopped box costs storage, not compute.
+hands you an SSH command.
+
+## Quick Start
+
+### 1. Install
+
+Requires Node 24 or newer.
+
+```bash
+npx -y rockysurf
+```
+
+It prints an admin password **once** on first boot — save it. Open <http://127.0.0.1:3000> and
+sign in with it. It listens on `127.0.0.1` only.
+
+With no cloud configured it runs an in-memory provider, so you can create a server, watch it boot
+and terminate it before pasting a real token.
+
+Docker Compose instead:
+
+```bash
+git clone https://github.com/amroja-biz/rockysurf
+cd rockysurf
+docker compose up --build
+docker compose logs rockysurf | grep -A3 'first boot'   # the admin password
+```
+
+### 2. Configure a cloud
+
+Every cloud is off until you turn it on. Use the first-run wizard, or **Settings** (one tab per
+cloud), or edit the config file directly: `--config <path>`, else `./rockysurf.config.yaml`, else
+`~/.rockysurf/config.yaml`. Rocky Surf prints the file it read on startup and writes Settings
+changes back to it. Start from [`rockysurf.config.example.yaml`](rockysurf.config.example.yaml).
+
+Rocky Surf stores no cloud credentials. Each cloud authenticates through its own auth path:
+
+| Cloud | Where the credential comes from | Minimum config under `providers:` |
+|---|---|---|
+| **Hetzner** | A read/write API token from console.hetzner.com, exported as `HETZNER_TOKEN` in the environment Rocky Surf starts from. | `hetzner: { enabled: true, token: "${HETZNER_TOKEN}", location: fsn1 }` |
+| **AWS** | The standard AWS credential chain — environment, `AWS_PROFILE`, `aws sso login`, or an instance role. | `aws: { enabled: true, region: us-east-1, sshAllowedCidr: "203.0.113.7/32" }` |
+| **Azure** | `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`, a managed identity, or `az login`. | `azure: { enabled: true, subscriptionId: …, resourceGroup: rocky-surf-rg, location: eastus, sshAllowedCidr: "203.0.113.7/32" }` |
+| **GCP** | Application Default Credentials — `gcloud auth application-default login`, or a service-account key file at `keyFile`. | `gcp: { enabled: true, projectId: my-project-123456, zone: us-central1-a, sshAllowedCidr: "203.0.113.7/32" }` |
+| **BYO** | Your own SSH access to machines you already have. No cloud API. | `byo: { enabled: true, hosts: [ { name: workshop, host: 10.0.0.9, user: root } ] }` |
+
+`sshAllowedCidr` is required for AWS, Azure and GCP and has no default: it is which network may
+reach SSH on your boxes, and a list is accepted. Your address is
+`curl -s https://checkip.amazonaws.com`, as a `/32`.
+
+AWS needs an IAM policy ([`deploy/aws/iam-role.yaml`](deploy/aws/iam-role.yaml)); Azure needs a
+resource group you create yourself (`az group create --name rocky-surf-rg --location eastus`) and
+a role scoped to it. Full per-cloud setup, including the least-privilege roles:
+[`docs/providers/`](docs/providers/).
+
+### 3. Configure MCP
+
+`rockysurf mcp` exposes the server lifecycle as MCP tools. Rocky Surf itself must already be
+running; the MCP server talks to it over HTTP.
+
+Mint a token — it is printed once:
+
+```bash
+npx -y rockysurf token
+```
+
+Point your client at it. For Claude Code, `.mcp.json` in your project; for Claude Desktop, the
+same object in its config file:
+
+```json
+{
+  "mcpServers": {
+    "rockysurf": {
+      "command": "npx",
+      "args": ["-y", "rockysurf", "mcp"],
+      "env": {
+        "ROCKYSURF_TOKEN": "the-token-you-just-minted",
+        "ROCKYSURF_URL": "http://127.0.0.1:3000"
+      }
+    }
+  }
+}
+```
+
+The token grants nothing by itself. What an agent may do is `mcp.scopes` in the config file,
+which defaults to `[read, stop]`:
+
+```yaml
+mcp:
+  scopes: [read, stop]                        # read, stop and start
+  # scopes: [read, stop, create]              # ...and create servers
+  # scopes: [read, stop, create, terminate]   # ...and destroy them
+```
+
+A scope you have not granted means the tool is not offered at all — an agent reporting no
+`create_server` is reporting this setting. Tick `create` under **Settings → MCP**, then reconnect
+the MCP client; the scopes are read when your client starts `rockysurf mcp`.
+
+## What Rocky Surf is
 
 One process you run yourself (web UI, HTTP API, SQLite file). One admin, no accounts, no
-telemetry, nothing hosted.
+telemetry, nothing hosted. Stop a box tonight, start it tomorrow: your repo, your branches and
+your shell history are where you left them. A stopped box costs storage, not compute.
 
 ## Bring your own cloud, keys and repos
 
@@ -44,53 +131,11 @@ pool your API keys, or hold your code, and features that would need it to get re
 4. **Make Rocky Surf easy to extend via modular components.**
 5. **Make it easy to combine components without coding.**
 
-## Install
-
-```bash
-git clone https://github.com/amroja-biz/rockysurf
-cd rockysurf
-docker compose up --build
-```
-
-It prints an admin password once - save it:
-
-```bash
-docker compose logs rockysurf | grep -A3 'first boot'
-```
-
-Open <http://127.0.0.1:3000> and sign in with your admin password.
-
-You don't need a cloud account to try it. With no cloud configured you get an in-memory provider,
-so you can create a server, watch it boot, and terminate it before pasting a real token.
-
-### Configuration
-
-Settings live in one YAML file: `--config <path>`, else `./rockysurf.config.yaml`, else
-`~/.rockysurf/config.yaml`. Rocky Surf prints the one it used and writes web-UI changes back to
-it. Start from [`rockysurf.config.example.yaml`](rockysurf.config.example.yaml), where every value
-is the default. Under Docker the live file is in the `rockysurf-data` volume rather than your
-checkout.
-
-Rocky Surf listens on `127.0.0.1` only, behind one password and no TLS, and it holds your cloud
-credentials and an SSH key per server. If you widen `server.host`, put a proxy or firewall in
-front. Detail: [`docs/self-hosting.md`](docs/self-hosting.md) and [`SECURITY.md`](SECURITY.md).
-
 ## Creating a server
-
-### Pick a provider
-
-| Provider | Getting the credential |
-|---|---|
-| **Hetzner** | Quickest start. Mint a read/write API token at console.hetzner.com and export it. |
-| **AWS** | The standard credential chain. Needs an IAM policy and an explicit `sshAllowedCidr`. |
-| **Azure** | Environment, managed identity, or `az login`. Needs a resource group and a least-privilege role. |
-| **GCP** | Application Default Credentials. Needs a project and an explicit `sshAllowedCidr`. |
-| **BYO** | Machines you already have, over SSH. No cloud API. |
 
 **A create can fail because your cloud login expired.** AWS, Azure and GCP use the same
 credentials as the rest of your tooling, and for most people those expire: `aws sso login`,
-`az login`, `gcloud auth application-default login`. Hetzner's token is long-lived. Setup per
-provider: [`docs/providers/`](docs/providers/).
+`az login`, `gcloud auth application-default login`. Hetzner's token is long-lived.
 
 ### Pick a Surge Pack
 
@@ -192,6 +237,12 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 - **An occasional look at the console.** Rocky Surf flags disagreements between its records and
   the cloud's, but it only knows about resources it created.
 
+## Security
+
+Rocky Surf listens on `127.0.0.1` only, behind one password and no TLS, and it holds your cloud
+credentials and an SSH key per server. If you widen `server.host`, put a proxy or firewall in
+front. Detail: [`SECURITY.md`](SECURITY.md).
+
 ## More
 
 | Document | What it covers |
@@ -206,9 +257,7 @@ Set limits at the cloud too, where the numbers come from your actual bill:
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development setup, gates, conventions |
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,
-no multi-tenancy. `rockysurf mcp` exposes the lifecycle as MCP tools, so an agent can create,
-inspect, stop, start and destroy its own boxes (`create` and `terminate` are separate opt-in
-scopes).
+no multi-tenancy.
 
 ## License
 
