@@ -360,6 +360,51 @@ export function assertInstanceStateValid(state: string): void {
   check((INSTANCE_STATES as readonly string[]).includes(state), `instance state '${state}' is not in the frozen set`)
 }
 
+/**
+ * The cloud-side name is derived from `spec.serverId`; the human's `spec.name` never reaches
+ * the cloud (issue #409).
+ *
+ * `ProvisionSpec` carries two names for two audiences. `name` is Rocky Surf's display name —
+ * "DO skill retest 2" — and may hold spaces, punctuation and unicode; `serverId` is core's id,
+ * which the provider asserts is hostname-safe precisely so it can be the name a cloud sees. A
+ * provider that sent `spec.name` was refused live with "Only valid hostname characters are
+ * allowed", and only live: a fake that stores whatever string it is handed accepts it happily.
+ *
+ * `sent` is whatever the fake captured of the requests the provider made — request bodies,
+ * paths, query strings, in any serialisable form. The check is a substring one on purpose: it
+ * does not need to know which field of which body the cloud calls the name, only that the
+ * display name is in none of them and the serverId is in one.
+ */
+export function assertProvisionNameFromServerId(
+  spec: { readonly serverId: string; readonly name: string },
+  sent: readonly unknown[],
+): void {
+  check(
+    typeof spec.serverId === 'string' && spec.serverId.length > 0,
+    'assertProvisionNameFromServerId: spec.serverId must be a non-empty string',
+  )
+  // Without a display name a hostname could not hold, the check would pass against a provider
+  // that sends spec.name — so refuse to give a green answer to a probe that proves nothing.
+  check(
+    typeof spec.name === 'string' && /[^a-zA-Z0-9-]/.test(spec.name),
+    `assertProvisionNameFromServerId: give the spec a display name a hostname could not hold ` +
+      `(a space is enough); '${String(spec.name)}' would pass against a provider that sends it`,
+  )
+  check(sent.length > 0, 'assertProvisionNameFromServerId: no requests were captured')
+
+  const text = sent.map((one) => (typeof one === 'string' ? one : JSON.stringify(one ?? null))).join('\n')
+  check(
+    !text.includes(spec.name),
+    `provision sent the display name '${spec.name}' to the cloud; the cloud-side name is derived ` +
+      `from spec.serverId ('${spec.serverId}'), which is the id asserted hostname-safe for this reason`,
+  )
+  check(
+    text.includes(spec.serverId),
+    `provision never sent spec.serverId ('${spec.serverId}') to the cloud; the cloud-side name, ` +
+      `and every tag that attributes what was created, derive from it`,
+  )
+}
+
 /* ------------------------------------------------------- describe() absence grace (A4) */
 
 /**

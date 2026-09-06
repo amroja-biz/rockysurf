@@ -239,8 +239,13 @@ panel with its Enabled switch. The trust model is one sentence and your README s
 provider runs with Rocky Surf's full access — install ones you trust.**
 
 What still applies: the SDK contract, conformance, the trap checklist, and the honesty rules about
-capabilities and verification. What a personal package must add: the default export IS the factory
-and `factory.id` equals the config key; the manifest's entry resolves (import-only `exports` are
+capabilities and verification. What a personal package must add: a name it can actually publish
+under — `<your-scope>/rockysurf-provider-<id>`, or unscoped `rockysurf-provider-<id>`, since
+`@rockysurf` is this repository's scope and holds in-tree providers only; no runtime dependencies
+at all, because the documented install unpacks a tarball and resolves nothing
+([`docs/writing-a-provider.md`](../../../docs/writing-a-provider.md), "The artifact must be
+self-contained"); the default export IS the factory
+and `factory.id` equals the config key (the bare `<id>`, not the package name); the manifest's entry resolves (import-only `exports` are
 fine); `credentialField` and `credentialEnv` on the factory say where a token lands and which
 variables may supply it; and errors are `ProviderError`s from your own SDK copy, which core's
 structural `isProviderError` accepts. The operator-facing side is `docs/self-hosting.md`, "Personal

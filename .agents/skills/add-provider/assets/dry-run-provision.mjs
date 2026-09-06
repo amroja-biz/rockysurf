@@ -468,7 +468,7 @@ async function main() {
     const offerings = await provider.listOfferings()
     offering = pickOffering(offerings)
     const price = offering.hourly ? `${offering.hourly.amount} ${offering.hourly.currency}/h` : 'price unknown'
-    console.log(`${offerings.length} offerings; using ${offering.id} (${offering.arch}, ${offering.cpu} cpu, ${offering.memoryMb} MB, ${price})`)
+    console.log(`${offerings.length} offerings; using ${offering.id} (${offering.arch}, ${offering.cpu} cpu, ${offering.memoryGb} GB, ${price})`)
   } catch (err) {
     console.log(describeError(err))
     summary()

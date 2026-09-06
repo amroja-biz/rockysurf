@@ -127,7 +127,10 @@ Three sub-rules:
 2. Absence that persists past the grace is `terminated`. This is a normal outcome during teardown,
    not an error.
 3. Absence for an instance **already seen running** is believed on the **first** read. There is no
-   ambiguity, this is the path core polls during teardown, and a grace here is pure delay.
+   ambiguity, this is the path core polls during teardown, and a grace here is pure delay. The
+   same is true of an instance this process has **issued a delete for** — absence is exactly what
+   was asked for — so short-circuit on the terminate-requested set as well as on `seenRunning`.
+   Conformance passes either way, so nothing else will tell you.
 
 `assertDescribeAbsenceGrace` in `@rockysurf/provider-conformance` asserts all three, and it counts
 *reads of your read path* — because a provider that honours the grace and one that skips it return
@@ -158,6 +161,17 @@ Two related defects from the same incident, both worth checking in a new provide
   the labels on the resource, not from the outcome of the call.
 - **Secondary resources created before a failing instance create are stranded**, because core marks
   the row failed without storing a handle. Reap them on the way out of the failure path.
+- **A resource kind with no labelling primitive still needs an ownership answer.** Some clouds have
+  no tags on some object kinds — an SSH key with nothing but a free-text `name` is the case that
+  turned up — and "decide from the labels" then has no labels to read. Encode the label in the one
+  field the cloud does give you, injectively and with the same `managed-by` and `server-id`
+  vocabulary (`<managedBy>:<serverId>:<n>` in a name field), parse it back in `listManaged()`, and
+  select on it in `terminate()`. Two things follow and both belong in the README: the encoding is
+  **unenforced by the cloud**, so anything may write that name; and a create that collides with an
+  existing object is trap 3's adopt-versus-own question, not a duplicate to overwrite.
+- **Read back what you just created before referencing it, and do not believe a 404 while reaping
+  it.** Both are in `research-protocol.md`, "Read-after-write on objects you just created"; the
+  second is the one carve-out to trap 4 below, and it lives on this failure path.
 
 And the same incident's rule at the other end of the lifecycle: **refuse a spec whose `managed-by`
 tag disagrees with your configured prefix.** An instance tagged with anything else is invisible to
@@ -174,6 +188,13 @@ be: two different logical servers would quietly collide onto one cloud resource.
 
 `terminate()` is idempotent and not-found is success, because reconcilers retry. Returning does not
 mean the resources are gone — expect `terminating` on the next `describe()`.
+
+**One carve-out, and it is the only one: an object this same call created.** There the provider
+holds proof the object exists, so a 404 from the delete is a lagging read and not an answer —
+retry, bounded, before giving up. The rule is safe everywhere else precisely because "not found"
+and "never existed" are the same thing to a reconciler that did not create it; on the reap path of
+a create that just failed they are not. See `research-protocol.md`, "Read-after-write on objects
+you just created", for the incident that produced this.
 
 `terminating` instances **stay in `listManaged()`**: they still exist and still hold their disk, so
 the reconciler must see them. Only `terminated` is gone.

@@ -51,11 +51,24 @@ need them. What you do have, inside the tarballs you installed, is the authorita
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": { "@rockysurf/provider-sdk": "^0.1.0", "zod": "^4" },
+  "dependencies": { "@rockysurf/provider-sdk": "^0.1.0", "zod": "^4" },  // zod: in-tree only — see below
   "devDependencies": { "@rockysurf/provider-conformance": "^0.1.0" }
 }
 ```
 
+- **The name.** `@rockysurf/provider-<id>` is for providers that live in this repository; nobody
+  else can publish into that scope. A personal provider is `<your-scope>/rockysurf-provider-<id>`
+  or, unscoped, `rockysurf-provider-<id>`. The package name is not the provider id: `factory.id`
+  is the bare `<id>` and it is the key of the config section either way.
+- **A personal provider takes NO runtime dependencies.** The documented install is `tar -xzf` into
+  `<dataDir>/providers` — no `npm install`, nothing of yours executed — so a dependency the
+  manifest names and the operator does not already have is an import that throws at their next
+  start, and the provider is simply not there
+  ([`docs/writing-a-provider.md`](../../../docs/writing-a-provider.md), "The artifact must be
+  self-contained"). That is why `zod` above is bracketed as in-tree only: out of tree, either
+  hand-write the config parser against the structural `ConfigSchema` contract or bundle what you
+  use into `dist/`. `devDependencies` are irrelevant to this — they are not in the published
+  manifest's `dependencies`.
 - **`files` must list `README.md`**, and the README is the page npm shows.
 - **Never a dependency on `@rockysurf/core`.** In tree, CI enforces it in both directions; out of
   tree it is still wrong, because core is the thing your provider is decoupled from.
@@ -116,6 +129,12 @@ their debugging experience.
 Zod lives in the provider's dependencies, never in the SDK's. Any validator with a throwing `parse`
 works — the SDK's `ConfigSchema<T>` is structurally `{ parse(input: unknown): T }` precisely so the
 SDK can keep zero runtime dependencies.
+
+**A personal provider has nowhere to put zod**, for the reason above: its install resolves no
+dependencies. Write the parser by hand against the same structural contract — an object with a
+throwing `parse` — and keep the two refines and their instructional messages exactly as they are
+here. The messages are the part that matters, and hand-writing them is if anything easier than
+bending a library's generic errors into instructions.
 
 ## index.ts
 
@@ -224,15 +243,41 @@ describe('provision on a fresh account', () => {
       'POST /v2/tags',         // the tag the firewall targets — created explicitly, because a
       'POST /v2/firewalls',    //   firewall create does not create it (research question 21)
       'POST /v2/account/keys',
-      'POST /v2/instances',
+      'POST /v2/droplets',
     ])
     expect(result.initial.state).toBe('pending')
   })
 })
 ```
 
+**Those four paths are DigitalOcean's real ones**, transcribed rather than invented, because the
+chain they show is DigitalOcean's — its instance collection is `/v2/droplets` and it has no
+`/v2/instances`. Substitute your own cloud's paths, exactly as its API spells them: the assertion
+is worth nothing if it names a path the cloud does not have, and a `--refuse` pattern copied from
+here (`dry-run.md`) would then match nothing at all on the live run.
+
 The literal list of paths is the point. A test that only asserts `provision()` resolved would pass
 against a fake that accepts dangling references, which is the fake this test exists to forbid.
+
+### The cloud-side name comes from `serverId`, never from the display name
+
+One more assertion belongs on the same test, and it is one line:
+
+```ts
+    // spec.name is the human's label ("DO skill retest 2"). The cloud's name field is
+    // hostname-shaped or worse, so the display name must never reach it.
+    expect(cloud.lastBody('POST /v2/droplets').name).toBe(spec.serverId)
+```
+
+`ProvisionSpec` carries two names and they are not interchangeable: `name` is Rocky Surf's display
+name, chosen by a human and free to contain spaces, punctuation and unicode; `serverId` is core's
+id, which the provider asserts is hostname-safe (trap 3) precisely so it can be the name the cloud
+sees. Sending `spec.name` fails at the cloud — a real create was refused with
+*"Only valid hostname characters are allowed"* — and it fails only on the live run, because a fake
+that stores whatever string it is given accepts it happily. Give the spec in your tests a display
+name with a space in it, so the assertion has something to catch.
+`@rockysurf/provider-conformance` ships `assertProvisionNameFromServerId(spec, sentBodies)` for the
+same check ([shipping.md](shipping.md)).
 
 ## A fake for the cloud, not a mock of your own code
 
