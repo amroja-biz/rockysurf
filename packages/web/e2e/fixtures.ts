@@ -2,7 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test'
 import { rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startControlPlane, type ControlPlane } from './control-plane'
+import { startControlPlane, type ControlPlane, type RegistryMode } from './control-plane'
 
 /**
  * SIGNING IN, THROUGH THE FORM (owner instruction, issue #310).
@@ -57,6 +57,14 @@ interface WorkerOptions {
    * name for the installation and only has to be unique.
    */
   installation: string
+  /**
+   * Whether this file's installation boots against the fixture shop (issue #426). `'off'` by
+   * default, as before: the registry is an outbound fetch on page load, and nothing but the
+   * Rocky Surf Shop tests should depend on one. `'fixture'` is a worker option like
+   * `installation`, so a file that asks for it gets its own worker and its own installation,
+   * with `registry.enabled: true` pointed at `control-plane.ts`'s fixture shop.
+   */
+  registry: RegistryMode
 }
 
 interface WorkerFixtures {
@@ -76,6 +84,8 @@ export const test = base.extend<Options, WorkerFixtures & WorkerOptions>({
 
   installation: ['shared', { scope: 'worker', option: true }],
 
+  registry: ['off', { scope: 'worker', option: true }],
+
   /**
    * ONE REAL ROCKY SURF PER WORKER.
    *
@@ -86,11 +96,11 @@ export const test = base.extend<Options, WorkerFixtures & WorkerOptions>({
    * file at the same time, and the resulting failure would be a mystery in whichever one lost.
    */
   controlPlane: [
-    async ({ installation }, use) => {
+    async ({ installation, registry }, use) => {
       /* Depended on so the option is part of this worker's hash: a file that names its own
          `installation` gets its own worker, and so its own installation. See `WorkerOptions`. */
       void installation
-      const plane = await startControlPlane()
+      const plane = await startControlPlane({ registry })
       await use(plane)
       await plane.stop()
     },

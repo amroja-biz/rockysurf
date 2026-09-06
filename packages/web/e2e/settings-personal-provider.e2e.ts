@@ -51,19 +51,21 @@ test('a personal provider has a panel with controls, titled by the name its pack
 })
 
 /**
- * WHERE A PROVIDER COMES FROM, SAID WHERE ONE IS CONFIGURED (issue #394).
+ * WHERE A PROVIDER COMES FROM, SAID WHERE ONE IS CONFIGURED (issue #394, then #426).
  *
- * The app used to list and install providers on the Surge Packs page. It does not any more —
- * installing one is a command-line step — so what is left is a pointer, and it belongs on the
- * provider tabs of this page because this is where a provider is configured once it loads. In a
- * browser because the claim is that a person on a provider tab can see and follow it.
+ * Providers are not on the Surge Packs page and are configured here, on their own tab — that is
+ * #394 and it stands. #426 put installing back in the app on the Rocky Surf Shop tab, so the
+ * pointer on every provider tab now names both ways in: the Shop tab, and the command-line steps
+ * in the shop repository's providers section. In a browser because the claim is that a person on
+ * a provider tab can see and follow it.
  */
-test('every provider tab points at the shop for a provider Rocky Surf did not ship', async ({ page }) => {
+test('every provider tab points at the Shop tab and the command-line steps for a provider Rocky Surf did not ship', async ({ page }) => {
   await page.goto('/settings?section=providers.nimbus')
 
   const pointer = page.locator('[data-provider-shop-pointer]:visible')
   await expect(pointer).toHaveCount(1)
-  await expect(pointer).toContainText('installed from the command line')
+  await expect(pointer).toContainText('from the command line')
+  await expect(pointer.getByRole('link', { name: 'Rocky Surf Shop', exact: true })).toHaveAttribute('href', '/shop')
   await expect(pointer.getByRole('link', { name: /providers section of the Rocky Surf Shop/ })).toHaveAttribute(
     'href',
     'https://github.com/amroja-biz/rockysurf-shop#providers',

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { AppShell } from '../components/AppShell'
 import { BackupRestoreCards } from '../components/BackupRestoreCards'
 import { ConfirmModal } from '../components/ConfirmModal'
@@ -2512,17 +2512,18 @@ export function SettingsPage() {
                 hidden={tab !== active}
               >
                 {/*
-                  WHERE A PROVIDER ROCKY SURF DID NOT SHIP COMES FROM (issue #394, amending
-                  ADR-0028). The app used to list and install providers on the Surge Packs page;
-                  it does not any more, because installing one is a command-line step the browser
-                  cannot take. The pointer lives here, on the provider tabs, because Settings is
-                  where a provider is configured once it loads — and it is a link, not an
-                  installer, on every provider tab rather than once at the top of the page, since
-                  the other tabs are core's own sections and have nothing to do with it.
+                  WHERE A PROVIDER ROCKY SURF DID NOT SHIP COMES FROM (issue #394, then #426,
+                  both amending ADR-0028). Providers are not on the Surge Packs page and are
+                  configured HERE, on their own tab, once they load — that half of #394 stands.
+                  What #426 changed is where one is installed from: the Rocky Surf Shop tab in
+                  the app, or the command-line steps in the shop's providers section. The pointer
+                  is on every provider tab rather than once at the top of the page, since the
+                  other tabs are core's own sections and have nothing to do with it.
                 */}
                 {tab.startsWith('providers.') && (
                   <p className="hint" data-provider-shop-pointer>
-                    Providers Rocky Surf does not ship are installed from the command line — the{' '}
+                    Providers Rocky Surf does not ship are installed from the{' '}
+                    <Link to="/shop">Rocky Surf Shop</Link> tab, or from the command line — the{' '}
                     <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
                       providers section of the Rocky Surf Shop
                     </a>{' '}

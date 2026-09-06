@@ -1377,6 +1377,14 @@ export function PacksPage(): React.JSX.Element {
           .
         </p>
 
+        {/* The way to the shop itself (issue #426): browsing and installing live on the Rocky Surf
+            Shop tab, which lists packs and providers together. This sub-tab keeps its own
+            catalogue and filter exactly as before — the link is an addition, not a move. */}
+        <p className="hint" data-testid="community-shop-link">
+          Browse and install community packs and providers on the{' '}
+          <Link to="/shop">Rocky Surf Shop</Link> tab.
+        </p>
+
         {/* All / Installed / Not installed (issue #199), modelled on Claude's Connectors page.
             `aria-pressed`, not `role="tab"`: there is one section here, filtered, not several
             panels swapped for one another. */}

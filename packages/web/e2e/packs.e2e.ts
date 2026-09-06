@@ -16,8 +16,9 @@ const SOURCE = 'Claude Code (ai-coding-agents)'
 /**
  * THE PAGE IS CALLED SURGE PACKS, AND IT IS ONLY ABOUT PACKS (issue #394).
  *
- * ADR-0028 retitled it "Shop" and gave it a fourth tab, Providers; the owner's ruling reverses
- * both. This is pinned in a browser rather than on the navbar component test because the ruling
+ * ADR-0028 retitled it "Shop" and gave it a fourth tab, Providers; the owner's ruling reversed
+ * both, and the 2026-09-06 ruling (issue #426) put the shop on a tab of its OWN — Rocky Surf Shop —
+ * so this page stays about packs. This is pinned in a browser rather than on the navbar component test because the ruling
  * is about what a person reads at the top of the window and along the nav, and because the tab
  * strip has to be checked for what is ABSENT — a component test that renders three tabs proves
  * nothing about a fourth arriving from somewhere else on the page.
@@ -28,7 +29,8 @@ test('is titled Surge Packs, has three tabs, and offers nothing about providers'
   await expect(page.getByRole('heading', { name: 'Surge Packs', level: 1 })).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Primary' })
   await expect(nav.getByRole('link', { name: 'Surge Packs' })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Shop' })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Shop', exact: true })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Rocky Surf Shop' })).toBeVisible()
 
   const tabs = page.getByRole('tab')
   await expect(tabs).toHaveText(['Official', 'Community', 'Personal'])

@@ -96,9 +96,11 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('link', { name: 'create-surge-pack' }).getAttribute('href'),
     ).toBe(repoDocUrl('.agents/skills/create-surge-pack/SKILL.md'))
-    expect(screen.getByRole('link', { name: 'Rocky Surf Shop' }).getAttribute('href')).toBe(
-      SHOP_URL,
-    )
+    // Two links wear this name since issue #426: the nav's Rocky Surf Shop tab (`/shop`) and the
+    // home page's own link out to the shop repository. Both are asserted rather than one picked.
+    expect(
+      screen.getAllByRole('link', { name: 'Rocky Surf Shop' }).map((link) => link.getAttribute('href')),
+    ).toEqual(expect.arrayContaining(['/shop', SHOP_URL]))
   })
 
   it('links out: GitHub, Help, and creating a server', () => {
