@@ -52,10 +52,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      # setup-node@v5 defaults to auto-detecting the root package.json's `packageManager` field
+      # and priming a pnpm cache, which needs the pnpm executable this job never installs
+      # (rockysurf-382) - opt out, same as the gitleaks job.
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
       # The generator is dependency-free (plain node + fetch): no pnpm install needed.
       # AWS and Azure are re-fetched on every run. GCP is not: Google publishes no
       # credential-free feed, so its numbers are read from scripts/gcp-transcribed-prices.json
@@ -74,4 +78,4 @@ jobs:
         with:
           path: dist-feed
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
