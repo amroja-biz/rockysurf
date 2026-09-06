@@ -32,7 +32,7 @@ import {
   type SurgePackTool,
 } from '../lib/api'
 import { carryFromSource, forkNameFor, forksByParent, suggestNewPackId } from '../lib/derive-pack'
-import { SHOP_URL } from '../lib/links'
+import { GITHUB_URL, SHOP_URL } from '../lib/links'
 
 /**
  * Surge Packs (rockysurf-4d8h, issue #51).
@@ -139,6 +139,13 @@ interface PackView {
  * the generic "installed from …" wording rather than as a broken page.
  */
 const URL_IMPORT_SOURCE = 'a URL import'
+
+/**
+ * The `create-surge-pack` skill's directory in this repository (issue #397). Personal's tab
+ * points here rather than at the pack it writes from — the skill lives in `.agents/skills/`,
+ * not in `packages/web`, and this page has no other reason to import from the SPA's own tree.
+ */
+const CREATE_SURGE_PACK_SKILL_URL = `${GITHUB_URL}/tree/main/.agents/skills/create-surge-pack`
 
 /**
  * Community's All / Installed / Not installed filter (issue #199), modelled on Claude's
@@ -1432,6 +1439,19 @@ export function PacksPage(): React.JSX.Element {
         aria-labelledby="packs-tab-personal"
         hidden={activeTab !== 'personal'}
       >
+        {/* Points at the skill that writes a pack file for a harness Rocky Surf does not ship
+            (issue #397) — same shell as `SshPathAdvisory` (`ServerDetailPage.tsx`): bordered,
+            muted prose above the facts it sits over, not a colour that reads as a problem. */}
+        <aside className="historical-notice" role="status" data-testid="personal-create-surge-pack-banner">
+          <p>
+            If you&apos;re creating a Surge Pack for a new harness, use the{' '}
+            <a href={CREATE_SURGE_PACK_SKILL_URL} target="_blank" rel="noreferrer">
+              create-surge-pack
+            </a>{' '}
+            skill.
+          </p>
+        </aside>
+
         {isAdmin && (
           <>
             {notice && <p data-testid="notice">{notice}</p>}

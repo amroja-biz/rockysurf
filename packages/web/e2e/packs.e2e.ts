@@ -35,6 +35,29 @@ test('is titled Surge Packs, has three tabs, and offers nothing about providers'
   await expect(page.getByRole('tab', { name: 'Providers' })).toHaveCount(0)
 })
 
+/**
+ * ISSUE #397: PERSONAL POINTS AT THE SKILL THAT WRITES A PACK, not only at the packs it already
+ * holds. Asserted here rather than only in a component test because the point is what a person
+ * lands on when they open this tab in a real browser — the banner text and the link's exact
+ * target, both.
+ */
+test('the Personal tab banners the create-surge-pack skill', async ({ page }) => {
+  await page.goto('/packs?tab=personal')
+
+  const banner = page.getByTestId('personal-create-surge-pack-banner')
+  await expect(banner).toBeVisible()
+  await expect(banner).toHaveText(
+    "If you're creating a Surge Pack for a new harness, use the create-surge-pack skill.",
+  )
+
+  const link = banner.getByRole('link', { name: 'create-surge-pack' })
+  await expect(link).toHaveAttribute(
+    'href',
+    'https://github.com/amroja-biz/rockysurf/tree/main/.agents/skills/create-surge-pack',
+  )
+  await expect(link).toHaveAttribute('target', '_blank')
+})
+
 test('a pack derived from an official one lands on Personal wearing the delta', async ({ page }) => {
   await page.goto('/packs?tab=personal')
   await expect(page.getByText('No personal packs yet.')).toBeVisible()
