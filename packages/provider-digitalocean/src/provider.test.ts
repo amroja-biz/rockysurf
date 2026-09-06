@@ -360,6 +360,91 @@ describe('provision', () => {
     expect(methodsFor(cloud, 'PUT /firewalls')).toHaveLength(1)
   })
 
+  /**
+   * Issue #403. A DigitalOcean firewall may only target a tag that already exists, and only a
+   * droplet create makes one — so the very first launch on a fresh team, where the firewall is
+   * written BEFORE the droplet on purpose, answered `422 tag managed-by:rockysurf does not exist`
+   * every time. The fake accepted any tag name and 74 tests never saw it.
+   */
+  describe('the firewall tag precondition (#403)', () => {
+    it('creates the managed-by tag before the firewall, because nothing else will have', async () => {
+      const { cloud, provider } = build()
+      expect(cloud.tags.size).toBe(0)
+      await provider.provision(SPEC)
+
+      expect(cloud.tags.has('managed-by:rockysurf')).toBe(true)
+      expect(bodyOf(cloud, 'POST /tags')).toEqual({ name: 'managed-by:rockysurf' })
+      expect(cloud.requests.indexOf('POST /tags')).toBeLessThan(cloud.requests.indexOf('POST /firewalls'))
+    })
+
+    it('fresh account, first launch: builds the whole chain from nothing, in the order that works', async () => {
+      const { cloud, provider } = build()
+      expect(cloud.tags.size + cloud.firewalls.length + cloud.keys.size + cloud.droplets.size).toBe(0)
+
+      const result = await provider.provision(SPEC)
+
+      // Tag, then the firewall that targets it, then the key, then the droplet the firewall covers.
+      const writes = cloud.requests.filter((request) => request.startsWith('POST '))
+      expect(writes).toEqual(['POST /tags', 'POST /firewalls', 'POST /account/keys', 'POST /droplets'])
+      expect(cloud.firewalls.map((firewall) => firewall.tags)).toEqual([['managed-by:rockysurf']])
+      expect(cloud.keys.size).toBe(1)
+      const droplet = cloud.droplets.get(asDigitaloceanData(result.data).dropletId)!
+      expect(droplet.tags).toContain('managed-by:rockysurf')
+      expect(result.initial.state).toBe('pending')
+    })
+
+    it('treats the documented 422 for a tag that already exists as success', async () => {
+      const cloud = emptyCloud()
+      cloud.tags.add('managed-by:rockysurf')
+      const { provider } = build(cloud)
+      await provider.provision(SPEC)
+
+      expect(methodsFor(cloud, 'POST /tags')).toHaveLength(1)
+      // The refusal is checked by a lookup, never by reading the message.
+      expect(methodsFor(cloud, 'GET /tags/')).toHaveLength(1)
+      expect(cloud.firewalls).toHaveLength(1)
+    })
+
+    it('is equally happy with the 201 the live API actually answers for an existing tag', async () => {
+      const cloud = emptyCloud({ tagCreateIsIdempotent: true })
+      cloud.tags.add('managed-by:rockysurf')
+      const { provider } = build(cloud)
+      await provider.provision(SPEC)
+
+      expect(methodsFor(cloud, 'GET /tags/')).toHaveLength(0)
+      expect(cloud.firewalls).toHaveLength(1)
+    })
+
+    it('re-creates a tag an operator deleted before rewriting the firewall', async () => {
+      const cloud = emptyCloud()
+      cloud.firewalls.push({
+        id: 'fw-1',
+        name: 'rockysurf-ssh',
+        tags: ['managed-by:rockysurf'],
+        inbound_rules: [{ protocol: 'tcp', ports: '22', sources: { addresses: ['198.51.100.0/24'] } }],
+      })
+      // The firewall still names the tag; the tag itself is gone from the account.
+      const { provider } = build(cloud)
+      await provider.provision(SPEC)
+
+      expect(cloud.tags.has('managed-by:rockysurf')).toBe(true)
+      expect(cloud.requests.indexOf('POST /tags')).toBeLessThan(cloud.requests.indexOf('PUT /firewalls/fw-1'))
+      expect(sshSourcesOf(cloud.firewalls[0])).toEqual(['198.51.100.0/24', '203.0.113.7/32'])
+    })
+
+    it('reports the tag refusal itself when the tag really is missing afterwards', async () => {
+      const cloud = emptyCloud({ tagCreateFails: 'tag name is not allowed' })
+      const { provider } = build(cloud)
+
+      const err = (await provider.provision(SPEC).catch((e: unknown) => e)) as ProviderError
+      expect(isProviderError(err)).toBe(true)
+      expect(err.message).toContain('POST /tags')
+      expect(err.message).toContain('tag name is not allowed')
+      expect(cloud.firewalls).toHaveLength(0)
+      expect(cloud.droplets.size).toBe(0)
+    })
+  })
+
   it('creates an ssh key it owns, named with the pairs that prove it', async () => {
     const { cloud, provider } = build()
     const result = await provider.provision(SPEC)

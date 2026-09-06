@@ -116,6 +116,15 @@ export interface DoOutboundRule {
   }
 }
 
+/**
+ * `GET /v2/tags/{name}` / `POST /v2/tags`. A tag is a flat name with resource counts hung off it;
+ * only the name matters here. A firewall may target a tag only once this object exists (#403).
+ */
+export interface DoTag {
+  name: string
+  resources?: { count?: number }
+}
+
 export interface DoFirewall {
   id: string
   name: string
