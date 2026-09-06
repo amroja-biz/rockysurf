@@ -8,8 +8,9 @@ are in [`CONTRIBUTING.md`](../CONTRIBUTING.md); this document is the map of what
 
 Testing is arranged in four bands, ordered by what each one can see and by what it costs to run.
 
-1. **In-process tests** — unit tests, seam tests that boot the real composition, and component
-   tests. Milliseconds to seconds, no external dependency. They run in `pnpm run check` and in
+1. **In-process tests** — unit tests, seam tests that boot the real composition, component tests,
+   and the two that pack a workspace package and assert against the tarball. Milliseconds to
+   seconds, no external dependency. They run in `pnpm run check` and in
    CI's `Test` job on every pull request.
 2. **Structural checks** — scripts that assert repository-wide invariants a reviewer would
    otherwise have to remember: core's dependency direction, the published IAM policy against the
@@ -74,6 +75,27 @@ violates it as well as accepting one that does not.
 **Why this approach.** A shared suite is the only thing that makes "implements the SDK" mean the
 same thing for every cloud, and a suite that passes everything is not evidence, so the assertions
 are themselves tested against deliberately broken stand-ins.
+
+### Tests that pack a real package
+
+Two vitest files build a workspace package, pack it exactly as `pnpm publish` would, and assert
+against the resulting tarball rather than against `src/`.
+`packages/rockysurf/src/personal-provider-tarball.test.ts` extracts it with the documented
+`tar -xzf` and boots it through the real loader and composition, which is what keeps a personal
+provider self-contained. `packages/rockysurf/src/shop-entry.test.ts` runs the SDK's
+`rockysurf-shop-entry` bin over the same artifact and checks the entry it prints against the one a
+human wrote by hand and merged in the shop.
+
+That second test also runs a script this repository does not own: the shop's
+`scripts/validate-providers.mjs`, vendored **verbatim** beside the test as
+`shop-validate-providers.fixture.mjs` with its source URL and fetch date in a header comment, and
+executed unmodified.
+
+**Why this approach.** What ships is the tarball, and `files`, a build script and a bundler all sit
+between `src/` and it — a test that reads `src/` cannot see any of them. And where another
+repository's CI is the thing that will accept or reject our output, asserting our own restatement
+of its rules would produce two descriptions here that agree with each other while drifting from the
+one that decides; running its script means the refresh is a diff and the review is that diff.
 
 ### The nightly config parity test
 

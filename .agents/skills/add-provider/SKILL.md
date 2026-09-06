@@ -246,8 +246,11 @@ in `fields.ts` and no block in the SPA.
 
 ### 8. Ship it
 
-[references/shipping.md](references/shipping.md): the package README in the fixed section order, and
-the ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
+[references/shipping.md](references/shipping.md): the package README in the fixed section order, the
+shop listing entry — which is **generated, never composed by hand**: `npx rockysurf-shop-entry
+<your>.tgz --tarball-url <https URL> --description "<one line>"` reads seven of its nine fields out
+of the artifact, and you print its output with those two options marked as the author's — and the
+ADR amendment etiquette for when the SDK genuinely lacks something. In tree, also the
 capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — for an OFFICIAL
 provider, one composed into `packages/rockysurf/src/compose.ts` — the nightly real-cloud leg,
 without which every value in your column is daggered. A personal provider gets no leg: its author
@@ -256,8 +259,9 @@ and its installer verify it themselves
 
 ## Before it merges
 
-Everything here is checkable. The first nine apply wherever the provider lives; the last three are
-in-tree only, because they are edits to this repository.
+Everything here is checkable. The first ten apply wherever the provider lives; the one after them
+applies whenever the provider is listed in the shop; the last three are in-tree only, because they
+are edits to this repository.
 
 - [ ] Every research-protocol question answered with a citation, and each answer mapped to a
       capability, field or setting — or to a filed ADR question. Nothing approximated.
@@ -277,6 +281,8 @@ in-tree only, because they are edits to this repository.
 - [ ] A package `README.md` whose capability values match the source constant and which carries the
       trust sentence.
 - [ ] A verification section claiming only what has actually been run.
+- [ ] *(listed in the shop)* The `providers.json` entry came out of `rockysurf-shop-entry` run on
+      the packed tarball, not out of an editor.
 - [ ] *(in tree)* A capability-matrix column, filled in **in the same pull request**, saying how
       each value was established. A value nobody has exercised must say so.
 - [ ] *(in tree)* `pnpm run check` green, including the dependency lint and the settings parity

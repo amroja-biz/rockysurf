@@ -448,8 +448,10 @@ are not checked.
 ```bash
 pnpm -C packages/provider-mycloud build          # or npm run build
 pnpm -C packages/provider-mycloud pack           # writes you-rockysurf-provider-mycloud-1.0.0.tgz
-shasum -a 256 you-rockysurf-provider-mycloud-1.0.0.tgz
 ```
+
+You do not need to hash it yourself — the command in [The listing entry](#the-listing-entry) below
+digests the file it reads, which is the only digest worth publishing.
 
 `pnpm pack` (and `npm pack`) produce exactly the archive an operator unpacks: gzipped, ustar,
 every member under `package/`, which is what `--strip-components=1` assumes. Check what came out
@@ -462,7 +464,19 @@ asset, or any static host. The registry's own checks refuse an `http` URL.
 
 ### The listing entry
 
-Send a pull request to the registry adding one object to its `providers.json`:
+Send a pull request to the registry adding one object to its `providers.json`. **Do not type that
+object.** Nine fields, and only two of them are facts your artifact does not already hold — so
+`@rockysurf/provider-sdk` puts a command on your path that reads the other seven out of the
+tarball you just packed:
+
+```bash
+npx rockysurf-shop-entry you-rockysurf-provider-mycloud-1.0.0.tgz \
+  --tarball-url https://github.com/you/mycloud/releases/download/v1.0.0/you-rockysurf-provider-mycloud-1.0.0.tgz \
+  --description "MyCloud compute, one API token, four regions."
+```
+
+It prints the entry to stdout and nothing else, so it pipes into `pbcopy`, into `jq`, or straight
+into your editor:
 
 ```json
 {
@@ -471,8 +485,8 @@ Send a pull request to the registry adding one object to its `providers.json`:
   "description": "MyCloud compute, one API token, four regions.",
   "version": "1.0.0",
   "package": "@you/rockysurf-provider-mycloud",
-  "tarball": "https://registry.npmjs.org/@you/rockysurf-provider-mycloud/-/rockysurf-provider-mycloud-1.0.0.tgz",
-  "sha256": "…the shasum above…",
+  "tarball": "https://github.com/you/mycloud/releases/download/v1.0.0/you-rockysurf-provider-mycloud-1.0.0.tgz",
+  "sha256": "227011c38b5a4033cfafbf7797692d763ba81c25ef5e6141f90d03705236723d",
   "settings": [
     { "name": "token", "label": "API token variable", "kind": "secret" },
     { "name": "region", "label": "Region", "kind": "string" }
@@ -489,19 +503,28 @@ Send a pull request to the registry adding one object to its `providers.json`:
 }
 ```
 
-Every field is checked, and four are worth saying more about:
+It also refuses two things here rather than letting the registry's CI find them: a package whose
+manifest declares runtime `dependencies`, naming them, and a `--tarball-url` that is not https.
 
-- **`providerId` is the config section key** an operator will end up with, and must equal your
-  `factory.id`. Lowercase letters, digits and hyphens.
-- **`package` must equal your manifest's `name`.** It is what the operator writes on the
-  `package:` line, so a listing that disagrees with its own artifact sends them to a package that
-  is not there.
-- **`settings` is a summary**, not your `ProviderSettings` declaration — the names, labels and
-  kinds an operator will be asked for, so they can decide before installing anything. The real
-  panel is built from the declaration that arrives with the package (ADR-0027). Keep the two in
-  step.
-- **`capabilities` are your factory's answers**, verbatim. This is where an operator learns that a
-  stopped machine still bills before they install, rather than after.
+Where each value came from, because you are still the one signing the pull request:
+
+| field | read from |
+|---|---|
+| `providerId` | `factory.id` — and it is the config section key the operator ends up with, so it is also what your `package:` line will sit under |
+| `name` | `settings.title`, the heading over these very fields once the provider is installed; `displayName` when nothing is declared |
+| `description` | **you**, on the command line. The one line a person reads before installing |
+| `version` | your manifest's `version` |
+| `package` | your manifest's `name`. It is what the operator writes on the `package:` line |
+| `tarball` | **you**, on the command line. https only |
+| `sha256` | the digest of the bytes it just read — the file you are about to host, not a file like it |
+| `settings` | your declared fields, in declared order, reduced to name/label/kind. It is a summary, so an operator can decide before installing; the real panel is built from the declaration that arrives with the package (ADR-0027) |
+| `capabilities` | the provider `createProvider()` returns, constructed from your declared fields' own `example` values. This is where an operator learns that a stopped machine still bills before they install, rather than after |
+
+Two of those are worth saying out loud. **A settings summary and a capability struct are no longer
+transcribed**, so they cannot drift from the package the way a hand-copied one silently does — the
+entry is a reading of the artifact, and re-running the command after a change is the whole of
+keeping it current. And **the digest is of the artifact the command read**: pack, generate, then
+upload that same file.
 
 There is deliberately **no trust or tier field**, and the format refuses one. The sentence this
 document opened with — *a provider runs with Rocky Surf's full access — install ones you trust* —
@@ -511,11 +534,12 @@ can soften it, and nothing you write has to repeat it.
 
 ### Publishing a new version
 
-Bump the version, build, pack, hash, and update the same entry. An operator updates by unpacking
-the new tarball over the installed directory and restarting, so say in your release notes if a
-file has moved — nothing deletes the old one for them. Keep the `sha256` in step with the
-artifact: it is the only thing they can check the download against, and a stale one turns a good
-release into a refused one.
+Bump the version, build, pack, host, and **re-run `rockysurf-shop-entry` on the new tarball** —
+the entry is regenerated rather than edited, so the version, the digest, the settings summary and
+the capabilities all move together. An operator updates by unpacking the new tarball over the
+installed directory and restarting, so say in your release notes if a file has moved — nothing
+deletes the old one for them. The `sha256` is the only thing they can check the download against,
+and a stale one turns a good release into a refused one.
 
 ## A skill that walks through all of this
 
