@@ -55,18 +55,32 @@ in six published manifests, no longer names a version nobody can install.
 
 ## One-time setup (the owner, once, before the first release)
 
-Nothing below is automatable and nothing below has been done from this repository — as of
-2026-08-12 `rockysurf`, `@rockysurf/core` and `@rockysurf/provider-sdk` all return 404 from the
-registry, so the names were still unclaimed, but nobody is logged in on this machine.
+Publishing is done by GitHub Actions, never from a laptop (issue #275): npm **Trusted
+Publishing** lets the registry accept a publish of each package only from
+`.github/workflows/release.yml` in this repository, authenticated by a short-lived OIDC token
+GitHub mints for the run. No npm token exists anywhere. Setting that up is one script, run once,
+after the account-side steps:
 
-1. **Create the npm account** and turn on two-factor authentication. Publishing with 2FA prompts
-   for an OTP once per `pnpm publish -r` run, not once per package.
-2. **Create the organization `rockysurf`.** This is what claims the `@rockysurf` scope; there is
-   no other way to reserve it, and a 404 on `@rockysurf/anything` does *not* prove the scope is
-   free — a scope can be owned and empty. Creating the org is the test.
-3. **Claim the unscoped name `rockysurf`** by being the first to publish it. Until then any
-   `npm view rockysurf` 404 is a race, not a reservation.
-4. `npm login`, then confirm with `npm whoami`.
+1. **npm account with two-factor authentication.** Done — the account is `jbdamask`, which
+   published `rockysurf@0.0.1` on 2026-08-12; 2FA was enabled on 2026-09-06 and no tokens exist.
+2. **The organization `rockysurf`**, which is what owns the `@rockysurf` scope. A 404 on
+   `@rockysurf/anything` does *not* prove the scope is free — a scope can be owned and empty.
+   Creating the org (npmjs.com → Add Organization → `rockysurf`, free/public) is the test; if the
+   name is taken, every scoped package name below has to change before anything else happens.
+3. `npm install -g npm@latest` (`npm trust` needs 11.15.0+), `npm login`, `npm whoami`.
+4. **`node scripts/npm-bootstrap-trust.mjs`** (add `--dry-run` first to see the plan). For each of
+   the ten publishable packages it: publishes a deprecated `0.0.0` placeholder if the name is not
+   on the registry yet, because npm cannot attach a trusted publisher to a package that does not
+   exist and nine of the ten do not; attaches the trusted publisher (this repository,
+   `release.yml`, environment `npm`); and sets `mfa=publish`, so a human publish needs a second
+   factor and automation tokens are refused. It prompts for a one-time password per placeholder.
+5. **The `npm` environment on GitHub** — created 2026-09-06 with the owner as required reviewer
+   and deployments limited to `v*` tags. Every release waits for the owner's approval in the
+   Actions UI; that click is the human gate.
+
+After step 4, `https://www.npmjs.com/package/<name>/access` shows the trusted publisher on each
+package, and a local `pnpm publish` is refused by the registry's 2FA-for-writes rule unless the
+owner types a code — which they should never need to.
 
 ### Where the names live
 
@@ -76,53 +90,52 @@ guessing, and that "who owns the npm org" never becomes a question only one pers
 
 | identity | status | where it lives |
 |---|---|---|
-| npm user account | **not created** as of 2026-08-12 | _(fill in: the account name, and which password manager holds it)_ |
-| npm org `rockysurf` (owns the `@rockysurf` scope) | **not created** as of 2026-08-12 | _(fill in: org name, and the accounts with owner rights)_ |
-| unscoped npm name `rockysurf` | **not claimed** — 404 from the registry as of 2026-08-12 | claimed by publishing it, step 3 above |
+| npm user account | `jbdamask`, 2FA on (2026-09-06), no tokens | the owner's password manager |
+| npm org `rockysurf` (owns the `@rockysurf` scope) | **not confirmed** as of 2026-09-06 — nine `@rockysurf/*` names 404, which proves nothing | step 2 above; record the org owners here once created |
+| unscoped npm name `rockysurf` | **claimed** — `rockysurf@0.0.1`, published 2026-08-12 by `jbdamask` | trusted publisher attached by step 4 |
+| GitHub environment `npm` on this repository | created 2026-09-06: required reviewer `jbdamask`, tags `v*` only | repository Settings → Environments |
 | GitHub org `amroja-biz` | in use — this repository is `amroja-biz/rockysurf` | GitHub, under the owner's account |
 
-Two things not to read into that table. A 404 on `@rockysurf/anything` does **not** prove the
-scope is free, so "not created" above means nobody here has created it, not that nobody has.
-And nothing was claimed from this repository: as of 2026-08-12 there is no `~/.npmrc` on the
-build machine and `npm whoami` has never succeeded here.
+One thing not to read into that table: a 404 on `@rockysurf/anything` does **not** prove the
+scope is free, so "not confirmed" means nobody here has created the org, not that nobody has.
 
 Recording the 2FA recovery codes anywhere in this repository would be a bad idea; the table
 points at where they are, and nothing more.
 
 ## The release
 
-Run from a clean checkout of the release commit.
+A release is a merged version bump, a tag, and an approval. The workflow does the rest.
 
 ```bash
 source ~/.nvm/nvm.sh && nvm use 24
 
-# 1. Version, in lockstep. Every package carries the same number; internal deps use
-#    `workspace:*`, so nothing has to be rewritten when it changes.
+# 1. Version, in lockstep, on a branch. Every package carries the same number; internal deps use
+#    `workspace:*`, so nothing else changes. Open the PR, let CI go green, merge it.
+git checkout -b release/v0.2.0 origin/main
 pnpm -r exec npm version 0.2.0 --no-git-tag-version
+pnpm install                       # a no-op for workspace:* deps; run it so the lockfile is proven current
+git commit -am "release: v0.2.0" && git push -u origin release/v0.2.0
+gh pr create --fill && gh pr merge --auto --squash
 
-# 2. Gates.
-pnpm install
-pnpm run check          # lint (incl. the npx closure check) + typecheck + tests
+# 2. Tag the MERGED commit on main, and push the tag. The workflow refuses a tag whose commit
+#    is not on main and a tag that does not match every package.json.
+git fetch origin && git tag -a v0.2.0 -m "v0.2.0" origin/main && git push origin v0.2.0
 
-# 3. Build. The WHOLE workspace, never `--filter` — see the warning below.
-pnpm -r build
-
-# 4. Verify the tarballs before anything leaves the machine.
-node scripts/verify-tarballs.mjs
-
-# 5. Publish. `pnpm`, never `npm` — see the warning below.
-pnpm publish -r --access public
-
-# 6. Tag.
-git commit -am "release: v0.2.0"
-git tag -a v0.2.0 -m "v0.2.0"
-git push && git push --tags
+# 3. Approve. Actions → "Release to npm" → Review deployments → npm → Approve.
 ```
 
-`pnpm publish -r` skips `private: true` packages, resolves every `workspace:*` specifier to the
-concrete version being published, and orders the publishes topologically so `@rockysurf/core`
-lands before `rockysurf` depends on it. It refuses to run on a dirty tree or a detached HEAD;
-that check exists for a reason, and `--no-git-checks` should not become habit.
+`.github/workflows/release.yml` then runs, on the tagged commit: `pnpm run check`, `pnpm -r build`
+(the whole workspace, never `--filter` — see the warning below), `scripts/verify-tarballs.mjs`,
+`pnpm publish -r --access public --provenance`, and finally `npx rockysurf@0.2.0 --version` from
+an empty directory against the real registry. `pnpm publish -r` skips `private: true` packages,
+resolves every `workspace:*` specifier to the version being published, and orders the publishes
+topologically so `@rockysurf/core` lands before `rockysurf` depends on it. The workflow passes
+`--no-git-checks` because a tag checkout is a detached HEAD; the is-on-main step above it is
+what replaces that check.
+
+**A local `pnpm publish` is not a fallback.** The registry refuses it without a one-time
+password, and a version published that way carries no provenance. If the workflow is broken,
+fix the workflow.
 
 ### `pnpm publish`, never `npm publish`
 
