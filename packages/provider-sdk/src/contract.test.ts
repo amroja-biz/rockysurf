@@ -471,7 +471,7 @@ describe('the freeze holds its exclusions', () => {
   })
 
   /**
-   * EVERY source file, not only the frozen surface (issue #349).
+   * EVERY source file the package's index can reach, not only the frozen surface (issue #349).
    *
    * The zero-dependency promise is what the `dependencies: {}` assertion above and this one
    * together mean, and the promise is not "no code": `errors.ts`, `instance.ts`, `provision.ts`,
@@ -479,15 +479,37 @@ describe('the freeze holds its exclusions', () => {
    * to agree with the others exactly. `sizing.ts` (ADR-0024) makes that promise load-bearing in
    * a new way — the SPA's bundle imports this package now, so an import added here reaches a
    * browser. Checking only the six frozen files would not have seen it.
+   *
+   * `shop-entry.ts` and its bin are the exception, and the assertion below is what makes it an
+   * exception rather than a hole (issue #418). They read a tarball off the disk, so they import
+   * `node:zlib`, `node:fs` and four more — and a `node:` builtin is not a dependency: it adds
+   * nothing to an install and inherits nothing to a consumer. What it would break is the browser
+   * bundle, which is why the rule for those files is `node:` and relative imports only, and why
+   * the test after this one pins that the index does not re-export them.
    */
-  it('imports nothing outside this package, in any source file', () => {
+  it('imports nothing outside this package, in any source file the index can reach', () => {
     const sources = readdirSync(fileURLToPath(new URL('.', import.meta.url)))
-      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && !name.endsWith('.fixture.ts'))
     expect(sources).toContain('sizing.ts')
     for (const name of sources) {
       const imports = [...src(name).matchAll(/from '([^']+)'/g)].map((m) => m[1]!)
-      expect({ name, imports }).toEqual({ name, imports: imports.filter((i) => i.startsWith('./')) })
+      const allowed = name === 'shop-entry.ts' ? ['./', 'node:'] : ['./']
+      expect({ name, imports }).toEqual({
+        name,
+        imports: imports.filter((i) => allowed.some((prefix) => i.startsWith(prefix))),
+      })
     }
+  })
+
+  it('keeps the tarball reader out of the index, so the browser bundle never sees node:fs', () => {
+    expect(src('index.ts')).not.toContain('shop-entry')
+    // The bin is the only thing that imports it, and it is not part of the module graph the
+    // `exports` map offers — `dist/bin/shop-entry.js` is reached by name from `bin`, not by import.
+    const manifest = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+    ) as { bin?: Record<string, string>; exports?: Record<string, unknown> }
+    expect(manifest.bin).toEqual({ 'rockysurf-shop-entry': './dist/bin/shop-entry.js' })
+    expect(Object.keys(manifest.exports ?? {})).toEqual(['.'])
   })
 })
 

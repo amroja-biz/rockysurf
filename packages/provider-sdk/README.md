@@ -168,6 +168,34 @@ This package's own test suite is the other half of the same argument: it impleme
 fake provider against the interface, which is what proves at compile time that the contract is
 implementable without casts, and it asserts that the exclusions below stay excluded.
 
+## `rockysurf-shop-entry` — the listing entry, read rather than typed
+
+Installing this package puts one command on your path. It reads a packed provider tarball and
+prints the entry that describes it for the
+[shop](https://github.com/amroja-biz/rockysurf-shop)'s `providers.json`:
+
+```bash
+npm pack                                              # or pnpm pack
+npx rockysurf-shop-entry you-rockysurf-provider-mycloud-1.0.0.tgz \
+  --tarball-url https://github.com/you/mycloud/releases/download/v1.0.0/you-rockysurf-provider-mycloud-1.0.0.tgz \
+  --description "MyCloud compute, one API token, four regions."
+```
+
+**Only those two options are things you write.** Everything else is read out of the artifact:
+`package` and `version` from the manifest, `providerId` from your factory, `name` from your
+settings declaration's `title` (falling back to `displayName`), the whole `settings` summary from
+your declared fields in declared order, `capabilities` from the provider `createProvider()`
+returns — constructed from your declared fields' own `example` values, which conformance already
+requires to parse — and `sha256` from the bytes of the file you named. The JSON goes to stdout and
+nothing else does, so it pipes.
+
+Two things it refuses, both before a pull request has to:
+
+- **a package with runtime `dependencies`**, naming them. A provider is installed by unpacking a
+  tarball, which resolves nothing, so a dependency is an import that throws at the operator's next
+  restart;
+- **a `--tarball-url` that is not https.** A provider artifact is code.
+
 ## What is deliberately not here
 
 `interruptible` / `checkInterruption` and spot, `resize`, live pricing APIs, dynamic out-of-tree
