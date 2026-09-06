@@ -225,7 +225,11 @@ the five capability fields have the right types and the optional ones are boolea
 `canInjectHostKeys` implies `generatesUserData`, `managesSshAccess` and `syncSshAccess()` agree,
 offerings and managed-resource records have the right shape, errors are `ProviderError`s with a
 valid code, and `createProvider` does no I/O. It also carries the absence-grace probe, which is
-how the `describe()` grace rule gets asserted rather than assumed.
+how the `describe()` grace rule gets asserted rather than assumed, and
+`assertProvisionNameFromServerId(spec, sent)`, which takes the requests your fake captured and
+holds you to naming the cloud's instance for `spec.serverId` rather than for the human's
+`spec.name` (issue #409: a display name with a space in it is refused by the cloud, and only
+live).
 
 Passing conformance is necessary and not sufficient. It cannot know whether your cloud actually
 does what you said it does.

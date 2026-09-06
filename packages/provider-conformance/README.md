@@ -69,6 +69,7 @@ describe('conformance', () => {
 | `assertManagedShape(resources)` | a non-empty `kind`, a string native id, and an `ownership` from the frozen set — the field the reconciler uses to decide what it may delete |
 | `assertProviderErrorShape(err)` | anything thrown across the interface is a `ProviderError` with one of the nine frozen codes and a derived boolean `retryable` |
 | `assertInstanceStateValid(state)` | the state is in the SDK's frozen set — the guard against inventing a state name |
+| `assertProvisionNameFromServerId(spec, sent)` | the cloud-side name was derived from `spec.serverId` and the human's `spec.name` reached no request. `sent` is whatever your fake captured of the requests `provision()` made — bodies, paths, query strings. Give the spec a display name a hostname could not hold, or the check refuses to run: two hostname-safe names prove nothing |
 | `assertDescribeAbsenceGrace(harness)` | the behavioural one. See below |
 
 ## The absence-grace harness
