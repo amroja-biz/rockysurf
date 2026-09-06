@@ -462,9 +462,17 @@ block scalar breaks the round-trip.
 Where the pack goes decides its final shape. This is usually the whole answer; read
 `references/shipping.md` only when the pack is going somewhere other people will consume it.
 
-- **Pull request against `packs/`** — the intended path, and the only one that gets the pack
-  smoke-tested on both architectures by CI forever. Reference the shared base tool ids; do not
-  redefine them. Work through the checklist at the end of `docs/writing-a-pack.md` first.
+- **Pull request against the community shop, `amroja-biz/rockysurf-shop`** — where most finished
+  packs belong, and the one that reaches other people's installations without waiting on a Rocky
+  Surf release. The whole procedure — the shop's own gate run locally, the fork, the `index.json`
+  the pull request has to carry, the body a reviewer needs — is
+  [`contribute-surge-pack`](../contribute-surge-pack/SKILL.md). Hand the finished file to that
+  skill rather than improvising the pull request here.
+- **Pull request against `packs/`** in this repository — for a pack that is going to ship *inside*
+  Rocky Surf, which is what "official" means and is not what a contribution becomes (ADR-0006).
+  It gets the pack smoke-tested on both architectures by CI forever. Reference the shared base
+  tool ids; do not redefine them. Work through the checklist at the end of `docs/writing-a-pack.md`
+  first.
 - **Upload it into their own running instance** — Surge Packs (`/packs`) → Personal → New Surge
   Pack → Upload a pack file. An imported pack becomes a database row that boot never overwrites
   and never restores. A pack published at a URL goes in by **adding it as a pack source**, below,
