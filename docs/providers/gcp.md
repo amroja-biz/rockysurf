@@ -867,7 +867,7 @@ is the honest word until a real launch says otherwise.
 
 **The evidence is weaker in form than AWS's and Hetzner's, and you should know how.** Those two
 have committed transcripts under [`scripts/e2e/recordings/`](../../scripts/e2e/recordings/) and
-[`spike/recordings/`](../../spike/recordings/) that you can read; this run was driven by hand and
+[`docs/history/spike/recordings/`](../history/spike/recordings/) that you can read; this run was driven by hand and
 through the MCP server, and **no transcript of it was recorded into the repository**. What is
 written above is a report of it, not a thing you can check for yourself.
 

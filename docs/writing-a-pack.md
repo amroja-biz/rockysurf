@@ -1324,7 +1324,7 @@ single tool in the real Docker harness by generating a throwaway wrapper pack.
 Every rule here is the result of something that broke, or nearly broke, on real infrastructure
 during the project's de-risking work. If you want the evidence:
 
-- `docs/spike/findings.md` — the full findings memo. The bootstrap and base-image sections are
+- `docs/history/spike/findings.md` — the full findings memo. The bootstrap and base-image sections are
   the ones that produced rules 1–3, including the two clouds whose "Ubuntu 24.04" images
   differed, and the one identical install plan that produced a working setup on both
   architectures with a single arch-aware line.

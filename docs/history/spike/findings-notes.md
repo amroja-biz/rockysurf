@@ -1,6 +1,6 @@
 # Spike findings — lead's consolidated working notes
 
-> Raw material for `docs/spike/findings.md` (rockysurf-d0no.8). Collected from the scaffold,
+> Raw material for `docs/history/spike/findings.md` (rockysurf-d0no.8). Collected from the scaffold,
 > Hetzner, and AWS agents' reports + `SPIKE-FINDING:` source comments. The memo task should
 > verify against source, add d0no.5/.6/.7 findings, and turn these into freeze decisions.
 

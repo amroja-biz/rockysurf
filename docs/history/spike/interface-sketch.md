@@ -107,4 +107,4 @@ The mini-app must answer these, recorded end-to-end on both clouds:
 3. **capability/taxonomy differences expressible without provider `if`s leaking** into core;
 4. **full lifecycle create→install→SSH→terminate→zero orphans** (via `listManaged()`).
 
-Findings go to `docs/spike/findings.md` (`rockysurf-d0no.8`), which gates the Phase 3 freeze.
+Findings go to `docs/history/spike/findings.md` (`rockysurf-d0no.8`), which gates the Phase 3 freeze.

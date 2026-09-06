@@ -1876,7 +1876,7 @@ The plan went into GitHub issue #1, was decomposed into 8 epics / ~50 beads with
 
 ### References
 - Plan of record: `.plan/1-open-source-rocky-surf-v0-1.md` · GitHub issue amroja-biz/rockysurf-open#1
-- Spike findings: `docs/spike/findings.md` (32 amendments), recordings in `spike/recordings/`
+- Spike findings: `docs/history/spike/findings.md` (32 amendments), recordings in `docs/history/spike/recordings/`
 
 ---
 

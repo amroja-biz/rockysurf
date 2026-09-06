@@ -13,7 +13,7 @@ differences core can see.
 
 Types: [`@rockysurf/provider-sdk`](../../packages/provider-sdk/README.md).
 Frozen by [ADR-0003](../adr/0003-provider-sdk-shape-and-exclusions.md).
-Evidence: [`spike/recordings/capability-differences.md`](../../spike/recordings/capability-differences.md)
+Evidence: [`docs/history/spike/recordings/capability-differences.md`](../history/spike/recordings/capability-differences.md)
 and the two real-cloud capstone transcripts beside it.
 
 ## The matrix

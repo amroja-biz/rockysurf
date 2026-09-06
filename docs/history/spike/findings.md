@@ -15,9 +15,9 @@ Everything here is backed by a recording, a log, or a test. Evidence lives at:
 
 | evidence | what it is |
 |---|---|
-| `spike/recordings/aws-lifecycle.txt` | full real AWS lifecycle, t4g.small **arm64**, us-east-1, 29/29 checks |
-| `spike/recordings/hetzner-lifecycle.txt` | full real Hetzner lifecycle, cpx12 **amd64**, fsn1, 29/29 checks |
-| `spike/recordings/capability-differences.md` | every AWS/Hetzner divergence and how it was expressed |
+| `docs/history/spike/recordings/aws-lifecycle.txt` | full real AWS lifecycle, t4g.small **arm64**, us-east-1, 29/29 checks |
+| `docs/history/spike/recordings/hetzner-lifecycle.txt` | full real Hetzner lifecycle, cpx12 **amd64**, fsn1, 29/29 checks |
+| `docs/history/spike/recordings/capability-differences.md` | every AWS/Hetzner divergence and how it was expressed |
 | `spike/verify-aws.log`, `spike/verify-hetzner.log` | provider lifecycle + zero-orphan audits |
 | `spike/verify-aws.run1.log` | the run that caught the eventual-consistency bug |
 | `pnpm run verify:push` / `verify:callback` | local bootstrap harnesses, no cloud credentials |
@@ -456,7 +456,7 @@ The freeze should **not** decide these yet. Each is listed with what would unblo
 1. ~~**Real-cloud callback-mode run**~~ — **DONE** (`rockysurf-q5lm.5`, commit 5e537b0). Real
    cloud-init executed the callback document on AWS and the box reached `ready` on its own:
    26/26 checks, 95s, zero orphans, gz+b64 decoded to a byte-exact agent, single-use plan token
-   spent then refused. Recording: `spike/recordings/aws-callback-lifecycle.txt`; script:
+   spent then refused. Recording: `docs/history/spike/recordings/aws-callback-lifecycle.txt`; script:
    `spike/verify-aws-callback.ts`. No longer blocks ADR-0002. *(#44 closed)*
 2. **ARM-on-Hetzner is a demo-planning constraint, not a bug.** Hetzner had zero arm64 stock at
    spike time across all locations. Any demo or doc promising ARM-on-Hetzner needs a stock

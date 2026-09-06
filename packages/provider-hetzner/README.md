@@ -166,7 +166,7 @@ The spike's earlier capstone on `cpx12`/amd64 in `fsn1` is what proved the two c
 provider makes about first boot: cloud-init consumed core's `#cloud-config`, with
 `/var/lib/cloud/instance/user-data.txt` matching what core sent byte for byte (2138 bytes), and
 the box presented exactly the host key core had minted. That transcript is
-[`spike/recordings/hetzner-lifecycle.txt`](https://github.com/amroja-biz/rockysurf/blob/main/spike/recordings/hetzner-lifecycle.txt).
+[`docs/history/spike/recordings/hetzner-lifecycle.txt`](https://github.com/amroja-biz/rockysurf/blob/main/docs/history/spike/recordings/hetzner-lifecycle.txt).
 
 One value is weaker than the rest and worth naming. The lifecycle stops and starts a server, but
 it does not re-read the address afterwards, so `ipStableAcrossStop: true` rests on Hetzner's

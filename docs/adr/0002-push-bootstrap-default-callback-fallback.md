@@ -6,7 +6,7 @@ Accepted — 2026-08-11.
 
 **Condition discharged, 2026-08-11.** This ADR was accepted with callback mode's retention
 conditional on `rockysurf-q5lm.5`. That run has since passed on real AWS (commit `5e537b0`,
-`spike/recordings/aws-callback-lifecycle.txt`): 26/26 checks, 95s end to end, zero orphans.
+`docs/history/spike/recordings/aws-callback-lifecycle.txt`): 26/26 checks, 95s end to end, zero orphans.
 Callback mode is **kept**, with its scope narrowed by what the run revealed — see Decision 2.
 Finding #44 is closed.
 
@@ -174,16 +174,16 @@ Per the memo, and not decided here:
 
 ## References
 
-- `docs/spike/findings.md` — exit questions 1–2; "The two things a literal reader of the sketch
+- `docs/history/spike/findings.md` — exit questions 1–2; "The two things a literal reader of the sketch
   will ship wrong" #2; amendments E1, E5–E10
-- `docs/spike/findings-notes.md` #39–#45 (callback), #28–#35 (push topology), #36 (base image)
+- `docs/history/spike/findings-notes.md` #39–#45 (callback), #28–#35 (push topology), #36 (base image)
 - `.plan/1-open-source-rocky-surf-v0-1.md` — "Bootstrap (two modes, one executor)"
 - Spike implementation: `spike/src/push.ts`, `spike/src/callback.ts`, `spike/bootstrap/agent.sh`,
   `spike/bootstrap/cloud-config.yaml.tpl`
-- Evidence: `spike/recordings/aws-lifecycle.txt`, `spike/recordings/hetzner-lifecycle.txt`,
+- Evidence: `docs/history/spike/recordings/aws-lifecycle.txt`, `docs/history/spike/recordings/hetzner-lifecycle.txt`,
   `pnpm run verify:push`, `pnpm run verify:callback`
 - Real-cloud callback evidence (`rockysurf-q5lm.5`, commit `5e537b0`):
-  `spike/recordings/aws-callback-lifecycle.txt`, `spike/verify-aws-callback.ts`
+  `docs/history/spike/recordings/aws-callback-lifecycle.txt`, `spike/verify-aws-callback.ts`
 
 ## Related decisions
 

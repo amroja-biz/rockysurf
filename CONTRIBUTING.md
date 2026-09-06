@@ -168,14 +168,16 @@ packages/
 packs/                     # PR-able pack + tool definitions as YAML
 deploy/                    # IaC a self-hoster deploys into their own account (the AWS IAM role)
 docs/                      # ADRs, the provider and pack contracts, self-hosting, history
+└── history/spike/         # the de-risking spike's memo, sketch and transcripts — evidence, not code
 scripts/                   # repo tooling, including the three structural lints
-spike/recordings/          # transcripts from the de-risking spike — evidence, not code
 ```
 
-`spike/recordings/` is all that is left of the throwaway de-risking spike. Its sources were deleted
-once the rewrite they de-risked was finished; what survives is the reason the directory existed in
-the first place — two real cloud lifecycle transcripts, a callback transcript, and the capability
-comparison that became the ADRs. Nothing builds from it and nothing may depend on it.
+`docs/history/spike/` is all that is left of the throwaway de-risking spike. Its sources were
+deleted once the rewrite they de-risked was finished; what survives is the reason the directory
+existed in the first place — the findings memo and interface sketch that ADR-0001 to ADR-0004 and
+the bootstrap contract are keyed to, two real cloud lifecycle transcripts, a callback transcript,
+and the capability comparison that became the ADRs. Nothing builds from it and nothing may depend
+on it.
 
 ## The rule that shapes everything
 
@@ -356,7 +358,7 @@ installation ids, deployment identifiers of a running SaaS — and rewriting it 
 would be a scrub of thousands of commits with no way to prove it complete.
 
 So the history is not published, and nothing is lost that mattered: the development story is
-preserved as prose in [`docs/history/`](docs/history/), scrubbed. The ADRs carry the decisions, and `spike/recordings/` carries the evidence.
+preserved as prose in [`docs/history/`](docs/history/), scrubbed. The ADRs carry the decisions, and `docs/history/spike/recordings/` carries the evidence.
 
 `gitleaks` runs on every pull request over the full history, which is what keeps the fresh start
 from being a one-time cleanup. If it fires on your branch, do not force-push around it — the

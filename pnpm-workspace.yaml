@@ -43,6 +43,7 @@ minimumReleaseAgeExclude:
   - '@aws-sdk/types@3.974.3'
   - '@aws-sdk/xml-builder@3.972.38'
 
-# `spike/` is deliberately NOT a member. rockysurf-oaw1 deleted the de-risking spike's
-# sources (rockysurf-d0no) along with its separate workspace root and lockfile; only
-# `spike/recordings/` survives, and transcripts are not a package.
+# The de-risking spike is deliberately NOT a member. rockysurf-oaw1 deleted its sources
+# (rockysurf-d0no) along with its separate workspace root and lockfile; only the memo, the
+# sketch and the transcripts survive, in `docs/history/spike/`, and neither prose nor
+# transcripts are a package. (#339 moved them there from `docs/spike/` and `spike/`.)

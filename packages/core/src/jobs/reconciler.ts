@@ -22,7 +22,7 @@ import type { EventsService } from '../services/events.js'
  *    is the real case — is REPORT-ONLY, always, because it intentionally outlives every server
  *    that uses it. Live evidence from the spike: after a real teardown, `listManaged()`
  *    reported no instances and still reported `security-group/sg-0a949e8ed67c5a1bd`
- *    (`spike/recordings/aws-callback-lifecycle.txt:55-56`). A reconciler that treats
+ *    (`docs/history/spike/recordings/aws-callback-lifecycle.txt:55-56`). A reconciler that treats
  *    `listManaged()` as a delete-list would have deleted the group out from under every
  *    running server.
  *
