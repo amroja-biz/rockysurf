@@ -13,6 +13,7 @@ add, and a skill is how their own agent learns to do it properly.
 | [`create-surge-pack`](create-surge-pack/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
 | [`register-a-tool`](register-a-tool/) | You want to register ONE tool — reusable across packs, exportable as a file you can send someone — rather than author a whole pack |
 | [`contribute-surge-pack`](contribute-surge-pack/) | You have a working pack and want it in the community shop (`amroja-biz/rockysurf-shop`) — runs that repository's own gate locally (lint, the run-twice check on both architectures, the naming rule, the index regeneration the pull request must carry) and refuses to open the pull request until each passes |
+| [`contribute-provider`](contribute-provider/) | You have a working provider and want it listed in the shop (`amroja-biz/rockysurf-shop`) — packs it, checks the tarball carries `dist/` and resolves nothing at install, releases it under a tag that stays true in a monorepo, downloads the asset back to compare the digest, generates the listing entry from the artifact rather than composing one, and refuses the pull request on a runtime dependency or a digest mismatch |
 | [`add-provider`](add-provider/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet — as a personal provider installed into your own Rocky Surf, or one shipped here. Carries the research protocol (the fixed question list about a cloud, each answer mapped to a capability or setting) and the hard rule: an answer that fits nothing means stop and file the ADR question, never approximate |
 | [`rockysurf-design`](rockysurf-design/) | You are changing the web UI, or making a mock, slide, or asset that should look like Rocky Surf — the tokens, the voice rules, every component's props contract, the specimen cards, a click-through of the app and the two etched screens (`ui_kits/`), and the etched skin's rollout order (`handoff/README.md`), and the designer's rendered guide to the applied system (`design-guide.html.txt`) |
 
@@ -44,7 +45,10 @@ These skills verify their work with this repository's real harnesses rather than
 substitute of their own, so they will ask for a checkout with `pnpm install && pnpm -r build` run
 once — Node.js 24 or newer and pnpm, as `CONTRIBUTING.md` requires. `create-surge-pack` and
 `register-a-tool` also need Docker, for the run-twice smoke test; `contribute-surge-pack` needs
-Docker for the same reason and `gh`, logged in as an account that may fork a public repository. `add-provider` needs neither
+Docker for the same reason and `gh`, logged in as an account that may fork a public repository.
+`contribute-provider` needs no Docker — a provider's acceptance suite is unit tests — but it does
+need `gh` logged in as an account that may both create a release on the provider's own repository
+and fork a public one. `add-provider` needs neither
 Docker nor, for a personal provider, a checkout; a couple of its credential routes name a cloud CLI,
 and it says which ones do not. `rockysurf-design` needs nothing installed unless the change lands in
 `packages/web`. Any of them can write the file without the missing piece; none can then tell you it

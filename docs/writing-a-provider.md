@@ -418,6 +418,13 @@ A personal provider that would help other people can be listed in a Rocky Surf r
 ([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issue #394). What
 you are publishing is an **npm-style tarball** plus a **listing entry** that points at it.
 
+**`.agents/skills/contribute-provider/` does all of this**, and it is the shorter route: it packs,
+checks the tarball carries `dist/` and resolves nothing at install, releases it under a tag that
+stays true in a monorepo (`provider-<id>-v<version>`), downloads the asset back to compare the
+digest, generates the entry, and opens the pull request on the registry with its one check green.
+It refuses to open one on a package with runtime dependencies or a digest that does not match the
+released asset. The rest of this section is the same procedure written for a person.
+
 **Rocky Surf itself does not fetch that listing.** An operator installs your provider from the
 command line — the two commands in [`docs/self-hosting.md`,
 "Personal providers"](self-hosting.md#personal-providers) — and Rocky Surf's part begins at the
@@ -547,3 +554,6 @@ and a stale one turns a good release into a refused one.
 covers: configuring one of the five that ship, and authoring a new one. It carries the procedure
 this page describes, the trap checklist, and the full registration list — which is longer than
 [Wiring it in](#wiring-it-in) above suggests.
+
+`.agents/skills/contribute-provider/` picks up where it ends: a provider that builds and passes
+conformance, through the release and the digest round trip, to a pull request on the shop.
