@@ -21,7 +21,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - cursor-cli
   displayOrder: 8
   enabled: true

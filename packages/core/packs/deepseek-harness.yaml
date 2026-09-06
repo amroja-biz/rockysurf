@@ -31,7 +31,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - deepseek-harness
   displayOrder: 9
   enabled: true

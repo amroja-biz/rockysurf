@@ -42,7 +42,6 @@ pack:
     - playwright-deps             # Chromium's system libraries (root)
     - playwright                  # the browser itself, per-user
     - beads                       # bd task tracker
-    - beads-viewer
     # ...and the tools this file introduces:
     - my-tool
   displayOrder: 100               # position in the UI's pack list, ascending

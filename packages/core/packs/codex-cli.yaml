@@ -21,7 +21,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - codex
   displayOrder: 3
   enabled: true

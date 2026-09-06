@@ -21,7 +21,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - amp
   displayOrder: 2
   enabled: true

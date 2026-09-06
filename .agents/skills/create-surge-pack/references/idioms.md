@@ -170,24 +170,24 @@ perfectly reachable on a CDN that has no quota at all.
 
 ## A checksummed release binary
 
-From `beads-viewer`. Same shape, plus verification and bounded retries:
+From `beads` in `packs/ai-coding-agents.yaml`. Same shape, plus verification and bounded retries:
 
 ```bash
-bv_version=v0.19.0
+bd_version=v1.2.1
 case "$ARCH" in
-  amd64) bv_sha=e5208262256c242e4453afbfc2b69559c5f77200187724ac52c97a153593267f ;;
-  arm64) bv_sha=bd6a4e2440bca15e771fdb582d985dfae998fa76731d18fb6e21e26926321039 ;;
+  amd64) bd_sha=48aecf42ffdefa6470298d8022deeb762e30c8729dc0a4bdda93888c0b0354e2 ;;
+  arm64) bd_sha=507c35d0fbf382b5ac64824386460a80849d73064d3f50b23eb247eabb68c7a8 ;;
   *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
-stamp="$HOME/.rockysurf/installed-bv-$bv_version"     # the version is IN the stamp name
+stamp="$HOME/.rockysurf/installed-beads-$bd_version"  # the version is IN the stamp name
 if [ ! -f "$stamp" ]; then
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT
   # Bounded retries: one reset mid-download should cost a second, not a box.
-  curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$url" -o "$tmp/bv.tar.gz"
-  echo "$bv_sha  $tmp/bv.tar.gz" | sha256sum -c - >/dev/null
-  tar -xzf "$tmp/bv.tar.gz" -C "$tmp"
-  install -D -m 0755 "$tmp/bv" "$HOME/.local/bin/bv"
+  curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$url" -o "$tmp/beads.tar.gz"
+  echo "$bd_sha  $tmp/beads.tar.gz" | sha256sum -c - >/dev/null
+  tar -xzf "$tmp/beads.tar.gz" -C "$tmp"
+  install -D -m 0755 "$tmp/bd" "$HOME/.local/bin/bd"
   mkdir -p "$(dirname "$stamp")" && touch "$stamp"
 fi
 ```

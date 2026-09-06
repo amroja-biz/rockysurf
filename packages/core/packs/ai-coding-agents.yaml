@@ -24,7 +24,6 @@ pack:
     - playwright-deps
     - playwright
     - beads
-    - beads-viewer
     - claude-code
   displayOrder: 1
   enabled: true
@@ -377,13 +376,12 @@ tools:
       export PATH="$HOME/.local/bin:$HOME/.beads/bin:$PATH"
       #
       # PINNED, and fetched from the release download endpoint rather than through upstream's
-      # scripts/install.sh — the same reason as beads-viewer below, which is rockysurf-pcma, and
-      # the reason this step got the same treatment is rockysurf-c6cm: it is the one that
-      # actually took the trunk down. That installer opens by asking api.github.com for the
-      # latest release, an unauthenticated call sharing a 60-per-hour quota keyed on SOURCE IP.
-      # A shared CI runner draws an address that other tenants have already spent, the call
-      # returns 403, and the installer does not fail on it — it falls through to a Go source
-      # build, finds no toolchain, and exits 1. Main run 31802231839 died exactly that way while
+      # scripts/install.sh. The reason this step got that treatment is rockysurf-c6cm: it is
+      # the one that actually took the trunk down. That installer opens by asking api.github.com
+      # for the latest release, an unauthenticated call sharing a 60-per-hour quota keyed on
+      # SOURCE IP. A shared CI runner draws an address that other tenants have already spent,
+      # the call returns 403, and the installer does not fail on it — it falls through to a Go
+      # source build, finds no toolchain, and exits 1. Main run 31802231839 died that way while
       # the same leg had been green on its own pull request minutes earlier: quota roulette on
       # the merge signal, with the asset it wanted sitting on a CDN that has no quota at all.
       #
@@ -424,67 +422,6 @@ tools:
         grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
       done
       command -v bd >/dev/null 2>&1
-
-  - toolId: beads-viewer
-    name: Beads Viewer
-    description: Web-based viewer for Beads task boards
-    category: base
-    url: https://github.com/Dicklesworthstone/beads_viewer
-    installOrder: 30
-    runAs: rocky
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-      # The legacy script appended a unix-timestamp query parameter to defeat the CDN cache,
-      # which guaranteed a different payload on every run — the opposite of what the contract
-      # asks for, and it made the run-twice CI gate meaningless for this tool. Removed.
-      #
-      # PINNED, and fetched from the release download endpoint rather than through upstream's
-      # install.sh, because that installer begins by asking api.github.com which release is
-      # latest — and for an unauthenticated caller that endpoint allows 60 requests an hour PER
-      # SOURCE IP. A bootstrapping box holds no GitHub token, so the call is unauthenticated by
-      # construction. When it is refused the installer reports no pre-built binary, falls
-      # through to a source build, finds no Go toolchain, and exits 1 — with the release asset
-      # it wanted sitting there perfectly reachable, on a CDN that has no quota at all.
-      #
-      # That is rockysurf-pcma. `beads` asks the same endpoint about its own repository earlier
-      # in the plan, so a plan spends two of that hour's sixty requests and THIS step is the
-      # last of them: when the shared address runs out of quota part-way through, this is the
-      # step it runs out on, which is exactly the state the failing run journalled — beads
-      # done, beads-viewer failed, twice, on the one runner in a ten-leg matrix that drew a
-      # nearly-spent IP. (The run that produced it had a third such tool ahead of these two,
-      # `agent-deck`, which this pack no longer ships — #288.) Their installers carry the same
-      # fragility and are tracked separately (rockysurf-c6cm).
-      #
-      # To bump: change the version and both digests. The release publishes checksums.txt.
-      bv_version=v0.19.0
-      case "$ARCH" in
-        amd64) bv_sha=e5208262256c242e4453afbfc2b69559c5f77200187724ac52c97a153593267f ;;
-        arm64) bv_sha=bd6a4e2440bca15e771fdb582d985dfae998fa76731d18fb6e21e26926321039 ;;
-        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
-      esac
-      # The version is IN the stamp, so bumping it above reinstalls and leaving it alone is a
-      # no-op — the run-twice gate measures the second half of that.
-      stamp="$HOME/.rockysurf/installed-beads-viewer-$bv_version"
-      if [ ! -f "$stamp" ]; then
-        tmp=$(mktemp -d)
-        trap 'rm -rf "$tmp"' EXIT
-        # Bounded retries, per rule 3: one reset mid-download should cost a second, not a box.
-        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
-          "https://github.com/Dicklesworthstone/beads_viewer/releases/download/$bv_version/bv_linux_$ARCH.tar.gz" \
-          -o "$tmp/bv.tar.gz"
-        echo "$bv_sha  $tmp/bv.tar.gz" | sha256sum -c - >/dev/null
-        tar -xzf "$tmp/bv.tar.gz" -C "$tmp"
-        install -D -m 0755 "$tmp/bv" "$HOME/.local/bin/bv"
-        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
-      fi
-      # Self-contained: `beads` writes this same line, but a pack that took beads-viewer without
-      # beads would otherwise get a bv its shell cannot find. grep -qF keeps the second run
-      # byte-identical, which is what the smoke test hashes .bashrc to prove.
-      touch "$HOME/.bashrc"
-      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
-      "$HOME/.local/bin/bv" --version >/dev/null
 
   # ---------------------------------------------------------------- band 40: agents
   - toolId: claude-code
