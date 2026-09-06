@@ -145,10 +145,46 @@ describe('the routes the SPA already calls', () => {
     expect(body['tools']).toEqual(expect.any(Array))
     expect(body['repositories']).toEqual(expect.any(Array))
 
-    // And it is still the user's own row: another account's terminated server is still a 404,
-    // which is the ownership check this feature must not quietly widen.
-    const listed = (await (await get('/api/v1/servers')).json()) as Array<{ serverId: string }>
+    // And it is still reachable from the list — by asking for history, which is what
+    // `includeTerminated` is for (#416). The row outliving the machine is this issue's point;
+    // it being served to a caller that asked for the live fleet was the other issue's bug.
+    const listed = (await (await get('/api/v1/servers?includeTerminated=true')).json()) as Array<{
+      serverId: string
+    }>
     expect(listed.some((row) => row.serverId === created.serverId)).toBe(true)
+  })
+
+  /**
+   * `?includeTerminated` IS READ, WHICH IT WAS NOT (#416).
+   *
+   * The query has been in the SPA's API client since it was written and is what the MCP
+   * server's `include_terminated: false` maps to — and this route ignored it, so every caller
+   * got every row it had ever owned. The SPA filtered again in the browser and looked correct;
+   * the CLI and an agent, which have no second filter, listed the graveyard. Asserted as ROW
+   * COUNTS on both sides of the flag, because that is the shape of what was reported: 82 rows
+   * where a live fleet was asked for.
+   */
+  it('lists live servers by default and terminated ones only when asked (#416)', async () => {
+    const live = (await (await post('/api/v1/servers', { ...CREATE, name: 'still-here' })).json()) as {
+      serverId: string
+    }
+    const dead = (await (await post('/api/v1/servers', { ...CREATE, name: 'gone' })).json()) as {
+      serverId: string
+    }
+    await post(`/api/v1/servers/${dead.serverId}/terminate`)
+
+    const byDefault = (await (await get('/api/v1/servers')).json()) as Array<{ serverId: string }>
+    expect(byDefault).toHaveLength(1)
+    expect(byDefault[0]!.serverId).toBe(live.serverId)
+
+    const withHistory = (await (await get('/api/v1/servers?includeTerminated=true')).json()) as Array<{
+      serverId: string
+    }>
+    expect(withHistory).toHaveLength(2)
+
+    // Anything that is not the literal `true` is the default: a query string is caller text.
+    const bogus = (await (await get('/api/v1/servers?includeTerminated=yes')).json()) as unknown[]
+    expect(bogus).toHaveLength(1)
   })
 
   it('runs start, stop and terminate', async () => {

@@ -409,7 +409,17 @@ export interface SyncedServer {
 export interface LifecycleService {
   create(input: CreateServerInput): Promise<ServerRow>
   get(userId: string, serverId: string): Promise<SyncedServer>
-  list(userId: string): Promise<SyncedServer[]>
+  /**
+   * The user's servers, LIVE ONES ONLY unless asked otherwise (#416).
+   *
+   * Terminated rows are history: the machine is gone, nothing about it can change again, and
+   * every caller that wants a fleet wants the fleet that exists. The SPA has always dropped
+   * them in the browser and `GET /api/v1/servers` has always accepted an `includeTerminated`
+   * query it then ignored — so the CLI and the MCP server, which have no second filter, served
+   * the graveyard. Filtered HERE rather than in each front end, so the three cannot disagree,
+   * and filtered BEFORE the sync loop below, so a terminated box is not a provider round trip.
+   */
+  list(userId: string, options?: { includeTerminated?: boolean }): Promise<SyncedServer[]>
   /**
    * Rewrite the display fields — name, description — and nothing else (issue #46).
    *
@@ -950,8 +960,10 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
       }
     },
 
-    async list(userId: string): Promise<SyncedServer[]> {
-      const rows = listServersByUser(db, userId)
+    async list(userId: string, options?: { includeTerminated?: boolean }): Promise<SyncedServer[]> {
+      const all = listServersByUser(db, userId)
+      // See the interface: history is opt-in, and a terminated row is not worth a provider call.
+      const rows = options?.includeTerminated ? all : all.filter((row) => row.status !== 'terminated')
       // Sequential rather than parallel: a user with twenty servers should not open twenty
       // simultaneous provider connections every time the dashboard polls.
       const synced: SyncedServer[] = []

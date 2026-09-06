@@ -338,6 +338,105 @@ describe('the route each tool calls', () => {
     expect(withTerminated.reads()).toEqual(['/api/v1/servers?includeTerminated=true'])
   })
 
+  /**
+   * THE ROWS, NOT JUST THE URL (#416).
+   *
+   * The test above pins the query string and passed the whole time the bug was live: core's
+   * route accepted `includeTerminated` and ignored it, so an agent asking for its fleet was
+   * handed 82 rows including every box it had ever destroyed. The route is fixed in
+   * `servers/routes.ts` and pinned there; what this pins is the half that lives here — the flag
+   * reaches the route, and whatever the route filtered is what the agent is handed, with no
+   * second filter in this file to paper over a route that stops filtering.
+   */
+  it('list_servers returns live rows by default and history only when asked (#416)', async () => {
+    const LIVE = [{ serverId: 'srv-live', status: 'running' }]
+    const ALL = [...LIVE, { serverId: 'srv-gone', status: 'terminated' }]
+    const { client: c } = recording({
+      '/api/v1/servers': LIVE,
+      '/api/v1/servers?includeTerminated=true': ALL,
+    })
+
+    const live = (await runTool('list_servers', {}, ctx(['read'], c))) as { servers: unknown[] }
+    expect(live.servers).toHaveLength(1)
+    expect(live.servers.map((s) => (s as { status: string }).status)).toEqual(['running'])
+
+    const history = (await runTool('list_servers', { include_terminated: true }, ctx(['read'], c))) as {
+      servers: unknown[]
+    }
+    expect(history.servers).toHaveLength(2)
+  })
+
+  /**
+   * THE FLEET VIEW, NOT THE SERVER CARD (#416).
+   *
+   * `/api/v1/servers` serves the SPA's card: the environment the box was built with, the pack
+   * inputs, the repositories, the git-token scopes, and on a failed box the whole captured
+   * bootstrap log. Multiplied by a fleet that is most of the 280 KB this tool was reported
+   * returning, and none of it decides anything an agent does with a list. `get_server` still
+   * carries all of it, which is what its description promises.
+   */
+  it('list_servers carries the fleet fields and leaves the card behind (#416)', async () => {
+    const ROW = {
+      serverId: 'srv-one',
+      name: 'box',
+      provider: 'fake',
+      status: 'running',
+      size: 'small',
+      offeringId: 'f1.small',
+      publicIp: '10.0.0.1',
+      hourlyCost: { amount: 0.02, currency: 'USD', fetchedAt: '2026-09-06T12:00:00.000Z' },
+      estimatedTotalCost: 0.4,
+      totalUptimeSeconds: 72_000,
+      createdAt: '2026-09-06T00:00:00.000Z',
+      // Everything below is the card, and none of it should survive.
+      environment: { EDITOR: 'vim' },
+      packInputs: { region: 'here' },
+      repositories: ['https://example.invalid/repo.git'],
+      githubTokenScopes: [{ host: 'github.com', scope: 'repo' }],
+      carriesFallbackToken: true,
+      bootstrapReport: { log: 'x'.repeat(20_000) },
+      suppliedSshKey: { fingerprint: 'SHA256:abc' },
+      description: 'a long description nobody chooses a server by',
+    }
+    const { client: c } = recording({ '/api/v1/servers': [ROW] })
+    const result = (await runTool('list_servers', {}, ctx(['read'], c))) as {
+      servers: Array<Record<string, unknown>>
+    }
+
+    const [row] = result.servers
+    expect(row!['serverId']).toBe('srv-one')
+    expect(row!['status']).toBe('running')
+    expect(row!['publicIp']).toBe('10.0.0.1')
+    expect(row!['hourlyCost']).toEqual(ROW.hourlyCost)
+    expect(row!['size']).toBe('small')
+    for (const gone of [
+      'environment',
+      'packInputs',
+      'repositories',
+      'githubTokenScopes',
+      'carriesFallbackToken',
+      'bootstrapReport',
+      'suppliedSshKey',
+      'description',
+    ]) {
+      expect(row).not.toHaveProperty(gone)
+    }
+    // 20 KB of captured log for one box is what a fleet multiplies.
+    expect(JSON.stringify(result.servers).length).toBeLessThan(1_000)
+  })
+
+  it('list_servers truncates a runaway error message and says where the rest is', async () => {
+    const { client: c } = recording({
+      '/api/v1/servers': [{ serverId: 'srv-bad', status: 'failed', errorMessage: 'x'.repeat(5_000) }],
+    })
+    const result = (await runTool('list_servers', {}, ctx(['read'], c))) as {
+      servers: Array<Record<string, unknown>>
+    }
+    const message = result.servers[0]!['errorMessage'] as string
+    expect(message.length).toBeLessThan(600)
+    expect(message).toContain('get_server')
+  })
+
   it('get_server and get_ssh_command read the server the agent named', async () => {
     // Not a formality: the stub used to answer every path with the same record, so a tool that
     // fetched `srv-one` while the agent asked about `srv-two` looked correct — the asserted ssh
@@ -1630,6 +1729,94 @@ describe('list_offerings', () => {
     expect(result.error).toContain('nope')
     expect(result.configured).toEqual(['fake', 'other'])
   })
+
+  /**
+   * PAGING, BECAUSE THIS IS NOW WHERE THE CATALOGUE LIVES (#415).
+   *
+   * `list_providers` stopped carrying machine types, which makes this the tool an agent asks
+   * for them — so it is the one that has to be bounded. The page is a slice across the clouds
+   * asked for; `nextCursor` is what continues it, and an agent that never passes one still sees
+   * a bounded answer rather than a truncated one.
+   */
+  describe('paging and available_only (#415)', () => {
+    const many = (count: number, available = true) =>
+      Array.from({ length: count }, (_, n) => ({
+        id: `t${n}`,
+        cpu: 2,
+        memoryGb: 4,
+        arch: 'amd64',
+        available: available || n % 2 === 0,
+        hourly: null,
+        region: 'r1',
+      }))
+    const bigClient = (count = 250) =>
+      client({
+        get: (async () => [
+          { id: 'fake', displayName: 'Fake Cloud', offerings: many(count, false) },
+        ]) as CoreClient['get'],
+      })
+
+    it('caps the default answer and says how to continue it', async () => {
+      const first = (await runTool('list_offerings', {}, ctx(['read'], bigClient()))) as {
+        providers: Array<{ offerings: unknown[] }>
+        returned: number
+        totalMatching: number
+        nextCursor?: string
+      }
+      expect(first.returned).toBe(100)
+      expect(first.providers[0]!.offerings).toHaveLength(100)
+      expect(first.totalMatching).toBe(250)
+      expect(first.nextCursor).toBe('100')
+
+      const second = (await runTool(
+        'list_offerings',
+        { cursor: first.nextCursor },
+        ctx(['read'], bigClient()),
+      )) as { providers: Array<{ offerings: Array<{ id: string }> }>; nextCursor?: string }
+      expect(second.providers[0]!.offerings[0]!.id).toBe('t100')
+      expect(second.nextCursor).toBe('200')
+
+      const last = (await runTool('list_offerings', { cursor: '200' }, ctx(['read'], bigClient()))) as {
+        returned: number
+        nextCursor?: string
+      }
+      expect(last.returned).toBe(50)
+      // No cursor on the last page: an agent that keeps paging while one is offered stops here.
+      expect(last.nextCursor).toBeUndefined()
+    })
+
+    it('honours an explicit limit', async () => {
+      const result = (await runTool('list_offerings', { limit: 3 }, ctx(['read'], bigClient()))) as {
+        returned: number
+        nextCursor?: string
+      }
+      expect(result.returned).toBe(3)
+      expect(result.nextCursor).toBe('3')
+    })
+
+    it('lists sold-out types by default and drops them for available_only', async () => {
+      // "Sold out this afternoon" is a fact an agent may need — it is why a create was refused
+      // — so it is only left out when the caller says so.
+      const withAll = (await runTool('list_offerings', { limit: 500 }, ctx(['read'], bigClient(10)))) as {
+        totalMatching: number
+      }
+      expect(withAll.totalMatching).toBe(10)
+
+      const onlyLive = (await runTool(
+        'list_offerings',
+        { available_only: true, limit: 500 },
+        ctx(['read'], bigClient(10)),
+      )) as { totalMatching: number; providers: Array<{ offerings: Array<{ available: boolean }> }> }
+      expect(onlyLive.totalMatching).toBe(5)
+      expect(onlyLive.providers[0]!.offerings.every((o) => o.available)).toBe(true)
+    })
+
+    it('refuses a cursor that did not come from a nextCursor', async () => {
+      await expect(
+        runTool('list_offerings', { cursor: 'page-two' }, ctx(['read'], bigClient())),
+      ).rejects.toThrow()
+    })
+  })
 })
 
 /**
@@ -1673,9 +1860,86 @@ describe('list_providers and get_provider', () => {
     // Nothing here spends money or changes anything, and none of it is a credential —
     // capabilities is a fixed set of booleans/numbers, never a provider-specific secret.
     const result = (await runTool('list_providers', {}, ctx(['read'], providersClient()))) as {
-      providers: typeof PROVIDERS
+      providers: Array<Record<string, unknown>>
     }
-    expect(result.providers).toEqual(PROVIDERS)
+    expect(result.providers.map((p) => p['id'])).toEqual(['fake', 'other'])
+    expect(result.providers[0]!['capabilities']).toEqual(PROVIDERS[0]!.capabilities)
+    expect(result.providers[0]!['tierPreferences']).toEqual({ small: 'f1.small' })
+  })
+
+  /**
+   * THE CATALOGUE IS COUNTED, NOT CARRIED (#415).
+   *
+   * This tool handed `/api/v1/providers` back verbatim, so on a six-cloud installation its
+   * answer was about 900 KB of machine types — which an MCP client truncates, and it truncates
+   * from the end, where the capabilities this tool exists to report live. A count answers what
+   * an agent asks of this tool ("has this cloud anything to sell?"); `list_offerings` answers
+   * the rest, and pages.
+   */
+  it('list_providers counts the offerings instead of embedding them (#415)', async () => {
+    const result = (await runTool('list_providers', {}, ctx(['read'], providersClient()))) as {
+      providers: Array<Record<string, unknown>>
+      note: string
+    }
+    expect(result.providers[0]).not.toHaveProperty('offerings')
+    expect(result.providers[0]!['offeringsCount']).toBe(1)
+    expect(result.providers[0]!['offeringsAvailableCount']).toBe(1)
+    expect(result.providers[1]!['offeringsCount']).toBe(0)
+    expect(result.note).toContain('list_offerings')
+  })
+
+  it('list_providers keeps offeringsError, which is why a count can be zero', async () => {
+    const broken = client({
+      get: (async () => [
+        { id: 'fake', displayName: 'Fake Cloud', capabilities: PROVIDERS[0]!.capabilities, offerings: [], offeringsError: 'credentials expired' },
+      ]) as CoreClient['get'],
+    })
+    const result = (await runTool('list_providers', {}, ctx(['read'], broken))) as {
+      providers: Array<Record<string, unknown>>
+    }
+    expect(result.providers[0]!['offeringsError']).toBe('credentials expired')
+    expect(result.providers[0]!['offeringsCount']).toBe(0)
+  })
+
+  /**
+   * THE SIZE, MEASURED (#415).
+   *
+   * The report is a number — ~900 KB — so the pin is a number too, against the route shape a
+   * six-cloud installation really produces: one cloud alone emitted 122 machine types. Both
+   * halves are asserted, so a regression that puts the catalogue back cannot pass by shrinking
+   * the fixture: the raw route payload is enormous and this tool's answer is not.
+   */
+  it('answers a six-cloud installation in well under 50 KB (#415)', async () => {
+    const offering = (n: number) => ({
+      id: `type-${n}`,
+      cpu: 4,
+      memoryGb: 8,
+      diskGb: 160,
+      arch: 'amd64',
+      hourly: { amount: 0.0714, currency: 'USD', fetchedAt: '2026-09-06T12:00:00.000Z' },
+      available: n % 5 !== 0,
+      ...(n % 5 === 0 ? { unavailableReason: 'this size is sold out in this region right now' } : {}),
+      region: 'region-1',
+    })
+    const SIX = Array.from({ length: 6 }, (_, i) => ({
+      id: `cloud-${i}`,
+      displayName: `Cloud Number ${i}`,
+      capabilities: PROVIDERS[0]!.capabilities,
+      offerings: Array.from({ length: 122 }, (_, n) => offering(n)),
+      tierPreferences: { small: 'type-1', medium: 'type-2', large: 'type-3' },
+    }))
+    const big = client({ get: (async () => SIX) as CoreClient['get'] })
+
+    const before = JSON.stringify(SIX).length
+    const after = JSON.stringify(await runTool('list_providers', {}, ctx(['read'], big))).length
+    // The owner measured ~900 KB on a real six-cloud installation, whose ids, regions and
+    // provider prose are longer than a fixture's; this shape is the conservative version of
+    // the same thing, and it is still six figures of catalogue.
+    expect(before).toBeGreaterThan(100_000)
+    expect(after).toBeLessThan(50_000)
+    // And the pages the catalogue moved to are bounded too, on the same fixture.
+    const page = JSON.stringify(await runTool('list_offerings', {}, ctx(['read'], big))).length
+    expect(page).toBeLessThan(50_000)
   })
 
   it('get_provider narrows to one cloud, in full — capabilities and tierPreferences included', async () => {
