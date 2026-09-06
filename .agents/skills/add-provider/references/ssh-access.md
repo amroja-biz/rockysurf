@@ -118,7 +118,7 @@ nobody confirmed, on the one code path that runs without anyone looking at it.
 
 ### The object's name, and the fields a write must not drop
 
-Two things the ruling leans on that have to be decided, not guessed:
+Three things the ruling leans on that have to be decided, not guessed:
 
 - **Derive the name, do not invent one per run.** The protection above is that the object is
   *named for Rocky Surf*, which only works if every run of every version derives the same name.
