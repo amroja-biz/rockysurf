@@ -91,13 +91,13 @@ guessing, and that "who owns the npm org" never becomes a question only one pers
 | identity | status | where it lives |
 |---|---|---|
 | npm user account | `jbdamask`, 2FA on (2026-09-06), no tokens | the owner's password manager |
-| npm org `rockysurf` (owns the `@rockysurf` scope) | **not confirmed** as of 2026-09-06 — nine `@rockysurf/*` names 404, which proves nothing | step 2 above; record the org owners here once created |
+| npm org `rockysurf` (owns the `@rockysurf` scope) | **exists** — confirmed by the owner 2026-09-06 | npmjs.com, owner `jbdamask` |
 | unscoped npm name `rockysurf` | **claimed** — `rockysurf@0.0.1`, published 2026-08-12 by `jbdamask` | trusted publisher attached by step 4 |
 | GitHub environment `npm` on this repository | created 2026-09-06: required reviewer `jbdamask`, tags `v*` only | repository Settings → Environments |
 | GitHub org `amroja-biz` | in use — this repository is `amroja-biz/rockysurf` | GitHub, under the owner's account |
 
-One thing not to read into that table: a 404 on `@rockysurf/anything` does **not** prove the
-scope is free, so "not confirmed" means nobody here has created the org, not that nobody has.
+A 404 on `@rockysurf/anything` never proved the scope was free; the org's existence is what
+settles it, and it is settled.
 
 Recording the 2FA recovery codes anywhere in this repository would be a bad idea; the table
 points at where they are, and nothing more.
