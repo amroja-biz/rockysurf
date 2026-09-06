@@ -28,6 +28,7 @@ import type {
   DoOutboundRule,
   DoSize,
   DoSshKey,
+  DoTag,
 } from './types.js'
 
 /**
@@ -62,10 +63,12 @@ import type {
 export const DIGITALOCEAN_PROVIDER_ID = 'digitalocean'
 
 /**
- * Capabilities. EVERY VALUE HERE IS READ FROM DIGITALOCEAN'S DOCUMENTATION AND NONE OF IT HAS
- * BEEN OBSERVED AGAINST THE REAL API — the package was written without a DigitalOcean token, and
- * `docs/providers/capability-matrix.md` daggers the whole column for that reason. The README's
- * "How to verify live" section is the three calls that turn each dagger into a measurement.
+ * Capabilities. EVERY VALUE HERE IS READ FROM DIGITALOCEAN'S DOCUMENTATION, AND ONLY ONE HAS BEEN
+ * OBSERVED AGAINST THE REAL API — the package was written without a DigitalOcean token, and
+ * `docs/providers/capability-matrix.md` daggers the column for that reason. The exception is
+ * `managesSshAccess`: the first live launch (#373) failed at the firewall and, once the tag it
+ * targets existed, the same request succeeded (#403). The README's "How to verify live" section is
+ * the three calls that turn each remaining dagger into a measurement.
  */
 const CAPABILITIES: ProviderCapabilities = {
   /**
@@ -105,7 +108,9 @@ const CAPABILITIES: ProviderCapabilities = {
   generatesUserData: true,
   /**
    * One firewall object per installation, named by `firewallName`, targeting the `managed-by` tag,
-   * which `syncSshAccess()` converges without provisioning anything (ADR-0021).
+   * which `syncSshAccess()` converges without provisioning anything (ADR-0021). VERIFIED LIVE
+   * 2026-09-05: `POST /v2/firewalls` with this provider's body answered 202 once the tag existed —
+   * and 422 before it did, which is what `ensureTag()` is for (#403).
    */
   managesSshAccess: true,
   /**
@@ -381,6 +386,41 @@ export function makeDigitaloceanProvider(
   }
 
   /**
+   * Make sure a tag exists before a firewall targets it (issue #403).
+   *
+   * A FIREWALL MAY ONLY TARGET A TAG THAT ALREADY EXISTS, AND CREATING THE FIREWALL DOES NOT
+   * CREATE IT. DigitalOcean creates a tag implicitly on `POST /v2/droplets`, and nowhere else;
+   * `POST /v2/firewalls` and `PUT /v2/firewalls/{id}` answer `422 unprocessable_entity: tag
+   * managed-by:rockysurf does not exist` for a tag nothing has made yet. The firewall is
+   * deliberately written BEFORE the first droplet so the box is protected from its first boot,
+   * which is exactly the order that trips the precondition: on a fresh team the very first launch
+   * failed, every time, and the fake cloud accepted any tag name so 74 tests could not see it.
+   * The owner met it live (#373); the same request succeeded (202) once the tag existed.
+   *
+   * `POST /v2/tags` is free and, measured on 2026-09-05, IDEMPOTENT: creating a tag that already
+   * exists answered `201` with the tag. DigitalOcean's documentation describes a `422` for that
+   * case too, so a refusal is not believed until `GET /v2/tags/{name}` says the tag is absent —
+   * and that check is a lookup rather than a sniff of the message, per `errors.ts`.
+   *
+   * Runs before every firewall write rather than once: an operator can delete a tag from the
+   * control panel at any time, and a PUT that targets a deleted tag fails the same way.
+   */
+  async function ensureTag(name: string): Promise<void> {
+    try {
+      await api.call<{ tag: DoTag }>('POST', '/tags', { name })
+    } catch (err) {
+      if (!(err instanceof ProviderError) || err.code === 'auth' || err.code === 'network') throw err
+      try {
+        await api.call<{ tag: DoTag }>('GET', `/tags/${encodeURIComponent(name)}`)
+      } catch (lookup) {
+        // The tag really is missing: the refusal was for some other reason, and it is the error
+        // worth reporting. A lookup failure of its own kind goes up as itself.
+        throw isNotFound(lookup) ? err : lookup
+      }
+    }
+  }
+
+  /**
    * Write the firewall whole, to exactly `cidrs`.
    *
    * ONE WRITE, AND IT IS THE ONLY WAY THIS CLOUD CAN CONVERGE (ADR-0021's amendment for issue
@@ -397,6 +437,7 @@ export function makeDigitaloceanProvider(
    * and a name that does not match is not touched.
    */
   async function putFirewall(firewall: DoFirewall, cidrs: readonly string[]): Promise<void> {
+    await ensureTag(managedByTag)
     await api.call<{ firewall: DoFirewall }>('PUT', `/firewalls/${firewall.id}`, {
       name: firewall.name,
       inbound_rules: [sshInboundRule(cidrs)],
@@ -422,6 +463,7 @@ export function makeDigitaloceanProvider(
     const existing = await findFirewall()
 
     if (!existing) {
+      await ensureTag(managedByTag)
       await api.call<{ firewall: DoFirewall }>('POST', '/firewalls', {
         name: firewallName,
         inbound_rules: [sshInboundRule(desired)],

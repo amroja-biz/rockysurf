@@ -87,7 +87,11 @@ scope. A read-only token authenticates and then fails at the first create.
   region slugs if the configured one does not exist, and reports `capacity` if it exists and is
   closed to new droplets.
 - Nothing else pre-created. The provider makes its own firewall at the first launch and its own SSH
-  key objects per server.
+  key objects per server. It also makes the `managed-by:rockysurf` tag the firewall targets
+  (`POST /v2/tags`, free) before the firewall is written: DigitalOcean creates a tag only when a
+  droplet is created with it, and a firewall may only target a tag that already exists — on a fresh
+  team the first launch used to fail with `tag managed-by:rockysurf does not exist` (#403). Deleting
+  that tag in the control panel is safe; the next launch or settings save recreates it.
 
 Two documented DigitalOcean limits are worth knowing before you scale up, because this provider
 does not work around either:
@@ -102,8 +106,8 @@ does not work around either:
 ## Capabilities
 
 The values `ProviderCapabilities` declares in `src/provider.ts`, and what each costs you. **Every
-one is read from DigitalOcean's documentation. None has been observed against the real API** — see
-Verified.
+one is read from DigitalOcean's documentation. Only `managesSshAccess` has been observed against the
+real API** — see Verified.
 
 | capability | value | what it means here |
 |---|---|---|
@@ -113,7 +117,7 @@ Verified.
 | `canInjectHostKeys` | `true` | The box comes up presenting a host key Rocky Surf minted, carried in cloud-init user data, so the first connection — the one holding the secrets file — is verified rather than trusted on sight |
 | `userDataMaxBytes` | `65536` | DigitalOcean's create endpoint documents `user_data` as "plain text and may not exceed 64 KiB in size". Plain text, so that ceiling is on the rendered document with no encoding step to allow for |
 | `generatesUserData` | `true` | cloud-init on the official Ubuntu images |
-| `managesSshAccess` | `true` | One cloud firewall, named by `firewallName`, that a settings save pushes your CIDR list at without launching anything |
+| `managesSshAccess` | `true` | One cloud firewall, named by `firewallName`, that a settings save pushes your CIDR list at without launching anything. **Verified live 2026-09-05**: `POST /v2/firewalls` with this provider's exact body — one SSH inbound rule, the three outbound rules, `tags: ["managed-by:rockysurf"]` — answered `202` once the tag existed, and `422 tag managed-by:rockysurf does not exist` before it did (#403) |
 
 ### Who can reach SSH
 
@@ -154,11 +158,28 @@ ARM" and "this size is sold out" stay different answers.
 
 ## Verified
 
-**Nothing in this package has been run against the real DigitalOcean API.** It was written from
-DigitalOcean's published documentation and its public OpenAPI description, read on 2026-09-04, and
-tested against a fake of that API. Every value in the table above and every value in Rocky Surf's
-capability matrix is therefore marked as reasoned rather than measured. A fake asserts that the
-provider does what its author believed; only real infrastructure asserts that the belief was right.
+**One value in this package has met the real DigitalOcean API; the rest have not.** It was written
+from DigitalOcean's published documentation and its public OpenAPI description, read on 2026-09-04,
+and tested against a fake of that API. A fake asserts that the provider does what its author
+believed; only real infrastructure asserts that the belief was right — and the first time this code
+met the real API (#373) it proved the point by failing at the firewall, see below.
+
+What has been measured, by whom, and when:
+
+- **`managesSshAccess` — the firewall target — verified 2026-09-05.** The owner's first launch on a
+  fresh team answered `POST /firewalls: unprocessable_entity: tag managed-by:rockysurf does not
+  exist`. With the tag created first, the provider's exact firewall request answered `202` and the
+  `rockysurf-ssh` firewall exists on that team targeting `managed-by:rockysurf`. That is the
+  precondition the research protocol missed and that `ensureTag()` now satisfies before every
+  firewall write (#403).
+- **`POST /v2/tags` on a tag that already exists answered `201`**, with the tag, on 2026-09-05 —
+  the documentation describes a `422` for that case, so the provider accepts either and confirms a
+  refusal with `GET /v2/tags/{name}` before believing it.
+- **The `key:value` tag charset round-trips**: `managed-by:rockysurf` was created and read back
+  by name, colon included.
+
+Everything else in the table above — and every other value in Rocky Surf's capability matrix for
+this column — is still marked as reasoned rather than measured.
 
 ### How to verify live
 
@@ -176,11 +197,13 @@ curl -sS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
   'https://api.digitalocean.com/v2/firewalls' | head -c 2000
 
 # 3. The tag charset, which decides whether `key:value` round-trips. Creating a tag costs
-#    nothing and deleting it costs nothing.
+#    nothing. It is the same call the provider makes before every firewall write, so leave the
+#    tag in place afterwards: a firewall may only target a tag that exists, and deleting this one
+#    is what the very first launch on a fresh team looked like (#403).
 curl -sS -X POST -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"managed-by:rockysurf"}' \
   'https://api.digitalocean.com/v2/tags'
-curl -sS -X DELETE -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
+curl -sS -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" \
   'https://api.digitalocean.com/v2/tags/managed-by:rockysurf'
 ```
 

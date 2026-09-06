@@ -25,7 +25,7 @@ and the two real-cloud capstone transcripts beside it.
 | `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
 | `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` | `65536` † |
 | `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
-| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent | `true` † |
+| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent | `true` |
 | `simulatedInstances` | absent | absent | absent | absent | absent | absent |
 | `billsWhileStopped` | absent | absent | absent | absent | absent | **`true`** † |
 
@@ -125,12 +125,16 @@ reached over loopback is a real sshd with a real PAM stack, and it is still not 
 on a real network. The run also needs Docker, so it gates a pull request but `pnpm run check`
 never sees it.
 
-**`digitalocean` is daggered in every row, and that is the whole column.** The package
+**`digitalocean` is daggered in every row but one.** The package
 (`packages/provider-digitalocean`, issue #368) was written from DigitalOcean's published
 documentation and its public OpenAPI description, read on 2026-09-04, and tested against a fake of
-that API. **No DigitalOcean token has ever been pointed at it**, no droplet has been created and no
-firewall has been written. So every value above is an inference from a vendor document, and the
-ones a run would most plausibly contradict are worth naming:
+that API. The first time a token was pointed at it (the owner's UAT, #373, 2026-09-05) the launch
+failed at the firewall — `tag managed-by:rockysurf does not exist` — because a DigitalOcean firewall
+may only target a tag that already exists and only a droplet create makes one; the provider now
+creates the tag first (#403), and with it present the same firewall request answered `202`. That
+is the one measured value; **no droplet has been created**. Every other value above is an
+inference from a vendor document, and the ones a run would most plausibly contradict are worth
+naming:
 
 - **`canInjectHostKeys`** rests on DigitalOcean's Ubuntu images running stock cloud-init, whose
   `cc_ssh` module writes the host keys a `#cloud-config` `ssh_keys:` block names. That is upstream
@@ -148,12 +152,13 @@ ones a run would most plausibly contradict are worth naming:
   powered off because the compute resources stay reserved on the hypervisor… To end billing,
   destroy the Droplet." There is no `deallocate`-shaped call to choose instead, so unlike Azure the
   provider cannot avoid the charge by picking a different action.
-- **`managesSshAccess`** carries the same dagger as the other three columns that declare it, plus
-  one of its own: DigitalOcean is the first WHOLE-OBJECT-authorship cloud after Azure
-  ([ADR-0021](../adr/0021-ssh-access-sync.md)'s amendment), because an inbound rule is
-  `{ protocol, ports, sources }` with no name and no description to stamp. Nothing has yet
-  confirmed that a `PUT /v2/firewalls/{id}` from this provider converges the object the way the
-  documentation says it does.
+- **`managesSshAccess`** is the row without a dagger: the `rockysurf-ssh` firewall exists on a
+  real team, created by the provider's exact `POST /v2/firewalls` body, targeting
+  `managed-by:rockysurf` (#403). DigitalOcean is the first WHOLE-OBJECT-authorship cloud after
+  Azure ([ADR-0021](../adr/0021-ssh-access-sync.md)'s amendment), because an inbound rule is
+  `{ protocol, ports, sources }` with no name and no description to stamp. What a live run has
+  NOT yet confirmed is the converge: that a `PUT /v2/firewalls/{id}` from this provider replaces
+  the object the way the documentation says it does.
 
 `packages/provider-digitalocean/README.md` carries a "How to verify live" section naming the calls
 that settle the cheap half of this column.

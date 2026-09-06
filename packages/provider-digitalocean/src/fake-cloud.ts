@@ -24,6 +24,13 @@ export interface FakeCloud {
   droplets: Map<number, DoDroplet>
   keys: Map<number, DoSshKey>
   firewalls: DoFirewall[]
+  /**
+   * Every tag that exists on this account. EMPTY ON A FRESH ACCOUNT, which is the state issue #403
+   * was found in: DigitalOcean creates a tag implicitly on `POST /v2/droplets` and nowhere else,
+   * and a firewall may only target a tag that already exists. A fake that accepted any tag name on
+   * a firewall let 74 tests pass while the first real launch failed every time.
+   */
+  tags: Set<string>
   sizes: DoSize[]
   regions: { slug: string; available?: boolean }[]
   /** Every request, as `METHOD /path` with the query stripped — for order assertions. */
@@ -38,6 +45,15 @@ export interface FakeCloud {
   createFails?: string
   /** When set, `DELETE /v2/account/keys/{id}` answers 422 with this message. */
   keyDeleteFails?: string
+  /** When set, `POST /v2/tags` answers 422 with this message and creates nothing. */
+  tagCreateFails?: string
+  /**
+   * What `POST /v2/tags` answers for a tag that already exists. DigitalOcean's documentation
+   * describes a `422 unprocessable_entity`; the live API, measured on 2026-09-05, answered `201`
+   * with the tag as if it had just been made. The fake defaults to the documented refusal, which is
+   * the harder of the two for the provider to survive, and a test flips this to check the other.
+   */
+  tagCreateIsIdempotent?: boolean
   /**
    * When true, `DELETE /v2/droplets/{id}` answers 204 and LEAVES the droplet readable.
    *
@@ -53,6 +69,7 @@ export function emptyCloud(overrides: Partial<FakeCloud> = {}): FakeCloud {
     droplets: new Map(),
     keys: new Map(),
     firewalls: [],
+    tags: new Set(),
     sizes: [
       {
         slug: 's-1vcpu-1gb',
@@ -193,7 +210,23 @@ export function fakeFetch(cloud: FakeCloud): typeof fetch {
         networks: { v4: [] },
       }
       cloud.droplets.set(id, droplet)
+      // The one place DigitalOcean creates a tag for you.
+      for (const tag of droplet.tags ?? []) cloud.tags.add(tag)
       return json(202, { droplet })
+    }
+
+    if (method === 'POST' && path === '/tags') {
+      if (cloud.tagCreateFails) return unprocessable(cloud.tagCreateFails)
+      const { name } = body as { name: string }
+      if (cloud.tags.has(name) && !cloud.tagCreateIsIdempotent) return unprocessable('tag already exists')
+      cloud.tags.add(name)
+      return json(201, { tag: { name, resources: { count: 0 } } })
+    }
+
+    const tagName = /^\/tags\/(.+)$/.exec(path)?.[1]
+    if (tagName !== undefined && method === 'GET') {
+      const name = decodeURIComponent(tagName)
+      return cloud.tags.has(name) ? json(200, { tag: { name, resources: { count: 0 } } }) : notFound()
     }
 
     if (method === 'GET' && path === '/account/keys') return page('ssh_keys', [...cloud.keys.values()])
@@ -226,8 +259,15 @@ export function fakeFetch(cloud: FakeCloud): typeof fetch {
 
     if (method === 'GET' && path === '/firewalls') return page('firewalls', cloud.firewalls)
 
+    // A firewall may only target a tag that already exists, on create and on replace alike. This is
+    // DigitalOcean's exact wording for the refusal (#403).
+    const missingTag = (spec: Pick<DoFirewall, 'tags'>): string | undefined =>
+      (spec.tags ?? []).find((tag) => !cloud.tags.has(tag))
+
     if (method === 'POST' && path === '/firewalls') {
       const spec = body as Omit<DoFirewall, 'id'>
+      const missing = missingTag(spec)
+      if (missing !== undefined) return unprocessable(`tag ${missing} does not exist`)
       const firewall: DoFirewall = { ...spec, id: `fw-${cloud.firewalls.length + 1}`, status: 'succeeded' }
       cloud.firewalls.push(firewall)
       return json(202, { firewall })
@@ -237,6 +277,8 @@ export function fakeFetch(cloud: FakeCloud): typeof fetch {
     if (firewallId !== undefined && method === 'PUT') {
       const index = cloud.firewalls.findIndex((firewall) => firewall.id === firewallId)
       if (index === -1) return notFound()
+      const missing = missingTag(body as Omit<DoFirewall, 'id'>)
+      if (missing !== undefined) return unprocessable(`tag ${missing} does not exist`)
       // DigitalOcean's PUT is a whole-object replace: "any attributes that are not provided will
       // be reset to their default values". The fake replaces rather than merges, so a partial
       // write in the provider would show up here as data loss rather than as a passing test.
