@@ -338,6 +338,34 @@ describe('the route each tool calls', () => {
     expect(withTerminated.reads()).toEqual(['/api/v1/servers?includeTerminated=true'])
   })
 
+  /**
+   * THE ROWS, NOT JUST THE URL (#416).
+   *
+   * The test above pins the query string and passed the whole time the bug was live: core's
+   * route accepted `includeTerminated` and ignored it, so an agent asking for its fleet was
+   * handed 82 rows including every box it had ever destroyed. The route is fixed in
+   * `servers/routes.ts` and pinned there; what this pins is the half that lives here — the flag
+   * reaches the route, and whatever the route filtered is what the agent is handed, with no
+   * second filter in this file to paper over a route that stops filtering.
+   */
+  it('list_servers returns live rows by default and history only when asked (#416)', async () => {
+    const LIVE = [{ serverId: 'srv-live', status: 'running' }]
+    const ALL = [...LIVE, { serverId: 'srv-gone', status: 'terminated' }]
+    const { client: c } = recording({
+      '/api/v1/servers': LIVE,
+      '/api/v1/servers?includeTerminated=true': ALL,
+    })
+
+    const live = (await runTool('list_servers', {}, ctx(['read'], c))) as { servers: unknown[] }
+    expect(live.servers).toHaveLength(1)
+    expect(live.servers.map((s) => (s as { status: string }).status)).toEqual(['running'])
+
+    const history = (await runTool('list_servers', { include_terminated: true }, ctx(['read'], c))) as {
+      servers: unknown[]
+    }
+    expect(history.servers).toHaveLength(2)
+  })
+
   it('get_server and get_ssh_command read the server the agent named', async () => {
     // Not a formality: the stub used to answer every path with the same record, so a tool that
     // fetched `srv-one` while the agent asked about `srv-two` looked correct — the asserted ssh

@@ -205,11 +205,18 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     name: 'list_servers',
     title: 'List servers',
     description:
-      'List the servers you own, with status, address and hourly cost. Includes month-to-date ' +
-      'spend and the configured cap.',
+      'List the servers you own, with status, address and hourly cost. Terminated servers are ' +
+      'left out unless include_terminated is passed. Includes month-to-date spend and the ' +
+      'configured cap.',
     scope: 'read',
     inputSchema: z.strictObject({
-      include_terminated: z.boolean().default(false).describe('Include servers already terminated.'),
+      include_terminated: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Include servers already terminated — history, not fleet. They cost nothing and ' +
+            'cannot be acted on; the default leaves them out.',
+        ),
     }),
     run: async (args, { client }) => {
       const query = args['include_terminated'] ? '?includeTerminated=true' : ''

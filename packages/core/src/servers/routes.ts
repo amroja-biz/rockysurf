@@ -622,12 +622,27 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
 
   routes.get('/api/v1/servers', async (c) => {
     try {
+      /**
+       * `?includeTerminated=true`, WHICH THIS ROUTE ACCEPTED AND IGNORED (#416).
+       *
+       * The SPA's API client has sent it since it was written and the MCP server's
+       * `list_servers` maps its `include_terminated` flag onto it — but nothing here ever read
+       * the query, so every caller got every row and only the SPA, which filters again in the
+       * browser, looked right. An agent asking for its live fleet got 82 rows of graveyard.
+       *
+       * Anything other than the literal `true` means live rows only, including the absent
+       * default: a query string is caller-supplied text, and "not exactly true" is the safe
+       * reading of a flag whose wrong answer is a wall of dead machines.
+       */
+      const includeTerminated = c.req.query('includeTerminated') === 'true'
       // `syncError` is additive and absent when the provider view is fresh, so every client
       // that reads this as a plain array keeps working; the SPA surfaces it per provider
       // (rockysurf-gg9x).
       return success(
         c,
-        (await lifecycle.list(c.get('user').id)).map(({ row, syncError }) => present(row, deps, syncError)),
+        (await lifecycle.list(c.get('user').id, { includeTerminated })).map(({ row, syncError }) =>
+          present(row, deps, syncError),
+        ),
       )
     } catch (err) {
       return fail(c, err)
