@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-08-27. Issue #188. Amended by [ADR-0015](0015-a-quiet-step-announces-itself.md) (clause 3: the wait notice became the retry notice, with the bound and the choice). Complements [ADR-0010](0010-failed-tool-install-terminates-the-box.md),
+Accepted — 2026-08-27. Issue #188. Amended by [ADR-0015](0015-a-quiet-step-announces-itself.md) (clause 3: the wait notice became the retry notice, with the bound and the choice), and in place below (2026-09-05, issue #404: a held dpkg lock is the third transient the standard covers). Complements [ADR-0010](0010-failed-tool-install-terminates-the-box.md),
 whose terminate rule is unchanged: a tool step that fails after its retries still releases the box.
 
 ## Context
@@ -140,10 +140,66 @@ The owner's ruling, 2026-08-27:
   is additive — when it finds nothing the summary falls back to the previous outage sentence —
   and the classifier already matches on several independent signatures.
 
+## Amendment — the image's own first-boot apt holds the dpkg lock (2026-09-05, issue #404)
+
+The two failure modes above are the mirror's. The DigitalOcean UAT found a third that is the
+box's own: the first tool step ran while the image's first-boot apt — `unattended-upgrades`, the
+`apt-daily` timers, on DigitalOcean the `droplet-agent` install — still held
+`/var/lib/dpkg/lock-frontend`, and apt's default on a held lock is not to wait but to exit 100:
+`E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1527 (apt-get)`. The
+step had no fetch signature, so it got no retry; the box was released (ADR-0010); and the
+report's generic `apt` sentence told the operator the pack might need fixing. Cloud-agnostic —
+it is Ubuntu doing it — and the nightly legs have missed it by timing, not immunity.
+
+Amended as follows:
+
+1. **Clause 1 covers a held dpkg lock as well as a fetch failure.** A step whose own output
+   carries apt's `E:` verdict for a held lock gets the same second and final attempt, from the
+   same per-step budget. The signature is anchored on `E: ` because apt prints the same words
+   as progress (`Waiting for cache lock: …`) while it waits under the timeout below.
+
+2. **Clause 3, the lock case: no mirror swap, a wait for the lock instead.** Nothing about the
+   mirror was wrong. Between the attempts the agent waits for the lock the way it does before
+   the first step (below), bounded by `ROCKYSURF_APT_LOCK_WAIT_S` (default 300), under a retry
+   notice of the fetch notice's shape: who held the lock (from apt's own line), the wait, the
+   derived bound, and the choice to terminate now and go elsewhere.
+
+3. **Every apt-get on the box waits for the lock rather than failing on it.** Before its first
+   `apt-get` of any kind, the agent writes `/etc/apt/apt.conf.d/90rockysurf-dpkg-lock` with
+   `DPkg::Lock::Timeout` set to the same number, so every step's own `apt-get` — text the agent
+   does not rewrite — waits; the agent's own calls (the `jq` bootstrap, the list refresh between
+   attempts) go through one `apt_get` wrapper that passes it explicitly, so they wait even where
+   the drop-in could not be written. This is the `apt.conf.d` drop-in the Considered options
+   rejected for `Acquire::Retries` — rejected there because a transfer retry inside one
+   invocation cannot refresh a stale index. A lock is different: the only remedy is time inside
+   the invocation, which is exactly what `DPkg::Lock::Timeout` spends.
+
+4. **The agent waits once before the first step, and says why.** Once per run, before the
+   first step that executes: `cloud-init status --wait` (push mode, as root — in callback mode
+   the agent is cloud-init's own `runcmd` and would wait for itself), then apt's lock files
+   polled with `fuser` until free, bounded by the same number. The holder is named in the agent
+   log and on the journal's notice under that step ("build-essential is waiting for the image's
+   own package updates to finish — apt's lock is held by process 1527 (apt-get) … Nothing is
+   stuck."), and the notice is taken back when the wait ends (#129's rule). A lock still held at
+   the bound is logged and the step proceeds into layer 3.
+
+5. **Clause 4, the report: cause `apt-lock`.** `failure-report.ts` classifies apt's lock
+   verdict as its own cause, ahead of the generic `apt` one. The summary names the holder, says
+   the agent waited and retried, says this is timing on the box — the image's first-boot
+   updates — and not the pack or the settings, and says to create the server again. It never
+   says the pack needs fixing.
+
+Verified against the real shell in `apt-retry.test.ts` (the pre-step wait with a fake `fuser`,
+its notice mid-wait and its withdrawal, the bound, the lock-then-free retry, the never-released
+failure at two attempts, the progress line that must not match, and the wrapper's flag on the
+agent's own calls) and in `failure-report.test.ts` against the droplet's verbatim log. The
+containers cannot see this — a container has no first boot — so `agent-smoke.sh` and the pack
+smoke are unchanged.
+
 ## References
 
-- Issue #188 (this decision), #129 and #117 (the two failure modes), #119 / ADR-0010 (what a
-  failed tool install does to the box).
+- Issue #188 (this decision), #129 and #117 (the two failure modes), #404 (the held lock,
+  amendment above), #119 / ADR-0010 (what a failed tool install does to the box).
 - `packages/core/bootstrap/agent.sh` — `apt_fetch_failed`, `apt_recover`, `run_plan`.
 - `packages/core/src/bootstrap/failure-report.ts` — `aptFetchFailures`, `summarize`.
 - `packages/core/src/bootstrap/apt-retry.test.ts` — the standard, against the real shell.

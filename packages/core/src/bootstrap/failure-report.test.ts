@@ -49,6 +49,17 @@ const APT_404_LOG = [
   'E: Unable to fetch some archives, maybe run apt-get update or try with --fix-missing?',
 ].join('\n')
 
+/**
+ * Verbatim from the owner's droplet during the DigitalOcean UAT, 2026-09-05 (issue #404). The
+ * box's own first-boot apt — on DigitalOcean the `droplet-agent` install, on every Ubuntu
+ * image unattended-upgrades — still held the dpkg lock when the first tool step ran. Nothing
+ * about the pack or the mirror was wrong.
+ */
+const APT_LOCK_LOG = [
+  'E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1527 (apt-get)',
+  'E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), is another process using it?',
+].join('\n')
+
 describe('what a step is', () => {
   it('reads the phase off the id prefix', () => {
     expect(stepPhase('tool:build-essential')).toBe('tool')
@@ -96,6 +107,15 @@ describe('classifying the cause', () => {
 
   it('recognises GitHub’s unauthenticated rate limit', () => {
     expect(classifyFailure('curl: (22) The requested URL returned error: 403\nhttps://api.github.com/repos/x/y/releases/latest\nAPI rate limit exceeded for 203.0.113.1')).toBe('github-rate-limit')
+  })
+
+  it('recognises a dpkg lock held by the image’s own first-boot apt as its own cause, not a broken pack (#404)', () => {
+    expect(classifyFailure(APT_LOCK_LOG)).toBe('apt-lock')
+    // The same words as progress, printed while apt waits under DPkg::Lock::Timeout and then
+    // carries on, are not a verdict: the step that failed afterwards failed for its own reason.
+    expect(
+      classifyFailure('Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1527 (apt-get)... 5s\nE: Unable to locate package no-such-thing'),
+    ).toBe('apt')
   })
 
   it('puts disk-full ahead of whatever the step was doing at the time', () => {
@@ -191,6 +211,25 @@ describe('the explanation', () => {
     // The regional case is the one where the retry had somewhere else to go.
     expect(report.summary).toContain('retried the step once on the global mirror')
     expect(report.logComplete).toBe(true)
+  })
+
+  it('calls a held dpkg lock timing on the box, names the holder, and never says the pack needs fixing (#404)', () => {
+    const report = explainStep({
+      stepId: 'tool:build-essential',
+      captured: { log: APT_LOCK_LOG, complete: true },
+      agentLog: AGENT_LOG,
+      labels: { toolName: () => 'Build Essential' },
+    })
+    expect(report.cause).toBe('apt-lock')
+    expect(report.summary).toContain('Build Essential could not be installed')
+    expect(report.summary).toContain('another package manager (apt-get)')
+    expect(report.summary).toContain("the image's own first-boot updates")
+    expect(report.summary).toContain('waited for the lock and retried the step once')
+    expect(report.summary).toContain('not a problem with your pack or your settings')
+    expect(report.summary).toContain('Create the server again')
+    // The generic apt sentence pointed the operator at the wrong cause.
+    expect(report.summary).not.toContain('pack needs fixing')
+    expect(report.keyLines[0]).toBe('E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1527 (apt-get)')
   })
 
   it('names the URL that would not serve, and tells the user to test it and create again (#188)', () => {

@@ -25,6 +25,7 @@ import { NO_MATCHING_TOKEN_PREFIX } from './resolver.js'
 /** What went wrong, in the vocabulary the summary is written from. */
 export const FAILURE_CAUSES = [
   'apt-mirror',
+  'apt-lock',
   'apt',
   'git-auth',
   'git-not-found',
@@ -131,6 +132,10 @@ const CAUSE_SIGNATURES: ReadonlyArray<[FailureCause, RegExp]> = [
   ['git-auth', new RegExp(`${NO_MATCHING_TOKEN_PREFIX}|could not read Username|Authentication failed|Permission denied \\(publickey\\)|Invalid username or (password|token)`, 'i')],
   ['git-not-found', /Repository not found|repository .* (does )?not (exist|found)|remote: Not Found|fatal: remote error: .*not found/i],
   ['network', /Could not resolve host|Temporary failure in name resolution|Network is unreachable|Connection timed out|Could not connect to|Connection refused|Failed to connect to|name or service not known/i],
+  // apt's verdict lines for a held dpkg lock (#404), anchored on `E: ` because apt prints the
+  // same words as PROGRESS (`Waiting for cache lock: Could not get lock …`) while it waits
+  // under DPkg::Lock::Timeout and then carries on — that line is not a failure.
+  ['apt-lock', /^E: (Could not get lock|Unable to acquire the dpkg frontend lock|Unable to lock (directory|the administration directory))/m],
   ['apt-mirror', /503\s+Service Unavailable|Mirror sync in progress|File has unexpected size|Hash Sum mismatch|engaging the mirror fallback|Unable to fetch some archives|Some index files failed to download|Failed to fetch http/i],
   ['apt', /^E: |apt-get|dpkg|Unable to locate package|Unmet dependencies/im],
 ]
@@ -297,6 +302,20 @@ export function summarize(input: {
         `${retried} ${diagnosis} ` +
         `Check it yourself — \`curl -I ${first.url}\` answering 200 means the mirror has caught up. ` +
         'You can wait and create the server again then, or launch it on another provider now.'
+      )
+    }
+    case 'apt-lock': {
+      // The image's own first-boot apt — unattended-upgrades, the apt-daily timers, the
+      // cloud's agent install — still held the dpkg lock when the step ran (#404). The agent
+      // waits for it and retries once; a step that fails on it anyway met a lock held longer
+      // than the agent's whole budget. Timing on the box, not the pack: the "pack needs
+      // fixing" line of the generic apt case is the wrong advice here.
+      const holder = /held by process \d+ \(([^)]+)\)/.exec(keyLines.join('\n'))?.[1]
+      const who = holder ? `another package manager (${holder})` : 'another package manager'
+      return (
+        `${thing}: apt could not start because ${who} was still holding the package lock — on a fresh box that is the image's own first-boot updates (unattended-upgrades, the cloud's agent install) still running. ` +
+        'Rocky Surf waited for the lock and retried the step once, and it was still held. ' +
+        'This is timing on the box, not a problem with your pack or your settings. Create the server again; the next launch almost always clears it.'
       )
     }
     case 'apt':
