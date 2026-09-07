@@ -471,19 +471,22 @@ export function HelpPage() {
                 stores no cloud credentials.
               </p>
               <p>
-                The token also needs permission to create and manage servers. A Hetzner Cloud API
-                token has two settings, Read and Read &amp; Write, and no per-resource scope of any
-                kind, so the project the token belongs to is the only boundary there is. Give Rocky
-                Surf a project of its own: everything the token can reach is then a Rocky Surf
-                server, which is as close to least privilege as the Cloud API gets.
+                Rocky Surf works with any Hetzner Cloud API token that has{' '}
+                <strong>Read &amp; Write</strong> on a project. A token on the project you already
+                use works with no further setup, and is the fastest way to try it. For reduced
+                blast radius, give Rocky Surf a project of its own: a Cloud API token has two
+                settings, Read and Read &amp; Write, and no per-resource scope of any kind, so the
+                project is the only boundary there is, and a project holding nothing but Rocky
+                Surf&rsquo;s servers is as close to least privilege as the Cloud API gets.
               </p>
               <p>
                 <strong>Before you start, in Hetzner:</strong>
               </p>
               <ol className="help-steps">
                 <li>
-                  Create a project at console.hetzner.com. The project is the boundary — the token
-                  you make next can reach everything inside it and nothing outside it.
+                  Choose the project at console.hetzner.com that Rocky Surf will use, or create a
+                  new one for it. The project is the boundary — the token you make next can reach
+                  everything inside it and nothing outside it.
                 </li>
                 <li>
                   In that project, open <strong>Security</strong> and create an API token with{' '}
@@ -549,15 +552,13 @@ export function HelpPage() {
                 shell, Rocky Surf has credentials.
               </p>
               <p>
-                Those credentials also need permission to create and manage EC2 instances. Rocky
-                Surf publishes the exact set of permissions it needs and nothing more, and the
-                repository ships a CloudFormation template that creates one IAM role carrying that
-                policy and nothing else. Rocky Surf assumes the role, so it can only ever touch
-                instances in one region that carry its own tag, no matter how broad your personal
-                credentials are.
+                Rocky Surf works with any AWS credentials that can manage EC2. An administrator SSO
+                profile works with no further setup, and is the fastest way to try it. For reduced
+                blast radius, create the dedicated role below. This will be assumed by Rocky Surf
+                to limit its privileges to your AWS account.
               </p>
               <p>
-                <strong>Before you start, create the role:</strong>
+                <strong>Recommended: a dedicated role</strong>
               </p>
               <ol className="help-steps">
                 <li>
@@ -605,8 +606,8 @@ export function HelpPage() {
                   Turn <strong>Enabled</strong> on.
                 </li>
                 <li>
-                  Set <strong>Region</strong> if it is not <code>us-east-1</code>. It must match the
-                  region you deployed the role for.
+                  Set <strong>Region</strong> if it is not <code>us-east-1</code>. If you created
+                  the role, this must be the region you deployed it for.
                 </li>
                 <li>
                   Set <strong>SSH allowed from</strong> to your public address as a{' '}
@@ -615,7 +616,9 @@ export function HelpPage() {
                   address.
                 </li>
                 <li>
-                  Set <strong>Profile</strong> to <code>rockysurf</code>.
+                  Set <strong>Profile</strong> to the profile Rocky Surf should use. If you created
+                  the role, that is <code>rockysurf</code>; otherwise the profile you sign in with,
+                  or leave it empty to use the default credential chain.
                 </li>
                 <li>
                   Save. Rocky Surf checks the values and starts using them at once, and reports a
@@ -657,13 +660,11 @@ export function HelpPage() {
                 fourth source off with <code>allowAzureCli: false</code> in the configuration file.
               </p>
               <p>
-                The identity behind those credentials needs permission to create and manage virtual
-                machines. The repository ships a Bicep template that creates two custom roles and
-                grants both to one identity: an operational role scoped to a single resource group,
-                which is the only place Rocky Surf creates anything, and a read-only role at
-                subscription scope that reads Azure&rsquo;s own catalogue — the VM sizes your
-                subscription may order, the core quota approved for them, and the list of regions.
-                Nothing else in the subscription is visible to it.
+                Rocky Surf works with any Azure identity that can manage virtual machines in the
+                resource group it uses. Signing in with <code>az login</code> as a subscription
+                Owner or Contributor works with no further setup, and is the fastest way to try it.
+                For reduced blast radius, create the dedicated identity and roles below. The
+                resource group itself is not optional: Rocky Surf never creates one.
               </p>
               <p>
                 <strong>Before you start, in Azure:</strong>
@@ -689,6 +690,20 @@ export function HelpPage() {
                   resource-group write across the whole subscription, which is permission to delete
                   any group in it.
                 </li>
+              </ol>
+              <p>
+                <strong>Recommended: a dedicated identity and roles</strong>
+              </p>
+              <p>
+                The repository ships a Bicep template that creates two custom roles and grants both
+                to one identity: an operational role scoped to that single resource group, which is
+                the only place Rocky Surf creates anything, and a read-only role at subscription
+                scope that reads Azure&rsquo;s own catalogue — the VM sizes your subscription may
+                order, the core quota approved for them, and the list of regions. Nothing else in
+                the subscription is visible to it. Granting a role needs Owner or User Access
+                Administrator on the subscription, as any grant does.
+              </p>
+              <ol className="help-steps">
                 <li>
                   Create the identity Rocky Surf runs as. The command prints an <code>appId</code>,
                   a <code>password</code> and a <code>tenant</code> — keep all three, because the
@@ -723,7 +738,7 @@ export function HelpPage() {
                 <li>
                   Export the identity&rsquo;s credentials in the shell Rocky Surf starts from, then
                   start Rocky Surf. The values are the <code>tenant</code>, <code>appId</code> and{' '}
-                  <code>password</code> the third step printed.
+                  <code>password</code> the first step printed.
                   <pre>
                     <code>
                       export AZURE_TENANT_ID=TENANT_ID \{'\n'}
@@ -741,12 +756,13 @@ export function HelpPage() {
                   Turn <strong>Enabled</strong> on.
                 </li>
                 <li>
-                  Set <strong>Subscription id</strong> to the subscription you deployed the roles
-                  into. <code>az account show --query id -o tsv</code> prints it.
+                  Set <strong>Subscription id</strong> to the subscription holding that resource
+                  group. <code>az account show --query id -o tsv</code> prints it.
                 </li>
                 <li>
-                  Set <strong>Resource group</strong> to <code>rocky-surf-rg</code>. It must be the
-                  group the operational role was granted on, because that role reaches nothing else.
+                  Set <strong>Resource group</strong> to <code>rocky-surf-rg</code>. If you created
+                  the roles, it must be the group the operational role was granted on, because that
+                  role reaches nothing else.
                 </li>
                 <li>
                   Set <strong>Location</strong> if you want a region other than <code>eastus</code>.
@@ -805,13 +821,12 @@ export function HelpPage() {
                 resort rather than the default.
               </p>
               <p>
-                Those credentials also need permission to create and manage Compute Engine
-                instances. <code>./deploy/gcp/setup.sh</code> creates all of it in one run: a custom
-                IAM role carrying exactly the permissions Rocky Surf calls, a service account to
-                hold it, and the binding between the two. It grants no predefined role, no owner and
-                no editor, so the service account reaches one project and nothing else in your
-                organization. The script is idempotent, <code>--dry-run</code> prints every command
-                it would run and changes nothing, and <code>gcloud</code> is its only prerequisite.
+                Rocky Surf works with any Google credentials that can manage Compute Engine in the
+                project. Signing in with{' '}
+                <code>gcloud auth application-default login</code> as a project owner works with no
+                further setup, and is the fastest way to try it. For reduced blast radius, create
+                the dedicated service account below. The project and the Compute Engine API are not
+                optional: Rocky Surf creates neither.
               </p>
               <p>
                 <strong>Before you start, in Google Cloud:</strong>
@@ -821,6 +836,37 @@ export function HelpPage() {
                   Create a project, or choose one, and note its project id — the id{' '}
                   <code>my-project-123456</code>, not the display name.
                 </li>
+                <li>
+                  Enable the Compute Engine API on it. The setup script below does this too, so skip
+                  this step if you are going to run it.
+                  <pre>
+                    <code>
+                      gcloud services enable compute.googleapis.com --project=my-project-123456
+                    </code>
+                  </pre>
+                </li>
+                <li>
+                  Write Application Default Credentials for the account Rocky Surf should use.
+                  <pre>
+                    <code>gcloud auth application-default login</code>
+                  </pre>
+                  Running Rocky Surf on Google Cloud instead? Attach a service account to the VM,
+                  the Cloud Run service or the GKE workload and skip this step — then no key exists
+                  anywhere to leak.
+                </li>
+              </ol>
+              <p>
+                <strong>Recommended: a dedicated service account</strong>
+              </p>
+              <p>
+                <code>./deploy/gcp/setup.sh</code> creates all of it in one run: a custom IAM role
+                carrying exactly the permissions Rocky Surf calls, a service account to hold it, and
+                the binding between the two. It grants no predefined role, no owner and no editor,
+                so the service account reaches one project and nothing else in your organization.
+                The script is idempotent, <code>--dry-run</code> prints every command it would run
+                and changes nothing, and <code>gcloud</code> is its only prerequisite.
+              </p>
+              <ol className="help-steps">
                 <li>
                   Run the setup script from a checkout of the repository. It enables the Compute
                   Engine API, creates the custom role <code>rockySurfDevBoxManager</code>, creates
@@ -847,9 +893,6 @@ export function HelpPage() {
                       {'  '}--impersonate-service-account=rockysurf@my-project-123456.iam.gserviceaccount.com
                     </code>
                   </pre>
-                  Running Rocky Surf on Google Cloud instead? Attach the service account to the VM,
-                  the Cloud Run service or the GKE workload and skip this step — then no key exists
-                  anywhere to leak.
                 </li>
               </ol>
               <p>
