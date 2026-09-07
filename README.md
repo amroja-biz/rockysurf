@@ -72,21 +72,22 @@ Mint a token — it is printed once:
 npx -y rockysurf token
 ```
 
-Point your client at it. You have two scopes to choose from.
+Point your client at it. Any MCP client wants the same `command`, `args`, and `env` — Claude Code
+and Codex CLI are given here as the two representative examples; the shapes below carry over to
+another client. Each has a user (or global) scope, the recommended default for a tool that
+manages servers regardless of which repo you're in, and a project scope for a team that wants the
+server checked into the repo.
 
-**User scope** registers the server once for your account, so it's available in every project you
-open — the recommended default for a tool that manages servers regardless of which repo you're
-in. For Claude Code:
+**Claude Code**, user scope:
 
 ```bash
 claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \
   --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
 ```
 
-**Project scope** checks the server into the repo instead, for a team that wants it shared. Use
-this JSON object in `.mcp.json` at your project root; the same object also works in Claude Code's
-user-scope file (`~/.claude.json`) and in Claude Desktop's configuration file, which is global by
-nature:
+Project scope uses this JSON object in `.mcp.json` at your project root; the same object also
+works in Claude Code's user-scope file (`~/.claude.json`) and in Claude Desktop's configuration
+file, which is global by nature:
 
 ```json
 {
@@ -101,6 +102,25 @@ nature:
     }
   }
 }
+```
+
+**Codex CLI**, user scope (Codex calls it the global config — `codex mcp add` writes to
+`~/.codex/config.toml`):
+
+```bash
+codex mcp add rockysurf --env ROCKYSURF_TOKEN=the-token-you-just-minted \
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
+```
+
+Project scope is a `.codex/config.toml` at your repository root, loaded only for a project you
+have marked trusted. Codex CLI reads a project-scoped file, but as of Codex CLI 0.153 `codex mcp
+add` has no flag to write one there — add this table by hand:
+
+```toml
+[mcp_servers.rockysurf]
+command = "npx"
+args = ["-y", "rockysurf", "mcp"]
+env = { ROCKYSURF_TOKEN = "the-token-you-just-minted", ROCKYSURF_URL = "http://127.0.0.1:3000" }
 ```
 
 The token grants nothing by itself. What an agent may do is `mcp.scopes` in the config file,
@@ -170,10 +190,10 @@ during bootstrap, so the guide is where a pack tells you how to sign the agents 
 Scripts must be idempotent, architecture-aware and non-interactive; CI runs every shipped pack
 twice, on amd64 and arm64. The guide is
 [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) and the normative contract is
-[`docs/surge-pack-contract.md`](docs/surge-pack-contract.md), or let the repo's Claude Code
-skill write yours — clone the repository to use it; the skills live only there, not in the
-published npm package. See [`.agents/skills/README.md`](.agents/skills/README.md) for the full
-procedure.
+[`docs/surge-pack-contract.md`](docs/surge-pack-contract.md), or let the repo's `create-surge-pack`
+Agent Skill write yours — any Agent Skills–compatible agent, Claude Code and Codex CLI included.
+Clone the repository to use it; the skills live only there, not in the published npm package. See
+[`.agents/skills/README.md`](.agents/skills/README.md) for the full procedure.
 
 ### Connect a GitHub repo
 

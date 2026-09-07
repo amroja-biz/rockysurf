@@ -93,6 +93,19 @@ describe('HelpPage', () => {
     expect(text).toContain('Writing your own Provider does not need Docker')
   })
 
+  it('gives MCP setup for Codex CLI beside Claude Code, not Claude Code alone', () => {
+    // Owner ruling: Rocky Surf must not read as overfit to one coding agent. Claude Code and
+    // Codex CLI are the two representative examples, each with user/global scope and project
+    // scope, so a reader of either agent finds a ready command.
+    const { container } = renderHelp()
+    const text = container.textContent ?? ''
+    expect(text).toContain('codex mcp add rockysurf')
+    expect(text).toContain('~/.codex/config.toml')
+    expect(text).toContain('.codex/config.toml')
+    expect(text).toContain('claude mcp add --scope user')
+    expect(text).not.toContain('In Claude Code, restart the session')
+  })
+
   /**
    * GIT AUTH (rockysurf-7fyf.3). What is pinned is the setup an operator would otherwise get
    * wrong, and the two facts about the shipped code that a reader plans around: the Client ID
