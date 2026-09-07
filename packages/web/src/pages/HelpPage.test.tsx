@@ -341,7 +341,6 @@ describe('HelpPage', () => {
         expect(text, `${cloud} has no Settings steps`).toContain(`Then, in Settings → ${cloud}:`)
       }
       expect(text).toContain('Before you start, in Hetzner:')
-      expect(text).toContain('Before you start, create the role:')
       expect(text).toContain('Before you start, in Azure:')
       expect(text).toContain('Before you start, in Google Cloud:')
       // The old "Config:" summary lines, which named keys with no context, are gone from every
@@ -350,6 +349,29 @@ describe('HelpPage', () => {
         const block = providersSection().querySelector(`section[id="${id}"]`)!
         expect(block.textContent, `#${id} still has a Config: line`).not.toContain('Config:')
       }
+    })
+
+    /**
+     * THE SCOPED GRANT IS RECOMMENDED, NOT A PREREQUISITE (owner correction, 2026-09-07). Rocky
+     * Surf uses each cloud's ordinary credential chain, and the owner runs AWS today on an
+     * administrator SSO profile with no role at all — so a section that opened with "Before you
+     * start, create the role" told a new reader to do work the product does not require. What
+     * belongs under "Before you start" is only what the code genuinely needs to already exist:
+     * Azure's resource group (the provider never creates one), Google Cloud's project and
+     * Compute Engine API, Hetzner's project and token.
+     */
+    it('presents the least-privilege grant as recommended, not as a prerequisite', () => {
+      const text = providers()
+      expect(text).toContain('Recommended: a dedicated role')
+      expect(text).toContain('Recommended: a dedicated identity and roles')
+      expect(text).toContain('Recommended: a dedicated service account')
+      // The minimum working credential is stated first, per cloud.
+      expect(text).toContain('An administrator SSO profile works with no further setup')
+      expect(text).toContain('as a subscription Owner or Contributor works with no further setup')
+      expect(text).toContain('as a project owner works with no further setup')
+      expect(text).toContain('A token on the project you already use works with no further setup')
+      // And the AWS Profile step no longer assumes the reader created the role.
+      expect(text).toContain('otherwise the profile you sign in with')
     })
 
     it('states where credentials come from, and that they are not in the config file', () => {
