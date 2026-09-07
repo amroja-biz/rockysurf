@@ -492,6 +492,7 @@ describe('HelpPage', () => {
       const panel = container.querySelector('section[id="docs"]')!
       const headings = [...panel.querySelectorAll('h3')].map((h) => h.textContent)
       expect(headings).toEqual([
+        'Your coding agent',
         'Operators',
         'Surge Pack authors',
         'Contributors',

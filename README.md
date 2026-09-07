@@ -12,6 +12,18 @@ hands you an SSH command.
 
 ## Quick Start
 
+**Quick Start for Agents.** Have a coding agent do all of this for you — Claude Code, Codex CLI,
+or any other:
+
+1. Point your agent at
+   <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/docs/agent-quickstart.md>.
+2. Tell it to install and configure Rocky Surf for you.
+3. Answer its questions: which cloud, which region, which network may reach SSH, what limits you
+   want, and what an agent connected over MCP may do.
+
+Your agent never touches your cloud account — it prints the commands that do, and you run them.
+The rest of this Quick Start is the same install by hand.
+
 ### 1. Install
 
 Requires Node 24 or newer.
@@ -285,6 +297,7 @@ Every document below opens with the audience it was written for.
 
 | Document | Audience | What it covers |
 |---|---|---|
+| [`docs/agent-quickstart.md`](docs/agent-quickstart.md) | Your coding agent | Installing and configuring Rocky Surf on your behalf, end to end |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Operators | Install paths, data, upgrades, backup and restore |
 | [`SECURITY.md`](SECURITY.md) | Operators | Credential custody, SSH trust, the MCP threat model |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each provider can do, and the evidence for it |
