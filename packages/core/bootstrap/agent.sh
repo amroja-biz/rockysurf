@@ -15,7 +15,7 @@
 #   * RE-RUNNABLE BY CONSTRUCTION. On start the agent reads state.json and skips steps already
 #     marked `done` — and ONLY `done`. A step left `running` by a SIGKILL, a reboot or a lost
 #     connection re-runs from the top, because the journal entry is written when a step
-#     FINISHES. That is why every step script must be idempotent (docs/writing-a-pack.md).
+#     FINISHES. That is why every step script must be idempotent (docs/writing-a-surge-pack.md).
 #   * THE JOURNAL IS WRITTEN ATOMICALLY. Core reads it from another SSH channel while this
 #     process writes it; a torn read is otherwise indistinguishable from corruption.
 #   * THE RUN ID IS STAMPED BEFORE ANY STEP RUNS. Without it a re-push reads the PREVIOUS
@@ -79,7 +79,7 @@ export ARCH
 # --------------------------------------------------------------------------------------
 # the agent's own identity in the environment
 # --------------------------------------------------------------------------------------
-# docs/writing-a-pack.md promises every step `$HOME` — `/root` for a root step — and root steps
+# docs/surge-pack-contract.md promises every step `$HOME` — `/root` for a root step — and root steps
 # get it by INHERITING this process's environment. Under the transient systemd unit core
 # launches (docs/bootstrap-contract.md § The systemd unit contract) that environment has no
 # HOME, USER or LOGNAME at all: systemd sets those only for units with `User=`, and this one
@@ -192,7 +192,7 @@ report_progress() {
 # --------------------------------------------------------------------------------------
 # EVERY TOOL STEP GETS TWO ATTEMPTS AT AN APT FETCH FAILURE, AND NO MORE (issue #188). That is
 # the agent's promise to every pack, so no pack script has to write its own retry loop and none
-# of them may (docs/writing-a-pack.md § Bounded retries). Between the two attempts the agent
+# of them may (docs/surge-pack-contract.md § Bounded retries). Between the two attempts the agent
 # does what an operator would do by hand — swap a sick mirror if there is one to swap, wait for
 # an out-of-sync archive if there is not, refresh the lists, try again. A step that fails a
 # second time has failed for real: the plan stops, the box is released (ADR-0010) and the
@@ -218,7 +218,7 @@ report_progress() {
 # Rewriting the sources is safe under the idempotency contract: every step is written to
 # converge, and `apt-get install` against a different mirror of the same archive converges on
 # the same packages. A pack that hard-codes a regional mirror hostname in its own script is
-# already broken on every other cloud (docs/writing-a-pack.md).
+# already broken on every other cloud (docs/writing-a-surge-pack.md).
 #
 # THE SECOND FAILURE MODE HAS NOTHING TO SWAP. A box already on the global mirror (the stock
 # `ubuntu:24.04` image the pack smoke runs in, or a box after the swap above) fails a fetch for

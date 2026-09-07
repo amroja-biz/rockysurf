@@ -12,7 +12,7 @@ whether it is coherent; a run tells you whether it is true.
 
 **Preconditions.** A fresh agent session, outside any Rocky Surf checkout, given exactly two
 things: a copy of `.agents/skills/contribute-surge-pack/` and the path to a pack file. Use
-[`assets/sample-pack.yaml`](../assets/sample-pack.yaml) as that pack, copied somewhere outside
+[`assets/sample-surge-pack.yaml`](../assets/sample-surge-pack.yaml) as that pack, copied somewhere outside
 the checkout under its own name. The agent gets no other file from this repository, and it must
 not read one: the whole point is to find out what the skill fails to say. The machine needs the
 six prerequisites, and the `gh` account must be one that may fork a public repository.
@@ -64,7 +64,7 @@ stops the next edit from removing something load-bearing.
 ## What the last rehearsal covered, and what it did not
 
 **2026-09-06, on the machine that wrote this skill.** A local clone of
-`amroja-biz/rockysurf-shop` at `main`, `assets/sample-pack.yaml` placed as
+`amroja-biz/rockysurf-shop` at `main`, `assets/sample-surge-pack.yaml` placed as
 `packs/ripgrep-demo.yaml`, and the harness built from this repository's own worktree
 (`packages/rockysurf/dist/bin.js`), which is what the shop's `pack-harness` action builds.
 

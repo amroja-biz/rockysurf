@@ -141,7 +141,7 @@ between.** That deletion is the test. The on-box agent is contracted to skip any
 marked done, so re-invoking it without clearing `/var/lib/rockysurf/state.json` produces a green
 run in which not one install script executed a second time. If you are adding a pack, run the
 harness before opening the PR — it is the same code CI runs, and it takes a couple of minutes
-per architecture. See [`docs/writing-a-pack.md`](docs/writing-a-pack.md).
+per architecture. See [`docs/surge-pack-contract.md` § The CI smoke test](docs/surge-pack-contract.md#the-ci-smoke-test).
 
 **Every leg of the pack-smoke matrix is green, so a red one is about your branch.** It did not
 start that way, and the history is the reason to trust the gate: the first time the harness ran
@@ -193,7 +193,7 @@ regression there would be invisible until somebody timed a fresh install.
 
 ## Tests
 
-[`docs/TESTING.md`](docs/TESTING.md) is the map: every testing layer in the project, what each one
+[`docs/contributing/TESTING.md`](docs/contributing/TESTING.md) is the map: every testing layer in the project, what each one
 can see, where it runs, and what the nightly real-cloud workflow does. This section is the part a
 contributor has to act on.
 
@@ -237,11 +237,12 @@ ADR in the same pull request.
 
 ## Adding a pack
 
-Read [`docs/writing-a-pack.md`](docs/writing-a-pack.md), which is normative. A pack is one YAML
+Read [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md), the author guide;
+[`docs/surge-pack-contract.md`](docs/surge-pack-contract.md) is the normative half. A pack is one YAML
 file in `packs/`, named for its pack id. The four rules — idempotent, `$ARCH`-aware,
-non-interactive, `runAs`-honest — each have a section there with worked examples of the right and
-wrong way, and the mechanical ones are enforced by `packages/core/src/packs/packs.test.ts` on
-every test run.
+non-interactive, `runAs`-honest — each have a section in the contract with worked examples of the
+right and wrong way, and the mechanical ones are enforced by
+`packages/core/src/packs/packs.test.ts` on every test run.
 
 **A pack defines whatever tools it installs** — a tool is an id, a description and a script the
 author wrote, and nothing has to be registered anywhere first. The only cross-file rules are that

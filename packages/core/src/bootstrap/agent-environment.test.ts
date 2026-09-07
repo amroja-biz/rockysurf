@@ -11,7 +11,7 @@ import { renderSecretsEnv } from './push.js'
  * The environment a ROOT step inherits from the agent, exercised the way the real box
  * delivers it (issue #158).
  *
- * `docs/writing-a-pack.md` promises every step `$HOME`. Unprivileged steps get theirs from
+ * `docs/surge-pack-contract.md` promises every step `$HOME`. Unprivileged steps get theirs from
  * `sudo -H`; root steps inherit the agent's own environment — and under the transient systemd
  * unit core launches (`docs/bootstrap-contract.md` § The systemd unit contract) that
  * environment carries no HOME, USER or LOGNAME, because systemd sets those only for units with

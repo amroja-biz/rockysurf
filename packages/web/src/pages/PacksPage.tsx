@@ -369,7 +369,7 @@ const toForm = (pack: AdminSurgePack): PackFormState => ({
  * `tools` it seeds are ids `form.tools` already only ever holds — a checkbox list over the
  * existing catalogue — so submitting a seeded form REFERENCES those tools, never redefines them,
  * which is the whole reason this reads `AdminSurgePack.tools` and not `Export`'s inlined YAML
- * (`docs/writing-a-pack.md` § "Building on an existing pack"; the `create-surge-pack` skill's
+ * (`docs/surge-pack-contract.md` § "Building on an existing pack"; the `create-surge-pack` skill's
  * own warning against using Export as a "fork this pack" button is the trap this form's shape
  * sidesteps for free).
  */
@@ -747,7 +747,7 @@ function PackCard({
  * Picks any installed pack and opens the same structured create form `Start from scratch` does,
  * seeded from the source's own tools and behaviour fields.
  *
- * SEEDED FROM `AdminSurgePack.tools`, THE ID LIST — NOT FROM EXPORT. `docs/writing-a-pack.md` §
+ * SEEDED FROM `AdminSurgePack.tools`, THE ID LIST — NOT FROM EXPORT. `docs/surge-pack-contract.md` §
  * "Building on an existing pack" builds on a pack by copying its `pack.tools` id LIST and
  * referencing those ids, never redefining them. Export is the wrong source for that: it inlines
  * a FULL definition for every tool the pack references (so the exported file is self-contained),

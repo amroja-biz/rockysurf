@@ -189,7 +189,7 @@ function main() {
   for (const s of summary) console.log(`  ${s.name}${s.placeholder ? `  (placeholder ${PLACEHOLDER_VERSION} published and deprecated)` : ''}`)
   console.log(`\nEvery package above now accepts a publish only from ${REPO}/.github/workflows/${WORKFLOW} in the \`${ENVIRONMENT}\` environment.`)
   console.log('Check on the website: https://www.npmjs.com/package/<name>/access — "Trusted Publisher" names this repository and workflow.')
-  console.log('Next release: merge the version bump, tag vX.Y.Z on main, push the tag, approve the deployment in Actions (docs/RELEASING.md).')
+  console.log('Next release: merge the version bump, tag vX.Y.Z on main, push the tag, approve the deployment in Actions (docs/contributing/RELEASING.md).')
 }
 
 try {

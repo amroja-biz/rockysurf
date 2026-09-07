@@ -1,13 +1,21 @@
-# Writing a pack
+# The surge pack contract
 
-A **pack** is a curated bundle of tools that gets installed on a fresh cloud box. It is a
-single YAML file. You can read it, diff it, fork it, and send it as a pull request — which is
-the whole point: packs are data, not code, and adding one should never mean touching the
-application.
+*For surge pack authors and the agents that write surge packs.*
 
-This page is the contract. If your pack follows it, it will work on every provider and every
-architecture we support, and it will survive a bootstrap that gets interrupted halfway through.
-If it doesn't, CI will tell you before a user ever sees it.
+This is the normative half of the surge pack documentation: the file format field by field, the
+four rules stated with worked right-and-wrong pairs, what a script may not assume about the box,
+the retry budget, which version of a tool to install, the environment every step is handed, the
+tool-file format, and the CI smoke test that gates all of it. The schema, the CLI and this page
+all shorten the name to *pack*.
+
+It is a reference, not a tutorial. Read
+[`writing-a-surge-pack.md`](writing-a-surge-pack.md) first — it explains how a pack runs, states
+the four rules in short, walks a complete pack, and carries the checklist you work through before
+opening a pull request. Come here to look a rule up. Where the guide and this page disagree,
+**this page wins**.
+
+The bootstrap agent's side of the same contract — what the on-box agent guarantees, in
+implementer's terms — is [`bootstrap-contract.md`](bootstrap-contract.md).
 
 The file format is **frozen at v0.1**. A pack written today keeps working.
 
@@ -15,7 +23,13 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
 
 ## Contents
 
-- [How a pack runs](#how-a-pack-runs)
+- [The file format](#the-file-format)
+  - [Building on an existing pack](#building-on-an-existing-pack)
+  - [Tool](#tool)
+  - [`installOrder`, and the gaps-of-10 convention](#installorder-and-the-gaps-of-10-convention)
+  - [SurgePack](#surgepack)
+  - [`inputs` — what your pack asks the user for](#inputs--what-your-pack-asks-the-user-for)
+  - [`guide` — what the user has to do themselves](#guide--what-the-user-has-to-do-themselves)
 - [The four rules](#the-four-rules)
   1. [Idempotent](#rule-1-idempotent)
   2. [`$ARCH`-aware](#rule-2-arch-aware)
@@ -23,47 +37,252 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
   4. [`runAs`-honest](#rule-4-runas-honest)
 - [Bounded retries](#bounded-retries)
 - [What you may not assume](#what-you-may-not-assume)
+  - [The environment your script gets](#the-environment-your-script-gets)
 - [Which version to install](#which-version-to-install)
-- [The file format](#the-file-format)
-  - [`inputs` — what your pack asks the user for](#inputs--what-your-pack-asks-the-user-for)
-  - [Building on an existing pack](#building-on-an-existing-pack)
-- [A complete pack](#a-complete-pack)
+- [The environment your scripts get](#the-environment-your-scripts-get)
 - [Sharing a single tool](#sharing-a-single-tool)
 - [The CI smoke test](#the-ci-smoke-test)
-- [Checklist before you open a pull request](#checklist-before-you-open-a-pull-request)
 - [Where these rules come from](#where-these-rules-come-from)
 
 ---
 
-## How a pack runs
+## The file format
 
-Understanding this takes two minutes and explains all four rules.
+One pack per file, in `packs/`, named after the pack id: `packs/rust-dev.yaml`.
 
-When someone creates a server with your pack, the control plane resolves the pack into an
-ordered **install plan** and snapshots it. The box boots with a tiny, inert pre-boot config —
-it creates the unprivileged user `rocky` and authorizes an SSH key, and that is all. Nothing
-from your pack has run yet.
+A file has three top-level keys:
 
-The control plane then connects over SSH, copies a small **bootstrap agent** onto the box, and
-launches it. The agent walks your plan in order. For each step it:
+```yaml
+version: 1        # required; the frozen v0.1 format
+pack:  { … }      # required; exactly one SurgePack
+tools: [ … ]      # required; the Tool records this file introduces
+```
 
-1. reads its journal at `/var/lib/rockysurf/state.json` and **skips any step already marked
-   done**;
-2. runs the step's script as the user the step declared (`root`, or `rocky` via
-   `sudo -u rocky -H env …`);
-3. records the outcome back into the journal.
+`pack.tools` is a list of tool **ids**. It may name tools defined in this file or tools defined
+in any other pack file in the repository — that is how several packs share one `claude-code`
+definition. Defining the same `toolId` in two files is an error and CI will reject it.
 
-That journal is what makes an interrupted install recoverable. If the network drops, the
-control plane restarts, or the agent is killed outright, the next attempt re-reads the journal
-and picks up where it left off instead of starting over.
+### Building on an existing pack
 
-Two consequences fall directly out of this design, and they are the reason rules 1 and 4 exist:
+Because `pack.tools` already resolves ids across files, "extend pack X" needs no format change:
+a new pack file that copies X's `pack.tools` list and appends its own tool ids **is** an
+extension of X. `packs/gas-town.yaml` is this pattern shipping today — it lists the shared base
+toolchain plus `claude-code`, `amp` and `codex` from three other pack files, plus three tools of
+its own.
 
-- **A step can run more than once.** A journal entry is written when a step *finishes*. A step
-  interrupted in the middle is not marked done, so it runs again from the top on the next
-  attempt. Your script must be able to survive that.
-- **A step runs as exactly the user it declared.** The agent decides privilege from your
-  `runAs` field before your script has any say in the matter.
+Two ways to build on a pack, and the question that decides between them is whether the pack
+being built on gets modified:
+
+- **Derive** — a new file, the pack you are building on left untouched. This is the default: it
+  cannot break anyone else's pack, and it is what an "add X on top of the Y pack" request means.
+  Copy the base pack's `pack.tools` list verbatim, reference its ids rather than redefining them,
+  take a new `packId` and `displayOrder`, and use `installOrder` gaps for what you add rather
+  than renumbering the base's tools. The derived pack is smoke-tested exactly like a new one —
+  the base pack's own passing run does not carry over to it. `git status --porcelain packs/`
+  after writing it should show exactly one new file.
+- **Amend** — editing the base file itself, right only when it is yours to change and every
+  existing user of it should get the new tool too. Re-smoke the amended pack; if the file is
+  `packs/ai-coding-agents.yaml`, that is the shared base toolchain for every pack in the
+  repository, so re-smoke everything, not just the one pack touched.
+
+Full workflow, a worked example and the failures that come up: the `create-surge-pack` skill,
+Step 1E and `references/extending.md`.
+
+### Tool
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `toolId` | string | yes | Unique across the whole repository. Lowercase, hyphens, no spaces. This is the identity other packs reference |
+| `name` | string | yes | Human-readable name shown in the UI |
+| `description` | string | yes | One line. Shown next to the name |
+| `category` | `'agent'` \| `'base'` | yes | `agent` for the AI coding agents a pack exists to deliver; `base` for supporting software |
+| `url` | string | yes | The tool's home page, so a user can see what they're installing |
+| `installScript` | string | yes | Shell. Installs the software. Must satisfy all four rules |
+| `setupScript` | string | no | Shell. Per-server configuration, run after the software is installed. Same `runAs`, same four rules |
+| `enabled` | boolean | yes | `false` hides the tool from the UI without deleting it. CI smoke-tests it either way |
+| `installOrder` | number | yes | Ascending. See the convention below |
+| `bootstrap` | boolean | yes | Set `false`. Reserved for the handful of tools the runtime guarantees before any plan runs |
+| `runAs` | `'root'` \| `'rocky'` | yes | The user the step runs as. See rule 4 |
+
+There is no `alwaysInstall` field, and adding one to a file is an error rather than an omission.
+"Install this on every box" is a setting one installation makes about itself — an operator ticks it
+on their own Tools page, and it is stored in their database. A file that carried it would be making
+a promise about somebody else's machine, so `strictObject` refuses the key in a pack file and in a
+tool file alike, and exporting a tool that is set that way does not carry it either
+([ADR-0020](adr/0020-modifying-an-official-pack-forks-it.md)).
+
+#### `installOrder`, and the gaps-of-10 convention
+
+Steps run in ascending `installOrder`. **Leave gaps of 10** so someone can insert a step later
+without renumbering every pack in the repository. The bands in use:
+
+| Order | For |
+|---|---|
+| `0` | Runtime-guaranteed base tools. Not for community packs |
+| `10` | System packages from apt with no dependencies of their own |
+| `20` | Language runtimes — Node, Python, Go, Rust |
+| `30` | Anything that needs a runtime from band 20 |
+| `40` | The agents themselves |
+| `50` | Anything that needs an agent to already be installed |
+
+A tool that has to land between two bands takes the gap: the desktop environment sits at `35`,
+after the runtime-dependent tools and before the agents. That is the convention working as
+intended.
+
+**If B needs A, give B a higher `installOrder`.** That is the only way to express a dependency.
+Never rely on the order tools happen to appear in the file, and don't reach for the tie-break
+rule below either.
+
+Tools with the same `installOrder` do execute in a defined order — `toolId` ascending — but that
+exists for the executor's benefit, not yours: a snapshotted plan has to render identically every
+time, or an interrupted install resumes against a different order and skips the wrong work. It
+is a determinism guarantee, not a scheduling tool, and a pack that leans on it is one rename
+away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-ordering).
+
+### SurgePack
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `packId` | string | yes | Unique across the repository. Matches the filename |
+| `name` | string | yes | Display name |
+| `tools` | string[] | yes | Tool ids, in any order — `installOrder` decides execution |
+| `displayOrder` | number | yes | Position in the UI's pack list, ascending |
+| `enabled` | boolean | yes | `false` hides it from the UI. CI still smoke-tests it |
+| `imageUrl` | string | no | Card image. Relative path or absolute URL |
+| `theme` | string | no | A named UI theme for the pack's card |
+| `guide` | string | no | Post-boot instructions, shown to the user once the server is running. See below |
+| `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The pack expects a Git repository. Not a hard requirement: a user who names none is asked to confirm, and the server is created with nothing cloned — write your `setupScript` to tolerate an empty `$REPOS`. The repositories field is on the create form for every pack, and `$REPOS` is set for every setup script, whether or not this is `true` — a user can put a repository on any box |
+| `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
+| `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
+| `webPort` | number (1–65535) | no | The loopback port of a web UI your pack serves on the box. The server page's Connect section renders the `ssh -L` forward and the `http://localhost:<port>` link from it. Omit if the pack has no web UI |
+| `inputs` | PackInput[] (max 16) | no | Values your pack needs from the person creating the server, delivered to every step as environment variables. See [below](#inputs--what-your-pack-asks-the-user-for) |
+
+`requiresRepos`, `requiresRdp`, `desktop`, `webPort` and `inputs` exist so that pack behaviour is
+described by the pack. If you find yourself wanting the application to special-case your
+`packId`, that is a bug in this format — please open an issue instead of working around it.
+
+Declare `webPort` whenever your pack's main interface is a web UI that binds loopback only
+(the right posture for an unauthenticated agent UI — do not bind `0.0.0.0` instead). Without
+it, the one command that changes how the user connects exists only inside your guide's prose,
+and a user who has already run the plain ssh command from Connect has no reason to reread it.
+The guide should still open with the forward, since it is also where you say how to start the
+UI; `packs/deepseek-harness.yaml` is the worked example.
+
+#### `inputs` — what your pack asks the user for
+
+Some packs need a value before they can install anything: a licence key, an API key, an
+endpoint, a flag that picks between two install modes. `inputs` is how your pack asks. Each entry
+becomes a field on the create form and an **environment variable in every one of your steps**.
+
+```yaml
+  inputs:
+    - name: HEADLONG_HEADLESS        # the env var your install script reads
+      label: Headless install        # the form's field label
+      description: Install without Docker. Set to 1 on a box with no Docker.
+      required: true
+      default: "1"
+    - name: HEADLONG_API_KEY
+      label: Headlong API key
+      secret: true                   # password field; never returned by a route
+```
+
+Your script then simply reads it:
+
+```bash
+if [ "${HEADLONG_HEADLESS:-0}" = "1" ]; then
+  ./install.sh --headless
+fi
+```
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | `^[A-Z][A-Z0-9_]*$`, at most 64 characters. The variable your scripts read |
+| `label` | string | yes | The form's field label. Write it as a question a person can answer |
+| `description` | string | no | The field's hint. Say what the value does and what a good one looks like |
+| `required` | boolean | no (defaults `false`) | The create is refused when it is missing and has no `default` |
+| `secret` | boolean | no (defaults `false`) | Renders a password field; stored encrypted; returned by no route; never in the plan snapshot. A `secret` input **may not** have a `default` |
+| `default` | string | no | Prefilled on the form and applied when a request omits the name |
+
+**Prefix your names.** `HEADLONG_API_KEY`, not `API_KEY`. Every input on a box shares one
+environment, and a short generic name is a name some other tool already reads.
+
+**Names Rocky Surf already uses are refused at validation** — `ARCH`, `DEBIAN_FRONTEND`, `HOME`,
+`USER`, `LOGNAME`, `REPOS`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `GIT_TERMINAL_PROMPT`,
+`GIT_CONFIG_COUNT`, `PATH` and the rest of the shell's own, plus anything starting with
+`ROCKYSURF_`, `GIT_CONFIG_KEY_` or `GIT_CONFIG_VALUE_` (those are generated with an index, so no
+list could name them all). Such a pack would not override anything; it would just read a value
+nobody could send, so `rockysurf pack lint` and the importer both refuse it. Every other `GIT_`
+name — `GIT_AUTHOR_NAME`, `GIT_SSH_COMMAND` — is yours to use: Rocky Surf never writes them
+(issue #197).
+
+**One line, and not too long.** A value is at most 4 KiB and may not contain a newline: the
+values reach your box through `secrets.env`, whose reader is line-oriented. A pack that wants to
+hand a box a document wants a repository the box clones.
+
+**What the four rules imply for `inputs`:**
+
+- **Idempotent** ([Rule 1](#rule-1-idempotent)) — the values are identical on every re-run of the
+  plan, because they are stored on the server when it is created. Do not use one to decide
+  whether work has already been done; use a stamp, as you would anywhere else.
+- **`$ARCH`-aware** ([Rule 2](#rule-2-arch-aware)) — an input is never the place to ask which
+  architecture the box is. `$ARCH` already knows, and asking would let a user get it wrong.
+- **Non-interactive** ([Rule 3](#rule-3-non-interactive)) — this is the *only* way to ask a
+  question. Everything is collected before the plan runs, so your script still never prompts.
+  If you catch yourself wanting a `read`, you want an input.
+- **`runAs`-honest** ([Rule 4](#rule-4-runas-honest)) — inputs are declared per PACK and reach
+  every step of every tool on the box, `root` and `rocky` alike. They do not narrow with
+  privilege, so do not treat one as a secret only your root step can see.
+
+**Ask for as little as possible.** Every input is a field between a user and their box, and one
+that could have had a `default` is a question that did not need asking. Sixteen is the ceiling;
+two is usually the right answer.
+
+**A value is not a place to put a credential your pack could fetch itself.** If a tool has a
+`login` command, say so in your [`guide`](#guide--what-the-user-has-to-do-themselves) and let the
+user run it on their own box — a credential that never reaches Rocky Surf is one it can never
+leak. Reach for `secret: true` when the install genuinely cannot proceed without it.
+
+**What the user is told.** The create form renders your `label`, your `description` and the
+variable name; the pack's card says how many settings it asks for; and the pre-install disclosure
+lists every name and label, marking the required and secret ones — so an operator sees what a
+pack will ask for *before* they consent to installing it.
+
+#### `guide` — what the user has to do themselves
+
+Your pack installs software. It does not, and must not, authenticate it: no credential of the
+user's reaches the box during bootstrap, so a freshly-built server is a pile of CLIs that all
+want a login. `guide` is where you tell them how.
+
+It is displayed on the server's page as soon as the server is running, **as plain text** — the
+app does not parse markdown and does not render HTML, so write it the way you would write a
+README in a terminal: short imperative lines, literal commands, and its own line breaks as the
+only structure. Every one of the shipped packs has one; copy the shape from
+`packs/ai-coding-agents.yaml`.
+
+```yaml
+  guide: |
+    Claude Code
+      claude                  first run walks you through signing in
+      claude setup-token      mints a long-lived token instead
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+```
+
+Two rules, both about honesty:
+
+- **Say what the box actually has.** If your setup script left something half-done — a daemon
+  it could not install, a wizard that only works from a desktop session — the guide is where
+  the user finds out, not a support thread.
+- **`$GITHUB_TOKEN` is in the user's shell only when the operator configured one.** Since
+  issue #244 the box exports it into every shell `rocky` gets, alongside your inputs and the
+  user's Environment, so `gh` works with no login on a box whose operator set `github.pat` —
+  and finds nothing on a box whose operator did not. A guide that says "you already have a
+  token" is therefore half right; say "when configured", and give `gh auth login` as the
+  other half. Clones performed during setup authenticated either way.
+
+Leading and trailing whitespace is trimmed. The field is optional, and a pack without one
+simply shows nothing.
 
 ---
 
@@ -636,395 +855,144 @@ runs once, at boot, and never again; a user who wants a newer agent three weeks 
 
 ---
 
-## The file format
+## The environment your scripts get
 
-One pack per file, in `packs/`, named after the pack id: `packs/rust-dev.yaml`.
+Every `installScript` and `setupScript` runs with these variables set. Read them; do not
+hardcode what they carry.
 
-A file has three top-level keys:
+| variable | set for | what it is |
+|---|---|---|
+| `$ARCH` | every step | `amd64` or `arm64`. See [Rule 2](#rule-2-arch-aware). |
+| `DEBIAN_FRONTEND` | every step | `noninteractive`. See [Rule 3](#rule-3-non-interactive). |
+| `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
+| `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
+| `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
+| `$GITHUB_TOKEN` | every step, **when configured**; and `rocky`'s shell afterwards | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
+| `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. Setup only — it is not in the shell afterwards. |
+| your pack's own `inputs` | every step, **when the user supplied one**; and `rocky`'s shell afterwards | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
+| the user's own **Environment** | every step, **when the user set one**; and `rocky`'s shell afterwards | `KEY=value` the person creating the server chose for themselves, whatever your pack declares (issue #197). Their namespace, not yours and not Rocky Surf's. |
 
-```yaml
-version: 1        # required; the frozen v0.1 format
-pack:  { … }      # required; exactly one SurgePack
-tools: [ … ]      # required; the Tool records this file introduces
-```
+The user's own startup script (issue #184) gets exactly this environment too, including the
+`GIT_CONFIG_*` trio, your pack's inputs and their own Environment, and runs after every step of
+yours. You cannot see it and must not plan around it.
 
-`pack.tools` is a list of tool **ids**. It may name tools defined in this file or tools defined
-in any other pack file in the repository — that is how several packs share one `claude-code`
-definition. Defining the same `toolId` in two files is an error and CI will reject it.
+**"And `rocky`'s shell afterwards"** (issue #244): once setup is done, the three rows marked
+that way are exported into every shell `rocky` gets — an SSH login, `ssh box 'command'`, tmux,
+and the desktop session of a `requiresRdp` pack — from `~/.config/rockysurf/environment`
+(`0600`), sourced by `/etc/profile.d/rockysurf-environment.sh` and by a block at the top of
+`/etc/bash.bashrc`. Two things follow for a pack author. A tool that reads your input at run
+time needs nothing written into `~/.bashrc` by your setup script; and a desktop pack that
+replaces `/etc/xrdp/startwm.sh` must keep sourcing `/etc/profile`, as the stock one does, or
+the session's applications see none of it (the smoke harness checks). The `GIT_CONFIG_*` trio
+and `$RDP_PASSWORD` are setup plumbing and stay out. The full contract is
+[`bootstrap-contract.md` § The shell environment](bootstrap-contract.md#the-shell-environment).
 
-### Building on an existing pack
+### The two secrets, and how to use them safely
 
-Because `pack.tools` already resolves ids across files, "extend pack X" needs no format change:
-a new pack file that copies X's `pack.tools` list and appends its own tool ids **is** an
-extension of X. `packs/gas-town.yaml` is this pattern shipping today — it lists the shared base
-toolchain plus `claude-code`, `amp` and `codex` from three other pack files, plus three tools of
-its own.
+`$GITHUB_TOKEN` and `$RDP_PASSWORD` arrive through `secrets.env`, a `0600` file written at the
+moment it is created. They are the only credential names **Rocky Surf** promises a pack, and that
+list is closed on purpose: every name here is a commitment the platform has to keep working
+forever, and a per-tool namespace would let packs depend on names nothing ever agreed to.
 
-Two ways to build on a pack, and the question that decides between them is whether the pack
-being built on gets modified:
+Since issue #189 that is not the whole environment, and the distinction is worth stating exactly.
+A pack's own [`inputs`](#inputs--what-your-pack-asks-the-user-for) arrive through the same
+`secrets.env` and are read the same way, but they are **your** namespace, promised by **your**
+pack: you chose the names, you document them, and they exist only on boxes built from your pack.
+Rocky Surf guarantees the delivery, not the names.
 
-- **Derive** — a new file, the pack you are building on left untouched. This is the default: it
-  cannot break anyone else's pack, and it is what an "add X on top of the Y pack" request means.
-  Copy the base pack's `pack.tools` list verbatim, reference its ids rather than redefining them,
-  take a new `packId` and `displayOrder`, and use `installOrder` gaps for what you add rather
-  than renumbering the base's tools. The derived pack is smoke-tested exactly like a new one —
-  the base pack's own passing run does not carry over to it. `git status --porcelain packs/`
-  after writing it should show exactly one new file.
-- **Amend** — editing the base file itself, right only when it is yours to change and every
-  existing user of it should get the new tool too. Re-smoke the amended pack; if the file is
-  `packs/ai-coding-agents.yaml`, that is the shared base toolchain for every pack in the
-  repository, so re-smoke everything, not just the one pack touched.
+Since issue #197 there is a third namespace in that file, and it is neither yours nor Rocky
+Surf's: the person creating the server can set their **own** `KEY=value` environment on their own
+box. You will never know those names, and you do not need to — a name your pack declares is
+refused in that field, so nothing a user sets can shadow anything you asked for.
 
-Full workflow, a worked example and the failures that come up: the `create-surge-pack` skill,
-Step 1E and `references/extending.md`.
+None of the three can collide, because a supplied name that claims something Rocky Surf exports is
+refused at validation and a user's name that claims something the pack declared is refused at
+create. So the closed list above is still closed — it just is not the only thing in the
+environment any more.
 
-### Tool
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `toolId` | string | yes | Unique across the whole repository. Lowercase, hyphens, no spaces. This is the identity other packs reference |
-| `name` | string | yes | Human-readable name shown in the UI |
-| `description` | string | yes | One line. Shown next to the name |
-| `category` | `'agent'` \| `'base'` | yes | `agent` for the AI coding agents a pack exists to deliver; `base` for supporting software |
-| `url` | string | yes | The tool's home page, so a user can see what they're installing |
-| `installScript` | string | yes | Shell. Installs the software. Must satisfy all four rules |
-| `setupScript` | string | no | Shell. Per-server configuration, run after the software is installed. Same `runAs`, same four rules |
-| `enabled` | boolean | yes | `false` hides the tool from the UI without deleting it. CI smoke-tests it either way |
-| `installOrder` | number | yes | Ascending. See the convention below |
-| `bootstrap` | boolean | yes | Set `false`. Reserved for the handful of tools the runtime guarantees before any plan runs |
-| `runAs` | `'root'` \| `'rocky'` | yes | The user the step runs as. See rule 4 |
-
-There is no `alwaysInstall` field, and adding one to a file is an error rather than an omission.
-"Install this on every box" is a setting one installation makes about itself — an operator ticks it
-on their own Tools page, and it is stored in their database. A file that carried it would be making
-a promise about somebody else's machine, so `strictObject` refuses the key in a pack file and in a
-tool file alike, and exporting a tool that is set that way does not carry it either
-([ADR-0020](adr/0020-modifying-an-official-pack-forks-it.md)).
-
-#### `installOrder`, and the gaps-of-10 convention
-
-Steps run in ascending `installOrder`. **Leave gaps of 10** so someone can insert a step later
-without renumbering every pack in the repository. The bands in use:
-
-| Order | For |
-|---|---|
-| `0` | Runtime-guaranteed base tools. Not for community packs |
-| `10` | System packages from apt with no dependencies of their own |
-| `20` | Language runtimes — Node, Python, Go, Rust |
-| `30` | Anything that needs a runtime from band 20 |
-| `40` | The agents themselves |
-| `50` | Anything that needs an agent to already be installed |
-
-A tool that has to land between two bands takes the gap: the desktop environment sits at `35`,
-after the runtime-dependent tools and before the agents. That is the convention working as
-intended.
-
-**If B needs A, give B a higher `installOrder`.** That is the only way to express a dependency.
-Never rely on the order tools happen to appear in the file, and don't reach for the tie-break
-rule below either.
-
-Tools with the same `installOrder` do execute in a defined order — `toolId` ascending — but that
-exists for the executor's benefit, not yours: a snapshotted plan has to render identically every
-time, or an interrupted install resumes against a different order and skips the wrong work. It
-is a determinism guarantee, not a scheduling tool, and a pack that leans on it is one rename
-away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-ordering).
-
-### SurgePack
-
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `packId` | string | yes | Unique across the repository. Matches the filename |
-| `name` | string | yes | Display name |
-| `tools` | string[] | yes | Tool ids, in any order — `installOrder` decides execution |
-| `displayOrder` | number | yes | Position in the UI's pack list, ascending |
-| `enabled` | boolean | yes | `false` hides it from the UI. CI still smoke-tests it |
-| `imageUrl` | string | no | Card image. Relative path or absolute URL |
-| `theme` | string | no | A named UI theme for the pack's card |
-| `guide` | string | no | Post-boot instructions, shown to the user once the server is running. See below |
-| `requiresRepos` | boolean | yes (defaults to `false` if omitted) | The pack expects a Git repository. Not a hard requirement: a user who names none is asked to confirm, and the server is created with nothing cloned — write your `setupScript` to tolerate an empty `$REPOS`. The repositories field is on the create form for every pack, and `$REPOS` is set for every setup script, whether or not this is `true` — a user can put a repository on any box |
-| `requiresRdp` | boolean | yes (defaults to `false` if omitted) | The user is asked for a remote-desktop password at create time |
-| `desktop` | `'xfce'` | no | Install a graphical desktop. Omit for a headless box |
-| `webPort` | number (1–65535) | no | The loopback port of a web UI your pack serves on the box. The server page's Connect section renders the `ssh -L` forward and the `http://localhost:<port>` link from it. Omit if the pack has no web UI |
-| `inputs` | PackInput[] (max 16) | no | Values your pack needs from the person creating the server, delivered to every step as environment variables. See [below](#inputs--what-your-pack-asks-the-user-for) |
-
-`requiresRepos`, `requiresRdp`, `desktop`, `webPort` and `inputs` exist so that pack behaviour is
-described by the pack. If you find yourself wanting the application to special-case your
-`packId`, that is a bug in this format — please open an issue instead of working around it.
-
-Declare `webPort` whenever your pack's main interface is a web UI that binds loopback only
-(the right posture for an unauthenticated agent UI — do not bind `0.0.0.0` instead). Without
-it, the one command that changes how the user connects exists only inside your guide's prose,
-and a user who has already run the plain ssh command from Connect has no reason to reread it.
-The guide should still open with the forward, since it is also where you say how to start the
-UI; `packs/deepseek-harness.yaml` is the worked example.
-
-#### `inputs` — what your pack asks the user for
-
-Some packs need a value before they can install anything: a licence key, an API key, an
-endpoint, a flag that picks between two install modes. `inputs` is how your pack asks. Each entry
-becomes a field on the create form and an **environment variable in every one of your steps**.
-
-```yaml
-  inputs:
-    - name: HEADLONG_HEADLESS        # the env var your install script reads
-      label: Headless install        # the form's field label
-      description: Install without Docker. Set to 1 on a box with no Docker.
-      required: true
-      default: "1"
-    - name: HEADLONG_API_KEY
-      label: Headlong API key
-      secret: true                   # password field; never returned by a route
-```
-
-Your script then simply reads it:
+**Both may be absent.** A key with no secret behind it is omitted entirely rather than set
+empty, so guard before you use one:
 
 ```bash
-if [ "${HEADLONG_HEADLESS:-0}" = "1" ]; then
-  ./install.sh --headless
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  gh auth setup-git          # gh reads GITHUB_TOKEN with no further configuration
 fi
 ```
 
-| Field | Type | Required | Meaning |
-|---|---|---|---|
-| `name` | string | yes | `^[A-Z][A-Z0-9_]*$`, at most 64 characters. The variable your scripts read |
-| `label` | string | yes | The form's field label. Write it as a question a person can answer |
-| `description` | string | no | The field's hint. Say what the value does and what a good one looks like |
-| `required` | boolean | no (defaults `false`) | The create is refused when it is missing and has no `default` |
-| `secret` | boolean | no (defaults `false`) | Renders a password field; stored encrypted; returned by no route; never in the plan snapshot. A `secret` input **may not** have a `default` |
-| `default` | string | no | Prefilled on the form and applied when a request omits the name |
+An empty value would be worse than a missing one — `RDP_PASSWORD=` would pass a naive check and
+then set an empty desktop password.
 
-**Prefix your names.** `HEADLONG_API_KEY`, not `API_KEY`. Every input on a box shares one
-environment, and a short generic name is a name some other tool already reads.
+**Never put either in a command line.** Everything in `argv` is readable through `ps` by every
+other unprivileged step running on the same box:
 
-**Names Rocky Surf already uses are refused at validation** — `ARCH`, `DEBIAN_FRONTEND`, `HOME`,
-`USER`, `LOGNAME`, `REPOS`, `GITHUB_TOKEN`, `RDP_PASSWORD`, `GIT_TERMINAL_PROMPT`,
-`GIT_CONFIG_COUNT`, `PATH` and the rest of the shell's own, plus anything starting with
-`ROCKYSURF_`, `GIT_CONFIG_KEY_` or `GIT_CONFIG_VALUE_` (those are generated with an index, so no
-list could name them all). Such a pack would not override anything; it would just read a value
-nobody could send, so `rockysurf pack lint` and the importer both refuse it. Every other `GIT_`
-name — `GIT_AUTHOR_NAME`, `GIT_SSH_COMMAND` — is yours to use: Rocky Surf never writes them
-(issue #197).
+```bash
+# Do this — the secret goes in on stdin.
+printf 'rocky:%s\n' "$RDP_PASSWORD" | chpasswd
 
-**One line, and not too long.** A value is at most 4 KiB and may not contain a newline: the
-values reach your box through `secrets.env`, whose reader is line-oriented. A pack that wants to
-hand a box a document wants a repository the box clones.
-
-**What the four rules imply for `inputs`:**
-
-- **Idempotent** ([Rule 1](#rule-1-idempotent)) — the values are identical on every re-run of the
-  plan, because they are stored on the server when it is created. Do not use one to decide
-  whether work has already been done; use a stamp, as you would anywhere else.
-- **`$ARCH`-aware** ([Rule 2](#rule-2-arch-aware)) — an input is never the place to ask which
-  architecture the box is. `$ARCH` already knows, and asking would let a user get it wrong.
-- **Non-interactive** ([Rule 3](#rule-3-non-interactive)) — this is the *only* way to ask a
-  question. Everything is collected before the plan runs, so your script still never prompts.
-  If you catch yourself wanting a `read`, you want an input.
-- **`runAs`-honest** ([Rule 4](#rule-4-runas-honest)) — inputs are declared per PACK and reach
-  every step of every tool on the box, `root` and `rocky` alike. They do not narrow with
-  privilege, so do not treat one as a secret only your root step can see.
-
-**Ask for as little as possible.** Every input is a field between a user and their box, and one
-that could have had a `default` is a question that did not need asking. Sixteen is the ceiling;
-two is usually the right answer.
-
-**A value is not a place to put a credential your pack could fetch itself.** If a tool has a
-`login` command, say so in your [`guide`](#guide--what-the-user-has-to-do-themselves) and let the
-user run it on their own box — a credential that never reaches Rocky Surf is one it can never
-leak. Reach for `secret: true` when the install genuinely cannot proceed without it.
-
-**What the user is told.** The create form renders your `label`, your `description` and the
-variable name; the pack's card says how many settings it asks for; and the pre-install disclosure
-lists every name and label, marking the required and secret ones — so an operator sees what a
-pack will ask for *before* they consent to installing it.
-
-#### `guide` — what the user has to do themselves
-
-Your pack installs software. It does not, and must not, authenticate it: no credential of the
-user's reaches the box during bootstrap, so a freshly-built server is a pile of CLIs that all
-want a login. `guide` is where you tell them how.
-
-It is displayed on the server's page as soon as the server is running, **as plain text** — the
-app does not parse markdown and does not render HTML, so write it the way you would write a
-README in a terminal: short imperative lines, literal commands, and its own line breaks as the
-only structure. Every one of the shipped packs has one; copy the shape from
-`packs/ai-coding-agents.yaml`.
-
-```yaml
-  guide: |
-    Claude Code
-      claude                  first run walks you through signing in
-      claude setup-token      mints a long-lived token instead
-
-    GitHub
-      gh auth login           then: gh auth setup-git
+# Not this — visible in `ps` to anything else running.
+echo "rocky:$RDP_PASSWORD" | tee /tmp/pw && chpasswd < /tmp/pw
 ```
 
-Two rules, both about honesty:
+**You usually do not need `$GITHUB_TOKEN` for cloning.** Repository clones in the resolved plan
+already authenticate with it when it is set, via a per-invocation credential helper that keeps
+the token out of `argv` and out of the checkout's `.git/config`. Reach for it only when your
+own script talks to a forge API.
 
-- **Say what the box actually has.** If your setup script left something half-done — a daemon
-  it could not install, a wizard that only works from a desktop session — the guide is where
-  the user finds out, not a support thread.
-- **`$GITHUB_TOKEN` is in the user's shell only when the operator configured one.** Since
-  issue #244 the box exports it into every shell `rocky` gets, alongside your inputs and the
-  user's Environment, so `gh` works with no login on a box whose operator set `github.pat` —
-  and finds nothing on a box whose operator did not. A guide that says "you already have a
-  token" is therefore half right; say "when configured", and give `gh auth login` as the
-  other half. Clones performed during setup authenticated either way.
-
-Leading and trailing whitespace is trimmed. The field is optional, and a pack without one
-simply shows nothing.
+**`$GITHUB_TOKEN` is the instance-wide token, and it is on every box it is configured for.** An
+operator may also configure per-repository tokens, and since `rockysurf-18lq` a box receives only
+the ones its own declared repositories need — but that narrowing never touches this variable, so
+the guard above keeps its meaning: if the operator set `github.pat`, `gh` works here. What the
+narrowing does mean is that a repository your pack clones *itself*, one the user did not declare
+at create, may not be covered by any of the scoped tokens on the box. Clone what the user declared
+(`$REPOS`) and let the plan's own clone steps do the authenticating.
 
 ---
 
-## A complete pack
+## Sharing a single tool
 
-`packs/rust-dev.yaml` — a headless Rust environment with Claude Code, requiring a repository.
+A pack describes a whole box. Sometimes the thing worth sharing is one tool — "here is how I
+install my linter" — and for that there is a second format, a **tool file** (ADR-0018):
 
 ```yaml
 version: 1
-
-pack:
-  packId: rust-dev
-  name: Rust + Claude Code
-  tools:
-    - build-tools
-    - rustup
-    - claude-code
-  displayOrder: 20
-  enabled: true
-  imageUrl: /images/surge-packs/rust-dev.png
-  theme: theme-orange
-  requiresRepos: true
-  requiresRdp: false
-  guide: |
-    Claude Code
-      claude                  first run walks you through signing in
-      claude setup-token      mints a long-lived token instead
-
-    GitHub
-      gh auth login           then: gh auth setup-git
-      Only needed when the operator configured no token — with one, $GITHUB_TOKEN is
-      already in your shell and gh works as it is.
-
-    Rust
-      cargo build             the crates in your lockfile are already fetched
-
 tools:
-  - toolId: build-tools
-    name: Build tools
-    description: C toolchain and pkg-config, needed to compile most Rust crates
-    category: base
-    url: https://packages.ubuntu.com/noble/build-essential
-    installOrder: 10
-    runAs: root
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-      export DEBIAN_FRONTEND=noninteractive
-
-      stamp=/var/lib/rockysurf/apt-updated
-      if [ ! -f "$stamp" ]; then
-        apt-get update -qq
-        mkdir -p "$(dirname "$stamp")" && touch "$stamp"
-      fi
-
-      apt-get install -y build-essential pkg-config libssl-dev curl
-
-  - toolId: rustup
-    name: Rust
-    description: The Rust toolchain, installed per-user via rustup
-    category: base
-    url: https://rustup.rs
-    installOrder: 20
-    runAs: rocky
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-
-      # rustup ships one installer for both architectures, but pin the host triple
-      # explicitly so a wrong-arch toolchain can never be selected silently.
-      case "$ARCH" in
-        amd64) TRIPLE=x86_64-unknown-linux-gnu ;;
-        arm64) TRIPLE=aarch64-unknown-linux-gnu ;;
-        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
-      esac
-
-      if ! command -v rustup >/dev/null 2>&1; then
-        curl -fsSL https://sh.rustup.rs \
-          | sh -s -- -y --no-modify-path --default-host "$TRIPLE" --default-toolchain 1.85.0
-      fi
-
-      if ! grep -q '.cargo/bin' "$HOME/.bashrc"; then
-        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.bashrc"
-      fi
-
-      "$HOME/.cargo/bin/rustc" --version
-    setupScript: |
-      set -euo pipefail
-      export PATH="$HOME/.cargo/bin:$PATH"
-
-      # Warm the build cache for each repository the user selected. Safe to repeat:
-      # cargo fetch is a no-op once the lockfile's crates are present.
-      for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
-        [ -n "$repo" ] || continue
-        dir="$HOME/$(basename "$repo" .git)"
-        [ -f "$dir/Cargo.toml" ] || continue
-        (cd "$dir" && cargo fetch)
-      done
-
-  - toolId: claude-code
-    name: Claude Code
-    description: Anthropic's AI coding assistant CLI
-    category: agent
-    url: https://claude.com/claude-code
-    installOrder: 40
-    runAs: root                    # a global npm install, into node's own prefix
-    bootstrap: false
-    enabled: true
-    installScript: |
-      set -euo pipefail
-
-      npm install -g --no-fund --no-audit @anthropic-ai/claude-code@stable
-
-      claude --version >/dev/null
+  - toolId: my-tool
+    ...            # exactly the fields a pack file's `tools:` entries take
 ```
 
-Three things in there are worth copying into your own pack:
+It is `version: 1` and a list of tools, with no `pack:` key. The tool entries reuse the *same*
+schema a pack file uses, so a tool moves between the two formats as a copy rather than a
+translation — paste it straight across in either direction.
 
-- **Every script ends by verifying itself.** `rustc --version` and `claude --version` are how
-  you find out that an installer exited `0` after only half-working. This has bitten us.
-- **`set -euo pipefail` at the top of each script.** The agent isolates and records a failed
-  step, but only if the step actually reports failure.
-- **Each script's idempotency is visible in one glance** — a `command -v` guard, a `grep -q`
-  guard, and a stamp file. A reviewer should not have to guess.
+**Export** any tool from the Tools page and you get `<toolId>.yaml`. `sourceFile` is stripped:
+which `packs/*.yaml` a row came from is one installation's fact about its own disk. **Import**
+takes the file back on any installation — pasted, uploaded, or fetched from a URL — where it
+becomes a Personal row with a `NULL` `sourceFile` that boot never overwrites and never restores.
 
----
+Three refusals worth knowing before they surprise you:
 
-## Debugging a pack on a real box
+- A **pack file** pasted into the tool import is refused with a message naming the right door.
+  The formats look alike and this is the common mistake.
+- An id a **file-backed tool** already owns is refused rather than overwritten — the boot
+  reconcile owns those rows, so a win here would be silently undone at the next restart.
+- An **unknown key** is an error, not a value quietly dropped. A dropped key is a promise the
+  file made and the installation did not keep.
 
-When one of your tool steps fails on a real server, the default is that **the machine is
-terminated** (ADR-0010): a half-installed box is worthless and billing, and the user gets the
-complete account instead — the failed step by name, the classified cause, the decisive lines, and
-the step's whole log, on the creation screen and the server page. For most failures that log is
-all you need.
+**Importing from a URL** works the same way it does for packs (ADR-0022, which supersedes
+ADR-0018's original "no URL arm"). You give the Tools page an `https://…/tool.yaml` address; the
+control plane — never your browser — fetches it through the same SSRF guard the pack import uses,
+and records where it came from on the row: the URL, the digest of the exact bytes accepted, and a
+`trust` of `unverified` (a one-off URL has no operator-written trust label to borrow). The Tools
+page shows that origin, so "where did this root-privileged shell come from" has a true answer. A
+tool that arrived by paste or upload records nothing, because there is nothing true to record.
+This was deferred at first precisely because the `tools` table had no columns to hold that
+provenance; issue #299 added them.
 
-When it is not — you want to poke at the box itself — set this in the config of the Rocky Surf
-you are testing with:
+A tool file is for *sharing*, not for *deploying*: a tool reaches a box only by being listed in a
+pack. Registering one makes it available to put in a pack; it installs nothing on its own.
 
-```yaml
-bootstrap:
-  onFailure: keep
-```
-
-A failed tool install then leaves the machine up, exactly as it did before, and the row carries
-the still-billing notice until you terminate it. SSH in and read `/var/lib/rockysurf/agent.log`
-and `/var/lib/rockysurf/steps/<step id>.log`. Put it back to `terminate` (or delete the key) when
-you are done; nobody else's boxes should outlive their failures.
-
-A repository that fails to clone never terminates the box under either setting — it is an
-optional step, and shows up as a warning on the running server.
+The `register-a-tool` agent skill walks an agent through all of this, including how to prove a
+single tool in the real Docker harness by generating a throwaway wrapper pack.
 
 ---
 
@@ -1240,85 +1208,6 @@ If that command needs `sudo`, your `runAs` is wrong. See rule 4.
 
 ---
 
-## Sharing a single tool
-
-A pack describes a whole box. Sometimes the thing worth sharing is one tool — "here is how I
-install my linter" — and for that there is a second format, a **tool file** (ADR-0018):
-
-```yaml
-version: 1
-tools:
-  - toolId: my-tool
-    ...            # exactly the fields a pack file's `tools:` entries take
-```
-
-It is `version: 1` and a list of tools, with no `pack:` key. The tool entries reuse the *same*
-schema a pack file uses, so a tool moves between the two formats as a copy rather than a
-translation — paste it straight across in either direction.
-
-**Export** any tool from the Tools page and you get `<toolId>.yaml`. `sourceFile` is stripped:
-which `packs/*.yaml` a row came from is one installation's fact about its own disk. **Import**
-takes the file back on any installation — pasted, uploaded, or fetched from a URL — where it
-becomes a Personal row with a `NULL` `sourceFile` that boot never overwrites and never restores.
-
-Three refusals worth knowing before they surprise you:
-
-- A **pack file** pasted into the tool import is refused with a message naming the right door.
-  The formats look alike and this is the common mistake.
-- An id a **file-backed tool** already owns is refused rather than overwritten — the boot
-  reconcile owns those rows, so a win here would be silently undone at the next restart.
-- An **unknown key** is an error, not a value quietly dropped. A dropped key is a promise the
-  file made and the installation did not keep.
-
-**Importing from a URL** works the same way it does for packs (ADR-0022, which supersedes
-ADR-0018's original "no URL arm"). You give the Tools page an `https://…/tool.yaml` address; the
-control plane — never your browser — fetches it through the same SSRF guard the pack import uses,
-and records where it came from on the row: the URL, the digest of the exact bytes accepted, and a
-`trust` of `unverified` (a one-off URL has no operator-written trust label to borrow). The Tools
-page shows that origin, so "where did this root-privileged shell come from" has a true answer. A
-tool that arrived by paste or upload records nothing, because there is nothing true to record.
-This was deferred at first precisely because the `tools` table had no columns to hold that
-provenance; issue #299 added them.
-
-A tool file is for *sharing*, not for *deploying*: a tool reaches a box only by being listed in a
-pack. Registering one makes it available to put in a pack; it installs nothing on its own.
-
-The `register-a-tool` agent skill walks an agent through all of this, including how to prove a
-single tool in the real Docker harness by generating a throwaway wrapper pack.
-
----
-
-## Checklist before you open a pull request
-
-- [ ] One pack per file in `packs/`, filename matches `packId`, `version: 1` at the top.
-- [ ] Every `toolId` is unique across the repository.
-- [ ] Every script runs cleanly **twice in a row** in a stock `ubuntu:24.04` container.
-- [ ] Every script runs cleanly on **both** `amd64` and `arm64`.
-- [ ] No hardcoded `x86_64`, `amd64`, `aarch64` or `arm64` in a download URL — branch on `$ARCH`.
-- [ ] No prompts. Every `apt-get install` has `-y`; every `npx` has `--yes`.
-- [ ] No `sudo` anywhere in a `runAs: rocky` script.
-- [ ] No root-owned files left in `/home/rocky`.
-- [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
-- [ ] No apt retry loop of your own — the agent already gives every step a second attempt. Every
-      `curl` that matters carries `--retry 3 --retry-delay 2 --retry-all-errors`. See
-      [Bounded retries](#bounded-retries).
-- [ ] The agent installs **unversioned** from its registry channel — or, if it has no registry
-      channel, is pinned to a version and verified against a `sha256`, the same treatment
-      anything fetched from GitHub releases or a vendor CDN gets. Nothing resolves a version
-      through `api.github.com`. See [Which version to install](#which-version-to-install).
-- [ ] Each script ends with a command that verifies the install actually worked.
-- [ ] `installOrder` uses the bands above and leaves gaps of 10.
-- [ ] `requiresRepos`, `requiresRdp`, `desktop` and `webPort` describe what your pack actually needs.
-- [ ] Every value your install scripts read from the environment is either one of the two names
-      Rocky Surf promises or one your pack declares in `inputs` — nothing reads a variable
-      nobody sends.
-- [ ] `guide` tells the user how to authenticate everything the pack installs, and admits
-      anything the install could not finish.
-- [ ] If this pack builds on another, it references that pack's tool ids, redefines none of
-      them, and leaves the other pack's file unchanged.
-
----
-
 ## Where these rules come from
 
 Every rule here is the result of something that broke, or nearly broke, on real infrastructure
@@ -1335,103 +1224,3 @@ during the project's de-risking work. If you want the evidence:
   v0.1, and why CI runs every pack twice on two architectures.
 - `docs/adr/0012-apt-retry-is-the-agents-standard.md` — why the apt retry is the agent's and
   not yours, what was measured before deciding that, and what the user reads when it runs out.
-
-Found something this page gets wrong, or a rule that fights a legitimate pack? Open an issue.
-The format is frozen; the documentation isn't.
-
-<!-- APPENDED by rockysurf-55fx.14 (spike-hetzner). This is spike-scaffold's document; the
-     section below is an append rather than an edit, so nothing above it moved. If it belongs
-     somewhere earlier in the flow, move it in the morning — the content is the decision, the
-     placement is not. -->
-
-## The environment your scripts get
-
-Every `installScript` and `setupScript` runs with these variables set. Read them; do not
-hardcode what they carry.
-
-| variable | set for | what it is |
-|---|---|---|
-| `$ARCH` | every step | `amd64` or `arm64`. See [Rule 2](#rule-2-arch-aware). |
-| `DEBIAN_FRONTEND` | every step | `noninteractive`. See [Rule 3](#rule-3-non-interactive). |
-| `$HOME` | every step | `/home/rocky` for `runAs: rocky`, `/root` for `runAs: root`. |
-| `$REPOS` | every step | Comma-separated clone URLs the user chose, when the pack takes repos. |
-| `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`, `GIT_CONFIG_VALUE_n`, `GIT_TERMINAL_PROMPT` | `setupScript`; the `GIT_CONFIG_*` trio only **when a token is configured** | git's environment form of `-c`: the clone step's credential helper and `credential.useHttpPath`, so a private repository in `$REPOS` can be cloned again by the script or by a tool it runs (issue #142). Prompts are off, so a repository the box has no token for fails with "terminal prompts disabled" instead of hanging. Do not unset them; set your own `GIT_CONFIG_COUNT` only if you mean to replace the helper. |
-| `$GITHUB_TOKEN` | every step, **when configured**; and `rocky`'s shell afterwards | A GitHub token, for private repositories and for `gh`. Satisfied by `github.pat` in the operator's config file, or by the GitHub account the box's creator connected — same name, same meaning, either way. |
-| `$RDP_PASSWORD` | every step, **when the pack sets `requiresRdp`** | The remote-desktop password for the `rocky` account. Setup only — it is not in the shell afterwards. |
-| your pack's own `inputs` | every step, **when the user supplied one**; and `rocky`'s shell afterwards | Whatever your pack [declared](#inputs--what-your-pack-asks-the-user-for) and the person creating the server typed. Your names, not Rocky Surf's — see below. |
-| the user's own **Environment** | every step, **when the user set one**; and `rocky`'s shell afterwards | `KEY=value` the person creating the server chose for themselves, whatever your pack declares (issue #197). Their namespace, not yours and not Rocky Surf's. |
-
-The user's own startup script (issue #184) gets exactly this environment too, including the
-`GIT_CONFIG_*` trio, your pack's inputs and their own Environment, and runs after every step of
-yours. You cannot see it and must not plan around it.
-
-**"And `rocky`'s shell afterwards"** (issue #244): once setup is done, the three rows marked
-that way are exported into every shell `rocky` gets — an SSH login, `ssh box 'command'`, tmux,
-and the desktop session of a `requiresRdp` pack — from `~/.config/rockysurf/environment`
-(`0600`), sourced by `/etc/profile.d/rockysurf-environment.sh` and by a block at the top of
-`/etc/bash.bashrc`. Two things follow for a pack author. A tool that reads your input at run
-time needs nothing written into `~/.bashrc` by your setup script; and a desktop pack that
-replaces `/etc/xrdp/startwm.sh` must keep sourcing `/etc/profile`, as the stock one does, or
-the session's applications see none of it (the smoke harness checks). The `GIT_CONFIG_*` trio
-and `$RDP_PASSWORD` are setup plumbing and stay out. The full contract is
-[`bootstrap-contract.md` § The shell environment](bootstrap-contract.md#the-shell-environment).
-
-### The two secrets, and how to use them safely
-
-`$GITHUB_TOKEN` and `$RDP_PASSWORD` arrive through `secrets.env`, a `0600` file written at the
-moment it is created. They are the only credential names **Rocky Surf** promises a pack, and that
-list is closed on purpose: every name here is a commitment the platform has to keep working
-forever, and a per-tool namespace would let packs depend on names nothing ever agreed to.
-
-Since issue #189 that is not the whole environment, and the distinction is worth stating exactly.
-A pack's own [`inputs`](#inputs--what-your-pack-asks-the-user-for) arrive through the same
-`secrets.env` and are read the same way, but they are **your** namespace, promised by **your**
-pack: you chose the names, you document them, and they exist only on boxes built from your pack.
-Rocky Surf guarantees the delivery, not the names.
-
-Since issue #197 there is a third namespace in that file, and it is neither yours nor Rocky
-Surf's: the person creating the server can set their **own** `KEY=value` environment on their own
-box. You will never know those names, and you do not need to — a name your pack declares is
-refused in that field, so nothing a user sets can shadow anything you asked for.
-
-None of the three can collide, because a supplied name that claims something Rocky Surf exports is
-refused at validation and a user's name that claims something the pack declared is refused at
-create. So the closed list above is still closed — it just is not the only thing in the
-environment any more.
-
-**Both may be absent.** A key with no secret behind it is omitted entirely rather than set
-empty, so guard before you use one:
-
-```bash
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-  gh auth setup-git          # gh reads GITHUB_TOKEN with no further configuration
-fi
-```
-
-An empty value would be worse than a missing one — `RDP_PASSWORD=` would pass a naive check and
-then set an empty desktop password.
-
-**Never put either in a command line.** Everything in `argv` is readable through `ps` by every
-other unprivileged step running on the same box:
-
-```bash
-# Do this — the secret goes in on stdin.
-printf 'rocky:%s\n' "$RDP_PASSWORD" | chpasswd
-
-# Not this — visible in `ps` to anything else running.
-echo "rocky:$RDP_PASSWORD" | tee /tmp/pw && chpasswd < /tmp/pw
-```
-
-**You usually do not need `$GITHUB_TOKEN` for cloning.** Repository clones in the resolved plan
-already authenticate with it when it is set, via a per-invocation credential helper that keeps
-the token out of `argv` and out of the checkout's `.git/config`. Reach for it only when your
-own script talks to a forge API.
-
-**`$GITHUB_TOKEN` is the instance-wide token, and it is on every box it is configured for.** An
-operator may also configure per-repository tokens, and since `rockysurf-18lq` a box receives only
-the ones its own declared repositories need — but that narrowing never touches this variable, so
-the guard above keeps its meaning: if the operator set `github.pat`, `gh` works here. What the
-narrowing does mean is that a repository your pack clones *itself*, one the user did not declare
-at create, may not be covered by any of the scoped tokens on the box. Clone what the user declared
-(`$REPOS`) and let the plan's own clone steps do the authenticating.
-

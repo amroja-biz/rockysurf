@@ -131,7 +131,7 @@ tools:
       # download — the tarball fetched below — so bypassing it costs nothing but the symlinks and
       # the layout, which this script reproduces.
       #
-      # WHICH VERSION: pinned, per docs/writing-a-pack.md § Which version to install — the third
+      # WHICH VERSION: pinned, per docs/surge-pack-contract.md § Which version to install — the third
       # case there, an agent with no registry channel at all. This is NOT the "latest scares me"
       # pin the doc rightly rejects; every other channel was checked on 2026-08-19 and is shut:
       #   npm    — Cursor publishes NO package. @cursor/cli, @cursor/cursor-agent, @cursor-ai/cli

@@ -1,8 +1,10 @@
 # Testing
 
+*For contributors.*
+
 How Rocky Surf is tested: what each layer checks, where it runs, and what happens when it fails.
 This document describes the arrangement as it stands. The mechanics of running the gates locally
-are in [`CONTRIBUTING.md`](../CONTRIBUTING.md); this document is the map of what exists and why.
+are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md); this document is the map of what exists and why.
 
 ## Executive summary
 
@@ -180,10 +182,10 @@ twice. Two architectures because a hardcoded `x86_64` in a download URL is the m
 bug and is invisible on one of them.
 
 `rockysurf pack lint` is the static half — the mechanical rules of
-[`docs/writing-a-pack.md`](writing-a-pack.md), defined once in
+[`docs/surge-pack-contract.md`](../surge-pack-contract.md), defined once in
 `packages/core/src/packs/lint.ts` so this repository and `amroja-biz/rockysurf-shop` enforce the
 same rules. Neither command is a security check; what carries that is disclosure of every script
-to the operator before consent ([ADR-0006](adr/0006-pack-registry-split-horizon.md)).
+to the operator before consent ([ADR-0006](../adr/0006-pack-registry-split-horizon.md)).
 
 ### BYO lifecycle against a real sshd
 
@@ -239,7 +241,7 @@ workspace packages resolve each other through gitignored `dist/` directories.
 
 For a small change — docs-only, a rename, copy, a config tweak, a single-file fix — run only the
 checks that can see it and let the pull request's CI be the full gate
-([`docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md`](memories/2026-09-05-small-changes-run-only-relevant-checks.md)).
+([`docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md`](../memories/2026-09-05-small-changes-run-only-relevant-checks.md)).
 
 On a pull request, `ci.yml`'s `What changed` job reads the changed-file list from the pull request
 itself and sets one output. A pull request confined to `packages/web/`, `docs/`, `.claude/`,
@@ -253,7 +255,7 @@ changes only pack files.
 
 **Why this approach.** A required status check that a path filter skips never reports on the pull
 requests it skips, and a required check that never reports deadlocks the merge forever
-([`docs/memories/2026-08-31-branch-protection-and-pr-workflow.md`](memories/2026-08-31-branch-protection-and-pr-workflow.md)).
+([`docs/memories/2026-08-31-branch-protection-and-pr-workflow.md`](../memories/2026-08-31-branch-protection-and-pr-workflow.md)).
 The four required checks on `main` — `Test`, `Typecheck`, `Secret scan`, `What changed` — are
 exactly the jobs that run unconditionally, and the path-conditional jobs must never be added to
 that list. Required-check names are job display names, so renaming a job in `ci.yml` orphans the

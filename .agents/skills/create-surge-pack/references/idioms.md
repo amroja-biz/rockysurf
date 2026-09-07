@@ -31,7 +31,7 @@ their own reference: `desktops-and-daemons.md`. Skip it for a headless pack.
 **First check whether you need any of this.** A tool served by a quota-free registry — npm, PyPI
 via `pipx` — installs unversioned, so there is no version to look up and no digest to record.
 This section is for the other case: a tool that ships only as a GitHub release asset, which stays
-pinned to a tag and verified against a `sha256`. See `docs/writing-a-pack.md` § Which version to
+pinned to a tag and verified against a `sha256`. See `docs/surge-pack-contract.md` § Which version to
 install for why the two are treated differently.
 
 For that case, budget a few minutes — it is reliably the slowest part of writing a pack, and

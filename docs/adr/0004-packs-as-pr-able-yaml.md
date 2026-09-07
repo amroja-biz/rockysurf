@@ -37,7 +37,7 @@ which is the evidence that a portable pack format is achievable rather than aspi
 3. **The file format freezes at v0.1.** `rockysurf pack add <git-or-url>` sugar is deferred to
    v0.2 — the format freeze is what matters for community contributions, not the CLI
    convenience.
-4. **A pack-author contract ships at v0.1** (`docs/writing-a-pack.md`, `rockysurf-q5lm.4`) with
+4. **A pack-author contract ships at v0.1** (`docs/writing-a-surge-pack.md`, `rockysurf-q5lm.4`) with
    four rules, enforced in CI. Every install and setup script must be:
    - **idempotent** — safe to re-run, required by the `state.json` resume path in ADR-0002;
    - **`$ARCH`-aware** — `agent.sh` exports it; branch per architecture where needed;

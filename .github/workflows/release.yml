@@ -20,7 +20,7 @@
 # and `pnpm publish -r` is transactional per package only, so the version check in particular
 # runs first: ten packages with two different versions is the failure that cannot be undone.
 #
-# SETUP THAT LIVES OUTSIDE THIS FILE, done once by the owner (docs/RELEASING.md, "One-time
+# SETUP THAT LIVES OUTSIDE THIS FILE, done once by the owner (docs/contributing/RELEASING.md, "One-time
 # setup"): the trusted publisher entry on every package (`npm trust github <pkg> --file
 # release.yml --repo amroja-biz/rockysurf --env npm --allow-publish`), 2FA-for-writes on each
 # package, and the `npm` environment on this repository with the owner as required reviewer
@@ -107,7 +107,7 @@ jobs:
       - run: pnpm run check
 
       # The WHOLE workspace, never --filter: @rockysurf/core ships public/, which @rockysurf/web
-      # produces (docs/RELEASING.md).
+      # produces (docs/contributing/RELEASING.md).
       - run: pnpm -r build
 
       - name: Every tarball is complete and the CLI installs from them alone
@@ -121,7 +121,7 @@ jobs:
         run: pnpm publish -r --access public --provenance --no-git-checks
 
       # From an empty directory, against the real registry, the way an operator will. Anything
-      # less checks the tarball, not the release (docs/RELEASING.md, "After publishing").
+      # less checks the tarball, not the release (docs/contributing/RELEASING.md, "After publishing").
       - name: Install the published CLI from the registry
         run: |
           set -euo pipefail

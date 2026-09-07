@@ -54,12 +54,12 @@ The authoring contract for an install script is the same one pack tools obey, an
 one place. Read it there rather than trusting a summary:
 
 - **The four rules** (idempotent, `$ARCH`-aware, non-interactive, `runAs`-honest), with worked
-  right-and-wrong pairs: [`docs/writing-a-pack.md`](../../../docs/writing-a-pack.md) § The four rules.
+  right-and-wrong pairs: [`docs/surge-pack-contract.md`](../../../docs/surge-pack-contract.md) § The four rules.
 - **Copyable shell** for apt, apt repositories, pinned release binaries, per-user installers and
   PATH, each with the failure it prevents:
   [`../create-surge-pack/references/idioms.md`](../create-surge-pack/references/idioms.md).
 - **Which version to install** — registry-served unversioned, GitHub-release pinned with a
-  `sha256`: [`docs/writing-a-pack.md`](../../../docs/writing-a-pack.md) § Which version to install.
+  `sha256`: [`docs/surge-pack-contract.md`](../../../docs/surge-pack-contract.md) § Which version to install.
 - **The base toolchain and what depends on what** — before you write an install script, check
   whether the tool already exists: [`../create-surge-pack/SKILL.md`](../create-surge-pack/SKILL.md)
   § What you get for free.

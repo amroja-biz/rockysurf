@@ -1,5 +1,7 @@
 # Running Rocky Surf on Hetzner Cloud
 
+*For operators.*
+
 What you need to give Rocky Surf so it can create, stop, start and destroy servers in your own
 Hetzner project — and nothing beyond that.
 
@@ -212,7 +214,7 @@ HETZNER_TOKEN=... node packages/rockysurf/dist/bin.js
 `npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
 you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
 Docker Compose path in the [README](../../README.md#quickstart) works today too. See
-[`docs/RELEASING.md`](../RELEASING.md).
+[`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` proves the token and checks that the configured location exists — a
 typo'd `location` is caught at startup rather than at the first create.

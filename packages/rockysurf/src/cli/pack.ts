@@ -51,7 +51,7 @@ import { ARCHITECTURES, PackCheckSetupError, runPackCheck, type Arch } from './p
  * Neither is a security scan and the help text says so. An `installScript` is arbitrary
  * root-privileged shell; a pattern match over it cannot decide whether it is benign. What
  * carries that weight is the label the OPERATOR's own configuration puts on a registry, and the
- * disclosure they read before installing — see ADR-0006 and `docs/writing-a-pack.md`.
+ * disclosure they read before installing — see ADR-0006 and `docs/writing-a-surge-pack.md`.
  */
 
 export interface PackCommandIo {
@@ -106,7 +106,7 @@ Options:
   --json               Machine-readable output on stdout.
 
 Neither command is a security scan: install scripts are arbitrary root-privileged shell and no
-static check can decide whether they are benign. See docs/writing-a-pack.md.`
+static check can decide whether they are benign. See docs/surge-pack-contract.md.`
 
 /* ------------------------------------------------------------------------ flag parsing */
 

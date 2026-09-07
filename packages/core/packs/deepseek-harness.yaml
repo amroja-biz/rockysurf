@@ -165,7 +165,7 @@ tools:
       fi
       #
       # UNVERSIONED, and this is the policy-compliant form rather than a shortcut. Per
-      # docs/writing-a-pack.md § Which version to install, npm is a quota-free channel, so a
+      # docs/surge-pack-contract.md § Which version to install, npm is a quota-free channel, so a
       # bare name costs nothing and hands the user the harness they actually read about,
       # where a pin would hand them a stale one. The bare name resolves the `latest`
       # dist-tag, and that is what makes it safe here rather than merely convenient: this

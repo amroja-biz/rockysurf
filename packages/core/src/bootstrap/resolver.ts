@@ -143,7 +143,7 @@ export function resolveInstallPlan(input: ResolveInstallPlanInput): InstallPlan 
       id: `tool-setup:${tool.id}`,
       reports: REPORTS.setup,
       runAs: tool.runAs === 'root' ? 'root' : 'rocky',
-      // `$REPOS` is documented to setup scripts in writing-a-pack.md, and the frozen plan
+      // `$REPOS` is documented to setup scripts in surge-pack-contract.md, and the frozen plan
       // schema has no env field — so it is exported by the step itself. Data, not a schema
       // change, and it keeps the value visible in the snapshot. The same preamble hands the
       // script the clone step's git credentials; see `setupPreamble`.

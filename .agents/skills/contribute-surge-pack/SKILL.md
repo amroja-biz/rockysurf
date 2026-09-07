@@ -26,8 +26,10 @@ contribute a *provider* (a package of code that runs inside Rocky Surf, not a YA
 **The normative documents are in two places and neither is this skill.** The shop's
 [`CONTRIBUTING.md`](https://github.com/amroja-biz/rockysurf-shop/blob/main/CONTRIBUTING.md) says
 what that repository expects; Rocky Surf's
-[`docs/writing-a-pack.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/writing-a-pack.md)
-is the authoring contract. When either disagrees with what you read here, it wins — say so to the
+[`docs/surge-pack-contract.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/surge-pack-contract.md)
+is the authoring contract, and
+[`docs/writing-a-surge-pack.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/writing-a-surge-pack.md)
+is the guide to it. When either disagrees with what you read here, it wins — say so to the
 user and follow it.
 
 ## Prerequisites
@@ -215,5 +217,5 @@ which architectures ran, on what date — and what was not.
   live run on a fork, what it must produce, and what the last rehearsal did and did not exercise.
   Read it only if you are changing this skill.
 - [`assets/pr-body-template.md`](assets/pr-body-template.md) — the pull request body to fill in.
-- [`assets/sample-pack.yaml`](assets/sample-pack.yaml) — the fixture the acceptance run
+- [`assets/sample-surge-pack.yaml`](assets/sample-surge-pack.yaml) — the fixture the acceptance run
   contributes. Not a pack to merge.

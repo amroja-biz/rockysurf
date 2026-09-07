@@ -98,7 +98,7 @@ tools:
       # UNVERSIONED, AND DELIBERATELY NOT WITH xAI'S OWN ONE-LINER. Those are two separate
       # decisions and it is worth not confusing them.
       #
-      # WHICH VERSION: latest, per docs/writing-a-pack.md § Which version to install. npm is a
+      # WHICH VERSION: latest, per docs/surge-pack-contract.md § Which version to install. npm is a
       # quota-free channel, so asking for the current release costs nothing and hands the user
       # the agent they actually read about — where a pin would have handed them a stale one and
       # not even kept it, since `grok update` exists and users run it. A bare name resolves the

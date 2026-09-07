@@ -27,7 +27,7 @@ The agent has had a remedy for both since #117/#129, but as **one retry for the 
 bootstrap**: whichever step failed first spent it, and every later step got none. That is not
 something a pack author can rely on — whether tool nine is retried depends on whether tool two
 happened to flake — and it is not what the packs were told. Packs already carry bounded `curl`
-retries and cite a "rule 3" for them that `docs/writing-a-pack.md` never actually stated; apt,
+retries and cite a "rule 3" for them that `docs/writing-a-surge-pack.md` never actually stated; apt,
 the thing that fails most, was documented only in the bootstrap contract, where no pack author
 reads.
 
@@ -58,7 +58,7 @@ The owner's ruling, 2026-08-27:
    `packages/core/bootstrap/agent.sh` owns it, which means it applies to every shipped and
    community pack without a line of YAML, to the agent's own `jq` bootstrap, and to the CI Pack
    smoke harness — which runs this same `agent.sh` in its containers, so CI gets the standard
-   for free with no CI-only workaround. `docs/writing-a-pack.md` § Bounded retries states the
+   for free with no CI-only workaround. `docs/surge-pack-contract.md` § Bounded retries states the
    promise and forbids pack-level apt retry loops; `curl` retries, which the agent cannot see
    inside, stay the script's own job at `--retry 3 --retry-delay 2 --retry-all-errors`.
 
@@ -90,7 +90,7 @@ The owner's ruling, 2026-08-27:
   fresh `apt-get update` and after some time has passed. Only the agent can spend either.
 - **Keep the one-retry-per-bootstrap budget and only fix the report.** Rejected: it leaves the
   standard unstatable. "Your step may or may not be retried, depending on earlier steps" is not
-  a promise `docs/writing-a-pack.md` can make, and the pack author's rational response to it is
+  a promise `docs/writing-a-surge-pack.md` can make, and the pack author's rational response to it is
   to write their own loop, which is what clause 2 exists to prevent.
 - **More than two attempts, or exponential backoff across attempts.** Rejected on the owner's
   wording ("if it fails twice … the server launch should fail"). A third attempt at a mirror
@@ -206,7 +206,7 @@ smoke are unchanged.
 - `scripts/agent-smoke.sh` runs 5–7 — the same behaviours in a real `ubuntu:24.04` container,
   including the mirror rewrite a unit test cannot reach.
 - `docs/bootstrap-contract.md` § Failure semantics — the normative row.
-- `docs/writing-a-pack.md` § Bounded retries — the same contract, stated to pack authors.
+- `docs/surge-pack-contract.md` § Bounded retries — the same contract, stated to pack authors.
 - `docs/memories/2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md` — the apt measurements
   this decision rests on.
 

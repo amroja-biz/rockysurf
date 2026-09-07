@@ -1,7 +1,7 @@
 # Claude Code — the flagship pack.
 #
 # This file also DEFINES the shared base toolchain every other pack references by id
-# (see docs/writing-a-pack.md: a tool is defined in exactly one file and referenced from
+# (see docs/surge-pack-contract.md: a tool is defined in exactly one file and referenced from
 # anywhere). If you are adding a pack, list these ids in your `pack.tools` rather than
 # redefining them — a duplicate `toolId` is rejected by the loader.
 version: 1
@@ -281,7 +281,7 @@ tools:
       [ -f /var/lib/rockysurf/apt-updated ] || { apt-get update -qq && mkdir -p /var/lib/rockysurf && touch /var/lib/rockysurf/apt-updated; }
       if ! command -v node >/dev/null 2>&1; then
         # NodeSource's own apt repository, added by hand instead of piping their setup_22.x
-        # script to bash (docs/writing-a-pack.md "never pipe an unpinned main-branch script
+        # script to bash (docs/surge-pack-contract.md "never pipe an unpinned main-branch script
         # to bash") — the same pattern the `gh` tool above uses: fetch the keyring once,
         # write the source list only when its content would change, and only then run
         # apt-get update. This reproduces what setup_22.x itself does (read straight out of
@@ -441,7 +441,7 @@ tools:
       # PINNED TO THE `stable` DIST-TAG, not `latest` and not a version number — read this
       # before "simplifying" it to a bare `npm install -g @anthropic-ai/claude-code`.
       #
-      # docs/writing-a-pack.md's registry-channel rule says a bare package name resolves
+      # docs/surge-pack-contract.md's registry-channel rule says a bare package name resolves
       # "the registry's stable channel", meaning npm's `latest` dist-tag. That sentence is
       # true for every other agent in this file, but not for this package: checked
       # 2026-08-21 via `npm view @anthropic-ai/claude-code dist-tags`, this package's tags
@@ -455,6 +455,6 @@ tools:
       # stays inside the doc's "quota-free registry channel: install latest, unversioned"
       # policy (rule 1); it just names the moving target explicitly instead of taking npm's
       # default, because for this one package npm's default is not that target. See
-      # docs/writing-a-pack.md § Which version to install.
+      # docs/surge-pack-contract.md § Which version to install.
       npm install -g --no-fund --no-audit @anthropic-ai/claude-code@stable
       claude --version >/dev/null

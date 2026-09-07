@@ -101,7 +101,7 @@ and `provider.terminate()` on a BYO host is bookkeeping, so the rule is safe on 
 - The `StillBillingNotice` and `failed-billing.test.ts` machinery stays, for the cases that still
   keep a machine: `keep`, a non-tool failure, a terminate the provider refused.
 - Pack authors debugging on a real box set `bootstrap.onFailure: keep` — documented in
-  `docs/writing-a-pack.md`. Without it, their evidence is the report, which for push mode is the
+  `docs/writing-a-surge-pack.md`. Without it, their evidence is the report, which for push mode is the
   complete log.
 - `docs/bootstrap-contract.md` gains the per-step `logTail`, the callback body's `stepStatus` and
   `logTail`, two failure-semantics rows and a conformance item.
