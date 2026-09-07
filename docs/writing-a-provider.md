@@ -312,11 +312,13 @@ constant, so the reader is being told the wrong thing about how their servers wi
 
 **A verification section states what has been run and nothing more.** Name the machine type, the
 region, the date and where the evidence lives. If a nightly job re-runs it, say so, because a
-lifecycle proved once is a lifecycle that was true once. A provider nobody has pointed at real
-hardware says exactly that:
-[`@rockysurf/provider-byo`](../packages/provider-byo/README.md#verified) is the worked example, and
-the status block in [`docs/providers/aws.md`](providers/aws.md#the-iam-policy) is the model for one
-that has been.
+lifecycle proved once is a lifecycle that was true once. A provider whose values are mostly still
+inferences says exactly that:
+[`@rockysurf/provider-digitalocean`](../packages/provider-digitalocean/README.md#verified) is the
+worked example — it names the three calls a token has actually met, with dates, and states in its
+first sentence that the rest have not — and the status block in
+[`docs/providers/aws.md`](providers/aws.md#the-iam-policy) is the model for a provider that has
+been run end to end.
 
 ## Before it merges
 
@@ -326,7 +328,7 @@ that has been.
 - [ ] Conformance suite passes (it checks the declaration against the schema).
 - [ ] A column in [`docs/providers/capability-matrix.md`](providers/capability-matrix.md), filled
       in **in the same pull request**, with a note on how each value was established. A value
-      nobody has exercised must say so, the way the `byo` column does.
+      nobody has exercised must say so, the way the `digitalocean` column does.
 - [ ] A package `README.md` in the preceding section order, with its capability values matching the
       source and its verification section claiming only what has been run.
 - [ ] A page under `docs/providers/` if the provider has operator-facing consequences worth
@@ -336,8 +338,8 @@ that has been.
 - [ ] Know which kind of verification your provider gets. **A nightly real-cloud leg is for
       OFFICIAL providers**, the ones composed into `packages/rockysurf/src/compose.ts`. A
       **personal provider gets none**: it ships a fully daggered column, verified by its author and
-      by whoever installs it against their own account, the way the `byo` column reads. Don't file
-      a nightly leg for one, and don't promise a nightly in its README.
+      by whoever installs it against their own account, the way the `digitalocean` column reads.
+      Don't file a nightly leg for one, and don't promise a nightly in its README.
 - [ ] If your package pulls in a vendor SDK, confirm it didn't land in the `npx` install closure
       (`scripts/check-npx-closure.mjs`), and that you took it for the reason
       [Vendor SDKs](#vendor-sdks) allows. Core's cold start is a feature.
@@ -372,7 +374,9 @@ blank file.
 **Nobody here will verify it for you.** The nightly real-cloud workflow drives the official
 providers, the ones composed into `packages/rockysurf/src/compose.ts`. A personal provider ships a
 fully daggered capability column and is verified by its author and by whoever installs it, against
-their own cloud account. The `byo` column is the model for what that looks like written down.
+their own cloud account. The `digitalocean` column is the model for what that looks like written
+down — it is the column of the provider named just above, and every dagger still standing in it is
+a value nobody has run yet.
 Record what you ran, on what date, against which region: that record is the evidence, and it's the
 only thing that takes a dagger off. (Owner ruling, 2026-09-05.)
 

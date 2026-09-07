@@ -1,7 +1,7 @@
 ---
 KEY: branch-protection-and-pr-workflow
 DATE: 2026-08-31
-UPDATED: 2026-08-31
+UPDATED: 2026-09-07
 STATUS: active
 SOURCE: session decision
 ---
@@ -15,11 +15,17 @@ required checks anyway.
 
 On `rockysurf` the ruleset also requires four status checks: **Test, Typecheck, Secret scan,
 What changed**. These are exactly the CI jobs that run unconditionally on every pull request.
-The path-conditional jobs (Lint (structure), Release tarballs, BYO lifecycle) must never be
-added as required: they satisfy the rule when they report "skipped", but a job that is
+The path-conditional jobs (Lint (structure), Release tarballs, Push bootstrap (real sshd)) must
+never be added as required: they satisfy the rule when they report "skipped", but a job that is
 workflow-level path-filtered — or a matrix job, whose reported names vary — never reports at
 all on some PRs, and a required check that never reports deadlocks the merge forever. That is
 why `rockysurf-shop`'s ruleset has no required checks: its PR jobs only trigger on `packs/**`.
+
+**2026-09-07 (#446).** `Push bootstrap (real sshd)` is the new name of the credential-free
+real-infrastructure gate; it replaces `BYO lifecycle (real sshd)`, which goes away with the
+bring-your-own-server provider. It is path-conditional on the same filter, so the ruleset is
+unchanged and must stay unchanged: neither name was ever a required check, and adding the new
+one would deadlock every UI- or docs-only pull request.
 
 The shop ruleset has one bypass actor: **deploy keys**. The `index publisher` deploy key exists
 solely so `index.yml`'s regenerate job can push `index.json` to main after a pack merge; its

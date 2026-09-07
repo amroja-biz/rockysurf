@@ -1,0 +1,12 @@
+{
+  "name": "rockysurf-bootstrap-target",
+  "private": true,
+  "version": "0.0.0",
+  "description": "TEST-ONLY. The Provider-shaped stand-in scripts/e2e/bootstrap-host.mjs loads by path so core has something to push-bootstrap against. Never published, never composed into the product, no dependencies.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js"
+    }
+  }
+}

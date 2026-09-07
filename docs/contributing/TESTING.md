@@ -26,9 +26,10 @@ Testing is arranged in four bands, ordered by what each one can see and by what 
 
 Two rules shape the whole arrangement.
 
-- **A check runs against the shipped artifact wherever it can.** The browser suite, the BYO
-  lifecycle, the pack smoke harness and the nightly all drive `packages/rockysurf/dist/bin.js` or
-  the built CLI, not the sources and not a re-implementation of the code path.
+- **A check runs against the shipped artifact wherever it can.** The browser suite, the
+  push-bootstrap gate, the pack smoke harness and the nightly all drive
+  `packages/rockysurf/dist/bin.js` or the built CLI, not the sources and not a re-implementation
+  of the code path.
 - **A gap found by an expensive check is pushed down to a cheap one.** When the nightly failed on
   a config key core's schema did not accept, the fix was the nightly's config file plus a
   millisecond-scale parity test on the pull request. The expensive check stays as the backstop.
@@ -187,15 +188,31 @@ bug and is invisible on one of them.
 same rules. Neither command is a security check; what carries that is disclosure of every script
 to the operator before consent ([ADR-0006](../adr/0006-pack-registry-split-horizon.md)).
 
-### BYO lifecycle against a real sshd
+### The push bootstrap against a real sshd
 
-`scripts/e2e/byo-host.mjs` runs the bring-your-own-host provider against a real OpenSSH server in
-a container: 75 checks, under two minutes, on a port the script picks rather than 22.
+`scripts/e2e/bootstrap-host.mjs` runs core's push bootstrap against a real OpenSSH server in a
+container: about 70 checks, under a minute, on a port the script picks rather than 22.
+
+Phases 2 to 6 drive the shipped article — the `rockysurf` binary booted from a real config file,
+with everything asked through core's own HTTP API — and phases 7 and 8 import core's own
+`bootstrap/push.js` and call it, because their subjects are values the HTTP API never surfaces:
+the launcher core chose by name, what a resume reports as skipped, and the host-key mismatch that
+must never be retried.
+
+Core will not push to a machine it has no server row for, and it will not make a server row
+without a provider, so the run needs something Provider-shaped. That something is
+`scripts/e2e/fixtures/bootstrap-target`: test-only, unpublished, absent from `compose.ts`, loaded
+by path through the personal-provider mechanism ([ADR-0026](../adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)).
+It stands in for cloud-init — with `generatesUserData: false` there is no pre-boot hook, so the
+`rocky` account, core's minted key and the sudo rule are installed in `provision()` — and it fakes
+nothing about the box: every fact it reports, the host-key fingerprint core pins included, is read
+off the running container.
 
 **Why this approach.** It is the only real-infrastructure run with no cloud credential, no secret
-and no spend, which is what lets it gate a pull request instead of waiting for the nightly. It
-also covers the push bootstrap's NOHUP launcher fallback, which the nightly's cloud runs never
-reach because they all boot systemd.
+and no spend, which is what lets it gate a pull request instead of waiting for the nightly. It is
+also the only coverage of the push bootstrap's NOHUP launcher fallback, which the nightly's cloud
+runs never reach because they all boot systemd. Neither property belongs to any particular
+provider, which is why the run that carries them does not go through one.
 
 ### Release tarballs
 
@@ -247,7 +264,7 @@ On a pull request, `ci.yml`'s `What changed` job reads the changed-file list fro
 itself and sets one output. A pull request confined to `packages/web/`, `docs/`, `.claude/`,
 `.agents/skills/`, `.pass-along/`, `LICENSE` or Markdown runs `Typecheck`, `Test`, `Secret scan`
 and `UI (browser)`. Anything beyond that also runs `Lint (structure)`, `Release tarballs` and
-`BYO lifecycle (real sshd)`. Pushes to `main` are never filtered. `Pack smoke` is its own workflow
+`Push bootstrap (real sshd)`. Pushes to `main` are never filtered. `Pack smoke` is its own workflow
 and triggers only on paths that reach a box, testing just the changed packs when a pull request
 changes only pack files.
 
