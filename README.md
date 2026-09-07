@@ -171,7 +171,9 @@ Scripts must be idempotent, architecture-aware and non-interactive; CI runs ever
 twice, on amd64 and arm64. The guide is
 [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) and the normative contract is
 [`docs/surge-pack-contract.md`](docs/surge-pack-contract.md), or let the repo's Claude Code
-skill write yours.
+skill write yours — clone the repository to use it; the skills live only there, not in the
+published npm package. See [`.agents/skills/README.md`](.agents/skills/README.md) for the full
+procedure.
 
 ### Connect a GitHub repo
 

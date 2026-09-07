@@ -290,6 +290,49 @@ export function HelpPage() {
                 The repository ships six skills. A coding agent that supports the Agent Skills
                 format loads the right one from what you ask it for; you never call a skill by name.
               </p>
+              <p>
+                <strong>
+                  To extend Rocky Surf with your own Surge Packs or Providers, clone the repository.
+                </strong>{' '}
+                The published <code>rockysurf</code> package on npm ships only the runtime; the
+                skills and the Surge Pack smoke harness exist only in the repository. To use any
+                skill, follow these steps:
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Clone the repository, if you have not already:
+                  <pre>
+                    <code>git clone https://github.com/amroja-biz/rockysurf</code>
+                  </pre>
+                </li>
+                <li>
+                  Install dependencies and build the workspace:
+                  <pre>
+                    <code>cd rockysurf &amp;&amp; pnpm install &amp;&amp; pnpm -r build</code>
+                  </pre>
+                </li>
+                <li>
+                  Install Docker if you plan to create a Surge Pack. <code>create-surge-pack</code>,{' '}
+                  <code>register-a-tool</code>, and <code>contribute-surge-pack</code> verify a pack
+                  with the repository&rsquo;s real run-twice smoke harness, which needs a container.
+                  Writing your own Provider does not need Docker: the <code>add-provider</code>{' '}
+                  skill&rsquo;s conformance suite is unit tests.
+                </li>
+                <li>
+                  Work inside the checkout, where a compatible agent finds{' '}
+                  <code>.agents/skills/&lt;name&gt;/SKILL.md</code> on its own. To make a skill
+                  available in every project instead, copy it out of the checkout. The first
+                  destination covers every project you work on; the second checks the skill into one
+                  project, for a team:
+                  <pre>
+                    <code>
+                      cp -r .agents/skills/create-surge-pack ~/.agents/skills/{'\n'}
+                      cp -r .agents/skills/create-surge-pack &lt;your-project&gt;/.agents/skills/
+                    </code>
+                  </pre>
+                  Restart the agent session so the skill is picked up.
+                </li>
+              </ol>
               <dl className="help-glossary">
                 {SKILLS.map(([name, purpose]) => (
                   <div key={name} className="help-glossary-row">
@@ -301,37 +344,8 @@ export function HelpPage() {
                 ))}
               </dl>
               <p>
-                Inside a checkout of the repository there is nothing to install: a compatible agent
-                finds <code>.agents/skills/&lt;name&gt;/SKILL.md</code> on its own. To use a skill
-                outside a checkout, follow these steps:
-              </p>
-              <ol className="help-steps">
-                <li>
-                  Clone the repository, if you have not already:
-                  <pre>
-                    <code>git clone https://github.com/amroja-biz/rockysurf</code>
-                  </pre>
-                </li>
-                <li>
-                  From the checkout, copy the skill you want into your own skills directory. The
-                  first destination covers every project you work on; the second checks the skill
-                  into one project, for a team:
-                  <pre>
-                    <code>
-                      cp -r .agents/skills/create-surge-pack ~/.agents/skills/{'\n'}
-                      cp -r .agents/skills/create-surge-pack &lt;your-project&gt;/.agents/skills/
-                    </code>
-                  </pre>
-                </li>
-                <li>Restart the agent session so the skill is picked up.</li>
-              </ol>
-              <p>
-                Most of these skills verify their work with this repository&rsquo;s real harnesses
-                rather than a weaker check of their own, so they ask for a checkout with{' '}
-                <code>pnpm install &amp;&amp; pnpm -r build</code> run once, and some also need
-                Docker or the <code>gh</code> command. Each <code>SKILL.md</code> opens with the
-                tools it assumes and the command that checks each one. No skill installs anything on
-                your computer.
+                Each <code>SKILL.md</code> opens with the tools it assumes and the command that
+                checks each one. No skill installs anything on your computer.
               </p>
               <p className="help-links">
                 <a href={repoDocUrl('.agents/skills/README.md')} target="_blank" rel="noreferrer">
