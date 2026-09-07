@@ -18,6 +18,13 @@ import { GITHUB_URL, SHOP_PROVIDERS_URL, repoDocUrl } from '../lib/links'
  * panel showing at a time. Each panel opens with a sentence saying what it covers, and anything
  * the reader does is a numbered procedure.
  *
+ * WHAT ORDER THE PANELS ARE IN (issue #441). The sidebar follows the sequence a reader actually
+ * goes through, and `SECTIONS` below is the single place that order is written. Start here is
+ * an index rather than a section: it states no fact that the panel it links to does not already
+ * state, so nothing has to be kept true in two places. All documentation lists every document
+ * the README's table lists, under the README's own audience headings — a reader who opens it
+ * should not have to go to the repository to find out what else exists.
+ *
  * WHY EVERY PANEL STAYS MOUNTED. Other pages link into this one by fragment
  * (`/help#stale-servers`, `/help#backup`) and so does the repository's own documentation. Every
  * panel and every block inside one keeps its `id`, `SECTIONS` maps an incoming fragment to the
@@ -25,13 +32,21 @@ import { GITHUB_URL, SHOP_PROVIDERS_URL, repoDocUrl } from '../lib/links'
  * in this file is therefore a public address: rename one and the links pointing at it break.
  */
 
-/** Which panel each section is, what the sidebar calls it, and every `id` it contains. */
+/**
+ * Which panel each section is, what the sidebar calls it, and every `id` it contains.
+ *
+ * THE ORDER IS THE ORDER A READER DOES THINGS IN (issue #441). Start here says what Rocky Surf
+ * is and numbers the setup; then the four steps that setup names, in the order it names them —
+ * a Provider, a Server and the Surge Pack it is created from, repositories, an agent over MCP;
+ * then the three things a reader looks up once a box is running — costs, settings, backups; then
+ * the two reference panels, the Glossary and All documentation. `SECTIONS[0]` is the panel an
+ * unknown fragment falls back to and the one the page opens on, so Start here has to stay first.
+ */
 const SECTIONS = [
-  { id: 'agents', label: 'MCP & Skills', anchors: ['mcp', 'mcp-scopes', 'skills'] },
-  { id: 'glossary', label: 'Glossary', anchors: [] },
+  { id: 'start', label: 'Start here', anchors: [] },
   {
     id: 'providers',
-    label: 'Cloud providers',
+    label: 'Cloud Providers',
     anchors: ['enable-a-cloud', 'ssh-access', 'hetzner', 'aws', 'azure', 'gcp', 'byo'],
   },
   {
@@ -39,12 +54,14 @@ const SECTIONS = [
     label: 'Servers',
     anchors: ['create', 'boot', 'connect', 'lifecycle', 'stale-servers'],
   },
-  { id: 'repositories', label: 'Private repositories', anchors: ['git-auth'] },
-  { id: 'costs', label: 'Costs and caps', anchors: [] },
   { id: 'packs', label: 'Surge Packs and tools', anchors: [] },
+  { id: 'repositories', label: 'Private repositories', anchors: ['git-auth'] },
+  { id: 'agents', label: 'MCP & Skills', anchors: ['mcp', 'mcp-scopes', 'skills'] },
+  { id: 'costs', label: 'Costs and caps', anchors: [] },
   { id: 'settings', label: 'Settings', anchors: [] },
   { id: 'backup', label: 'Backups', anchors: ['backup-move', 'backup-directory'] },
-  { id: 'docs', label: 'Full documentation', anchors: [] },
+  { id: 'glossary', label: 'Glossary', anchors: [] },
+  { id: 'docs', label: 'All documentation', anchors: [] },
 ] as const
 
 type SectionId = (typeof SECTIONS)[number]['id']
@@ -110,6 +127,98 @@ const SKILLS = [
   ['rockysurf-design', 'Change the web UI, or make something that looks like Rocky Surf.'],
 ] as const
 
+/**
+ * Every document the README's table lists, grouped under the README's own audience headings
+ * (issue #441). The per-cloud Provider pages and the capability matrix sit with Operators,
+ * which is the audience the README gives them.
+ *
+ * THIS LIST AND THE README'S TABLE ARE THE SAME LIST. The owner's complaint about the panel
+ * this replaced was that it carried a subset and gave no sign of it, so a document added to the
+ * README belongs here as well, with the same one-line summary. Every path is a real file on
+ * `main`; a rename that misses this file is a 404 the page renders happily.
+ */
+const DOC_GROUPS = [
+  {
+    audience: 'Operators',
+    docs: [
+      [
+        'docs/self-hosting.md',
+        'Self-hosting',
+        'Install paths, data, upgrades, backup and restore.',
+      ],
+      ['SECURITY.md', 'Security', 'Credential custody, SSH trust, the MCP threat model.'],
+      [
+        'docs/providers/capability-matrix.md',
+        'The capability matrix',
+        'What each Provider can do, and the evidence for it.',
+      ],
+      [
+        'docs/providers/hetzner.md',
+        'Hetzner',
+        'Setting Hetzner up, with its least-privilege credential.',
+      ],
+      ['docs/providers/aws.md', 'AWS', 'Setting AWS up, with its least-privilege role.'],
+      ['docs/providers/azure.md', 'Azure', 'Setting Azure up, with its least-privilege role.'],
+      [
+        'docs/providers/gcp.md',
+        'Google Cloud',
+        'Setting Google Cloud up, with its least-privilege role.',
+      ],
+      [
+        'docs/providers/byo.md',
+        'Your own machines',
+        'Setting up machines you already own, which need no cloud API.',
+      ],
+    ],
+  },
+  {
+    audience: 'Surge Pack authors',
+    docs: [
+      [
+        'docs/writing-a-surge-pack.md',
+        'Writing a Surge Pack',
+        'How one runs, the four rules, a worked example, the checklist.',
+      ],
+      [
+        'docs/surge-pack-contract.md',
+        'The Surge Pack contract',
+        'The normative half — file format, rules in full, environment, the CI smoke test.',
+      ],
+    ],
+  },
+  {
+    audience: 'Contributors',
+    docs: [
+      [
+        'docs/adr/llms.txt',
+        'The architecture decisions',
+        'Start here for the design.',
+      ],
+      [
+        'docs/writing-a-provider.md',
+        'Writing a Provider',
+        'Adding a cloud against the frozen SDK.',
+      ],
+      ['CONTRIBUTING.md', 'Contributing', 'Development setup, gates, conventions.'],
+      [
+        'docs/contributing/TESTING.md',
+        'Testing',
+        'The testing strategy — every layer, where it runs, and the nightly real-cloud run.',
+      ],
+    ],
+  },
+  {
+    audience: 'The maintainer',
+    docs: [
+      [
+        'docs/contributing/RELEASING.md',
+        'Releasing',
+        'Publishing to npm — the procedure, and the reasons behind each step.',
+      ],
+    ],
+  },
+] as const
+
 export function HelpPage() {
   const { hash } = useLocation()
   const navigate = useNavigate()
@@ -148,300 +257,64 @@ export function HelpPage() {
         />
 
         <div className="help-panels">
+          {/*
+            START HERE (issue #441). An index, not a section: every claim in it is already made
+            by the panel the step links to, so this panel can never be the one that goes stale
+            on its own. Add a fact here only after adding it there.
+          */}
           <section
             className="help-panel"
-            id="agents"
+            id="start"
             role="tabpanel"
-            aria-labelledby="help-tab-agents"
-            hidden={active !== 'agents'}
+            aria-labelledby="help-tab-start"
+            hidden={active !== 'start'}
           >
-            <h2>MCP &amp; Skills</h2>
+            <h2>Start here</h2>
             <p className="help-lead">
-              This section covers the two things a coding agent uses. The MCP server lets an agent
-              create, inspect, stop, and destroy servers under the same server-side limits that
-              apply to you. The Agent Skills teach an agent this project&rsquo;s own file formats,
-              so it can write a Surge Pack or a Provider correctly the first time. Both work with
-              any coding agent that supports the underlying standard — Claude Code and Codex CLI
-              are given as the two representative examples, and the same shapes carry over to
-              another MCP client or Agent Skills–compatible agent.
+              Rocky Surf creates a machine on a cloud account of your own, installs a Surge Pack
+              of software on it, and gives you an SSH command to connect with. Every Provider
+              ships disabled and Rocky Surf stores no cloud credentials, so a fresh install
+              cannot spend money until you switch a cloud on. Each panel of this page covers one
+              subject; the following steps are the order to take them in.
             </p>
-
-            <section className="help-block" id="mcp">
-              <h3>Install the MCP server</h3>
-              <p>
-                The MCP server is a separate process. Any MCP client starts it with{' '}
-                <code>rockysurf mcp</code>, and it reaches Rocky Surf over HTTP at the address in{' '}
-                <code>ROCKYSURF_URL</code>. <strong>Rocky Surf must already be running there</strong>{' '}
-                — <code>rockysurf serve</code>, or the process serving this page. A client may start
-                the MCP server before that is true; it reports the condition on stderr, and every
-                tool call recovers once Rocky Surf is up.
-              </p>
-              <p>To connect an agent, follow these steps:</p>
-              <ol className="help-steps">
-                <li>
-                  Confirm Rocky Surf is running. This page is served by it, so if you are reading
-                  this, it is.
-                </li>
-                <li>
-                  Mint a token. It is printed once, it is valid for 365 days, and it is stored only
-                  as a hash:
-                  <pre>
-                    <code>
-                      # from a built checkout — until v0.1.0 is on npm,{'\n'}
-                      # this file IS the rockysurf command:{'\n'}
-                      node packages/rockysurf/dist/bin.js token
-                    </code>
-                  </pre>
-                  The token is the only thing the command writes to stdout, so{' '}
-                  <code>ROCKYSURF_TOKEN=$(rockysurf token)</code> captures it and nothing else.
-                </li>
-                <li>
-                  Add Rocky Surf to your MCP client. Every client wants the same three things — a
-                  <code>command</code>, its <code>args</code>, and two <code>env</code> vars,{' '}
-                  <code>ROCKYSURF_TOKEN</code> and <code>ROCKYSURF_URL</code> — in that client&rsquo;s
-                  own file format. Claude Code and Codex CLI are given here as the two
-                  representative examples.
-                  <h4>Claude Code</h4>
-                  <p>
-                    <strong>User scope</strong> registers the server once for your account, so it
-                    is available in every project you open. This is the recommended default,
-                    because Rocky Surf manages servers regardless of which repository you have
-                    open:
-                  </p>
-                  <pre>
-                    <code>{CLAUDE_CODE_USER_SCOPE_SNIPPET}</code>
-                  </pre>
-                  <p>
-                    <strong>Project scope</strong> checks the server into a repository instead, for
-                    a team that wants it shared. Add this object to <code>.mcp.json</code> in your
-                    project. The same object also works in Claude Code&rsquo;s user-scope file (
-                    <code>~/.claude.json</code>) and in Claude Desktop&rsquo;s configuration file,
-                    which is global by nature:
-                  </p>
-                  <pre>
-                    <code>{MCP_CLIENT_SNIPPET}</code>
-                  </pre>
-                  <h4>Codex CLI</h4>
-                  <p>
-                    <strong>User scope</strong> — Codex calls it the global config — is what{' '}
-                    <code>codex mcp add</code> writes to today, at <code>~/.codex/config.toml</code>:
-                  </p>
-                  <pre>
-                    <code>{CODEX_USER_SCOPE_SNIPPET}</code>
-                  </pre>
-                  <p>
-                    <strong>Project scope</strong> is a <code>.codex/config.toml</code> at your
-                    repository root, loaded only for a project you have marked trusted. Codex CLI
-                    reads a project-scoped file but, as of Codex CLI 0.153, <code>codex mcp add</code>{' '}
-                    has no flag to write one — add this table by hand instead:
-                  </p>
-                  <pre>
-                    <code>{CODEX_CONFIG_SNIPPET}</code>
-                  </pre>
-                  <p className="hint">
-                    Those are the shapes v0.1.0 ships. Until the packages are on npm,{' '}
-                    <code>npx</code> has no <code>rockysurf</code> to fetch — use{' '}
-                    <code>"command": "node"</code> (Claude Code, JSON) or{' '}
-                    <code>command = "node"</code> (Codex CLI, TOML) with{' '}
-                    <code>"&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js"</code> and{' '}
-                    <code>"mcp"</code> as the two args, and the same env vars. For a command-line
-                    form, replace <code>npx -y rockysurf mcp</code> with{' '}
-                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>.
-                  </p>
-                </li>
-                <li>Reconnect the MCP client so it starts the new server. Restart the session.</li>
-                <li>
-                  Ask the agent to list your servers. On the default scopes it holds ten tools, and
-                  a refusal names what it needs.
-                </li>
-              </ol>
-              <p>
-                To revoke the token, sign out of the web UI. That drops every session this
-                installation has issued, your own browser&rsquo;s included, and there is no
-                per-token revoke.
-              </p>
-            </section>
-
-            <section className="help-block" id="mcp-scopes">
-              <h3>Choose what an agent may do</h3>
-              <p>
-                A token grants no permission by itself. <code>mcp.scopes</code> in your config file
-                decides which tools the MCP server offers, and it defaults to{' '}
-                <code>[read, stop]</code>. <code>stop</code> covers pausing a server and starting it
-                again. <code>create</code> and <code>terminate</code> are separate opt-ins, because
-                creating a server costs money and destroying one cannot be undone. A scope you have
-                not granted does not appear in the tool list at all, rather than appearing and then
-                refusing the call.
-              </p>
-              <p>The following table lists each scope and the tools it puts in an agent&rsquo;s hands.</p>
-              <table className="help-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Scope</th>
-                    <th scope="col">Granted</th>
-                    <th scope="col">Tools</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SCOPE_TOOLS.map((row) => (
-                    <tr key={row.scope}>
-                      <th scope="row">
-                        <code>{row.scope}</code>
-                      </th>
-                      <td>{row.granted}</td>
-                      <td>{row.tools}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p>To change what this installation grants, follow these steps:</p>
-              <ol className="help-steps">
-                <li>
-                  Go to <Link to="/settings?section=mcp">Settings &rarr; MCP</Link>.
-                </li>
-                <li>Tick the scopes you want to grant, and untick the ones you do not.</li>
-                <li>Save.</li>
-                <li>
-                  Reconnect the MCP client. Rocky Surf itself needs no restart: the scopes are read
-                  when your client starts <code>rockysurf mcp</code>, so nothing here takes effect
-                  until it does.
-                </li>
-              </ol>
-              <p>
-                On the default scopes an agent&rsquo;s tool list has no <code>create_server</code>.
-                That is <strong>not a bug</strong>; it is this setting. Tools that name a withheld
-                one say so in their own description, so the agent can report the setting instead of
-                a missing feature.
-              </p>
-            </section>
-
-            <section className="help-block" id="skills">
-              <h3>Install the Agent Skills</h3>
-              <p>
-                The repository ships six skills. A coding agent that supports the Agent Skills
-                format loads the right one from what you ask it for; you never call a skill by name.
-              </p>
-              <p>
-                <strong>
-                  To extend Rocky Surf with your own Surge Packs or Providers, clone the repository.
-                </strong>{' '}
-                The published <code>rockysurf</code> package on npm ships only the runtime; the
-                skills and the Surge Pack smoke harness exist only in the repository. To use any
-                skill, follow these steps:
-              </p>
-              <ol className="help-steps">
-                <li>
-                  Clone the repository, if you have not already:
-                  <pre>
-                    <code>git clone https://github.com/amroja-biz/rockysurf</code>
-                  </pre>
-                </li>
-                <li>
-                  Install dependencies and build the workspace:
-                  <pre>
-                    <code>cd rockysurf &amp;&amp; pnpm install &amp;&amp; pnpm -r build</code>
-                  </pre>
-                </li>
-                <li>
-                  Install Docker if you plan to create a Surge Pack. <code>create-surge-pack</code>,{' '}
-                  <code>register-a-tool</code>, and <code>contribute-surge-pack</code> verify a pack
-                  with the repository&rsquo;s real run-twice smoke harness, which needs a container.
-                  Writing your own Provider does not need Docker: the <code>add-provider</code>{' '}
-                  skill&rsquo;s conformance suite is unit tests.
-                </li>
-                <li>
-                  Work inside the checkout, where a compatible agent finds{' '}
-                  <code>.agents/skills/&lt;name&gt;/SKILL.md</code> on its own. To make a skill
-                  available in every project instead, copy it out of the checkout. The first
-                  destination covers every project you work on; the second checks the skill into one
-                  project, for a team:
-                  <pre>
-                    <code>
-                      cp -r .agents/skills/create-surge-pack ~/.agents/skills/{'\n'}
-                      cp -r .agents/skills/create-surge-pack &lt;your-project&gt;/.agents/skills/
-                    </code>
-                  </pre>
-                  Restart the agent session so the skill is picked up.
-                </li>
-              </ol>
-              <dl className="help-glossary">
-                {SKILLS.map(([name, purpose]) => (
-                  <div key={name} className="help-glossary-row">
-                    <dt>
-                      <code>{name}</code>
-                    </dt>
-                    <dd>{purpose}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p>
-                Each <code>SKILL.md</code> opens with the tools it assumes and the command that
-                checks each one. No skill installs anything on your computer.
-              </p>
-              <p className="help-links">
-                <a href={repoDocUrl('.agents/skills/README.md')} target="_blank" rel="noreferrer">
-                  About the skills
-                </a>
-              </p>
-              <p className="help-note">
-                <strong>Rocky Surf is budget-capped, not sandboxed.</strong> A fully compromised MCP
-                client with every scope can destroy this installation&rsquo;s servers and spend up to
-                the configured cap. It cannot read a stored secret, obtain an SSH key, or exceed the
-                limits by any MCP-shaped route. For the full account, see{' '}
-                <a href={repoDocUrl('SECURITY.md')} target="_blank" rel="noreferrer">
-                  the MCP threat model
-                </a>
-                .
-              </p>
-            </section>
-          </section>
-
-          <section
-            className="help-panel"
-            id="glossary"
-            role="tabpanel"
-            aria-labelledby="help-tab-glossary"
-            hidden={active !== 'glossary'}
-          >
-            <h2>Glossary</h2>
-            <p className="help-lead">
-              This section defines the four words the rest of this page is written in.
+            <ol className="help-steps">
+              <li>
+                <strong>Configure a cloud Provider.</strong> Put the credential where that
+                cloud&rsquo;s own tooling already reads it, then set <code>enabled</code> and that
+                cloud&rsquo;s required keys in Settings. AWS, Azure, and Google Cloud will not
+                start without <code>sshAllowedCidr</code>. For the steps, and for what each cloud
+                wants created first, see <Link to="/help#providers">Cloud Providers</Link>.
+              </li>
+              <li>
+                <strong>Create a Server, choosing a Surge Pack.</strong> Pick a Provider and a
+                Surge Pack on the New Server page, describe the machine you want, and create it.
+                The server&rsquo;s own page shows the install as it happens, and then the SSH
+                command that connects you to it. For a server&rsquo;s whole life, see{' '}
+                <Link to="/help#servers">Servers</Link>; for what a Surge Pack is and where
+                community ones come from, see{' '}
+                <Link to="/help#packs">Surge Packs and tools</Link>.
+              </li>
+              <li>
+                <strong>Optional: Connect private repositories.</strong> The repositories you
+                list when you create a server are cloned onto the box during setup. Public ones
+                clone with no credential; private ones need a GitHub token, and Settings takes
+                one two ways. For both, see{' '}
+                <Link to="/help#repositories">Private repositories</Link>.
+              </li>
+              <li>
+                <strong>Connect your coding agent over MCP.</strong> Mint a token, add Rocky Surf
+                to your MCP client, and reconnect the client. What an agent may then do is{' '}
+                <code>mcp.scopes</code> in your config file, which defaults to{' '}
+                <code>[read, stop]</code>. For the commands and the table of scopes, see{' '}
+                <Link to="/help#agents">MCP &amp; Skills</Link>.
+              </li>
+            </ol>
+            <p>
+              Two more panels are worth reading before you leave a machine running:{' '}
+              <Link to="/help#costs">Costs and caps</Link>, for the limits Rocky Surf enforces
+              before a machine is provisioned, and <Link to="/help#backup">Backups</Link>, for
+              what to copy so that a lost computer does not take your server records with it.
             </p>
-            <dl className="help-glossary">
-              <div className="help-glossary-row">
-                <dt>Provider</dt>
-                <dd>
-                  The cloud, or your own machine, that a server runs on. Rocky Surf ships five:
-                  Hetzner, AWS, Azure, Google Cloud, and your own machines (BYO). Each is enabled
-                  independently and translates create, start, stop, and terminate into that
-                  cloud&rsquo;s own API.
-                </dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>Server</dt>
-                <dd>
-                  One managed machine, launched on a provider from a Surge Pack, tracked through its
-                  lifecycle — creating, running, stopped, terminated — until you remove it.
-                </dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>Surge Pack</dt>
-                <dd>
-                  The software a server is created with: a YAML file naming an ordered list of Tools
-                  to install, plus a getting-started guide the pack&rsquo;s author wrote for whatever
-                  the install cannot finish on your behalf.
-                </dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>Tool</dt>
-                <dd>
-                  One piece of software a Surge Pack installs: an idempotent, architecture-aware
-                  install script plus the metadata — name, category, whether it runs as root — the
-                  pack contract requires. A Tool can also be registered and shared on its own,
-                  outside any pack.
-                </dd>
-              </div>
-            </dl>
           </section>
 
           <section
@@ -451,11 +324,11 @@ export function HelpPage() {
             aria-labelledby="help-tab-providers"
             hidden={active !== 'providers'}
           >
-            <h2>Cloud providers</h2>
+            <h2>Cloud Providers</h2>
             <p className="help-lead">
               This section covers how to switch a cloud on: what must exist in the cloud first, where
               the credential comes from, which config keys are required, and how the SSH allow-list
-              reaches the cloud. Every provider ships disabled, so a fresh install cannot spend money
+              reaches the cloud. Every Provider ships disabled, so a fresh install cannot spend money
               by accident.
             </p>
 
@@ -916,6 +789,68 @@ export function HelpPage() {
 
           <section
             className="help-panel"
+            id="packs"
+            role="tabpanel"
+            aria-labelledby="help-tab-packs"
+            hidden={active !== 'packs'}
+          >
+            <h2>Surge Packs and tools</h2>
+            <p className="help-lead">
+              This section covers the software a box is created with: what a Surge Pack is, where
+              community packs and providers come from, and what to read before you install one.
+            </p>
+            <p>
+              A Surge Pack is written as YAML: a list of tools with idempotent, architecture-aware
+              install scripts, plus the author&rsquo;s post-boot guide. The{' '}
+              <Link to="/admin/tools">Tools</Link> and <Link to="/packs">Surge Packs</Link> pages let
+              you inspect and edit what this installation offers. Writing your own means satisfying
+              a contract, and CI enforces the mechanical half of it. Start with{' '}
+              <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
+                writing a surge pack
+              </a>
+              , the author guide; the file format field by field is{' '}
+              <a href={repoDocUrl('docs/surge-pack-contract.md')} target="_blank" rel="noreferrer">
+                the surge pack contract
+              </a>
+              . You can also hand both to your agent with the <code>create-surge-pack</code> skill.
+            </p>
+            <p>
+              The <Link to="/shop">Rocky Surf Shop</Link> tab is where community packs and providers
+              come from. Packs marked <em>official</em> shipped with the release you are running;
+              everything else carries the label you gave its registry in your config file, and no
+              registry can call itself official. Installing a pack takes effect immediately, with no
+              restart; the packs on this installation are on the Surge Packs page, and its Community
+              sub-tab links back to the shop.
+            </p>
+            <p>
+              Before you install anything from a registry, the shop shows you{' '}
+              <strong>every script the pack will run, verbatim</strong>, which of them run as root,
+              and every URL they download from. Read it before you install. The registry&rsquo;s
+              automated checks prove a pack is well-formed and survives being resumed; they cannot
+              prove it is safe, because an install script is arbitrary shell running as root on your
+              box.
+            </p>
+            <p>
+              The same tab lists <strong>providers</strong> — the clouds Rocky Surf can create
+              servers on. Each card shows the version, what the provider will ask you to configure,
+              and what its machines can do, including whether a stopped machine still bills. Install
+              fetches the package over https, checks its digest against the listing, unpacks it under
+              the data directory&rsquo;s <code>providers</code> folder and writes two lines to the
+              config file; nothing in the package runs until you restart Rocky Surf, and the card
+              says so. A listing whose digest does not match, or that points at an <code>http</code>{' '}
+              address, is refused and nothing is written. The same install can be done from the
+              command line — for the steps, see the providers section of the{' '}
+              <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
+                Rocky Surf Shop
+              </a>
+              . Once a provider loads it gets its own panel on the Settings page, the same as a
+              provider that shipped with the release. A provider runs with Rocky Surf&rsquo;s full
+              access — install ones you trust.
+            </p>
+          </section>
+
+          <section
+            className="help-panel"
             id="repositories"
             role="tabpanel"
             aria-labelledby="help-tab-repositories"
@@ -1046,6 +981,254 @@ export function HelpPage() {
 
           <section
             className="help-panel"
+            id="agents"
+            role="tabpanel"
+            aria-labelledby="help-tab-agents"
+            hidden={active !== 'agents'}
+          >
+            <h2>MCP &amp; Skills</h2>
+            <p className="help-lead">
+              This section covers the two things a coding agent uses. The MCP server lets an agent
+              create, inspect, stop, and destroy servers under the same server-side limits that
+              apply to you. The Agent Skills teach an agent this project&rsquo;s own file formats,
+              so it can write a Surge Pack or a Provider correctly the first time. Both work with
+              any coding agent that supports the underlying standard — Claude Code and Codex CLI
+              are given as the two representative examples, and the same shapes carry over to
+              another MCP client or Agent Skills–compatible agent.
+            </p>
+
+            <section className="help-block" id="mcp">
+              <h3>Install the MCP server</h3>
+              <p>
+                The MCP server is a separate process. Any MCP client starts it with{' '}
+                <code>rockysurf mcp</code>, and it reaches Rocky Surf over HTTP at the address in{' '}
+                <code>ROCKYSURF_URL</code>. <strong>Rocky Surf must already be running there</strong>{' '}
+                — <code>rockysurf serve</code>, or the process serving this page. A client may start
+                the MCP server before that is true; it reports the condition on stderr, and every
+                tool call recovers once Rocky Surf is up.
+              </p>
+              <p>To connect an agent, follow these steps:</p>
+              <ol className="help-steps">
+                <li>
+                  Confirm Rocky Surf is running. This page is served by it, so if you are reading
+                  this, it is.
+                </li>
+                <li>
+                  Mint a token. It is printed once, it is valid for 365 days, and it is stored only
+                  as a hash:
+                  <pre>
+                    <code>
+                      # from a built checkout — until v0.1.0 is on npm,{'\n'}
+                      # this file IS the rockysurf command:{'\n'}
+                      node packages/rockysurf/dist/bin.js token
+                    </code>
+                  </pre>
+                  The token is the only thing the command writes to stdout, so{' '}
+                  <code>ROCKYSURF_TOKEN=$(rockysurf token)</code> captures it and nothing else.
+                </li>
+                <li>
+                  Add Rocky Surf to your MCP client. Every client wants the same three things — a
+                  <code>command</code>, its <code>args</code>, and two <code>env</code> vars,{' '}
+                  <code>ROCKYSURF_TOKEN</code> and <code>ROCKYSURF_URL</code> — in that client&rsquo;s
+                  own file format. Claude Code and Codex CLI are given here as the two
+                  representative examples.
+                  <h4>Claude Code</h4>
+                  <p>
+                    <strong>User scope</strong> registers the server once for your account, so it
+                    is available in every project you open. This is the recommended default,
+                    because Rocky Surf manages servers regardless of which repository you have
+                    open:
+                  </p>
+                  <pre>
+                    <code>{CLAUDE_CODE_USER_SCOPE_SNIPPET}</code>
+                  </pre>
+                  <p>
+                    <strong>Project scope</strong> checks the server into a repository instead, for
+                    a team that wants it shared. Add this object to <code>.mcp.json</code> in your
+                    project. The same object also works in Claude Code&rsquo;s user-scope file (
+                    <code>~/.claude.json</code>) and in Claude Desktop&rsquo;s configuration file,
+                    which is global by nature:
+                  </p>
+                  <pre>
+                    <code>{MCP_CLIENT_SNIPPET}</code>
+                  </pre>
+                  <h4>Codex CLI</h4>
+                  <p>
+                    <strong>User scope</strong> — Codex calls it the global config — is what{' '}
+                    <code>codex mcp add</code> writes to today, at <code>~/.codex/config.toml</code>:
+                  </p>
+                  <pre>
+                    <code>{CODEX_USER_SCOPE_SNIPPET}</code>
+                  </pre>
+                  <p>
+                    <strong>Project scope</strong> is a <code>.codex/config.toml</code> at your
+                    repository root, loaded only for a project you have marked trusted. Codex CLI
+                    reads a project-scoped file but, as of Codex CLI 0.153, <code>codex mcp add</code>{' '}
+                    has no flag to write one — add this table by hand instead:
+                  </p>
+                  <pre>
+                    <code>{CODEX_CONFIG_SNIPPET}</code>
+                  </pre>
+                  <p className="hint">
+                    Those are the shapes v0.1.0 ships. Until the packages are on npm,{' '}
+                    <code>npx</code> has no <code>rockysurf</code> to fetch — use{' '}
+                    <code>"command": "node"</code> (Claude Code, JSON) or{' '}
+                    <code>command = "node"</code> (Codex CLI, TOML) with{' '}
+                    <code>"&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js"</code> and{' '}
+                    <code>"mcp"</code> as the two args, and the same env vars. For a command-line
+                    form, replace <code>npx -y rockysurf mcp</code> with{' '}
+                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>.
+                  </p>
+                </li>
+                <li>Reconnect the MCP client so it starts the new server. Restart the session.</li>
+                <li>
+                  Ask the agent to list your servers. On the default scopes it holds ten tools, and
+                  a refusal names what it needs.
+                </li>
+              </ol>
+              <p>
+                To revoke the token, sign out of the web UI. That drops every session this
+                installation has issued, your own browser&rsquo;s included, and there is no
+                per-token revoke.
+              </p>
+            </section>
+
+            <section className="help-block" id="mcp-scopes">
+              <h3>Choose what an agent may do</h3>
+              <p>
+                A token grants no permission by itself. <code>mcp.scopes</code> in your config file
+                decides which tools the MCP server offers, and it defaults to{' '}
+                <code>[read, stop]</code>. <code>stop</code> covers pausing a server and starting it
+                again. <code>create</code> and <code>terminate</code> are separate opt-ins, because
+                creating a server costs money and destroying one cannot be undone. A scope you have
+                not granted does not appear in the tool list at all, rather than appearing and then
+                refusing the call.
+              </p>
+              <p>The following table lists each scope and the tools it puts in an agent&rsquo;s hands.</p>
+              <table className="help-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Scope</th>
+                    <th scope="col">Granted</th>
+                    <th scope="col">Tools</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SCOPE_TOOLS.map((row) => (
+                    <tr key={row.scope}>
+                      <th scope="row">
+                        <code>{row.scope}</code>
+                      </th>
+                      <td>{row.granted}</td>
+                      <td>{row.tools}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p>To change what this installation grants, follow these steps:</p>
+              <ol className="help-steps">
+                <li>
+                  Go to <Link to="/settings?section=mcp">Settings &rarr; MCP</Link>.
+                </li>
+                <li>Tick the scopes you want to grant, and untick the ones you do not.</li>
+                <li>Save.</li>
+                <li>
+                  Reconnect the MCP client. Rocky Surf itself needs no restart: the scopes are read
+                  when your client starts <code>rockysurf mcp</code>, so nothing here takes effect
+                  until it does.
+                </li>
+              </ol>
+              <p>
+                On the default scopes an agent&rsquo;s tool list has no <code>create_server</code>.
+                That is <strong>not a bug</strong>; it is this setting. Tools that name a withheld
+                one say so in their own description, so the agent can report the setting instead of
+                a missing feature.
+              </p>
+            </section>
+
+            <section className="help-block" id="skills">
+              <h3>Install the Agent Skills</h3>
+              <p>
+                The repository ships six skills. A coding agent that supports the Agent Skills
+                format loads the right one from what you ask it for; you never call a skill by name.
+              </p>
+              <p>
+                <strong>
+                  To extend Rocky Surf with your own Surge Packs or Providers, clone the repository.
+                </strong>{' '}
+                The published <code>rockysurf</code> package on npm ships only the runtime; the
+                skills and the Surge Pack smoke harness exist only in the repository. To use any
+                skill, follow these steps:
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Clone the repository, if you have not already:
+                  <pre>
+                    <code>git clone https://github.com/amroja-biz/rockysurf</code>
+                  </pre>
+                </li>
+                <li>
+                  Install dependencies and build the workspace:
+                  <pre>
+                    <code>cd rockysurf &amp;&amp; pnpm install &amp;&amp; pnpm -r build</code>
+                  </pre>
+                </li>
+                <li>
+                  Install Docker if you plan to create a Surge Pack. <code>create-surge-pack</code>,{' '}
+                  <code>register-a-tool</code>, and <code>contribute-surge-pack</code> verify a pack
+                  with the repository&rsquo;s real run-twice smoke harness, which needs a container.
+                  Writing your own Provider does not need Docker: the <code>add-provider</code>{' '}
+                  skill&rsquo;s conformance suite is unit tests.
+                </li>
+                <li>
+                  Work inside the checkout, where a compatible agent finds{' '}
+                  <code>.agents/skills/&lt;name&gt;/SKILL.md</code> on its own. To make a skill
+                  available in every project instead, copy it out of the checkout. The first
+                  destination covers every project you work on; the second checks the skill into one
+                  project, for a team:
+                  <pre>
+                    <code>
+                      cp -r .agents/skills/create-surge-pack ~/.agents/skills/{'\n'}
+                      cp -r .agents/skills/create-surge-pack &lt;your-project&gt;/.agents/skills/
+                    </code>
+                  </pre>
+                  Restart the agent session so the skill is picked up.
+                </li>
+              </ol>
+              <dl className="help-glossary">
+                {SKILLS.map(([name, purpose]) => (
+                  <div key={name} className="help-glossary-row">
+                    <dt>
+                      <code>{name}</code>
+                    </dt>
+                    <dd>{purpose}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p>
+                Each <code>SKILL.md</code> opens with the tools it assumes and the command that
+                checks each one. No skill installs anything on your computer.
+              </p>
+              <p className="help-links">
+                <a href={repoDocUrl('.agents/skills/README.md')} target="_blank" rel="noreferrer">
+                  About the skills
+                </a>
+              </p>
+              <p className="help-note">
+                <strong>Rocky Surf is budget-capped, not sandboxed.</strong> A fully compromised MCP
+                client with every scope can destroy this installation&rsquo;s servers and spend up to
+                the configured cap. It cannot read a stored secret, obtain an SSH key, or exceed the
+                limits by any MCP-shaped route. For the full account, see{' '}
+                <a href={repoDocUrl('SECURITY.md')} target="_blank" rel="noreferrer">
+                  the MCP threat model
+                </a>
+                .
+              </p>
+            </section>
+          </section>
+
+          <section
+            className="help-panel"
             id="costs"
             role="tabpanel"
             aria-labelledby="help-tab-costs"
@@ -1072,68 +1255,6 @@ export function HelpPage() {
               apply to every caller — the web UI, the CLI, and an agent over MCP. A refusal carries a
               machine-readable reason, so an agent that hits the cap can report it and stop instead
               of retrying blindly.
-            </p>
-          </section>
-
-          <section
-            className="help-panel"
-            id="packs"
-            role="tabpanel"
-            aria-labelledby="help-tab-packs"
-            hidden={active !== 'packs'}
-          >
-            <h2>Surge Packs and tools</h2>
-            <p className="help-lead">
-              This section covers the software a box is created with: what a Surge Pack is, where
-              community packs and providers come from, and what to read before you install one.
-            </p>
-            <p>
-              A Surge Pack is written as YAML: a list of tools with idempotent, architecture-aware
-              install scripts, plus the author&rsquo;s post-boot guide. The{' '}
-              <Link to="/admin/tools">Tools</Link> and <Link to="/packs">Surge Packs</Link> pages let
-              you inspect and edit what this installation offers. Writing your own means satisfying
-              a contract, and CI enforces the mechanical half of it. Start with{' '}
-              <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
-                writing a surge pack
-              </a>
-              , the author guide; the file format field by field is{' '}
-              <a href={repoDocUrl('docs/surge-pack-contract.md')} target="_blank" rel="noreferrer">
-                the surge pack contract
-              </a>
-              . You can also hand both to your agent with the <code>create-surge-pack</code> skill.
-            </p>
-            <p>
-              The <Link to="/shop">Rocky Surf Shop</Link> tab is where community packs and providers
-              come from. Packs marked <em>official</em> shipped with the release you are running;
-              everything else carries the label you gave its registry in your config file, and no
-              registry can call itself official. Installing a pack takes effect immediately, with no
-              restart; the packs on this installation are on the Surge Packs page, and its Community
-              sub-tab links back to the shop.
-            </p>
-            <p>
-              Before you install anything from a registry, the shop shows you{' '}
-              <strong>every script the pack will run, verbatim</strong>, which of them run as root,
-              and every URL they download from. Read it before you install. The registry&rsquo;s
-              automated checks prove a pack is well-formed and survives being resumed; they cannot
-              prove it is safe, because an install script is arbitrary shell running as root on your
-              box.
-            </p>
-            <p>
-              The same tab lists <strong>providers</strong> — the clouds Rocky Surf can create
-              servers on. Each card shows the version, what the provider will ask you to configure,
-              and what its machines can do, including whether a stopped machine still bills. Install
-              fetches the package over https, checks its digest against the listing, unpacks it under
-              the data directory&rsquo;s <code>providers</code> folder and writes two lines to the
-              config file; nothing in the package runs until you restart Rocky Surf, and the card
-              says so. A listing whose digest does not match, or that points at an <code>http</code>{' '}
-              address, is refused and nothing is written. The same install can be done from the
-              command line — for the steps, see the providers section of the{' '}
-              <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
-                Rocky Surf Shop
-              </a>
-              . Once a provider loads it gets its own panel on the Settings page, the same as a
-              provider that shipped with the release. A provider runs with Rocky Surf&rsquo;s full
-              access — install ones you trust.
             </p>
           </section>
 
@@ -1270,84 +1391,100 @@ export function HelpPage() {
 
           <section
             className="help-panel"
+            id="glossary"
+            role="tabpanel"
+            aria-labelledby="help-tab-glossary"
+            hidden={active !== 'glossary'}
+          >
+            <h2>Glossary</h2>
+            <p className="help-lead">
+              This section defines the four words the rest of this page is written in.
+            </p>
+            <dl className="help-glossary">
+              <div className="help-glossary-row">
+                <dt>Provider</dt>
+                <dd>
+                  The cloud, or your own machine, that a server runs on. Rocky Surf ships five:
+                  Hetzner, AWS, Azure, Google Cloud, and your own machines (BYO). Each is enabled
+                  independently and translates create, start, stop, and terminate into that
+                  cloud&rsquo;s own API.
+                </dd>
+              </div>
+              <div className="help-glossary-row">
+                <dt>Server</dt>
+                <dd>
+                  One managed machine, launched on a provider from a Surge Pack, tracked through its
+                  lifecycle — creating, running, stopped, terminated — until you remove it.
+                </dd>
+              </div>
+              <div className="help-glossary-row">
+                <dt>Surge Pack</dt>
+                <dd>
+                  The software a server is created with: a YAML file naming an ordered list of Tools
+                  to install, plus a getting-started guide the pack&rsquo;s author wrote for whatever
+                  the install cannot finish on your behalf.
+                </dd>
+              </div>
+              <div className="help-glossary-row">
+                <dt>Tool</dt>
+                <dd>
+                  One piece of software a Surge Pack installs: an idempotent, architecture-aware
+                  install script plus the metadata — name, category, whether it runs as root — the
+                  pack contract requires. A Tool can also be registered and shared on its own,
+                  outside any pack.
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section
+            className="help-panel"
             id="docs"
             role="tabpanel"
             aria-labelledby="help-tab-docs"
             hidden={active !== 'docs'}
           >
-            <h2>Full documentation</h2>
+            <h2>All documentation</h2>
             <p className="help-lead">
-              This page summarizes; the following documents decide. Each one opens in a new tab, in
-              the public repository.
+              This page summarizes; the documents in the following list decide. Each one is
+              grouped under the audience it was written for, and each link opens that file on
+              GitHub in a new tab.
             </p>
-            <dl className="help-glossary">
-              <div className="help-glossary-row">
-                <dt>
-                  <a href={repoDocUrl('docs/self-hosting.md')} target="_blank" rel="noreferrer">
-                    Self-hosting
-                  </a>
-                </dt>
-                <dd>Install paths, where the data lives, backup and restore.</dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>
-                  <a href={repoDocUrl('SECURITY.md')} target="_blank" rel="noreferrer">
-                    Security
-                  </a>
-                </dt>
-                <dd>Credential custody, SSH trust, and the MCP threat model.</dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>Providers</dt>
-                <dd>
-                  One page per cloud, each with its least-privilege credential:{' '}
-                  <a href={repoDocUrl('docs/providers/hetzner.md')} target="_blank" rel="noreferrer">
-                    Hetzner
-                  </a>
-                  ,{' '}
-                  <a href={repoDocUrl('docs/providers/aws.md')} target="_blank" rel="noreferrer">
-                    AWS
-                  </a>
-                  ,{' '}
-                  <a href={repoDocUrl('docs/providers/azure.md')} target="_blank" rel="noreferrer">
-                    Azure
-                  </a>
-                  ,{' '}
-                  <a href={repoDocUrl('docs/providers/gcp.md')} target="_blank" rel="noreferrer">
-                    Google Cloud
-                  </a>{' '}
-                  and{' '}
-                  <a href={repoDocUrl('docs/providers/byo.md')} target="_blank" rel="noreferrer">
-                    your own machines
-                  </a>
-                  , with{' '}
-                  <a
-                    href={repoDocUrl('docs/providers/capability-matrix.md')}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    the capability matrix
-                  </a>{' '}
-                  for what each one can and cannot do.
-                </dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>
-                  <a href={repoDocUrl('docs/writing-a-provider.md')} target="_blank" rel="noreferrer">
-                    Writing a provider
-                  </a>
-                </dt>
-                <dd>The contract a cloud Rocky Surf does not ship has to satisfy.</dd>
-              </div>
-              <div className="help-glossary-row">
-                <dt>
-                  <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-                    The repository
-                  </a>
-                </dt>
-                <dd>Everything else, including the architecture decision records.</dd>
-              </div>
-            </dl>
+
+            {DOC_GROUPS.map((group) => (
+              <section className="help-block" key={group.audience}>
+                <h3>{group.audience}</h3>
+                <dl className="help-glossary">
+                  {group.docs.map(([path, title, summary]) => (
+                    <div className="help-glossary-row" key={path}>
+                      <dt>
+                        <a href={repoDocUrl(path)} target="_blank" rel="noreferrer">
+                          {title}
+                        </a>
+                      </dt>
+                      <dd>{summary}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+
+            <section className="help-block">
+              <h3>Everything else</h3>
+              <dl className="help-glossary">
+                <div className="help-glossary-row">
+                  <dt>
+                    <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+                      The repository
+                    </a>
+                  </dt>
+                  <dd>
+                    Everything this list does not name, including the source, the issues, and the
+                    Agent Skills.
+                  </dd>
+                </div>
+              </dl>
+            </section>
           </section>
         </div>
       </div>

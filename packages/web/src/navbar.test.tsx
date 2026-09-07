@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, within } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ComponentType } from 'react'
@@ -152,15 +152,18 @@ describe('the navbar is on every authenticated page', () => {
         </MemoryRouter>,
       )
 
+      // Scoped to the landmark, because this is a claim about the navbar and not about the
+      // page: Help's own copy links to a section called Servers (issue #441), and a page that
+      // names a destination in its prose must not be able to satisfy — or break — this test.
+      const nav = () => within(screen.getByRole('navigation', { name: 'Primary' }))
+
       // While the page is still fetching.
-      expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy()
-      expect(screen.getByRole('link', { name: 'Servers' })).toBeTruthy()
+      expect(nav().getByRole('link', { name: 'Servers' })).toBeTruthy()
 
       await settle()
 
       // And once it has whatever it was waiting for — or failed to get it.
-      expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy()
-      expect(screen.getByRole('link', { name: 'Servers' })).toBeTruthy()
+      expect(nav().getByRole('link', { name: 'Servers' })).toBeTruthy()
     })
   }
 
