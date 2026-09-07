@@ -275,10 +275,11 @@ export function HelpPage() {
             <ol className="help-steps">
               <li>
                 <strong>Configure a cloud Provider.</strong> Put the credential where that
-                cloud&rsquo;s own tooling already reads it, then set <code>enabled</code> and that
-                cloud&rsquo;s required keys in Settings. AWS, Azure, and Google Cloud will not
-                start without <code>sshAllowedCidr</code>. For the steps, and for what each cloud
-                wants created first, see <Link to="/help#providers">Cloud Providers</Link>.
+                cloud&rsquo;s own tooling already reads it, then turn <strong>Enabled</strong> on
+                in Settings and fill in that cloud&rsquo;s fields. AWS, Azure and Google Cloud will
+                not load without <strong>SSH allowed from</strong>. For the steps, and for what
+                each cloud wants created first, see{' '}
+                <Link to="/help#providers">Cloud Providers</Link>.
               </li>
               <li>
                 <strong>Create a Server, choosing a Surge Pack.</strong> Pick a Provider and a
@@ -321,10 +322,11 @@ export function HelpPage() {
           >
             <h2>Cloud Providers</h2>
             <p className="help-lead">
-              This section covers how to switch a cloud on: what must exist in the cloud first, where
-              the credential comes from, which config keys are required, and how the SSH allow-list
-              reaches the cloud. Every Provider ships disabled, so a fresh install cannot spend money
-              by accident.
+              A Provider is Rocky Surf&rsquo;s connection to one cloud account of your own. This
+              section covers how to switch one on: what to create in the cloud first, where Rocky
+              Surf reads the credential from, which fields to fill in on the Settings page, and how
+              the SSH allow-list reaches the cloud. Every Provider ships disabled, so a fresh
+              install cannot spend money by accident.
             </p>
 
             <section className="help-block" id="enable-a-cloud">
@@ -332,9 +334,9 @@ export function HelpPage() {
               <p>To switch a cloud on, follow these steps:</p>
               <ol className="help-steps">
                 <li>
-                  Create whatever must exist in the cloud before Rocky Surf can be scoped to it. Each
-                  cloud&rsquo;s heading in this section starts with that list, under{' '}
-                  <strong>Before you start</strong>.
+                  In the cloud, create what Rocky Surf has to be pointed at and scoped to — a role,
+                  a service account, a project, an API token. Each cloud&rsquo;s section below
+                  spells this out under <strong>Before you start</strong>, with the commands.
                 </li>
                 <li>
                   Put the credential where that cloud&rsquo;s own tooling already reads it — an
@@ -342,43 +344,48 @@ export function HelpPage() {
                   credentials.
                 </li>
                 <li>
-                  In Rocky Surf, go to <Link to="/settings">Settings</Link> and open the
-                  cloud&rsquo;s own tab. The <Link to="/setup">setup wizard</Link> walks the same
-                  ground for a first install.
+                  In Rocky Surf, go to <Link to="/settings">Settings</Link> and open the tab for
+                  that cloud. The <Link to="/setup">setup wizard</Link> covers the same ground on a
+                  first install.
                 </li>
                 <li>
-                  Set <code>enabled</code> and the keys listed under <strong>Config</strong> for that
-                  cloud, then save. Settings applies immediately; a hand-edit of the config file
-                  applies at the next start.
+                  Turn <strong>Enabled</strong> on, fill in the fields that cloud&rsquo;s steps
+                  name, and save. Saving here takes effect at once; an edit you make in the
+                  configuration file by hand takes effect at the next start.
                 </li>
                 <li>
-                  Open the <Link to="/servers/new">New Server</Link> page and confirm the cloud is in
-                  the provider list. A cloud that failed validation is named there and in the boot
-                  log, with the reason.
+                  Open the <Link to="/servers/new">New Server</Link> page and confirm the cloud is
+                  in the Provider list. A Provider whose settings were refused is named there, and
+                  in the startup log, with the reason.
                 </li>
               </ol>
               <p>
-                <strong>Credentials do not live in the config file.</strong> Each provider reads them
-                from wherever your other tooling for that cloud already keeps them. Rocky Surf checks
-                the config file first, then its own encrypted store — what the wizard asked you to
-                paste — so the file always wins when both are set. Hetzner is the only provider with
-                a credential field at all, and even there the value is a reference to an environment
-                variable: <code>{'${HETZNER_TOKEN}'}</code>.
+                <strong>Credentials do not live in the config file.</strong> Each Provider reads
+                them from wherever your other tooling for that cloud already keeps them. Rocky Surf
+                checks the configuration file first, then its own encrypted store — what the wizard
+                asked you to paste — so the file always wins when both are set. Hetzner is the only
+                Provider with a credential field at all, and even there the value is the name of an
+                environment variable rather than a token: <code>HETZNER_TOKEN</code> on the Settings
+                page, written <code>{'${HETZNER_TOKEN}'}</code> in the configuration file.
               </p>
             </section>
 
             <section className="help-block" id="ssh-access">
               <h3>Set the SSH allow-list</h3>
               <p>
-                <strong>AWS, Azure, and Google Cloud will not start without <code>sshAllowedCidr</code></strong>{' '}
-                — the networks allowed to reach SSH on your servers. It is always a{' '}
-                <strong>list</strong> even for one CIDR, an empty list is refused, and there is no
-                default. Enabling one of these providers without it fails at startup; the boot log
-                and the New Server page both name the provider that was dropped.{' '}
+                <strong>SSH allowed from</strong> is the Settings field that says which networks may
+                reach SSH on the servers a Provider creates. It is called{' '}
+                <code>sshAllowedCidr</code> in the configuration file, which is the name the startup
+                error uses.{' '}
+                <strong>AWS, Azure and Google Cloud will not load without it</strong>: Rocky Surf
+                itself still starts, and the startup log and the New Server page both name the
+                Provider it dropped and why. The value is always a <strong>list</strong> even for
+                one CIDR, an empty list is refused, and there is no default.{' '}
                 <code>0.0.0.0/0</code> anywhere in the list is refused unless{' '}
-                <code>allowAllCidr: true</code> sits beside it, because opening SSH to the internet
-                is two separate decisions. Hetzner has no such key: a Hetzner server is reachable the
-                moment it boots, with no firewall object for Rocky Surf to own.
+                <code>allowAllCidr: true</code> sits beside it in the configuration file, because
+                opening SSH to the internet is two separate decisions. Hetzner has no such field: a
+                Hetzner server is reachable the moment it boots, and there is no firewall object for
+                Rocky Surf to own.
               </p>
               <p>
                 Use the address your SSH connection uses, not the one a &ldquo;what is my IP&rdquo;
@@ -401,8 +408,8 @@ export function HelpPage() {
                   </pre>
                 </li>
                 <li>
-                  Compare the two. Add whichever one differs to <code>sshAllowedCidr</code> as a{' '}
-                  <code>/32</code>.
+                  Compare the two. Add whichever one differs to <strong>SSH allowed from</strong> as
+                  a <code>/32</code>.
                 </li>
                 <li>
                   If a network that worked before goes quiet, run the port-22 command again and
@@ -412,17 +419,17 @@ export function HelpPage() {
                 </li>
               </ol>
               <p>
-                <strong>Saving <code>sshAllowedCidr</code> pushes it to the cloud immediately</strong>{' '}
-                — launching a server is not required for it to take effect. Settings writes the
-                config file, this process adopts it, and then a second call updates the security
-                group, network security group rule, or firewall rule. Each cloud&rsquo;s result
-                appears in Settings under <strong>SSH access at the cloud</strong>. It never launches
-                or touches an instance, and it applies to AWS, Azure, and Google Cloud only.
+                <strong>Saving the list pushes it to the cloud immediately</strong> — launching a
+                server is not required for it to take effect. Settings writes the configuration
+                file, this process adopts it, and then a second call updates the security group,
+                network security group rule, or firewall rule. Each cloud&rsquo;s result appears in
+                Settings under <strong>SSH access at the cloud</strong>. The push never launches or
+                touches an instance, and it applies to AWS, Azure and Google Cloud only.
               </p>
               <p>
                 The <strong>Push SSH access to the clouds</strong> button, in the Settings footer,
-                runs the same sync on demand — useful when the cloud has drifted independently of
-                your config file, or after an upgrade, when it can surface access an earlier release
+                runs the same push on demand — useful when the cloud has drifted independently of
+                your configuration file, or after an upgrade, when it can surface access an earlier release
                 added that your file no longer lists. The button needs no unsaved edits and pushes
                 every enabled cloud at once; <code>rockysurf network sync</code> is the CLI
                 equivalent.
@@ -440,21 +447,90 @@ export function HelpPage() {
               </p>
             </section>
 
+            {/*
+              ONE SHAPE FOR EVERY CLOUD (owner review of the help page, 2026-09-07). The owner read
+              this panel as a new user would and found the AWS section unusable: the role was
+              called optional without saying what it was for, the profile step said "the way you
+              point any AWS tool at one", and the section ended in a context-free "Config:" line.
+              So every cloud below is now the same six moves — where the credential comes from,
+              what permission it needs and why the grant is scoped that way, "Before you start"
+              in the cloud, "Then, in Settings", one Optional line, and the links.
+
+              Two rules that are easy to break here. FIELDS ARE NAMED BY THEIR SETTINGS LABEL,
+              not by their config key: the labels are declared in each provider package's
+              `src/index.ts` and in core's `settings/inventory.ts`, and a reader following these
+              steps is looking at the page, not at the file. And nothing assumes the reader has
+              read another cloud's section, because they will not have.
+            */}
             <section className="help-block" id="hetzner">
               <h3>Hetzner</h3>
               <p>
-                <strong>Before you start:</strong> a Cloud project, and an API token in it with{' '}
-                <strong>Read &amp; Write</strong> — the project&rsquo;s Security section. Read-only
-                passes startup validation and fails at the first create. Give Rocky Surf its own
-                project: a Cloud API token has no per-resource scope, so the project is the only
-                boundary that exists. There is nothing to deploy.
+                Hetzner Cloud is the one Provider with a credential field, and even that field does
+                not hold a token: it holds the <em>name</em> of an environment variable. Rocky Surf
+                reads the token from that variable in the environment it was started from, and
+                stores no cloud credentials.
               </p>
               <p>
-                <strong>Config:</strong> <code>enabled</code>, <code>token</code> (required; write it
-                as <code>{'"${HETZNER_TOKEN}"'}</code>) and <code>location</code> (defaults{' '}
-                <code>fsn1</code>). Optional: <code>sizes</code> as an allowlist, and{' '}
-                <code>consoleProjectId</code>, which only adds a console link and has to be typed in
-                because the API never names the project a token belongs to.
+                The token also needs permission to create and manage servers. A Hetzner Cloud API
+                token has two settings, Read and Read &amp; Write, and no per-resource scope of any
+                kind, so the project the token belongs to is the only boundary there is. Give Rocky
+                Surf a project of its own: everything the token can reach is then a Rocky Surf
+                server, which is as close to least privilege as the Cloud API gets.
+              </p>
+              <p>
+                <strong>Before you start, in Hetzner:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Create a project at console.hetzner.com. The project is the boundary — the token
+                  you make next can reach everything inside it and nothing outside it.
+                </li>
+                <li>
+                  In that project, open <strong>Security</strong> and create an API token with{' '}
+                  <strong>Read &amp; Write</strong>. Hetzner shows the value once. Read-only passes
+                  startup and then fails at the first create, because a server and the SSH key
+                  object it needs are both writes.
+                </li>
+                <li>
+                  Export the token in the shell Rocky Surf starts from, then start Rocky Surf.
+                  Replace the value with the token you just copied.
+                  <pre>
+                    <code>export HETZNER_TOKEN=your-token-here</code>
+                  </pre>
+                  A variable exported after Rocky Surf started is not visible to it.
+                </li>
+              </ol>
+              <p>
+                <strong>Then, in Settings &rarr; Hetzner:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Turn <strong>Enabled</strong> on.
+                </li>
+                <li>
+                  Set <strong>Token Environment Variable</strong> to <code>HETZNER_TOKEN</code> —
+                  the name of the variable, not the token itself. Leaving it empty works too: Rocky
+                  Surf reads <code>HETZNER_TOKEN</code>, then <code>HCLOUD_TOKEN</code>, from its
+                  own environment.
+                </li>
+                <li>
+                  Set <strong>Location</strong> if it is not <code>fsn1</code>: fsn1, nbg1 and hel1
+                  (Germany and Finland), ash and hil (United States), sin (Singapore). ARM (CAX)
+                  server types are sold only in fsn1, nbg1 and hel1.
+                </li>
+                <li>
+                  Save. Rocky Surf checks the values, writes them to the configuration file and
+                  starts using them at once. If the variable you named is not set in the environment
+                  Rocky Surf was started from, this page says so and names it — export it, then
+                  restart Rocky Surf.
+                </li>
+              </ol>
+              <p>
+                Optional: <strong>Console project id</strong> adds a link to the Hetzner Console on
+                each server&rsquo;s page. Take the number from the console address bar, because the
+                API never reveals which project a token belongs to.{' '}
+                <strong>Offered server types</strong> narrows the server types the New Server page
+                offers; the page shows it read-only, and it is edited in the configuration file.
               </p>
               <p className="help-links">
                 <a href={repoDocUrl('docs/providers/hetzner.md')} target="_blank" rel="noreferrer">
@@ -467,43 +543,97 @@ export function HelpPage() {
             <section className="help-block" id="aws">
               <h3>AWS</h3>
               <p>
-                <strong>Before you start:</strong> nothing to create. Rocky Surf uses the standard
-                AWS credential chain — an SSO session, <code>AWS_PROFILE</code>,{' '}
-                <code>AWS_ACCESS_KEY_ID</code> / <code>AWS_SECRET_ACCESS_KEY</code>, or an instance
-                role. If <code>aws sts get-caller-identity</code> works in your shell, so will Rocky
-                Surf, and there is nowhere in the config file to put a key.
+                Rocky Surf never stores an AWS key. It uses whatever credentials the AWS CLI on the
+                same machine already uses: an SSO session, a named profile, environment variables,
+                or an instance role. If <code>aws sts get-caller-identity</code> works in your
+                shell, Rocky Surf has credentials.
               </p>
               <p>
-                <strong>The role</strong> is optional — the same policy attached to a user works —
-                and <code>deploy/aws/iam-role.yaml</code> is a CloudFormation template that creates
-                one IAM role carrying the published policy and nothing else. To deploy it, follow
-                these steps:
+                Those credentials also need permission to create and manage EC2 instances. Rocky
+                Surf publishes the exact set of permissions it needs and nothing more, and the
+                repository ships a CloudFormation template that creates one IAM role carrying that
+                policy and nothing else. Rocky Surf assumes the role, so it can only ever touch
+                instances in one region that carry its own tag, no matter how broad your personal
+                credentials are.
+              </p>
+              <p>
+                <strong>Before you start, create the role:</strong>
               </p>
               <ol className="help-steps">
                 <li>
-                  From a checkout, create the stack:
+                  Create the role. Replace the ARN with the IAM user or SSO role you sign in as.
+                  That identity is the only one allowed to assume the role.
                   <pre>
                     <code>
                       aws cloudformation deploy \{'\n'}
                       {'  '}--template-file deploy/aws/iam-role.yaml \{'\n'}
                       {'  '}--stack-name rocky-surf-iam-role \{'\n'}
                       {'  '}--capabilities CAPABILITY_NAMED_IAM \{'\n'}
-                      {'  '}--parameter-overrides TrustedPrincipalArn=&lt;arn&gt;
+                      {'  '}--parameter-overrides
+                      TrustedPrincipalArn=arn:aws:iam::123456789012:user/you
                       ProviderRegion=us-east-1
                     </code>
                   </pre>
+                  The template needs a checkout of the repository, or download that one file from
+                  GitHub.
                 </li>
-                <li>Point a profile at the role the way you point any AWS tool at one.</li>
                 <li>
-                  Confirm the template&rsquo;s <code>ManagedByTag</code> matches your{' '}
-                  <code>managedBy</code> setting. If the two differ, Rocky Surf can create instances
-                  it is then not allowed to stop or terminate.
+                  Add a named profile that assumes the role to <code>~/.aws/config</code>. Replace
+                  the account id, and set <code>source_profile</code> to the profile you sign in
+                  with.
+                  <pre>
+                    <code>
+                      [profile rockysurf]{'\n'}
+                      role_arn = arn:aws:iam::123456789012:role/rocky-surf-provider{'\n'}
+                      source_profile = default{'\n'}
+                      region = us-east-1
+                    </code>
+                  </pre>
                 </li>
               </ol>
               <p>
-                <strong>Config:</strong> <code>enabled</code> and <code>sshAllowedCidr</code>{' '}
-                (required, a list); <code>region</code> defaults <code>us-east-1</code>. Optional:{' '}
-                <code>profile</code>, and <code>sizes</code> as an allowlist.
+                Leave the template&rsquo;s <code>ManagedByTag</code> at its default. It is the tag
+                Rocky Surf writes on every instance it creates, and the role may only stop or
+                terminate instances carrying it. Change it only if you also change Rocky Surf&rsquo;s{' '}
+                <code>managedBy</code> setting, and keep the two identical.
+              </p>
+              <p>
+                <strong>Then, in Settings &rarr; AWS:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Turn <strong>Enabled</strong> on.
+                </li>
+                <li>
+                  Set <strong>Region</strong> if it is not <code>us-east-1</code>. It must match the
+                  region you deployed the role for.
+                </li>
+                <li>
+                  Set <strong>SSH allowed from</strong> to your public address as a{' '}
+                  <code>/32</code>. AWS will not load without it. See{' '}
+                  <a href="#ssh-access">Set the SSH allow-list</a> for how to find the right
+                  address.
+                </li>
+                <li>
+                  Set <strong>Profile</strong> to <code>rockysurf</code>.
+                </li>
+                <li>
+                  Save. Rocky Surf checks the values and starts using them at once, and reports a
+                  value it refuses next to the field that carries it. Saving{' '}
+                  <strong>SSH allowed from</strong> also pushes that rule to AWS, and the result of
+                  the push — including a credential AWS would not accept — appears on this page
+                  under <strong>SSH access at the cloud</strong>. Anything else that is wrong shows
+                  up on the New Server page, which names the Provider and the reason: settings the
+                  Provider itself refused, or the error AWS returned when Rocky Surf asked it for
+                  instance types.
+                </li>
+              </ol>
+              <p>
+                Optional: <strong>Offered instance types</strong> narrows the instance types the New
+                Server page offers; the page shows it read-only, and it is edited in the
+                configuration file. <strong>Security group name</strong> renames the shared SSH
+                security group, which keeps two installations in one AWS account off each
+                other&rsquo;s firewall rule.
               </p>
               <p className="help-links">
                 <a href={repoDocUrl('docs/providers/aws.md')} target="_blank" rel="noreferrer">
@@ -516,65 +646,139 @@ export function HelpPage() {
             <section className="help-block" id="azure">
               <h3>Azure</h3>
               <p>
-                <strong>Before you start</strong>, do the following in your subscription:
+                Rocky Surf never stores an Azure secret, and there is nowhere in its configuration
+                file to put one. It tries four credential sources in order: workload identity
+                federation (<code>AZURE_TENANT_ID</code>, <code>AZURE_CLIENT_ID</code> and{' '}
+                <code>AZURE_FEDERATED_TOKEN_FILE</code>), a service principal (
+                <code>AZURE_TENANT_ID</code>, <code>AZURE_CLIENT_ID</code> and{' '}
+                <code>AZURE_CLIENT_SECRET</code>), a managed identity if Rocky Surf itself runs on
+                an Azure VM, and finally <code>az login</code>. When none of them answers, the error
+                names every source it tried and why each one did not. On a server you can turn the
+                fourth source off with <code>allowAzureCli: false</code> in the configuration file.
+              </p>
+              <p>
+                The identity behind those credentials needs permission to create and manage virtual
+                machines. The repository ships a Bicep template that creates two custom roles and
+                grants both to one identity: an operational role scoped to a single resource group,
+                which is the only place Rocky Surf creates anything, and a read-only role at
+                subscription scope that reads Azure&rsquo;s own catalogue — the VM sizes your
+                subscription may order, the core quota approved for them, and the list of regions.
+                Nothing else in the subscription is visible to it.
+              </p>
+              <p>
+                <strong>Before you start, in Azure:</strong>
               </p>
               <ol className="help-steps">
                 <li>
-                  Register <code>Microsoft.Compute</code> and <code>Microsoft.Network</code>, if the
-                  subscription has never used them. A fresh subscription has not.
+                  Register the two resource provider namespaces, if this subscription has never used
+                  them. A fresh subscription has not, and each takes a minute or two.
+                  <pre>
+                    <code>
+                      az provider register --namespace Microsoft.Compute{'\n'}
+                      az provider register --namespace Microsoft.Network
+                    </code>
+                  </pre>
                 </li>
                 <li>
-                  Create the one resource group Rocky Surf owns:
+                  Create the one resource group Rocky Surf owns.
                   <pre>
                     <code>az group create --name rocky-surf-rg --location eastus</code>
                   </pre>
-                  <strong>Rocky Surf does not create the resource group.</strong> A role cannot be
-                  scoped to a group that does not exist yet, so a provider that created its own scope
-                  would need resource-group write across the whole subscription — permission to
-                  delete any group in your account. One <code>az group create</code> buys a role that
-                  cannot reach outside one group.
+                  You create it and Rocky Surf does not, because a role cannot be scoped to a group
+                  that does not exist yet: a Provider that made its own scope would need
+                  resource-group write across the whole subscription, which is permission to delete
+                  any group in it.
                 </li>
                 <li>
-                  Create an identity for Rocky Surf to run as:
+                  Create the identity Rocky Surf runs as. The command prints an <code>appId</code>,
+                  a <code>password</code> and a <code>tenant</code> — keep all three, because the
+                  password is shown once.
                   <pre>
-                    <code>az ad sp create-for-rbac</code>
+                    <code>az ad sp create-for-rbac --name rocky-surf</code>
                   </pre>
                 </li>
                 <li>
-                  Deploy the two role definitions — one on the resource group, one read-only at
-                  subscription scope — at <em>subscription</em> scope:
+                  Read that identity&rsquo;s <strong>object</strong> id, which is not its{' '}
+                  <code>appId</code>. Replace the placeholder with the <code>appId</code> from the
+                  previous step.
+                  <pre>
+                    <code>az ad sp show --id APP_ID --query id -o tsv</code>
+                  </pre>
+                </li>
+                <li>
+                  Create both roles and grant them to that identity. Deploy at subscription scope,
+                  and replace <code>principalId</code> with the object id from the previous step.
                   <pre>
                     <code>
                       az deployment sub create \{'\n'}
                       {'  '}--location eastus \{'\n'}
                       {'  '}--template-file deploy/azure/role.bicep \{'\n'}
-                      {'  '}--parameters resourceGroupName=rocky-surf-rg principalId=&lt;object
-                      id&gt;
+                      {'  '}--parameters resourceGroupName=rocky-surf-rg
+                      principalId=00000000-0000-0000-0000-000000000000
                     </code>
                   </pre>
-                  <code>principalId</code> is the identity&rsquo;s <strong>object</strong> id, not
-                  its application id (
-                  <code>az ad sp show --id &lt;appId&gt; --query id -o tsv</code>).
+                  The template needs a checkout of the repository, or download that one file from
+                  GitHub.
+                </li>
+                <li>
+                  Export the identity&rsquo;s credentials in the shell Rocky Surf starts from, then
+                  start Rocky Surf. The values are the <code>tenant</code>, <code>appId</code> and{' '}
+                  <code>password</code> the third step printed.
+                  <pre>
+                    <code>
+                      export AZURE_TENANT_ID=TENANT_ID \{'\n'}
+                      {'  '}AZURE_CLIENT_ID=APP_ID \{'\n'}
+                      {'  '}AZURE_CLIENT_SECRET=PASSWORD
+                    </code>
+                  </pre>
                 </li>
               </ol>
               <p>
-                <strong>Credentials</strong> come from <code>AZURE_TENANT_ID</code> /{' '}
-                <code>AZURE_CLIENT_ID</code> / <code>AZURE_CLIENT_SECRET</code>, then a managed
-                identity if Rocky Surf runs on an Azure VM, then <code>az login</code> — in that
-                order, and a failure names every source it tried. <code>allowAzureCli: false</code>{' '}
-                turns the third off on a server. There is nowhere in the config file for a client
-                secret.
+                <strong>Then, in Settings &rarr; Azure:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Turn <strong>Enabled</strong> on.
+                </li>
+                <li>
+                  Set <strong>Subscription id</strong> to the subscription you deployed the roles
+                  into. <code>az account show --query id -o tsv</code> prints it.
+                </li>
+                <li>
+                  Set <strong>Resource group</strong> to <code>rocky-surf-rg</code>. It must be the
+                  group the operational role was granted on, because that role reaches nothing else.
+                </li>
+                <li>
+                  Set <strong>Location</strong> if you want a region other than <code>eastus</code>.
+                </li>
+                <li>
+                  Set <strong>SSH allowed from</strong> to your public address as a{' '}
+                  <code>/32</code>. Azure will not load without it. See{' '}
+                  <a href="#ssh-access">Set the SSH allow-list</a> for how to find the right
+                  address.
+                </li>
+                <li>
+                  Save. Rocky Surf checks the values and starts using them at once, and reports a
+                  value it refuses next to the field that carries it. Saving{' '}
+                  <strong>SSH allowed from</strong> also pushes that rule to Azure, and the result
+                  of the push — including a credential Azure would not accept — appears on this page
+                  under <strong>SSH access at the cloud</strong>. Anything else that is wrong shows
+                  up on the New Server page, which names the Provider and the reason: settings the
+                  Provider itself refused, or the error Azure returned when Rocky Surf asked it for
+                  VM sizes.
+                </li>
+              </ol>
+              <p>
+                Optional: <strong>Offered VM sizes</strong> narrows the VM sizes the New Server page
+                offers; the page shows it read-only, and it is edited in the configuration file.
               </p>
               <p>
-                <strong>Config:</strong> <code>enabled</code>, <code>subscriptionId</code>,{' '}
-                <code>resourceGroup</code> and <code>sshAllowedCidr</code> (required, a list);{' '}
-                <code>location</code> defaults <code>eastus</code>. Optional: <code>sizes</code>.
-              </p>
-              <p>
-                <strong>A create is gated twice</strong> — by SKU availability, then by per-family
-                core quota, which a fresh subscription has at zero for most families. The size list
-                reads that quota where the credential can, and says when a family is refused for it
-                rather than offering a machine the create would turn down.
+                <strong>Azure refuses a create twice</strong> — first on whether it sells a VM size
+                to your subscription in that region, and then on the core quota approved for that
+                size&rsquo;s family, which a fresh subscription has at zero for most families. The
+                size list reads both gates wherever the credential is allowed to, so a family
+                without quota is listed with that reason rather than offered as a machine the create
+                would refuse.
               </p>
               <p className="help-links">
                 <a href={repoDocUrl('docs/providers/azure.md')} target="_blank" rel="noreferrer">
@@ -587,34 +791,105 @@ export function HelpPage() {
             <section className="help-block" id="gcp">
               <h3>Google Cloud</h3>
               <p>
-                <strong>Before you start:</strong> a project, and Application Default Credentials —
-                the same chain <code>gcloud</code> itself uses.{' '}
+                Rocky Surf never stores a Google credential. It uses Application Default
+                Credentials, the same chain every Google client library reads.{' '}
                 <strong>
-                  <code>gcloud auth login</code> does not create or refresh ADC
+                  <code>gcloud auth login</code> does not create or refresh them
                 </strong>
-                , which is the likeliest reason a correct configuration fails on a first run: they
-                are two separate logins, possibly to two different Google accounts, and only{' '}
-                <code>gcloud auth application-default login</code> writes the one Rocky Surf reads. A
-                key file — <code>GOOGLE_APPLICATION_CREDENTIALS</code>, or <code>keyFile</code> in
-                the config as a <em>path</em> — is the last resort rather than the default.
+                : that command signs in the <code>gcloud</code> tool, and only{' '}
+                <code>gcloud auth application-default login</code> writes the credentials Rocky Surf
+                reads. They are two separate logins, and they can even belong to two different
+                Google accounts, which is the likeliest reason a correct configuration fails on a
+                first run. A service-account key file — <code>GOOGLE_APPLICATION_CREDENTIALS</code>,
+                or <code>keyFile</code> in the configuration file as a <em>path</em> — is the last
+                resort rather than the default.
               </p>
               <p>
-                <strong>The role</strong> is one script that creates a custom role, a service
-                account, and the binding between them. It is idempotent, and <code>--dry-run</code>{' '}
-                prints every command it would run and changes nothing. <code>gcloud</code> is the
-                only prerequisite:
+                Those credentials also need permission to create and manage Compute Engine
+                instances. <code>./deploy/gcp/setup.sh</code> creates all of it in one run: a custom
+                IAM role carrying exactly the permissions Rocky Surf calls, a service account to
+                hold it, and the binding between the two. It grants no predefined role, no owner and
+                no editor, so the service account reaches one project and nothing else in your
+                organization. The script is idempotent, <code>--dry-run</code> prints every command
+                it would run and changes nothing, and <code>gcloud</code> is its only prerequisite.
               </p>
-              <pre>
-                <code>./deploy/gcp/setup.sh --project=my-project-123456</code>
-              </pre>
               <p>
-                <strong>Config:</strong> <code>enabled</code>, <code>projectId</code> and{' '}
-                <code>sshAllowedCidr</code> (required, a list); <code>zone</code> defaults{' '}
-                <code>us-central1-a</code>. <code>projectId</code> is never inferred, because a
-                Google credential can be valid for many projects and names none of them. The zone
-                default is not <code>-c</code> on purpose: arm64 (Tau T2A) is sold in only eight
-                zones and <code>us-central1-c</code> is not one of them. Optional:{' '}
-                <code>keyFile</code>, <code>sizes</code>.
+                <strong>Before you start, in Google Cloud:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Create a project, or choose one, and note its project id — the id{' '}
+                  <code>my-project-123456</code>, not the display name.
+                </li>
+                <li>
+                  Run the setup script from a checkout of the repository. It enables the Compute
+                  Engine API, creates the custom role <code>rockySurfDevBoxManager</code>, creates
+                  the service account{' '}
+                  <code>rockysurf@my-project-123456.iam.gserviceaccount.com</code>, and binds the
+                  one to the other.
+                  <pre>
+                    <code>./deploy/gcp/setup.sh --project=my-project-123456</code>
+                  </pre>
+                </li>
+                <li>
+                  Let your own Google account act as that service account, then write Application
+                  Default Credentials that do. Replace the address with the account you signed in
+                  with; the first command changes nothing if you already hold that role.
+                  <pre>
+                    <code>
+                      gcloud iam service-accounts add-iam-policy-binding \{'\n'}
+                      {'  '}rockysurf@my-project-123456.iam.gserviceaccount.com \{'\n'}
+                      {'  '}--member=user:dana@example.com \{'\n'}
+                      {'  '}--role=roles/iam.serviceAccountTokenCreator \{'\n'}
+                      {'  '}--project=my-project-123456{'\n'}
+                      {'\n'}
+                      gcloud auth application-default login \{'\n'}
+                      {'  '}--impersonate-service-account=rockysurf@my-project-123456.iam.gserviceaccount.com
+                    </code>
+                  </pre>
+                  Running Rocky Surf on Google Cloud instead? Attach the service account to the VM,
+                  the Cloud Run service or the GKE workload and skip this step — then no key exists
+                  anywhere to leak.
+                </li>
+              </ol>
+              <p>
+                <strong>Then, in Settings &rarr; Google Cloud:</strong>
+              </p>
+              <ol className="help-steps">
+                <li>
+                  Turn <strong>Enabled</strong> on.
+                </li>
+                <li>
+                  Set <strong>Project id</strong> to <code>my-project-123456</code>. Rocky Surf
+                  never infers it, because a Google credential can be valid for many projects and
+                  names none of them.
+                </li>
+                <li>
+                  Set <strong>Zone</strong> if it is not <code>us-central1-a</code>. The default is
+                  not <code>us-central1-c</code> on purpose: arm64 (Tau T2A) machine types are sold
+                  in only eight zones and that is not one of them.
+                </li>
+                <li>
+                  Set <strong>SSH allowed from</strong> to your public address as a{' '}
+                  <code>/32</code>. Google Cloud will not load without it. See{' '}
+                  <a href="#ssh-access">Set the SSH allow-list</a> for how to find the right
+                  address.
+                </li>
+                <li>
+                  Save. Rocky Surf checks the values and starts using them at once, and reports a
+                  value it refuses next to the field that carries it. Saving{' '}
+                  <strong>SSH allowed from</strong> also pushes that rule to Google Cloud, and the
+                  result of the push — including a credential Google Cloud would not accept —
+                  appears on this page under <strong>SSH access at the cloud</strong>. Anything else
+                  that is wrong shows up on the New Server page, which names the Provider and the
+                  reason: settings the Provider itself refused, or the error Google Cloud returned
+                  when Rocky Surf asked it for machine types.
+                </li>
+              </ol>
+              <p>
+                Optional: <strong>Offered machine types</strong> narrows the machine types the New
+                Server page offers; the page shows it read-only, and it is edited in the
+                configuration file.
               </p>
               <p className="help-links">
                 <a href={repoDocUrl('docs/providers/gcp.md')} target="_blank" rel="noreferrer">
