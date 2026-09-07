@@ -579,7 +579,9 @@ servers that cost real money. It is the highest-blast-radius feature in v0.1. Th
 rockysurf token          # mints a token, prints it once
 ```
 
-Then, in your MCP client — for Claude Code, `.mcp.json` in your project:
+Then, in your MCP client — for example, Claude Code's `.mcp.json` in your project, or Codex CLI's
+`.codex/config.toml` — the README's [Configure MCP](README.md#3-configure-mcp) section has the
+full forms for both:
 
 ```json
 {

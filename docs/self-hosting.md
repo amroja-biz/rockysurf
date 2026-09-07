@@ -1582,8 +1582,8 @@ absence to be guessed at.
 To grant it: tick `create` under **Settings → MCP** (or add it to `mcp.scopes` in the config
 file), then **reconnect the MCP client**. Scopes are read by the separate process your client
 starts with `rockysurf mcp`, when that process starts — Rocky Surf itself needs no restart, and
-nothing changes for an already-connected client until it reconnects. In Claude Code that means
-restarting the session.
+nothing changes for an already-connected client until it reconnects. In Claude Code or Codex CLI
+that means restarting the session.
 
 The blast radius each scope buys, and why the split is where it is, is in
 [`SECURITY.md`](../SECURITY.md#the-scope-split).

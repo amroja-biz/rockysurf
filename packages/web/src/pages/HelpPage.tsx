@@ -63,7 +63,7 @@ export function panelForAnchor(anchor: string): SectionId {
   return match?.id ?? SECTIONS[0].id
 }
 
-const MCP_USER_SCOPE_SNIPPET = `claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \\
+const CLAUDE_CODE_USER_SCOPE_SNIPPET = `claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \\
   --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp`
 
 const MCP_CLIENT_SNIPPET = `{
@@ -78,6 +78,14 @@ const MCP_CLIENT_SNIPPET = `{
     }
   }
 }`
+
+const CODEX_USER_SCOPE_SNIPPET = `codex mcp add rockysurf --env ROCKYSURF_TOKEN=the-token-you-just-minted \\
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp`
+
+const CODEX_CONFIG_SNIPPET = `[mcp_servers.rockysurf]
+command = "npx"
+args = ["-y", "rockysurf", "mcp"]
+env = { ROCKYSURF_TOKEN = "the-token-you-just-minted", ROCKYSURF_URL = "http://127.0.0.1:3000" }`
 
 /** The scopes, and what each one puts in an agent's tool list. */
 const SCOPE_TOOLS = [
@@ -152,13 +160,16 @@ export function HelpPage() {
               This section covers the two things a coding agent uses. The MCP server lets an agent
               create, inspect, stop, and destroy servers under the same server-side limits that
               apply to you. The Agent Skills teach an agent this project&rsquo;s own file formats,
-              so it can write a Surge Pack or a provider correctly the first time.
+              so it can write a Surge Pack or a Provider correctly the first time. Both work with
+              any coding agent that supports the underlying standard — Claude Code and Codex CLI
+              are given as the two representative examples, and the same shapes carry over to
+              another MCP client or Agent Skills–compatible agent.
             </p>
 
             <section className="help-block" id="mcp">
               <h3>Install the MCP server</h3>
               <p>
-                The MCP server is a separate process. Your MCP client starts it with{' '}
+                The MCP server is a separate process. Any MCP client starts it with{' '}
                 <code>rockysurf mcp</code>, and it reaches Rocky Surf over HTTP at the address in{' '}
                 <code>ROCKYSURF_URL</code>. <strong>Rocky Surf must already be running there</strong>{' '}
                 — <code>rockysurf serve</code>, or the process serving this page. A client may start
@@ -185,15 +196,20 @@ export function HelpPage() {
                   <code>ROCKYSURF_TOKEN=$(rockysurf token)</code> captures it and nothing else.
                 </li>
                 <li>
-                  Add Rocky Surf to your MCP client. Choose a scope.
+                  Add Rocky Surf to your MCP client. Every client wants the same three things — a
+                  <code>command</code>, its <code>args</code>, and two <code>env</code> vars,{' '}
+                  <code>ROCKYSURF_TOKEN</code> and <code>ROCKYSURF_URL</code> — in that client&rsquo;s
+                  own file format. Claude Code and Codex CLI are given here as the two
+                  representative examples.
+                  <h4>Claude Code</h4>
                   <p>
                     <strong>User scope</strong> registers the server once for your account, so it
                     is available in every project you open. This is the recommended default,
                     because Rocky Surf manages servers regardless of which repository you have
-                    open. In Claude Code, run:
+                    open:
                   </p>
                   <pre>
-                    <code>{MCP_USER_SCOPE_SNIPPET}</code>
+                    <code>{CLAUDE_CODE_USER_SCOPE_SNIPPET}</code>
                   </pre>
                   <p>
                     <strong>Project scope</strong> checks the server into a repository instead, for
@@ -205,20 +221,35 @@ export function HelpPage() {
                   <pre>
                     <code>{MCP_CLIENT_SNIPPET}</code>
                   </pre>
+                  <h4>Codex CLI</h4>
+                  <p>
+                    <strong>User scope</strong> — Codex calls it the global config — is what{' '}
+                    <code>codex mcp add</code> writes to today, at <code>~/.codex/config.toml</code>:
+                  </p>
+                  <pre>
+                    <code>{CODEX_USER_SCOPE_SNIPPET}</code>
+                  </pre>
+                  <p>
+                    <strong>Project scope</strong> is a <code>.codex/config.toml</code> at your
+                    repository root, loaded only for a project you have marked trusted. Codex CLI
+                    reads a project-scoped file but, as of Codex CLI 0.153, <code>codex mcp add</code>{' '}
+                    has no flag to write one — add this table by hand instead:
+                  </p>
+                  <pre>
+                    <code>{CODEX_CONFIG_SNIPPET}</code>
+                  </pre>
                   <p className="hint">
-                    That JSON is the shape v0.1.0 ships. Until the packages are on npm,{' '}
+                    Those are the shapes v0.1.0 ships. Until the packages are on npm,{' '}
                     <code>npx</code> has no <code>rockysurf</code> to fetch — use{' '}
-                    <code>"command": "node"</code> with{' '}
-                    <code>"args": ["&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js", "mcp"]</code>{' '}
-                    (or, for the user-scope command, replace <code>npx -y rockysurf mcp</code> with{' '}
-                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>) and
-                    the same env vars.
+                    <code>"command": "node"</code> (Claude Code, JSON) or{' '}
+                    <code>command = "node"</code> (Codex CLI, TOML) with{' '}
+                    <code>"&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js"</code> and{' '}
+                    <code>"mcp"</code> as the two args, and the same env vars. For a command-line
+                    form, replace <code>npx -y rockysurf mcp</code> with{' '}
+                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>.
                   </p>
                 </li>
-                <li>
-                  Reconnect the MCP client so it starts the new server. In Claude Code, restart the
-                  session.
-                </li>
+                <li>Reconnect the MCP client so it starts the new server. Restart the session.</li>
                 <li>
                   Ask the agent to list your servers. On the default scopes it holds ten tools, and
                   a refusal names what it needs.

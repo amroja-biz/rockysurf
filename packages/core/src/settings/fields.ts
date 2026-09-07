@@ -607,7 +607,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     restartReason:
       'The MCP server is a separate process — the one your MCP client starts with `rockysurf ' +
       'mcp` — and it reads this list when it starts. Rocky Surf itself needs no restart; the MCP ' +
-      'client does, so reconnect it (in Claude Code, restart the session) to pick this up.',
+      'client does, so reconnect your MCP client to pick this up.',
     help:
       'What an MCP client connected to this instance may do on your behalf. `read` and `stop` are ' +
       'the default pair — `stop` covers starting a stopped box again as well as stopping a ' +
