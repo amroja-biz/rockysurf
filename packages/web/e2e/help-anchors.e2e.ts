@@ -49,16 +49,56 @@ test('a different /help fragment link works the same way, unrelated to stale-ser
 test('the sidebar switches sections, and the fragment follows it (#364)', async ({ page }) => {
   await page.goto('/help')
 
-  // The page opens on the section the owner renamed in #364.
-  await expect(page.getByRole('tab', { name: 'MCP & Skills', selected: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'MCP & Skills' })).toBeVisible()
+  // The page opens on the first step of the sequence the sidebar is ordered by (#441).
+  await expect(page.getByRole('tab', { name: 'Start here', selected: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Start here' })).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Cloud providers' }).click()
+  await page.getByRole('tab', { name: 'Cloud Providers' }).click()
 
   await expect(page).toHaveURL(/\/help#providers$/)
-  await expect(page.getByRole('heading', { name: 'Cloud providers' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Cloud Providers' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Hetzner' })).toBeVisible()
-  await expect(page.locator('#agents')).toBeHidden()
+  await expect(page.locator('#start')).toBeHidden()
+})
+
+/**
+ * START HERE AND ALL DOCUMENTATION (issue #441). The owner's report was about finding things:
+ * the order read as random, and the documentation panel carried a subset of the documentation.
+ * A component test sees the markup; only this file sees that a reader who opens Help lands on
+ * Start here and can walk the setup from it by clicking.
+ */
+test('Start here walks the setup, one click per step (#441)', async ({ page }) => {
+  await page.goto('/help')
+
+  const start = page.locator('#start')
+  await expect(start.getByRole('link', { name: 'Cloud Providers' })).toBeVisible()
+
+  await start.getByRole('link', { name: 'Servers', exact: true }).click()
+
+  await expect(page).toHaveURL(/\/help#servers$/)
+  await expect(page.getByRole('tab', { name: 'Servers', selected: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Create a server' })).toBeVisible()
+})
+
+test('All documentation lists every audience the README groups documents by (#441)', async ({
+  page,
+}) => {
+  await page.goto('/help#docs')
+
+  const docs = page.locator('#docs')
+  await expect(page.getByRole('heading', { name: 'All documentation' })).toBeVisible()
+  for (const audience of ['Operators', 'Surge Pack authors', 'Contributors', 'The maintainer']) {
+    await expect(docs.getByRole('heading', { name: audience })).toBeVisible()
+  }
+  // The documents renamed in #439 are here under their new paths, opening on GitHub.
+  for (const path of [
+    'docs/writing-a-surge-pack.md',
+    'docs/surge-pack-contract.md',
+    'docs/contributing/TESTING.md',
+    'docs/contributing/RELEASING.md',
+  ]) {
+    await expect(docs.locator(`a[href$="/blob/main/${path}"]`)).toHaveAttribute('target', '_blank')
+  }
 })
 
 test('the MCP section gives the steps and the scope table (#364)', async ({ page }) => {

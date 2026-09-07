@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
@@ -34,10 +36,69 @@ function renderHelp(anchor?: string) {
 }
 
 describe('HelpPage', () => {
-  it('opens on MCP & Skills, the section the owner renamed it to (#364)', () => {
+  it('opens on Start here, the first step of the sequence (#441)', () => {
     renderHelp()
-    expect(screen.getByRole('heading', { name: 'MCP & Skills' })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: 'MCP & Skills', selected: true })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Start here' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'Start here', selected: true })).toBeTruthy()
+  })
+
+  /**
+   * THE SIDEBAR ORDER (issue #441). The owner's words were that the old order was "somewhat
+   * confusing and in a seemingly random order". What replaced it is the sequence a reader goes
+   * through, so the order is the feature and belongs in a test rather than in a comment alone.
+   */
+  it('lists the sections in the order a reader goes through them', () => {
+    const { container } = renderHelp()
+    const labels = [...container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent)
+    expect(labels).toEqual([
+      'Start here',
+      'Cloud Providers',
+      'Servers',
+      'Surge Packs and tools',
+      'Private repositories',
+      'MCP & Skills',
+      'Costs and caps',
+      'Settings',
+      'Backups',
+      'Glossary',
+      'All documentation',
+    ])
+  })
+
+  /**
+   * START HERE (issue #441). It is an index, so what is pinned is that it indexes: it numbers
+   * the setup in order and every step reaches its panel by the fragment mechanism the rest of
+   * the page already uses. Its prose is free to improve, and it must state no fact of its own —
+   * that part is a review rule, not something a test can see.
+   */
+  describe('the Start here section', () => {
+    const start = () => {
+      const { container } = renderHelp()
+      return container.querySelector('section[id="start"]')!
+    }
+
+    it('numbers the setup: a Provider, a Server and its Surge Pack, repositories, then MCP', () => {
+      const steps = [...start().querySelectorAll('.help-steps > li')].map((li) => li.textContent ?? '')
+      expect(steps).toHaveLength(4)
+      expect(steps[0]).toContain('Configure a cloud Provider')
+      expect(steps[1]).toContain('Create a Server, choosing a Surge Pack')
+      expect(steps[2]).toContain('Optional: Connect private repositories')
+      expect(steps[3]).toContain('Connect your coding agent over MCP')
+    })
+
+    it('links every step, and the closing pointer, to the panel that covers it', () => {
+      const hrefs = [...start().querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      for (const panel of ['providers', 'servers', 'packs', 'repositories', 'agents', 'costs', 'backup']) {
+        expect(hrefs, `Start here does not link #${panel}`).toContain(`/help#${panel}`)
+      }
+    })
+
+    it('opens the panel it points at, so the links are not decorative', () => {
+      // The same mechanism the dashboard's own /help#... links use: the fragment picks the panel.
+      for (const panel of ['providers', 'servers', 'packs', 'repositories', 'agents', 'costs', 'backup']) {
+        expect(panelForAnchor(panel)).toBe(panel)
+      }
+    })
   })
 
   it('shows the real MCP wiring: both env vars, the mint command, and the config-owned scopes', () => {
@@ -334,7 +395,58 @@ describe('HelpPage', () => {
     })
 
     it('falls back to the first panel for a fragment it does not know', () => {
-      expect(panelForAnchor('no-such-thing')).toBe('agents')
+      expect(panelForAnchor('no-such-thing')).toBe('start')
+    })
+  })
+
+  /**
+   * ALL DOCUMENTATION (issue #441). The owner's complaint about the panel this replaced was
+   * that it was "very confusing because it contains only a subset of the full documentation".
+   * The fix is only worth anything if it stays complete, so the test reads the README's own
+   * documentation table and requires every path in it to be linked here. A document added to
+   * the README and forgotten here fails this test rather than quietly recreating the subset.
+   */
+  describe('the All documentation section', () => {
+    // Resolved from the package root, not `import.meta.url`: under jsdom that is an http URL,
+    // not a file one, and `fileURLToPath` rejects it.
+    const readmePath = join(process.cwd(), '../../README.md')
+    /** Every `docs/…`-style path the README's documentation table links, in table order. */
+    const readmeDocPaths = () => {
+      const readme = readFileSync(readmePath, 'utf8')
+      const table = readme.slice(readme.indexOf('| Document | Audience |'))
+      return [...table.matchAll(/^\|\s*\[`([^`]+)`\]/gm)].map((match) => match[1])
+    }
+
+    it('links every document the README lists, and the per-cloud Provider pages', () => {
+      const { container } = renderHelp('docs')
+      const panel = container.querySelector('section[id="docs"]')!
+      const hrefs = [...panel.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+      const fromReadme = readmeDocPaths()
+      expect(fromReadme.length).toBeGreaterThan(8)
+      for (const path of fromReadme) {
+        expect(hrefs, `All documentation does not link ${path}`).toContain(
+          `${GITHUB_URL}/blob/main/${path}`,
+        )
+      }
+      for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
+        expect(hrefs, `no Provider page for ${cloud}`).toContain(
+          `${GITHUB_URL}/blob/main/docs/providers/${cloud}.md`,
+        )
+      }
+      expect(hrefs.at(-1), 'the repository is not the last link').toBe(GITHUB_URL)
+    })
+
+    it('groups them under the README audiences, with the repository last', () => {
+      const { container } = renderHelp('docs')
+      const panel = container.querySelector('section[id="docs"]')!
+      const headings = [...panel.querySelectorAll('h3')].map((h) => h.textContent)
+      expect(headings).toEqual([
+        'Operators',
+        'Surge Pack authors',
+        'Contributors',
+        'The maintainer',
+        'Everything else',
+      ])
     })
   })
 
