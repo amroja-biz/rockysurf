@@ -72,8 +72,21 @@ Mint a token — it is printed once:
 npx -y rockysurf token
 ```
 
-Point your client at it. For Claude Code, `.mcp.json` in your project; for Claude Desktop, the
-same object in its config file:
+Point your client at it. You have two scopes to choose from.
+
+**User scope** registers the server once for your account, so it's available in every project you
+open — the recommended default for a tool that manages servers regardless of which repo you're
+in. For Claude Code:
+
+```bash
+claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
+```
+
+**Project scope** checks the server into the repo instead, for a team that wants it shared. Use
+this JSON object in `.mcp.json` at your project root; the same object also works in Claude Code's
+user-scope file (`~/.claude.json`) and in Claude Desktop's configuration file, which is global by
+nature:
 
 ```json
 {

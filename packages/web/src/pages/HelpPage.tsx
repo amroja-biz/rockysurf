@@ -63,6 +63,9 @@ export function panelForAnchor(anchor: string): SectionId {
   return match?.id ?? SECTIONS[0].id
 }
 
+const MCP_USER_SCOPE_SNIPPET = `claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \\
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp`
+
 const MCP_CLIENT_SNIPPET = `{
   "mcpServers": {
     "rockysurf": {
@@ -182,9 +185,23 @@ export function HelpPage() {
                   <code>ROCKYSURF_TOKEN=$(rockysurf token)</code> captures it and nothing else.
                 </li>
                 <li>
-                  Add Rocky Surf to your MCP client. In Claude Code that is <code>.mcp.json</code>{' '}
-                  in your project; Claude Desktop takes the same object in its own configuration
-                  file:
+                  Add Rocky Surf to your MCP client. Choose a scope.
+                  <p>
+                    <strong>User scope</strong> registers the server once for your account, so it
+                    is available in every project you open. This is the recommended default,
+                    because Rocky Surf manages servers regardless of which repository you have
+                    open. In Claude Code, run:
+                  </p>
+                  <pre>
+                    <code>{MCP_USER_SCOPE_SNIPPET}</code>
+                  </pre>
+                  <p>
+                    <strong>Project scope</strong> checks the server into a repository instead, for
+                    a team that wants it shared. Add this object to <code>.mcp.json</code> in your
+                    project. The same object also works in Claude Code&rsquo;s user-scope file (
+                    <code>~/.claude.json</code>) and in Claude Desktop&rsquo;s configuration file,
+                    which is global by nature:
+                  </p>
                   <pre>
                     <code>{MCP_CLIENT_SNIPPET}</code>
                   </pre>
@@ -193,7 +210,9 @@ export function HelpPage() {
                     <code>npx</code> has no <code>rockysurf</code> to fetch — use{' '}
                     <code>"command": "node"</code> with{' '}
                     <code>"args": ["&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js", "mcp"]</code>{' '}
-                    and the same <code>env</code>.
+                    (or, for the user-scope command, replace <code>npx -y rockysurf mcp</code> with{' '}
+                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>) and
+                    the same env vars.
                   </p>
                 </li>
                 <li>
