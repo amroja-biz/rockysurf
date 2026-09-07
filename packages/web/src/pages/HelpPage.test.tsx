@@ -80,6 +80,19 @@ describe('HelpPage', () => {
     expect(container.textContent).toContain('cp -r .agents/skills/create-surge-pack ~/.agents/skills/')
   })
 
+  it('says plainly that extending Rocky Surf needs a clone, not just the npm package', () => {
+    // The npm package (`packages/rockysurf/package.json` `files`) ships only `dist` and
+    // `README.md` — no skills, no smoke harness. A reader who only ran `npx rockysurf` has
+    // nothing to extend Rocky Surf with until they clone.
+    const { container } = renderHelp()
+    const text = container.textContent ?? ''
+    expect(text).toContain('To extend Rocky Surf with your own Surge Packs or Providers, clone the repository.')
+    expect(text).toContain('git clone https://github.com/amroja-biz/rockysurf')
+    expect(text).toContain('pnpm install && pnpm -r build')
+    expect(text).toContain('Install Docker if you plan to create a Surge Pack')
+    expect(text).toContain('Writing your own Provider does not need Docker')
+  })
+
   /**
    * GIT AUTH (rockysurf-7fyf.3). What is pinned is the setup an operator would otherwise get
    * wrong, and the two facts about the shipped code that a reader plans around: the Client ID
