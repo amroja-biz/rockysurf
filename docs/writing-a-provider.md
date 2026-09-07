@@ -92,7 +92,7 @@ reason.
 
 | Method | What to get right |
 |---|---|
-| `validateCredentials()` | Prove the credential, loudly. This is where an unreachable host or a read-only token is reported, not later |
+| `validateCredentials()` | Prove the credential, loudly, with the cheapest authenticated call the API offers — and prove the configured region too. This is where an unreachable host or a read-only token is reported, not later. Settings calls it whenever an enabled Provider's section is saved and prints the error you throw, verbatim, next to the section |
 | `validateSpec(spec)` | Reject a spec the cloud will reject, before anything is created |
 | `listOfferings()` | Machine types with prices. A price you don't know is `null` — the SDK defines that as *unknown, never free*, and `0` would render as free |
 | `provision(spec)` | Create it. Return enough `ProviderData` to find it again |

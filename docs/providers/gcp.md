@@ -572,7 +572,10 @@ Docker Compose path in the [README](../../README.md#quickstart) works today too.
 [`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` reads the configured zone and fails with a plain message if the
-credential, the project, the API or the zone is wrong.
+credential, the project, the API or the zone is wrong. Saving the Google Cloud section in Settings
+with **Enabled** on runs it too, and the answer appears on that page under **Credentials at the
+cloud** — verified, or Google Cloud's own error. The check never blocks the save, and never runs
+for a Provider that is switched off.
 
 To check the role without creating anything:
 

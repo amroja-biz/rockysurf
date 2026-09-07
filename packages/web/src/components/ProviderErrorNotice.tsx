@@ -34,17 +34,44 @@ const PROVIDER_ERROR_HEADLINE: Record<ProviderErrorCode, string> = {
   unknown: 'The cloud provider reported an error',
 }
 
-export function ProviderErrorNotice({ error }: { error: ApiError }) {
-  const code = error.providerErrorCode
-  if (!code) return <p className="error">{error.detail}</p>
+/**
+ * The same headline-plus-detail, for a cloud failure that did not arrive as a failed REQUEST.
+ *
+ * Issue #450 produced the second caller: the Settings page proves a Provider's credentials after a
+ * save, and core reports the outcome as a per-Provider ROW — `{ status, code, providerCode, detail }`
+ * — rather than as a non-2xx response, because one cloud saying no is not the settings save
+ * failing. The words an operator reads about a rejected credential must not depend on which page
+ * they were standing on when it was rejected, so both pages render this one component and the
+ * nine headlines live in exactly one place.
+ */
+export function ProviderFailure({
+  code,
+  providerCode,
+  detail,
+}: {
+  code?: ProviderErrorCode
+  providerCode?: string
+  detail: string
+}) {
+  if (!code) return <p className="error">{detail}</p>
 
   return (
     <div className="error provider-error" role="alert" data-testid="provider-error-notice">
       <p className="provider-error-headline">
         {PROVIDER_ERROR_HEADLINE[code]}
-        {error.providerCode && <span className="provider-error-code"> ({error.providerCode})</span>}
+        {providerCode && <span className="provider-error-code"> ({providerCode})</span>}
       </p>
-      <pre className="provider-error-detail">{error.detail}</pre>
+      <pre className="provider-error-detail">{detail}</pre>
     </div>
+  )
+}
+
+export function ProviderErrorNotice({ error }: { error: ApiError }) {
+  return (
+    <ProviderFailure
+      {...(error.providerErrorCode ? { code: error.providerErrorCode } : {})}
+      {...(error.providerCode ? { providerCode: error.providerCode } : {})}
+      detail={error.detail}
+    />
   )
 }

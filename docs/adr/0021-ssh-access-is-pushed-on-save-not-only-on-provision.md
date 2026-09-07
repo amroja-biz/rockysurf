@@ -7,6 +7,8 @@ amendment E11**, which rejected an `ensureAccess()` method for v0.1 and said "Re
 provider needs the same call" — this is that revisit. **Amends
 [ADR-0017](0017-settings-apply-on-save.md)** by settling what `appliesAt: 'save'` means for a
 field whose consumer lives outside this process; the label on `sshAllowedCidr` does not move.
+Amended 2026-09-04 (issue #294, gap S2), 2026-09-07 (issue #446) and 2026-09-07 (issue #450) —
+see the amendments below.
 
 ## Context
 
@@ -344,9 +346,32 @@ network its machines sit on owns no rules over it, and is absent from the sync r
 reported as a failure. The anti-lockout rules — additive provision, authorize-before-revoke, an
 itemized revoke only on explicit confirmation — are untouched.
 
+## Amendment — the credential check reuses this mechanism (2026-09-07, issue #450)
+
+Every Provider implements `validateCredentials()` — the cheapest authenticated call its cloud
+offers, which also proves the configured region — and until issue #450 nothing in the product
+called it, so a wrong key, a wrong region or a missing permission first surfaced on the New Server
+page, after the operator had left Settings. Settings now runs it on save, and it does so through
+**this ADR's mechanism rather than a second one**: the save response gains
+`credentialCheckNeeded`, the list of Providers it touched whose section is `enabled: true`,
+populated on exactly the condition `networkSyncNeeded` is (only when the process adopted the file,
+because the registry would otherwise still hold the credentials in force before the save); the SPA
+makes one follow-up call, `POST /api/v1/providers/credentials/check`, admin-only, creating
+nothing; and the per-Provider result renders in the same Settings block "SSH access at the cloud"
+renders in, under the heading **Credentials at the cloud**. A rejection is shown in the Provider's
+own words under the ADR-0003 F1 taxonomy headline the New Server page already prints, so the
+wording does not depend on which page the operator was standing on. The check never blocks a save
+and never runs for a Provider that is switched off.
+
+**Nothing about the allow-list push changes**, and the two calls are deliberately separate routes:
+one pushes a firewall rule and is gated on `capabilities.managesSshAccess`, the other spends one
+read at a cloud and is gated on nothing but the Provider existing. What they share is the shape
+this ADR settled — a save that stays local and atomic (ADR-0017), a bounded best-effort call after
+it, and a per-cloud report an operator can read twice and copy from.
+
 ## References
 
-- Issue #304.
+- Issue #304, issue #450.
 - `packages/provider-sdk/src/ssh-access.ts` — `SshAccessSyncResult` and the status vocabulary.
 - `packages/provider-sdk/src/ssh-cidr.ts` — `normalizeSshCidrs`, `opensSshToTheInternet`.
 - `packages/provider-sdk/src/capabilities.ts` — `managesSshAccess`.

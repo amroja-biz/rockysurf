@@ -1205,6 +1205,45 @@ export interface SettingsSaveResult extends SettingsView {
    * this save.
    */
   networkSyncNeeded?: string[]
+  /**
+   * Providers this save touched that are switched ON, for the page to verify (issue #450).
+   *
+   * The same shape and the same rules as `networkSyncNeeded` above — core names the clouds and
+   * the page makes the call, so a cloud that is slow or unreachable cannot fail a file write that
+   * already succeeded. Empty when the reload did not apply, because the registry would still be
+   * holding the credentials the operator had BEFORE this save.
+   */
+  credentialCheckNeeded?: string[]
+}
+
+/**
+ * One Provider's outcome from proving its credentials at the cloud (issue #450).
+ *
+ * `code` and `providerCode` are the same two fields a create-server failure carries, so the row
+ * can print the headline `ProviderErrorNotice` prints on the New Server page rather than inventing
+ * a second vocabulary for the same nine outcomes.
+ */
+export interface CredentialCheckReport {
+  provider: string
+  displayName: string
+  status: 'verified' | 'failed'
+  code?: ProviderErrorCode
+  providerCode?: string
+  detail: string
+}
+
+/**
+ * Ask the named Providers to prove their credentials, now, creating nothing.
+ *
+ * Separate from the save for the reason the SSH push is: a cloud call that times out must not be
+ * able to fail a file write that already succeeded. With no ids, core checks every Provider it
+ * has actually built — which is exactly the set that is enabled and loaded.
+ */
+export async function checkProviderCredentials(providers?: string[]): Promise<{ checked: CredentialCheckReport[] }> {
+  return request<{ checked: CredentialCheckReport[] }>('/providers/credentials/check', {
+    method: 'POST',
+    ...(providers && providers.length > 0 ? { body: JSON.stringify({ providers }) } : {}),
+  })
 }
 
 /** One cloud's outcome from pushing the SSH whitelist (issue #304). */
