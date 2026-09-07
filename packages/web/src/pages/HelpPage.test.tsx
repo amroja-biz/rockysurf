@@ -2,13 +2,19 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { GITHUB_URL } from '../lib/links'
-import { HelpPage } from './HelpPage'
+import { HELP_ANCHORS, HelpPage, panelForAnchor } from './HelpPage'
 
 /**
- * The help page (rockysurf-n0zr.3). Prose is free to improve; what is pinned is what a reader
- * navigates by and what must stay true: the agents callout leads, the MCP snippet names the
- * real environment variables and the real default scopes, every table-of-contents entry lands
- * on a section that exists, and the doc links point into the public repository.
+ * The help page (rockysurf-n0zr.3, reorganized in issue #364). Prose is free to improve; what is
+ * pinned is what a reader navigates by and what must stay true: the MCP section names the real
+ * environment variables, the real default scopes and the real tools, every anchor this page has
+ * ever answered to still resolves and opens the panel holding it, and the doc links point into
+ * the public repository.
+ *
+ * WHY SO MANY ASSERTIONS READ `container.textContent` RATHER THAN `getByRole`. Every panel is
+ * mounted and all but one carries `hidden`, exactly as on Settings — so the DOM holds the whole
+ * page while the accessibility tree holds only the open panel. A role query therefore sees one
+ * panel at a time, which is the point of the page and is asserted directly further down.
  */
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -18,20 +24,20 @@ vi.mock('../contexts/EventsContext', () => ({
   useEvents: () => ({ subscribe: () => () => {}, connectionStatus: 'connected' }),
 }))
 
-function renderHelp() {
+/** Render the page as a reader arrives at it — optionally through a fragment link. */
+function renderHelp(anchor?: string) {
   return render(
-    <MemoryRouter initialEntries={['/help']}>
+    <MemoryRouter initialEntries={[anchor ? `/help#${anchor}` : '/help']}>
       <HelpPage />
     </MemoryRouter>,
   )
 }
 
 describe('HelpPage', () => {
-  it('leads with the agents callout, by the words the owner asked for', () => {
+  it('opens on MCP & Skills, the section the owner renamed it to (#364)', () => {
     renderHelp()
-    expect(
-      screen.getByRole('heading', { name: /give the power of rocky surf to your coding agents/i }),
-    ).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'MCP & Skills' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: 'MCP & Skills', selected: true })).toBeTruthy()
   })
 
   it('shows the real MCP wiring: both env vars, the mint command, and the config-owned scopes', () => {
@@ -183,13 +189,13 @@ describe('HelpPage', () => {
    */
   describe('the Enabling a cloud provider section', () => {
     const providersSection = () => {
-      const { container } = renderHelp()
+      const { container } = renderHelp('providers')
       return container.querySelector('section[id="providers"]')!
     }
     const providers = () => providersSection().textContent ?? ''
 
     it('gives every shipped provider its own heading', () => {
-      renderHelp()
+      renderHelp('providers')
       for (const name of [/^Hetzner$/, /^AWS$/, /^Azure$/, /^Google Cloud$/, /your own machines/i]) {
         expect(screen.getByRole('heading', { name }), `no heading for ${name}`).toBeTruthy()
       }
@@ -252,14 +258,88 @@ describe('HelpPage', () => {
     })
   })
 
-  it('every table-of-contents entry lands on a section that exists', () => {
+  /**
+   * THE SIDEBAR AND THE FRAGMENTS (issue #364). The page moved from one long column to a panel
+   * per section, so two things have to hold at once: every sidebar entry opens a panel, and
+   * every `id` this page has ever answered to still resolves — other pages, the repository's
+   * documentation and the MCP tool descriptions all link here by fragment.
+   */
+  describe('the sidebar and the fragment links', () => {
+    it('gives every sidebar tab a panel of its own', () => {
+      const { container } = renderHelp()
+      const tabs = [...container.querySelectorAll('[role="tab"]')]
+      expect(tabs.length).toBeGreaterThan(5)
+      for (const tab of tabs) {
+        const id = tab.getAttribute('aria-controls')!
+        expect(container.querySelector(`section[id="${id}"]`), `#${id} has no panel`).toBeTruthy()
+      }
+    })
+
+    it('resolves every anchor it publishes, and opens the panel that holds it', () => {
+      for (const anchor of HELP_ANCHORS) {
+        const panel = panelForAnchor(anchor)
+        const { container, unmount } = renderHelp(anchor)
+        expect(container.querySelector(`[id="${anchor}"]`), `#${anchor} is not in the DOM`).toBeTruthy()
+        const open = container.querySelector(`section[id="${panel}"]`)!
+        expect(open.hasAttribute('hidden'), `#${anchor} did not open the ${panel} panel`).toBe(false)
+        expect(open.contains(container.querySelector(`[id="${anchor}"]`))).toBe(true)
+        unmount()
+      }
+    })
+
+    /**
+     * The two fragments other pages link by name, spelled out rather than left to the loop
+     * above: `StaleServersNotice` and `BackupReminder` both point here, and the browser suite
+     * (`e2e/help-anchors.e2e.ts`) proves the scroll. This proves the panel.
+     */
+    it.each([
+      ['stale-servers', 'servers'],
+      ['backup', 'backup'],
+    ])('opens %s inside the %s panel, as the pages linking it expect', (anchor, panel) => {
+      expect(panelForAnchor(anchor)).toBe(panel)
+      const { container } = renderHelp(anchor)
+      expect(container.querySelector(`section[id="${panel}"]`)!.hasAttribute('hidden')).toBe(false)
+    })
+
+    it('shows one panel at a time', () => {
+      const { container } = renderHelp('costs')
+      const open = [...container.querySelectorAll('.help-panel')].filter((p) => !p.hasAttribute('hidden'))
+      expect(open.map((p) => p.id)).toEqual(['costs'])
+    })
+
+    it('falls back to the first panel for a fragment it does not know', () => {
+      expect(panelForAnchor('no-such-thing')).toBe('agents')
+    })
+  })
+
+  /**
+   * The MCP scope table (issue #364). The mapping is a contract with
+   * `packages/rockysurf/src/mcp/tools.ts`: a tool that moves to another scope, or a scope that
+   * stops existing, must not leave this page teaching the old grant.
+   */
+  it('maps every MCP scope to the tools it actually offers', () => {
     const { container } = renderHelp()
-    const tocLinks = [...container.querySelectorAll('.help-toc a')]
-    expect(tocLinks.length).toBeGreaterThan(5)
-    for (const link of tocLinks) {
-      const id = link.getAttribute('href')!.replace(/^#/, '')
-      expect(container.querySelector(`section[id="${id}"]`), `#${id} has no section`).toBeTruthy()
+    const rows = [...container.querySelectorAll('.help-table tbody tr')].map(
+      (row) => row.textContent ?? '',
+    )
+    expect(rows).toHaveLength(4)
+    const byScope = (scope: string) => rows.find((row) => row.startsWith(scope)) ?? ''
+    for (const tool of ['list_servers', 'get_server', 'get_ssh_command', 'list_providers', 'get_provider', 'list_offerings', 'list_packs', 'list_ssh_keys']) {
+      expect(byScope('read'), `read is missing ${tool}`).toContain(tool)
     }
+    expect(byScope('stop')).toContain('stop_server')
+    expect(byScope('stop')).toContain('start_server')
+    expect(byScope('create')).toContain('create_server')
+    expect(byScope('terminate')).toContain('terminate_server')
+  })
+
+  /** The only install path the repository documents for a skill (`.agents/skills/README.md`). */
+  it('gives both documented skill destinations, and the restart that picks one up', () => {
+    const { container } = renderHelp()
+    const skills = container.querySelector('section[id="skills"]')!.textContent ?? ''
+    expect(skills).toContain('cp -r .agents/skills/create-surge-pack ~/.agents/skills/')
+    expect(skills).toContain('<your-project>/.agents/skills/')
+    expect(skills).toContain('Restart the agent session')
   })
 
   /**

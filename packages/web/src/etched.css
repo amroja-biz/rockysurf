@@ -84,6 +84,7 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .provisioning-timeline,
 [data-rs-skin='etched'] .pack-guide,
 [data-rs-skin='etched'] .settings-panel,
+[data-rs-skin='etched'] .help-panel,
 [data-rs-skin='etched'] .pack-create-option,
 [data-rs-skin='etched'] .wizard section {
   background-image: linear-gradient(148deg, rgba(252, 245, 232, 0.045) 0%, rgba(252, 245, 232, 0.008) 46%, rgba(0, 0, 0, 0.12) 100%);
@@ -185,6 +186,11 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] legend,
 [data-rs-skin='etched'] .form-label {
   text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.68rem;
+}
+/* A row header holding a literal is a value, not a label: the help page's scope table puts the
+   MCP scope names in the first column, and `READ` is not a string `mcp.scopes` accepts (#364). */
+[data-rs-skin='etched'] .help-table tbody th {
+  text-transform: none; letter-spacing: normal; font-size: inherit;
 }
 /* Prose stays prose. */
 [data-rs-skin='etched'] .field-help,
@@ -319,15 +325,17 @@ body[data-rs-skin='etched'] {
   color: var(--rs-beam);
   border-bottom-color: var(--rs-beam);
 }
-/* Above 60rem the settings nav rotates that underline into a marker down the side of the
-   list (App.css's `min-width: 60rem` block). The reset zeroed the border it rides on, so
-   the same rotation is restated inside the same query. */
+/* Above 60rem the settings nav — and, since issue #364, the help nav beside it — rotates that
+   underline into a marker down the side of the list (App.css's `min-width: 60rem` block). The
+   reset zeroed the border it rides on, so the same rotation is restated inside the same query. */
 @media (min-width: 60rem) {
-  [data-rs-skin='etched'] .settings-nav .tab {
+  [data-rs-skin='etched'] .settings-nav .tab,
+  [data-rs-skin='etched'] .help-nav .tab {
     border-bottom: none;
     border-right: 2px solid transparent;
   }
-  [data-rs-skin='etched'] .settings-nav .tab.selected {
+  [data-rs-skin='etched'] .settings-nav .tab.selected,
+  [data-rs-skin='etched'] .help-nav .tab.selected {
     border-right-color: var(--rs-beam);
   }
 }
