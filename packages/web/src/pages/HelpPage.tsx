@@ -523,7 +523,10 @@ export function HelpPage() {
                 </li>
                 <li>
                   Save. Rocky Surf checks the values, writes them to the configuration file and
-                  starts using them at once. If the variable you named is not set in the environment
+                  starts using them at once. It then asks Hetzner whether the token and location
+                  work, and puts the answer on this page under{' '}
+                  <strong>Credentials at the cloud</strong>: verified, or the error Hetzner
+                  returned, word for word. If the variable you named is not set in the environment
                   Rocky Surf was started from, this page says so and names it — export it, then
                   restart Rocky Surf.
                 </li>
@@ -622,11 +625,13 @@ export function HelpPage() {
                 </li>
                 <li>
                   Save. Rocky Surf checks the values and starts using them at once, and reports a
-                  value it refuses next to the field that carries it. Saving{' '}
-                  <strong>SSH allowed from</strong> also pushes that rule to AWS, and the result of
-                  the push — including a credential AWS would not accept — appears on this page
-                  under <strong>SSH access at the cloud</strong>. Anything else that is wrong shows
-                  up on the New Server page, which names the Provider and the reason: settings the
+                  value it refuses next to the field that carries it. It then asks AWS whether the
+                  credentials and region work, and puts the answer on this page under{' '}
+                  <strong>Credentials at the cloud</strong>: verified, or the error AWS returned,
+                  word for word. Saving <strong>SSH allowed from</strong> also pushes that rule to
+                  AWS, and the result of that push appears under{' '}
+                  <strong>SSH access at the cloud</strong>. Anything else that is wrong shows up on
+                  the New Server page, which names the Provider and the reason: settings the
                   Provider itself refused, or the error AWS returned when Rocky Surf asked it for
                   instance types.
                 </li>
@@ -775,11 +780,13 @@ export function HelpPage() {
                 </li>
                 <li>
                   Save. Rocky Surf checks the values and starts using them at once, and reports a
-                  value it refuses next to the field that carries it. Saving{' '}
-                  <strong>SSH allowed from</strong> also pushes that rule to Azure, and the result
-                  of the push — including a credential Azure would not accept — appears on this page
-                  under <strong>SSH access at the cloud</strong>. Anything else that is wrong shows
-                  up on the New Server page, which names the Provider and the reason: settings the
+                  value it refuses next to the field that carries it. It then asks Azure whether the
+                  credentials, the resource group and the location work, and puts the answer on this
+                  page under <strong>Credentials at the cloud</strong>: verified, or the error Azure
+                  returned, word for word. Saving <strong>SSH allowed from</strong> also pushes that
+                  rule to Azure, and the result of that push appears under{' '}
+                  <strong>SSH access at the cloud</strong>. Anything else that is wrong shows up on
+                  the New Server page, which names the Provider and the reason: settings the
                   Provider itself refused, or the error Azure returned when Rocky Surf asked it for
                   VM sizes.
                 </li>
@@ -920,13 +927,15 @@ export function HelpPage() {
                 </li>
                 <li>
                   Save. Rocky Surf checks the values and starts using them at once, and reports a
-                  value it refuses next to the field that carries it. Saving{' '}
-                  <strong>SSH allowed from</strong> also pushes that rule to Google Cloud, and the
-                  result of the push — including a credential Google Cloud would not accept —
-                  appears on this page under <strong>SSH access at the cloud</strong>. Anything else
-                  that is wrong shows up on the New Server page, which names the Provider and the
-                  reason: settings the Provider itself refused, or the error Google Cloud returned
-                  when Rocky Surf asked it for machine types.
+                  value it refuses next to the field that carries it. It then asks Google Cloud
+                  whether the credentials, the project and the zone work, and puts the answer on
+                  this page under <strong>Credentials at the cloud</strong>: verified, or the error
+                  Google Cloud returned, word for word. Saving <strong>SSH allowed from</strong>{' '}
+                  also pushes that rule to Google Cloud, and the result of that push appears under{' '}
+                  <strong>SSH access at the cloud</strong>. Anything else that is wrong shows up on
+                  the New Server page, which names the Provider and the reason: settings the
+                  Provider itself refused, or the error Google Cloud returned when Rocky Surf asked
+                  it for machine types.
                 </li>
               </ol>
               <p>

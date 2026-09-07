@@ -218,6 +218,12 @@ that has configured the source with nothing to leak or rotate should get it, and
 The nightly real-cloud run uses exactly this path — see
 [The nightly real-cloud run](#the-nightly-real-cloud-run-maintainers) below.
 
+**Whichever path supplies it, Settings will tell you whether it works.** Saving the Azure section
+with **Enabled** on runs `validateCredentials()` — the resource-group read plus the region list
+described in [What each action is for](#what-each-action-is-for) — and the answer appears on that
+page under **Credentials at the cloud**: verified, or Azure's own error. The check never blocks
+the save, and never runs for a Provider that is switched off.
+
 **This is still not the whole `DefaultAzureCredential` chain**, and it is better to say so than to
 imply parity. Visual Studio / VS Code credentials, Azure PowerShell and Azure Developer CLI
 credentials are absent. Rocky Surf talks to Azure with plain `fetch` against the ARM REST API

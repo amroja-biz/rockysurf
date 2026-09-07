@@ -917,6 +917,65 @@ describe('restart honesty', () => {
     expect(body.networkSyncNeeded).toEqual([])
   })
 
+  /**
+   * The handover to the credential check (issue #450).
+   *
+   * The same contract, one issue later and for the same reason: the save writes and adopts, and
+   * NAMES the Providers a follow-up call should prove at the cloud. What these pin is the naming
+   * rule — a section that is switched on, whatever field in it moved; nothing at all for a
+   * section that is switched off.
+   */
+  it('names a Provider that is switched on when any field in its section is saved', async () => {
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['providers', 'hetzner', 'location'], value: 'nbg1' }],
+    })
+    expect(res.status).toBe(200)
+    // The region is as much a part of "do these credentials work" as the token is —
+    // `validateCredentials()` is specified to prove the configured region too.
+    expect(((await res.json()) as { credentialCheckNeeded: string[] }).credentialCheckNeeded).toEqual(['hetzner'])
+  })
+
+  it('names a Provider that this very save switched on', async () => {
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['providers', 'aws', 'enabled'], value: true }],
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { credentialCheckNeeded: string[] }).credentialCheckNeeded).toEqual(['aws'])
+  })
+
+  it('never names a Provider that is switched off', async () => {
+    // `providers.aws` is not enabled in this file, so saving its allow-list is a note for later
+    // and not a reason to spend an authenticated call at a cloud nobody turned on.
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['providers', 'aws', 'sshAllowedCidr'], value: ['203.0.113.7/32'] }],
+    })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { credentialCheckNeeded: string[] }).credentialCheckNeeded).toEqual([])
+  })
+
+  it('never names a Provider when the save was about something else entirely', async () => {
+    const res = await save({ mtimeMs: mtime(), changes: [{ path: ['limits', 'maxServers'], value: 9 }] })
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { credentialCheckNeeded: string[] }).credentialCheckNeeded).toEqual([])
+  })
+
+  it('names nobody when the process could not adopt the file, so no check proves a stale credential', async () => {
+    // The same rule `networkSyncNeeded` follows: with the reload blocked the registry is still
+    // holding the PREVIOUS config, so a check now would prove the credential the operator had
+    // before this save and print a green line about the wrong key.
+    const res = await save({
+      mtimeMs: mtime(),
+      changes: [{ path: ['providers', 'hetzner', 'token'], value: '${UNSET_HETZNER_TOKEN}' }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { credentialCheckNeeded: string[]; reloadBlocked?: string }
+    expect(body.reloadBlocked).toBeTruthy()
+    expect(body.credentialCheckNeeded).toEqual([])
+  })
+
   it('does not call a comment-only hand edit a change of settings', async () => {
     writeFileSync(configPath, CONFIG_WITH_COMMENTS.replace('# Port for the web UI and API.', '# The port.'))
     expect((await readView()).drifted).toBe(false)

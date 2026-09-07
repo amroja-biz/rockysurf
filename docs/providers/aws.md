@@ -527,7 +527,10 @@ published yet; from a checkout you have run `pnpm -r build` in,
 [`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` runs during the first provider call and fails with a plain message if
-the credentials or region are wrong.
+the credentials or region are wrong. Saving the AWS section in Settings with **Enabled** on runs
+it too, and the answer appears on that page under **Credentials at the cloud** — verified, or
+AWS's own error. The check never blocks the save, and never runs for a Provider that is switched
+off.
 
 To check the policy without creating anything, simulate it:
 

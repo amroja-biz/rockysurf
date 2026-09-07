@@ -47,6 +47,7 @@ import { narrowTokensToRepositories } from './git/token-matching.js'
 import { githubTokenScope } from './bootstrap/server-secrets.js'
 import { createServerRoutes } from './servers/routes.js'
 import { createNetworkRoutes } from './network/routes.js'
+import { createProviderCredentialRoutes } from './providers/credential-routes.js'
 import { createSettingsRoutes } from './settings/routes.js'
 import { createSetupRoutes } from './setup/routes.js'
 import { createEventsService, type EventsService } from './services/events.js'
@@ -639,6 +640,17 @@ export function createApp(deps: AppDeps): CreatedApp {
       '/',
       createNetworkRoutes({ registry, inForce: currentConfig, configPath: deps.configPath }),
     )
+
+    /**
+     * Proving a Provider's credentials after a save (issue #450).
+     *
+     * The third piece of the same promise, mounted beside the other two and on the same
+     * condition: the save puts the section in force in this process, the network route puts the
+     * allow-list in force at the firewall, and this one asks the cloud whether the credentials
+     * and the region the operator just typed actually work. Without a config file there is no
+     * Settings page to report it on.
+     */
+    app.route('/', createProviderCredentialRoutes({ registry }))
   }
 
   /* --------------------------------------------------------------------- backup / restore */

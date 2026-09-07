@@ -3644,6 +3644,14 @@ main.help {
   color: var(--danger, #b42318);
 }
 
+/* A Provider whose credentials the cloud accepted (issue #450). Green because "this is fine" is
+ * the whole content of the line — `--rs-green-bright` is the text green, not the button one. A
+ * REFUSAL is not styled here: it renders as `.provider-error`, the same card the New Server page
+ * shows for the same failure, so the two pages cannot drift apart on how a rejection reads. */
+.settings-sync-report li[data-credential-status='verified'] {
+  color: var(--rs-green-bright);
+}
+
 /* The SSH reachability advisory (issue #304).
  *
  * Rides on `.historical-notice` — bordered, muted, said above the facts it qualifies — and adds

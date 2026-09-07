@@ -439,6 +439,23 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono<AppEnv> {
        * they just approved — which is exactly the silent widening this feature must never do.
        */
       networkSyncNeeded: outcome.applied ? providersNeedingNetworkSync(saved) : [],
+      /**
+       * Providers this save touched that are switched ON, for the SPA to verify (issue #450).
+       *
+       * The same shape, and the same reasons, as `networkSyncNeeded` directly above: the save
+       * says WHICH clouds a follow-up call concerns and does not make that call itself, because a
+       * cloud API reached from inside a save puts an already-successful file write at the mercy of
+       * a network timeout. `POST /api/v1/providers/credentials/check` does the dialling.
+       *
+       * ONLY WHEN THE PROCESS ADOPTED THE FILE, for the same reason the sync list is: the registry
+       * is otherwise still holding the PREVIOUS config, so the check would prove the credentials
+       * the operator had before this save rather than the ones they just typed — a green line
+       * about the wrong key.
+       *
+       * NEVER FOR A DISABLED PROVIDER: the enabled flag is read from the file as it now stands,
+       * so turning a section ON verifies it and turning it OFF says nothing.
+       */
+      credentialCheckNeeded: outcome.applied ? providersNeedingCredentialCheck(saved, parseTree(text)) : [],
       ...view(),
     })
   })
@@ -458,6 +475,28 @@ function providersNeedingNetworkSync(savedPaths: readonly string[]): string[] {
   for (const path of savedPaths) {
     const match = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(path)
     if (match?.[1]) ids.add(match[1])
+  }
+  return [...ids]
+}
+
+/**
+ * Which Provider sections in this save are switched on, and so worth proving at the cloud (#450).
+ *
+ * Derived from the saved PATHS and the file's own `enabled` flag rather than from a list of cloud
+ * ids — the same reason `providersNeedingNetworkSync` is: a Provider added later, personal ones
+ * included, is covered by having a section at all. ANY field in the section counts, because a
+ * region, a project id or a resource group is as much a part of "do these credentials work" as the
+ * key itself — `validateCredentials()` is specified to prove the region too.
+ *
+ * `enabled` defaults to false in the schema, so an absent flag is a Provider nobody turned on.
+ */
+function providersNeedingCredentialCheck(savedPaths: readonly string[], tree: unknown): string[] {
+  const ids = new Set<string>()
+  for (const path of savedPaths) {
+    const match = /^providers\.([^.]+)\./.exec(path)
+    const id = match?.[1]
+    if (!id) continue
+    if (valueAtPath(tree, `providers.${id}.enabled`) === true) ids.add(id)
   }
   return [...ids]
 }

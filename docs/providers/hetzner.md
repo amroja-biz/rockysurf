@@ -217,7 +217,10 @@ Docker Compose path in the [README](../../README.md#quickstart) works today too.
 [`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` proves the token and checks that the configured location exists — a
-typo'd `location` is caught at startup rather than at the first create.
+typo'd `location` is caught at startup rather than at the first create. Saving the Hetzner section
+in Settings with **Enabled** on runs it too, and the answer appears on that page under
+**Credentials at the cloud** — verified, or Hetzner's own error. The check never blocks the save,
+and never runs for a Provider that is switched off.
 
 The honest test is still creating one server and destroying it: create in the UI, wait for ready,
 SSH in, then terminate. A token that is read-only surfaces as a `ProviderError` whose

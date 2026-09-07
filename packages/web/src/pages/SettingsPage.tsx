@@ -6,15 +6,18 @@ import { BackupRestoreCards } from '../components/BackupRestoreCards'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
 import { MachineTypePicker } from '../components/MachineTypePicker'
+import { ProviderFailure } from '../components/ProviderErrorNotice'
 import { Tabs } from '../components/Tabs'
 import {
   ApiError,
+  checkProviderCredentials,
   disconnectGithub,
   getGithubConnection,
   getSettings,
   listProviders,
   saveSettings,
   syncSshAccess,
+  type CredentialCheckReport,
   type SshAccessSyncReport,
   type GithubConnection,
   type ProviderInfo,
@@ -318,6 +321,16 @@ export function SettingsPage() {
   /** What the last push of the SSH whitelist did, per cloud (issue #304). */
   const [syncReports, setSyncReports] = useState<SshAccessSyncReport[] | null>(null)
   const [pushing, setPushing] = useState(false)
+  /**
+   * What the clouds said about the credentials this save just put in force (issue #450).
+   *
+   * ON THE PAGE, in the same block the SSH push reports into, and not in a toast: a rejected
+   * credential's detail is the cloud's own paragraph — a REST path, its own code, sometimes a
+   * command to run — and a toast that vanishes is not something an operator can read twice or
+   * copy out of.
+   */
+  const [credentialReports, setCredentialReports] = useState<CredentialCheckReport[] | null>(null)
+  const [verifying, setVerifying] = useState(false)
   /** The half-typed CIDR in each cloud's Add box, keyed by field path (issue #304). */
   const [cidrDrafts, setCidrDrafts] = useState<Record<string, string>>({})
   const [connection, setConnection] = useState<GithubConnection | null>(null)
@@ -559,6 +572,16 @@ export function SettingsPage() {
        * the operator had before this save.
        */
       if (result.networkSyncNeeded?.length) await pushSshAccess('Saved, but could not push the SSH rule')
+
+      /**
+       * AND THEN ASK THE CLOUD WHETHER THE CREDENTIALS WORK (issue #450).
+       *
+       * Same errand, same shape: core names the Providers this save switched on or changed, and
+       * a second call proves them. NEVER BLOCKING and never able to fail the save — the file is
+       * written and adopted by the time this runs, so a cloud that is down produces a row saying
+       * so and nothing else. Core sends an empty list for a section that is switched off.
+       */
+      if (result.credentialCheckNeeded?.length) await verifyCredentials(result.credentialCheckNeeded)
       return true
     } catch (err) {
       if (err instanceof ApiError) {
@@ -1293,6 +1316,36 @@ export function SettingsPage() {
       toast.error(`${failurePrefix}: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setPushing(false)
+    }
+  }
+
+  /**
+   * Prove the named Providers' credentials at their clouds, and keep what each of them said (#450).
+   *
+   * The counterpart of `pushSshAccess` above and deliberately its twin: one follow-up call after
+   * a save, a per-Provider report kept on the page, and a failure here that changes nothing about
+   * the save that has already succeeded. The check itself never blocks — by the time it runs the
+   * file is written and this process has adopted it — so the worst case is a row saying the cloud
+   * could not be reached.
+   */
+  async function verifyCredentials(ids: string[]): Promise<void> {
+    setVerifying(true)
+    setCredentialReports(null)
+    try {
+      const { checked } = await checkProviderCredentials(ids)
+      setCredentialReports(checked)
+    } catch (err) {
+      /*
+        The CHECK failed, not the save — so this is the one case that has no per-Provider row to
+        put on the page, and it says which Providers went unverified rather than implying they
+        were rejected.
+      */
+      toast.error(
+        `Saved, but could not check ${ids.join(', ')} at the cloud: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -2426,8 +2479,55 @@ export function SettingsPage() {
         a toast, because `detail` carries remediation (a gcloud or aws command) that an operator
         has to be able to read twice and copy.
       */}
-      {syncReports && syncReports.length > 0 && (
+      {(verifying || (credentialReports && credentialReports.length > 0) || (syncReports && syncReports.length > 0)) && (
         <div className="settings-sync-report">
+          {/*
+            WHAT THE CLOUD SAID ABOUT THE CREDENTIALS THIS SAVE PUT IN FORCE (issue #450).
+
+            In the block the SSH push already reports into rather than in a second one: they are
+            two halves of one answer to "did that save work?", they arrive by the same mechanism
+            (core names the clouds, the page makes one follow-up call), and a second status area
+            would mean an operator has two places to look after one click.
+          */}
+          {(verifying || (credentialReports && credentialReports.length > 0)) && (
+            <>
+              <h3>Credentials at the cloud</h3>
+              {verifying && (
+                <p className="hint" data-credentials-checking>
+                  Checking…
+                </p>
+              )}
+              {credentialReports && credentialReports.length > 0 && (
+                <ul>
+                  {credentialReports.map((report) => (
+                    <li
+                      key={report.provider}
+                      data-credential-provider={report.provider}
+                      data-credential-status={report.status}
+                    >
+                      <strong>{report.displayName}</strong>:{' '}
+                      {report.status === 'verified' ? (
+                        'Credentials and region verified'
+                      ) : (
+                        /*
+                          THE PROVIDER'S OWN ERROR, VERBATIM, in the component the New Server page
+                          uses for the same failure — so a rejected key reads the same whichever
+                          page the operator was standing on when the cloud rejected it.
+                        */
+                        <ProviderFailure
+                          {...(report.code ? { code: report.code } : {})}
+                          {...(report.providerCode ? { providerCode: report.providerCode } : {})}
+                          detail={report.detail}
+                        />
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          {syncReports && syncReports.length > 0 && (
+            <>
           <h3>SSH access at the cloud</h3>
           <ul>
             {syncReports.map((report) => (
@@ -2476,6 +2576,8 @@ export function SettingsPage() {
               </li>
             ))}
           </ul>
+            </>
+          )}
         </div>
       )}
 

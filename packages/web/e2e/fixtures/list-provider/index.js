@@ -89,7 +89,34 @@ const factory = {
         generatesUserData: false,
         simulatedInstances: true,
       },
-      async validateCredentials() {},
+      /**
+       * A CREDENTIAL CHECK THAT CAN FAIL, ON PURPOSE (issue #450).
+       *
+       * The Settings page proves an enabled Provider's credentials after a save, and the browser
+       * suite has to drive both answers a real cloud gives — accepted and rejected — without a
+       * credential, a network call or a bill. This fixture's credential is the private key it
+       * would log in with, so it refuses when no key path is configured for a machine and passes
+       * once one is: the operator flips between the two states from the Settings page itself,
+       * which is exactly the loop the issue is about.
+       *
+       * The refusal is a `ProviderError` by CONTRACT rather than by construction — an `Error`
+       * named `ProviderError` carrying one of the nine frozen codes, which `isProviderError`
+       * accepts (see `provider-sdk/src/errors.ts`) — because this fixture takes no dependencies.
+       */
+      async validateCredentials() {
+        const unreachable = machines
+          .filter((machine) => !machine.identityFile && !config.identityFile)
+          .map((machine) => String(machine.name))
+        if (unreachable.length > 0) {
+          throw Object.assign(
+            new Error(
+              `metalcloud: no private key is configured for ${unreachable.join(', ')} — set a default ` +
+                'private key path, or one on the machine itself',
+            ),
+            { name: 'ProviderError', code: 'auth', providerCode: 'NoIdentityFile' },
+          )
+        }
+      },
       async validateSpec() {},
       /** One offering per configured machine — the same idea as a cloud's machine-type catalogue. */
       async listOfferings() {

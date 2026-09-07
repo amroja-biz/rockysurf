@@ -325,6 +325,9 @@ let catalogues: unknown[]
 /** Every push of the SSH whitelist the page made, and what core answered (issue #304). */
 let syncCalls: number
 let syncResponse: { synced: unknown[] }
+/** Every credential check the page made, and what core answered (issue #450). */
+let credentialCalls: { providers?: string[] }[]
+let credentialResponse: { checked: unknown[] }
 
 beforeEach(async () => {
   saves = []
@@ -337,6 +340,10 @@ beforeEach(async () => {
   syncCalls = 0
   syncResponse = {
     synced: [{ provider: 'aws', status: 'updated', applied: ['203.0.113.7/32'], reported: [], detail: 'Authorized 203.0.113.7/32.' }],
+  }
+  credentialCalls = []
+  credentialResponse = {
+    checked: [{ provider: 'aws', displayName: 'Amazon EC2', status: 'verified', detail: '' }],
   }
   setAuthToken('test-token')
 
@@ -378,6 +385,17 @@ beforeEach(async () => {
       syncCalls += 1
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(syncResponse))
+      return
+    }
+
+    if (url.pathname === '/api/v1/providers/credentials/check' && req.method === 'POST') {
+      let body = ''
+      req.on('data', (chunk) => (body += chunk))
+      req.on('end', () => {
+        credentialCalls.push(body ? (JSON.parse(body) as { providers?: string[] }) : {})
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify(credentialResponse))
+      })
       return
     }
 
@@ -431,6 +449,21 @@ beforeEach(async () => {
                 saved.flatMap((path) => {
                   const match = /^providers\.([^.]+)\.sshAllowedCidr$/.exec(path)
                   return match?.[1] ? [match[1]] : []
+                }),
+              ),
+            ],
+            /*
+              And the Providers this save switched on or changed, for the credential check
+              (issue #450). Classified the way core classifies it: any field in a section whose
+              `enabled` is true in the values the stub is serving, and nothing for one that is off.
+            */
+            credentialCheckNeeded: [
+              ...new Set(
+                saved.flatMap((path) => {
+                  const id = /^providers\.([^.]+)\./.exec(path)?.[1]
+                  if (!id) return []
+                  const section = (served.values.providers as Record<string, { enabled?: unknown }> | undefined)?.[id]
+                  return section?.enabled === true ? [id] : []
                 }),
               ),
             ],
@@ -2897,5 +2930,99 @@ describe('pushing the SSH whitelist at the clouds (issue #304)', () => {
     await waitFor(() => expect(syncCalls).toBe(1))
     // The command has to survive on the page — a toast is not something you can copy from twice.
     expect(await screen.findByText(/gcloud compute firewall-rules update/)).toBeTruthy()
+  })
+})
+
+/**
+ * VERIFYING A PROVIDER'S CREDENTIALS AFTER A SAVE (issue #450).
+ *
+ * The same mechanism as the push above, one issue later: core names the Providers, the page makes
+ * ONE follow-up call, and the answer lands in the same status block rather than in a toast that
+ * cannot be read twice. What these pin is the wiring — that the call happens at all, that a
+ * disabled section never causes one, that a verified Provider gets the verified line and a
+ * rejected one gets the cloud's own words — because the reason nothing called
+ * `validateCredentials()` before this issue was that nothing was wired to it.
+ */
+describe('verifying a Provider’s credentials on save (issue #450)', () => {
+  const AWS = 'AWS'
+
+  /** The AWS section as an operator who has turned the cloud on has it. */
+  function awsEnabled() {
+    served.values.providers = {
+      ...(served.values.providers as Record<string, unknown>),
+      aws: { enabled: true, region: 'us-east-1' },
+    }
+  }
+
+  it('asks the cloud about the Provider the save named, and shows the verified line', async () => {
+    awsEnabled()
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    fireEvent.change(control('providers.aws.region'), { target: { value: 'eu-west-1' } })
+    save()
+
+    await waitFor(() => expect(credentialCalls).toHaveLength(1))
+    // Exactly the Providers core named — never a sweep of every cloud configured.
+    expect(credentialCalls[0]).toEqual({ providers: ['aws'] })
+    expect(await screen.findByText('Credentials at the cloud')).toBeTruthy()
+    const row = document.querySelector('[data-credential-provider="aws"]') as HTMLElement
+    expect(row.getAttribute('data-credential-status')).toBe('verified')
+    expect(row.textContent).toContain('Credentials and region verified')
+  })
+
+  it('shows the Provider’s error verbatim, under the headline the New Server page uses', async () => {
+    awsEnabled()
+    credentialResponse = {
+      checked: [
+        {
+          provider: 'aws',
+          displayName: 'Amazon EC2',
+          status: 'failed',
+          code: 'auth',
+          providerCode: 'AuthFailure',
+          detail: 'AWS was not able to validate the provided access credentials',
+        },
+      ],
+    }
+    renderPage()
+    await loaded()
+    open(AWS)
+
+    fireEvent.change(control('providers.aws.region'), { target: { value: 'eu-west-1' } })
+    save()
+
+    await waitFor(() => expect(credentialCalls).toHaveLength(1))
+    // The cloud's own sentence, unparaphrased, and the taxonomy headline above it — the same two
+    // elements a create-server refusal renders, so the wording does not depend on the page.
+    expect(await screen.findByText('AWS was not able to validate the provided access credentials')).toBeTruthy()
+    expect(screen.getByText(/Cloud credential rejected/)).toBeTruthy()
+    expect(document.body.textContent).toContain('AuthFailure')
+  })
+
+  it('never asks about a Provider that is switched off', async () => {
+    // `providers.gcp` is not enabled in the served values, so core names nobody and the page makes
+    // no call — the check must never spend an authenticated request on a cloud nobody turned on.
+    renderPage()
+    await loaded()
+    open('Google Cloud')
+
+    fireEvent.change(control('providers.gcp.projectId'), { target: { value: 'my-project-123456' } })
+    save()
+
+    await waitForSaveToSettle()
+    expect(saves).toHaveLength(1)
+    expect(credentialCalls).toHaveLength(0)
+  })
+
+  it('does not check anything after a save that had nothing to do with a Provider', async () => {
+    renderPage()
+    await loaded()
+    fireEvent.change(control('limits.maxServers'), { target: { value: '9' } })
+    save()
+
+    await waitForSaveToSettle()
+    expect(credentialCalls).toHaveLength(0)
   })
 })
