@@ -2510,7 +2510,14 @@ p.hint {
   max-width: 980px;
 }
 
-.settings-layout {
+/*
+ * TWO PAGES, ONE SIDEBAR (issue #364). Help asked for the same navigation Settings has, so the
+ * help selectors are joined to these rules rather than given a second set of their own: one
+ * sidebar, described once, and a change to it lands on both pages. The `.help-*` names exist so
+ * neither page's markup has to claim the other's vocabulary.
+ */
+.settings-layout,
+.help-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
@@ -2519,12 +2526,14 @@ p.hint {
 
 /* The narrow case is the default: a strip that scrolls sideways rather than a column of tabs
    eating a third of a phone screen. */
-.settings-nav {
+.settings-nav,
+.help-nav {
   overflow-x: auto;
   flex-wrap: nowrap;
 }
 
-.settings-panels {
+.settings-panels,
+.help-panels {
   min-width: 0;
 }
 
@@ -2542,7 +2551,8 @@ p.hint {
 /* Author styles beat the UA sheet whatever the specificity, so a `display` on the line above
    would make `hidden` decorative. Every panel is mounted — switching tabs must not be able to
    throw away something half-typed — and this is what keeps the other nine out of the way. */
-.settings-panel[hidden] {
+.settings-panel[hidden],
+.help-panel[hidden] {
   display: none;
 }
 
@@ -2561,13 +2571,15 @@ p.hint {
 }
 
 @media (min-width: 60rem) {
-  .settings-layout {
+  .settings-layout,
+  .help-layout {
     grid-template-columns: 13rem minmax(0, 1fr);
   }
 
   /* A column, and it stays put while a long section scrolls past it — the point of the change
      was to stop making people scroll to change subject. */
-  .settings-nav {
+  .settings-nav,
+  .help-nav {
     flex-direction: column;
     gap: 0;
     position: sticky;
@@ -2580,7 +2592,8 @@ p.hint {
 
   /* The underline becomes a marker down the side of the list: the same idea rotated, so the
      selected tab still sits ON the list's own border rather than beside a second one. */
-  .settings-nav .tab {
+  .settings-nav .tab,
+  .help-nav .tab {
     text-align: left;
     border-bottom: none;
     border-right: 2px solid transparent;
@@ -2588,7 +2601,8 @@ p.hint {
     margin-right: -1px;
   }
 
-  .settings-nav .tab.selected {
+  .settings-nav .tab.selected,
+  .help-nav .tab.selected {
     border-right-color: var(--rs-link);
   }
 }
@@ -2941,92 +2955,143 @@ main.home h1 {
   margin-top: 2rem;
 }
 
-/* Help: the same reading measure, an inline table of contents, and sections that breathe. */
+/* ── Help ──────────────────────────────────────────────────────────────────────────────
+   ONE SECTION AT A TIME, BESIDE A SIDEBAR (issue #364). The page used to be fifteen headings
+   in one column under a wrapped strip of anchor links: everything was on screen and nothing
+   was findable. It now uses the Settings sidebar — the same `.tablist`/`.tab` widget and the
+   same layout rules, joined to the settings selectors further up this file — with one panel
+   showing at a time.
+
+   Every panel is mounted, so a `#anchor` from another page still resolves in the DOM; the page
+   picks the panel that holds the anchor and `useScrollToHash` does the rest. */
 main.help {
-  max-width: 760px;
+  max-width: 980px;
 }
 
-.help-toc {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
-  font-size: 0.875rem;
-  margin-bottom: 2rem;
-}
-
-.help-toc a {
-  color: var(--rs-muted);
-}
-
-.help-toc a:hover {
-  color: var(--rs-link);
-}
-
-main.help section {
-  margin-bottom: 2rem;
+/* Each panel is a card, the treatment Settings gives its sections. */
+.help-panel {
+  background: var(--rs-surface);
+  border: 1px solid var(--rs-border);
+  border-radius: var(--rs-radius);
+  padding: 1.5rem;
   scroll-margin-top: 1rem;
 }
 
-main.help section p {
-  line-height: 1.6;
-}
-
-/* The provider setup commands (issue #112) read as blocks, the same surface the callout uses. */
-main.help section > pre {
-  background: var(--rs-surface);
-  border: 1px solid var(--rs-border-subtle);
-  border-radius: var(--rs-radius);
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-/* The agents callout: the page's one raised surface, keyed purple. */
-.agents-callout {
-  background: var(--rs-surface);
-  border: 1px solid var(--rs-border);
-  border-left: 3px solid var(--rs-purple);
-  border-radius: var(--rs-radius);
-  padding: 1.25rem 1.5rem;
-}
-
-.agents-callout > h2 {
-  color: var(--rs-heading);
-}
-
-.agents-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.75rem;
-  margin-top: 1rem;
-}
-
-.agents-grid h3 {
+.help-panel > h2 {
   margin-bottom: 0.5rem;
 }
 
-.agents-grid p {
-  margin-bottom: 0.75rem;
+.help-panel p,
+.help-panel li {
+  line-height: 1.6;
 }
 
-.agents-grid pre {
+/* What the section covers, in one or two sentences, before any instruction in it. */
+.help-lead {
+  color: var(--rs-muted);
+  margin-bottom: 1.5rem;
+}
+
+/* A subject inside a panel: its own heading, its own anchor, a hairline above it so the panel
+   reads as a few short pieces rather than one wall. */
+.help-block {
+  border-top: 1px solid var(--rs-border-subtle);
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
+  scroll-margin-top: 1rem;
+}
+
+.help-block > h3 {
+  margin-bottom: 0.5rem;
+}
+
+.help-panel p + p,
+.help-panel p + pre,
+.help-panel p + ul,
+.help-panel p + ol,
+.help-panel ol + p,
+.help-panel ul + p,
+.help-panel pre + p,
+.help-panel dl + p,
+.help-panel table + p {
+  margin-top: 0.75rem;
+}
+
+.help-block h4 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+/* The steps for anything the reader does. Numbered, because the order matters. Deliberately not
+   a flex column: a flex container blockifies its children, and the marker of a list item is the
+   first thing to go wrong when it does. */
+.help-steps,
+.help-list {
+  padding-left: 1.4rem;
+  margin-top: 0.75rem;
+}
+
+.help-steps > li + li,
+.help-list > li + li {
+  margin-top: 0.6rem;
+}
+
+.help-steps > li::marker {
+  color: var(--rs-muted);
+}
+
+.help-panel pre {
   background: var(--rs-bg);
   border: 1px solid var(--rs-border-subtle);
   border-radius: var(--rs-radius);
   padding: 0.75rem;
-  margin-bottom: 0.75rem;
+  margin: 0.5rem 0;
 }
 
-@media (max-width: 720px) {
-  .agents-grid {
-    grid-template-columns: 1fr;
-  }
+/* The MCP scope table. Every table on this page is introduced by a sentence and followed by
+   one, so it carries its own margin at the top and `table + p` above supplies the other. */
+.help-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
 }
 
-.agents-footnote {
+.help-table th,
+.help-table td {
+  border: 1px solid var(--rs-border-subtle);
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table thead th {
+  background: var(--rs-bg);
+  color: var(--rs-heading);
+}
+
+.help-table tbody th {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* The links out of a panel — the normative doc, the Settings tab it configures. */
+.help-links {
   margin-top: 1.25rem;
   padding-top: 1rem;
   border-top: 1px solid var(--rs-border-subtle);
-  line-height: 1.6;
+  font-size: 0.875rem;
+  color: var(--rs-muted);
+}
+
+/* An aside a reader can act on without it interrupting a procedure — the MCP threat model,
+   the sensitivity of a backup. Keyed purple, the one accent this page uses. */
+.help-note {
+  border-left: 3px solid var(--rs-purple);
+  background: var(--rs-bg);
+  border-radius: var(--rs-radius);
+  padding: 0.875rem 1rem;
+  margin-top: 1.25rem;
 }
 
 /* Help glossary (issue #359): a term list, styled like the rest of the page rather than left to
@@ -3037,6 +3102,13 @@ main.help section > pre {
   column-gap: 1.5rem;
   row-gap: 0.75rem;
   margin: 0;
+}
+
+/* A `<div>` around each term-and-definition pair is what makes the list mappable in the DOM
+   without giving up the two-column grid: `display: contents` puts the dt and the dd straight
+   back into the grid the wrapper sits in. */
+.help-glossary-row {
+  display: contents;
 }
 
 .help-glossary dt {
