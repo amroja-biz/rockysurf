@@ -58,7 +58,7 @@ const CLAUDE_TOOL = { toolId: 'claude-code', name: 'Claude Code', description: '
 const RUSTUP_TOOL = { toolId: 'rustup', name: 'rustup', description: 'the Rust toolchain installer', category: 'base' as const, url: 'https://rustup.rs' }
 
 const officialPublic = (over: Partial<SurgePack> = {}): SurgePack => ({
-  packId: 'ai-coding-agents',
+  packId: 'claude-code',
   name: 'Claude Code',
   displayOrder: 10,
   enabled: true,
@@ -94,14 +94,14 @@ const localPublic = (over: Partial<SurgePack> = {}): SurgePack => ({
 })
 
 const officialAdmin = (over: Partial<AdminSurgePack> = {}): AdminSurgePack => ({
-  packId: 'ai-coding-agents',
+  packId: 'claude-code',
   name: 'Claude Code',
   tools: ['claude-code'],
   displayOrder: 10,
   enabled: true,
   requiresRepos: false,
   requiresRdp: false,
-  sourceFile: 'ai-coding-agents.yaml',
+  sourceFile: 'claude-code.yaml',
   registry: null,
   ...over,
 })
@@ -135,7 +135,7 @@ const localAdmin = (over: Partial<AdminSurgePack> = {}): AdminSurgePack => ({
 /** What the export route renders for a file-backed pack (issue #192). */
 const SHIPPED_YAML = `version: 1
 pack:
-  packId: ai-coding-agents
+  packId: claude-code
   name: Claude Code
 tools:
   - toolId: claude-code
@@ -260,12 +260,12 @@ describe('provenance labelling', () => {
    */
   it('reads a file-backed pack official, because that is what shipped with the release', async () => {
     renderList()
-    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    const card = await screen.findByTestId('pack-card-claude-code')
     expect(card.querySelector('[data-testid="trust-official"]')).toBeTruthy()
     expect(card.textContent).not.toContain('shipped with this release')
 
-    renderDetail('ai-coding-agents')
-    expect(await screen.findByText(/shipped with this release · ai-coding-agents\.yaml/)).toBeTruthy()
+    renderDetail('claude-code')
+    expect(await screen.findByText(/shipped with this release · claude-code\.yaml/)).toBeTruthy()
   })
 
   it('labels a registry-installed pack "registry", never "official", and names the real source', async () => {
@@ -490,10 +490,10 @@ describe('installing goes through the disclosure', () => {
 
 describe('ported from the admin surge-packs page', () => {
   it('shows a file-backed pack read-only in its detail view, naming the file to edit', async () => {
-    renderDetail('ai-coding-agents')
-    expect(await screen.findByTestId('file-backed-ai-coding-agents')).toBeTruthy()
-    const hint = screen.getByTestId('readonly-hint-ai-coding-agents')
-    expect(hint.textContent).toContain('ai-coding-agents.yaml')
+    renderDetail('claude-code')
+    expect(await screen.findByTestId('file-backed-claude-code')).toBeTruthy()
+    const hint = screen.getByTestId('readonly-hint-claude-code')
+    expect(hint.textContent).toContain('claude-code.yaml')
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
   })
@@ -527,13 +527,13 @@ describe('ported from the admin surge-packs page', () => {
 
     await waitFor(() => expect(api.updateAdminSurgePack).toHaveBeenCalledWith('mine', expect.anything()))
     const personalCard = await screen.findByTestId('pack-card-mine')
-    const officialCard = screen.getByTestId('pack-card-ai-coding-agents')
+    const officialCard = screen.getByTestId('pack-card-claude-code')
     expect((personalCard.closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(false)
     expect((officialCard.closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(true)
   })
 
   it('offers export for both file-backed and database packs', async () => {
-    renderDetail('ai-coding-agents')
+    renderDetail('claude-code')
     expect(await screen.findByRole('button', { name: 'Export' })).toBeTruthy()
 
     renderDetail('mine')
@@ -582,13 +582,13 @@ describe('ported from the admin surge-packs page', () => {
 describe("the issue's own acceptance", () => {
   it('renders an <img> for a pack with imageUrl, and a monogram for one without', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([
-      officialPublic({ imageUrl: '/images/surge-packs/ai-coding-agents.png' }),
+      officialPublic({ imageUrl: '/images/surge-packs/claude-code.png' }),
       localPublic(),
     ])
     const { container } = renderList()
-    await screen.findByTestId('pack-card-ai-coding-agents')
+    await screen.findByTestId('pack-card-claude-code')
 
-    expect(container.querySelector('[data-testid="pack-card-ai-coding-agents"] img')).toBeTruthy()
+    expect(container.querySelector('[data-testid="pack-card-claude-code"] img')).toBeTruthy()
     expect(screen.getByTestId('pack-monogram-mine')).toBeTruthy()
   })
 
@@ -667,25 +667,25 @@ describe("a pack's card popup", () => {
 
   it('opens only after a second of hovering, and lists what the pack installs', async () => {
     renderList()
-    await screen.findByTestId('pack-card-ai-coding-agents')
+    await screen.findByTestId('pack-card-claude-code')
 
     vi.useFakeTimers()
     try {
-      fireEvent.mouseOver(slot('ai-coding-agents'))
+      fireEvent.mouseOver(slot('claude-code'))
       // Crossing the grid on the way somewhere else must not open anything.
       act(() => void vi.advanceTimersByTime(999))
-      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+      expect(screen.queryByTestId('pack-popup-claude-code')).toBeNull()
 
       act(() => void vi.advanceTimersByTime(1))
-      const popup = screen.getByTestId('pack-popup-ai-coding-agents')
-      expect(within(popup).getByTestId('pack-popup-tools-ai-coding-agents').textContent).toContain('Claude Code')
+      const popup = screen.getByTestId('pack-popup-claude-code')
+      expect(within(popup).getByTestId('pack-popup-tools-claude-code').textContent).toContain('Claude Code')
       expect(within(popup).getByRole('link', { name: /new server/i }).getAttribute('href')).toBe(
-        '/servers/new?pack=ai-coding-agents',
+        '/servers/new?pack=claude-code',
       )
       expect(within(popup).getByRole('button', { name: 'Export' })).toBeTruthy()
 
-      fireEvent.mouseOut(slot('ai-coding-agents'))
-      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+      fireEvent.mouseOut(slot('claude-code'))
+      expect(screen.queryByTestId('pack-popup-claude-code')).toBeNull()
     } finally {
       vi.useRealTimers()
     }
@@ -693,16 +693,16 @@ describe("a pack's card popup", () => {
 
   it('opens on keyboard focus too, and Escape dismisses it without trapping focus', async () => {
     renderList()
-    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    const card = await screen.findByTestId('pack-card-claude-code')
 
     vi.useFakeTimers()
     try {
       act(() => (card as HTMLElement).focus())
       act(() => void vi.advanceTimersByTime(1000))
-      expect(screen.getByTestId('pack-popup-ai-coding-agents')).toBeTruthy()
+      expect(screen.getByTestId('pack-popup-claude-code')).toBeTruthy()
 
       fireEvent.keyDown(card, { key: 'Escape' })
-      expect(screen.queryByTestId('pack-popup-ai-coding-agents')).toBeNull()
+      expect(screen.queryByTestId('pack-popup-claude-code')).toBeNull()
       // Escape hands the card back, rather than dropping the user at the top of the document.
       expect(document.activeElement).toBe(card)
     } finally {
@@ -748,16 +748,16 @@ describe("a pack's card popup", () => {
 
     try {
       renderList()
-      await screen.findByTestId('pack-card-ai-coding-agents')
+      await screen.findByTestId('pack-card-claude-code')
 
       vi.useFakeTimers()
-      fireEvent.mouseOver(slot('ai-coding-agents'))
+      fireEvent.mouseOver(slot('claude-code'))
       act(() => void vi.advanceTimersByTime(1000))
       vi.useRealTimers()
 
-      fireEvent.click(within(screen.getByTestId('pack-popup-ai-coding-agents')).getByRole('button', { name: 'Export' }))
+      fireEvent.click(within(screen.getByTestId('pack-popup-claude-code')).getByRole('button', { name: 'Export' }))
 
-      await waitFor(() => expect(api.exportSurgePackYaml).toHaveBeenCalledWith('ai-coding-agents'))
+      await waitFor(() => expect(api.exportSurgePackYaml).toHaveBeenCalledWith('claude-code'))
       await waitFor(() => expect(createObjectURL).toHaveBeenCalled())
       expect(click).toHaveBeenCalled()
     } finally {
@@ -775,12 +775,12 @@ describe("a pack's card popup", () => {
  */
 describe("a pack's file on the detail page", () => {
   it('shows an official pack its own YAML, read over the export route', async () => {
-    renderDetail('ai-coding-agents')
+    renderDetail('claude-code')
 
     const file = await screen.findByTestId('pack-file-text')
-    expect(file.textContent).toContain('packId: ai-coding-agents')
+    expect(file.textContent).toContain('packId: claude-code')
     expect(file.textContent).toContain('curl -fsSL https://claude.ai/install.sh')
-    expect(api.exportSurgePackYaml).toHaveBeenCalledWith('ai-coding-agents')
+    expect(api.exportSurgePackYaml).toHaveBeenCalledWith('claude-code')
     // Only an official pack's file shipped WITH THE RELEASE — the sentence above it says so.
     expect(screen.getByText(/shipped with this Rocky Surf release/)).toBeTruthy()
   })
@@ -805,7 +805,7 @@ describe("a pack's file on the detail page", () => {
 
   it('keeps the rest of the page when the file cannot be read', async () => {
     vi.mocked(api.exportSurgePackYaml).mockRejectedValue(new Error('nope'))
-    renderDetail('ai-coding-agents')
+    renderDetail('claude-code')
 
     expect(await screen.findByTestId('pack-file-unavailable')).toBeTruthy()
     expect(screen.getByTestId('pack-tools')).toBeTruthy()
@@ -860,11 +860,11 @@ describe('a pack that asks for settings (issue #189)', () => {
 describe('three sections, one vocabulary (issue #199)', () => {
   it('groups official, registry and local packs under the Official, Community and Personal panels', async () => {
     renderList()
-    await screen.findByTestId('pack-card-ai-coding-agents')
+    await screen.findByTestId('pack-card-claude-code')
 
     // All three panels are mounted at once (issue #204); which one a card lives under is a
     // question about its ancestor `tabpanel`, not about which is currently visible.
-    const officialPanel = screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]')
+    const officialPanel = screen.getByTestId('pack-card-claude-code').closest('[role="tabpanel"]')
     const communityPanel = screen.getByTestId('pack-card-rust-dev').closest('[role="tabpanel"]')
     const personalPanel = screen.getByTestId('pack-card-mine').closest('[role="tabpanel"]')
 
@@ -913,10 +913,10 @@ describe('three sections, one vocabulary (issue #199)', () => {
 describe('tabs (issue #204)', () => {
   it('defaults to the Official tab', async () => {
     renderList()
-    await screen.findByTestId('pack-card-ai-coding-agents')
+    await screen.findByTestId('pack-card-claude-code')
 
     expect(screen.getByRole('tab', { name: 'Official' }).getAttribute('aria-selected')).toBe('true')
-    expect((screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
+    expect((screen.getByTestId('pack-card-claude-code').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
       false,
     )
     expect((screen.getByTestId('pack-card-rust-dev').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(true)
@@ -933,13 +933,13 @@ describe('tabs (issue #204)', () => {
 
   it('clicking a tab switches which panel is visible', async () => {
     renderList()
-    await screen.findByTestId('pack-card-ai-coding-agents')
+    await screen.findByTestId('pack-card-claude-code')
 
     fireEvent.click(screen.getByRole('tab', { name: 'Personal' }))
 
     expect(screen.getByRole('tab', { name: 'Personal' }).getAttribute('aria-selected')).toBe('true')
     expect((screen.getByTestId('pack-card-mine').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(false)
-    expect((screen.getByTestId('pack-card-ai-coding-agents').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
+    expect((screen.getByTestId('pack-card-claude-code').closest('[role="tabpanel"]') as HTMLElement).hidden).toBe(
       true,
     )
   })
@@ -1093,11 +1093,11 @@ describe("Personal's New Surge Pack flow (issue #204)", () => {
     fireEvent.click(screen.getByRole('button', { name: 'New Surge Pack' }))
     fireEvent.click(screen.getByTestId('create-option-existing'))
 
-    // Defaults to the first pack in `displayOrder` — `ai-coding-agents`.
+    // Defaults to the first pack in `displayOrder` — `claude-code`.
     const form = await screen.findByTestId('pack-form')
     const packIdInput = within(form).getByLabelText(/Pack ID/i) as HTMLInputElement
     const nameInput = within(form).getByLabelText('Name') as HTMLInputElement
-    expect(packIdInput.value).toBe('ai-coding-agents-copy')
+    expect(packIdInput.value).toBe('claude-code-copy')
     expect(nameInput.value).toBe('Claude Code (copy)')
     // Referenced, not redefined: the source's own tool comes up checked, nothing about it is
     // ever sent as a new tool definition — the form only ever submits ids.
@@ -1121,7 +1121,7 @@ describe("Personal's New Surge Pack flow (issue #204)", () => {
 
     const select = (await screen.findByTestId('from-existing-source')) as HTMLSelectElement
     const optionValues = [...select.options].map((o) => o.value)
-    expect(optionValues).toEqual(expect.arrayContaining(['ai-coding-agents', 'rust-dev', 'mine']))
+    expect(optionValues).toEqual(expect.arrayContaining(['claude-code', 'rust-dev', 'mine']))
   })
 
   /**
@@ -1150,7 +1150,7 @@ describe("Personal's New Surge Pack flow (issue #204)", () => {
 
     await waitFor(() => expect(api.createAdminSurgePack).toHaveBeenCalled())
     const body = vi.mocked(api.createAdminSurgePack).mock.calls[0]![0]
-    expect(body.derivedFromPackId).toBe('ai-coding-agents')
+    expect(body.derivedFromPackId).toBe('claude-code')
     expect(body.imageUrl).toBe('/images/surge-packs/claude-code.png')
     expect(body.guide).toBe('Run claude login.')
     expect(body.inputs).toHaveLength(1)
@@ -1166,8 +1166,8 @@ describe("Personal's New Surge Pack flow (issue #204)", () => {
  */
 describe('the modified mark', () => {
   const forked = () => ({
-    publicPacks: [officialPublic(), localPublic({ derivedFromPackId: 'ai-coding-agents' })],
-    adminPacks: [officialAdmin(), localAdmin({ derivedFromPackId: 'ai-coding-agents' })],
+    publicPacks: [officialPublic(), localPublic({ derivedFromPackId: 'claude-code' })],
+    adminPacks: [officialAdmin(), localAdmin({ derivedFromPackId: 'claude-code' })],
   })
 
   const withForks = () => {
@@ -1179,7 +1179,7 @@ describe('the modified mark', () => {
   it('marks the official pack, naming the personal version', async () => {
     withForks()
     renderList()
-    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    const card = await screen.findByTestId('pack-card-claude-code')
     expect(within(card).getByLabelText('Personal version: Mine')).toBeDefined()
   })
 
@@ -1196,7 +1196,7 @@ describe('the modified mark', () => {
    */
   it('leaves the official pack unmarked when no fork exists', async () => {
     renderList()
-    const card = await screen.findByTestId('pack-card-ai-coding-agents')
+    const card = await screen.findByTestId('pack-card-claude-code')
     expect(within(card).queryByLabelText(/personal version/i)).toBeNull()
   })
 
@@ -1208,8 +1208,8 @@ describe('the modified mark', () => {
   it('leaves the marked official pack exactly as selectable as before', async () => {
     withForks()
     renderList()
-    const card = await screen.findByTestId('pack-card-ai-coding-agents')
-    expect(card.getAttribute('href')).toBe('/packs/ai-coding-agents')
+    const card = await screen.findByTestId('pack-card-claude-code')
+    expect(card.getAttribute('href')).toBe('/packs/claude-code')
     expect(card.hasAttribute('aria-disabled')).toBe(false)
   })
 
@@ -1221,7 +1221,7 @@ describe('the modified mark', () => {
   it('gives the parent and the fork visually distinct marks', async () => {
     withForks()
     renderList()
-    const officialCard = await screen.findByTestId('pack-card-ai-coding-agents')
+    const officialCard = await screen.findByTestId('pack-card-claude-code')
     const parentMark = within(officialCard).getByLabelText('Personal version: Mine')
     expect(parentMark.className).toContain('pack-icon-copies')
     // Not the delta: an official pack was not altered and must not wear the derivative mark.
@@ -1241,12 +1241,12 @@ describe('the modified mark', () => {
   it('shows both marks on a fork that has itself been forked', async () => {
     vi.mocked(api.listSurgePacks).mockResolvedValue([
       officialPublic(),
-      localPublic({ derivedFromPackId: 'ai-coding-agents' }),
+      localPublic({ derivedFromPackId: 'claude-code' }),
       localPublic({ packId: 'mine-2', name: 'Mine Two', derivedFromPackId: 'mine' }),
     ])
     vi.mocked(api.listAdminSurgePacks).mockResolvedValue([
       officialAdmin(),
-      localAdmin({ derivedFromPackId: 'ai-coding-agents' }),
+      localAdmin({ derivedFromPackId: 'claude-code' }),
       localAdmin({ packId: 'mine-2', name: 'Mine Two', derivedFromPackId: 'mine' }),
     ])
     renderList({ tab: 'personal' })

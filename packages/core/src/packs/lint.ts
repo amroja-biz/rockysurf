@@ -60,7 +60,7 @@ export interface LintOptions {
    * Without this the check is unusable for the thing it exists for. A community pack is
    * expected to reference the shared base toolchain by id rather than redefine it
    * (CONTRIBUTING.md), that toolchain is defined in this repository's
-   * `packs/ai-coding-agents.yaml`, and a directory holding one community pack therefore
+   * `packs/claude-code.yaml`, and a directory holding one community pack therefore
    * fails `references unknown tool "claude-code"` on every single tool it does not own.
    */
   basePacksDirs?: string[]
@@ -90,7 +90,7 @@ interface ScriptUnderTest {
    *
    * A rule that reads comments cannot tell an instruction from an explanation, and the
    * explanations in this repository are long: the `api.github.com` rule below would fire on the
-   * three paragraphs in `packs/ai-coding-agents.yaml` that exist precisely to say why that
+   * three paragraphs in `packs/claude-code.yaml` that exist precisely to say why that
    * endpoint is not called (rockysurf-c6cm). A lint whose own documentation trips it is a lint
    * people learn to route around.
    *

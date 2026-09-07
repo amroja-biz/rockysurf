@@ -1,6 +1,6 @@
 # Cursor CLI — Cursor's terminal coding agent, on the shared base toolchain.
 #
-# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
 # Only `cursor-cli` is defined in this file.
 version: 1
 

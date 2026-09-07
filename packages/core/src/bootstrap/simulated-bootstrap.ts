@@ -30,7 +30,7 @@ import type { AgentState, AgentStepState, PushResult } from './push.js'
  * How long the whole simulated install takes, in ms — a BUDGET, not a per-step delay.
  *
  * Per-step timing would make the trial run's length a function of how many tools the chosen pack
- * happens to list: `ai-coding-agents` renders about twenty steps and a minimal pack renders four,
+ * happens to list: `claude-code` renders about twenty steps and a minimal pack renders four,
  * so the same constant produces a demo that drags or one that blinks. A budget divided across the
  * plan keeps every pack landing in the same watchable window.
  *

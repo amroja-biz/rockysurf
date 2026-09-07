@@ -5,12 +5,12 @@ actually hit, and the two paths Step 1E only summarizes: amending a pack you own
 one outside a checkout entirely. Read it once when you are building on a pack that already
 exists rather than starting from `assets/surge-pack-template.yaml`.
 
-## The worked example: deriving from `ai-coding-agents.yaml`
+## The worked example: deriving from `claude-code.yaml`
 
 The request: "give me the Claude Code pack, plus OMP and an MCP server the agents can use to
 coordinate with each other." Two tools, on top of a base that already ships.
 
-**1. Read the base.** `packs/ai-coding-agents.yaml` — `packId: ai-coding-agents`, `displayOrder:
+**1. Read the base.** `packs/claude-code.yaml` — `packId: claude-code`, `displayOrder:
 1`, `requiresRepos: true`, `requiresRdp: false`, no `desktop`, no `webPort`. Its `pack.tools` is
 fourteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
 `python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`,
@@ -133,7 +133,7 @@ already in the base toolchain — does the job:
 ```
 
 **5. `installOrder`: 30 and 40 are gaps, not the base's own values.** Nothing under
-`ai-coding-agents.yaml`'s fifteen tools was renumbered.
+`claude-code.yaml`'s fifteen tools was renumbered.
 
 **6. `guide`: append, don't replace.** Everything in the base pack's guide is still true, so it
 stays; two new blocks go after it:
@@ -153,7 +153,7 @@ stays; two new blocks go after it:
 ```
 
 **7. The guardrail.** `git status --porcelain packs/` after writing `packs/omp-agent-mail.yaml`
-shows exactly that one new file — `packs/ai-coding-agents.yaml` is untouched. Then Step 3 and
+shows exactly that one new file — `packs/claude-code.yaml` is untouched. Then Step 3 and
 Step 4 run on `omp-agent-mail` exactly as they would on a from-scratch pack.
 
 ## Symptom → cause → fix
@@ -174,7 +174,7 @@ existing user of it should get the new tool too. Add the tool's definition under
 id to `pack.tools` in the base file — same four authoring rules, same `installOrder` bands as any
 other tool — then re-run Step 3 and Step 4 **on the amended pack**, not a derived one.
 
-**If the file is `packs/ai-coding-agents.yaml`, this is the shared base toolchain for every pack
+**If the file is `packs/claude-code.yaml`, this is the shared base toolchain for every pack
 in the repository.** A validation failure in it is not contained to one pack — a pack file that
 fails to parse is skipped entirely at boot, and because every other pack references its tool ids,
 that takes all of them out of the picker until the file is fixed. Re-smoke everything after an

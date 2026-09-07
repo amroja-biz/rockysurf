@@ -211,7 +211,7 @@ describe('the verdict, and every way it stays quiet', () => {
 
 const PASSWORD = 'correct-horse-battery-staple'
 const config: Config = configSchema.parse({})
-const CREATE = { size: 'small' as const, spotInstance: false, packId: 'ai-coding-agents' }
+const CREATE = { size: 'small' as const, spotInstance: false, packId: 'claude-code' }
 
 let opened: OpenedDatabase
 let app: ReturnType<typeof createApp>['app']

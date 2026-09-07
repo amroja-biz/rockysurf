@@ -350,7 +350,7 @@ async function main() {
   check(offering?.available !== false, `${OFFERING} is available in ${offering?.region ?? '?'}`)
 
   const packs = await (await api('/api/v1/surge-packs')).json()
-  const pack = packs.find((p) => p.packId === 'ai-coding-agents') ?? packs[0]
+  const pack = packs.find((p) => p.packId === 'claude-code') ?? packs[0]
   check(!!pack, 'a pack is available to install', pack?.packId)
 
   let serverId

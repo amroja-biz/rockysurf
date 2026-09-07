@@ -111,7 +111,7 @@ command below sees exactly what CI will see.
    case, and nothing needs adding to Rocky Surf first. What it may not do is *redefine* a shared
    base id; those are referenced by id from `pack.tools`. `pack lint` refuses a duplicate, so
    this is mostly lint's job — but read the diff yourself for a script copied out of
-   `ai-coding-agents.yaml` under a new id, which lint cannot see and a reviewer will ask about.
+   `claude-code.yaml` under a new id, which lint cannot see and a reviewer will ask about.
 4. **`pack check packs --pack <id> --arch arm64`** and **`--arch amd64`** — a few minutes each,
    needs Docker. Stock `ubuntu:24.04`, the real install plan, then the resume journal deleted and
    the whole thing run again in the same container. The second run must exit 0 and leave

@@ -173,7 +173,7 @@ const FIXTURE_PACK_YAML = [
   '  guide: |',
   '    A fixture pack installed from the Rocky Surf Shop tab by the browser suite.',
   '',
-  '# Defines nothing: every tool above is a base tool from packs/ai-coding-agents.yaml.',
+  '# Defines nothing: every tool above is a base tool from packs/claude-code.yaml.',
   'tools: []',
   '',
 ].join('\n')

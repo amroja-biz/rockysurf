@@ -195,7 +195,7 @@ describe('base pack directories', () => {
     })
     const findings = lintPacksDir({ dir, basePacksDirs: [shippedPacksDir] }).findings
     expect(findings.some((f) => f.rule === 'duplicate-tool')).toBe(true)
-    expect(findings.some((f) => f.message.includes('ai-coding-agents.yaml'))).toBe(true)
+    expect(findings.some((f) => f.message.includes('claude-code.yaml'))).toBe(true)
   })
 
   it('a base directory that does not itself validate is reported, not swallowed', () => {
@@ -277,7 +277,7 @@ describe('the four author rules, each with a fixture that breaks it', () => {
    * A rule that reads comments cannot tell an instruction from an explanation (rockysurf-c6cm).
    *
    * This is not hypothetical tidiness: the fix that removed the `api.github.com` calls from
-   * `packs/ai-coding-agents.yaml` replaced them with paragraphs naming that endpoint, because a
+   * `packs/claude-code.yaml` replaced them with paragraphs naming that endpoint, because a
    * pinned download with no explanation is a thing the next person quietly reverts. Firing on
    * those paragraphs would mean the rule's own documentation fails the rule.
    */

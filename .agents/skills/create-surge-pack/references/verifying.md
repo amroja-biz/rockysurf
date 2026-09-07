@@ -160,7 +160,7 @@ your scripts.
 
 Check this **before** you change your file. The resolved plan contains every tool your pack
 references, and most of those you did not write — the shared base toolchain lives in
-`packs/ai-coding-agents.yaml`, and a pack that lists `claude-code` or `nodejs` is running somebody
+`packs/claude-code.yaml`, and a pack that lists `claude-code` or `nodejs` is running somebody
 else's script inside its own smoke run.
 
 The step id tells you whose it is: `tool:<toolId>` / `tool-setup:<toolId>`. If that `toolId` is

@@ -82,7 +82,7 @@ async function createServer(): Promise<ServerRow> {
   const res = await created.app.request('/api/v1/servers', {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/json' },
-    body: JSON.stringify({ size: 'small', packId: 'ai-coding-agents' }),
+    body: JSON.stringify({ size: 'small', packId: 'claude-code' }),
   })
   expect(res.status).toBe(201)
   const { serverId } = (await res.json()) as { serverId: string }
@@ -181,7 +181,7 @@ describe('the no-cloud trial run', () => {
     const refused = await created.app.request('/api/v1/servers', {
       method: 'POST',
       headers: { cookie, 'content-type': 'application/json' },
-      body: JSON.stringify({ size: 'small', packId: 'ai-coding-agents' }),
+      body: JSON.stringify({ size: 'small', packId: 'claude-code' }),
     })
     expect(refused.status).toBe(403)
     expect(JSON.stringify(await refused.json())).toContain('spendCap')

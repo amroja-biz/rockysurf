@@ -1,6 +1,6 @@
 ---
 name: create-surge-pack
-description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "add ripgrep to the ai-coding-agents pack", "extend the opencode pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, extending a pack without breaking it, and installing and sharing the finished pack. NOT for registering ONE tool on its own — a tool reusable across packs, or exported as a tool file to send someone, is `register-a-tool`; come here for a whole box, go there for a single tool.
+description: Author a Surge Pack for Rocky Surf — the single YAML file that decides which tools get installed on a fresh cloud dev box. Use this whenever someone wants to make, write, author, extend, debug or ship a Surge Pack or a "Rocky Surf pack"; wants their own tools, CLIs, coding agents, runtimes or desktop installed on a Rocky Surf server; wants to build on, fork or add tools to a pack that already exists — theirs or a shipped one; is editing anything under packs/*.yaml in a Rocky Surf checkout; or says things like "make me a surge pack for X", "add my tools to rocky surf", "add ripgrep to the claude-code pack", "extend the opencode pack", "my pack fails the smoke test", or "how do I get my pack into Rocky Surf". Covers the frozen v0.1 file format, the four authoring rules, the run-twice Docker smoke harness, extending a pack without breaking it, and installing and sharing the finished pack. NOT for registering ONE tool on its own — a tool reusable across packs, or exported as a tool file to send someone, is `register-a-tool`; come here for a whole box, go there for a single tool.
 ---
 
 # Create a Surge Pack
@@ -89,7 +89,7 @@ file owns it and reference it from each pack's `tools:` list. A tool reaches a b
 pack, so that second half is not optional.
 
 **Default to derive.** A derived pack cannot break anybody else's pack; an amend to a base file
-like `packs/ai-coding-agents.yaml` empties the entire pack picker at boot if it goes wrong (see
+like `packs/claude-code.yaml` empties the entire pack picker at boot if it goes wrong (see
 `references/shipping.md`). If the user is only adding tools on top of something that already
 works — "add X on top of the Y pack" — that is a derive, and it is what Step 1E below covers. A
 pack with nothing existing to build on falls through to Step 1 unchanged.
@@ -142,7 +142,7 @@ pack is for the user's own instance rather than a pull request.
 
 ### What you get for free
 
-**`packs/ai-coding-agents.yaml` defines a shared base toolchain** that every other pack lists by
+**`packs/claude-code.yaml` defines a shared base toolchain** that every other pack lists by
 id rather than redefining. Read that file before writing a single install script: half of what a
 new pack needs is usually already there.
 
@@ -225,7 +225,7 @@ and re-smoke that file specifically.
 
 **The amend path, when the base pack really is being changed:** add the tool under `tools:` and
 its id to `pack.tools`, same four rules and bands as any other tool, then re-run Step 3 and Step
-4 **on the amended pack**. If the file is `packs/ai-coding-agents.yaml`, that is the shared base
+4 **on the amended pack**. If the file is `packs/claude-code.yaml`, that is the shared base
 toolchain for every pack in the repository — re-smoke everything (`node scripts/pack-smoke.mjs`
 with no `--pack`), because a pack file that fails validation is skipped at boot, taking every
 pack that references its tools out of the picker with it. On a running instance, a file-backed
@@ -257,7 +257,7 @@ toolchain defines its own, under its own id, and says in the file what needs it.
 
 **The base file is not the only place tool ids come from.** The agents themselves are defined
 across `packs/amp-agents.yaml` (`amp`), `packs/codex-cli.yaml` (`codex`), `packs/open-code.yaml`
-(`opencode`), `packs/ai-coding-agents.yaml` (`claude-code`) and `packs/gas-town.yaml` (`gas-town`,
+(`opencode`), `packs/claude-code.yaml` (`claude-code`) and `packs/gas-town.yaml` (`gas-town`,
 `dolt`) — every one of them referenceable by id from your pack, and none of
 them safe to redefine. The three npm-installed agents (`amp`, `codex`, `opencode`) need `nodejs`,
 so take it if you take them. If the user asked for a named agent, go and read the file that
@@ -270,8 +270,8 @@ these by what you are doing:
 | You are | Read |
 |---|---|
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
-| adding an apt repository (keyring + source list) | the `gh` tool in `packs/ai-coding-agents.yaml` |
-| downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads` in `packs/ai-coding-agents.yaml` for a checksummed one |
+| adding an apt repository (keyring + source list) | the `gh` tool in `packs/claude-code.yaml` |
+| downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads` in `packs/claude-code.yaml` for a checksummed one |
 | tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of installing one instead of compiling, and why |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
@@ -493,7 +493,7 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
   shell), admin-only to add, and it applies at the next restart.
 - **Drop the file into `packs/`** in their own deployment — loaded at **boot only**, there is no
   watcher, so it needs a restart. Warn them about the cascade: a broken pack file is skipped, and
-  because tool definitions are shared, breaking `ai-coding-agents.yaml` takes every pack that
+  because tool definitions are shared, breaking `claude-code.yaml` takes every pack that
   references it out of the picker until it is fixed.
 
 Finally, tell the user what was actually proven — which architectures ran, what CI will still

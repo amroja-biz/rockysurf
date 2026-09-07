@@ -1,4 +1,5 @@
-# Claude Code — the flagship pack.
+# Claude Code — the flagship pack. It installs Claude Code; the other agents ship as their own
+# packs (`amp-agents`, `codex-cli`, `open-code`, `cursor-cli`, `grok-build` and the rest).
 #
 # This file also DEFINES the shared base toolchain every other pack references by id
 # (see docs/surge-pack-contract.md: a tool is defined in exactly one file and referenced from
@@ -7,7 +8,7 @@
 version: 1
 
 pack:
-  packId: ai-coding-agents
+  packId: claude-code
   name: Claude Code
   tools:
     - build-essential

@@ -94,7 +94,7 @@ which is what makes that run a genuine no-op. The loader test requires the liter
 
 ## An apt repository, keyring and all
 
-From the `gh` tool in `packs/ai-coding-agents.yaml`. The subtle part is the last block.
+From the `gh` tool in `packs/claude-code.yaml`. The subtle part is the last block.
 
 ```bash
 set -euo pipefail
@@ -170,7 +170,7 @@ perfectly reachable on a CDN that has no quota at all.
 
 ## A checksummed release binary
 
-From `beads` in `packs/ai-coding-agents.yaml`. Same shape, plus verification and bounded retries:
+From `beads` in `packs/claude-code.yaml`. Same shape, plus verification and bounded retries:
 
 ```bash
 bd_version=v1.2.1
