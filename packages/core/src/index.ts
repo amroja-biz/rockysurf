@@ -3,7 +3,7 @@
  *
  * DEPENDENCY RULE, enforced by `scripts/check-core-deps.mjs` in CI: core may import
  * `@rockysurf/provider-sdk` and NOTHING else from this workspace. Never `provider-aws`,
- * `provider-hetzner`, `provider-byo`, or `web`. Two reasons, both load-bearing:
+ * `provider-hetzner`, or `web`. Two reasons, both load-bearing:
  *
  *  1. it keeps the SDK honest while it has no out-of-tree consumers — if core can reach into
  *     a concrete provider, the abstraction stops being tested by anything;

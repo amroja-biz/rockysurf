@@ -51,7 +51,7 @@ export interface AdcTokenSourceOptions {
   /**
    * Path to a service-account key file, or undefined for the ambient ADC chain.
    *
-   * A PATH, never key material — the same posture `providers.byo.identityFile` takes. The key
+   * A PATH, never key material — the posture every credential field in this project takes. The key
    * stays where the operator's own tooling put it, and nothing copies it into a config file or
    * this application's database.
    */

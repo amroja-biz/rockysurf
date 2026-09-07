@@ -47,7 +47,7 @@ const SECTIONS = [
   {
     id: 'providers',
     label: 'Cloud Providers',
-    anchors: ['enable-a-cloud', 'ssh-access', 'hetzner', 'aws', 'azure', 'gcp', 'byo'],
+    anchors: ['enable-a-cloud', 'ssh-access', 'hetzner', 'aws', 'azure', 'gcp'],
   },
   {
     id: 'servers',
@@ -163,11 +163,6 @@ const DOC_GROUPS = [
         'docs/providers/gcp.md',
         'Google Cloud',
         'Setting Google Cloud up, with its least-privilege role.',
-      ],
-      [
-        'docs/providers/byo.md',
-        'Your own machines',
-        'Setting up machines you already own, which need no cloud API.',
       ],
     ],
   },
@@ -628,42 +623,6 @@ export function HelpPage() {
                 &middot; <Link to="/settings?section=providers.gcp">Settings &rarr; Google Cloud</Link>
               </p>
             </section>
-
-            <section className="help-block" id="byo">
-              <h3>Your own machines (BYO)</h3>
-              <p>
-                <strong>Before you start:</strong> a machine you can already reach over SSH as root,
-                or as an account with passwordless sudo. There is no cloud API, no role to deploy,
-                and no credential stored — <code>identityFile</code> is a <em>path</em> to a key your
-                own SSH already holds, and with an agent running (<code>SSH_AUTH_SOCK</code>) you can
-                leave it out entirely.
-              </p>
-              <p>
-                <strong>Config:</strong> <code>enabled</code>, and <code>hosts</code> — one entry per
-                machine with <code>name</code> (what you call it in the UI, and how you pick it),{' '}
-                <code>host</code>, <code>user</code> (default <code>root</code>), <code>port</code>{' '}
-                (default <code>22</code>, and the port bootstrap dials too), an optional{' '}
-                <code>fingerprint</code> so even the first connection is verified, and an optional
-                per-host <code>identityFile</code>. Enabling the provider with no hosts is refused.
-              </p>
-              <p>
-                <strong>Two accounts, and confusing them is the mistake worth avoiding.</strong>{' '}
-                <code>user</code> is the admin login Rocky Surf <em>claims</em> with. The account it
-                later connects as is <code>rocky</code>, which you do not configure — the claim
-                creates it, with passwordless sudo, and appends Rocky Surf&rsquo;s key to it.
-                Releasing a host undoes none of that: terminate is bookkeeping, and deliberately runs
-                nothing on a machine Rocky Surf does not own.
-              </p>
-              <p className="help-links">
-                <a href={repoDocUrl('docs/providers/byo.md')} target="_blank" rel="noreferrer">
-                  docs/providers/byo.md
-                </a>{' '}
-                &middot;{' '}
-                <Link to="/settings?section=providers.byo.hosts">
-                  Settings &rarr; Your own machines
-                </Link>
-              </p>
-            </section>
           </section>
 
           <section
@@ -750,11 +709,9 @@ export function HelpPage() {
               <p>
                 A stopped box keeps its disk and loses its compute bill — storage still costs money,
                 just much less. On AWS and Google Cloud the public IP changes across a stop/start
-                cycle; on Hetzner and Azure it survives. Machines you brought yourself (BYO) cannot be
-                stopped or started — their power is not Rocky Surf&rsquo;s to manage — and
-                terminating a BYO host is bookkeeping: it returns the host to the pool and runs
-                nothing on a machine Rocky Surf does not own. For what each cloud can and cannot do,
-                see{' '}
+                cycle; on Hetzner and Azure it survives. A Provider is not obliged to support every
+                operation: one that cannot stop a machine says so, and Rocky Surf refuses the
+                request rather than pretending. For what each cloud can and cannot do, see{' '}
                 <a
                   href={repoDocUrl('docs/providers/capability-matrix.md')}
                   target="_blank"
@@ -1404,10 +1361,9 @@ export function HelpPage() {
               <div className="help-glossary-row">
                 <dt>Provider</dt>
                 <dd>
-                  The cloud, or your own machine, that a server runs on. Rocky Surf ships five:
-                  Hetzner, AWS, Azure, Google Cloud, and your own machines (BYO). Each is enabled
-                  independently and translates create, start, stop, and terminate into that
-                  cloud&rsquo;s own API.
+                  The cloud a server runs on. Rocky Surf ships four: Hetzner, AWS, Azure and
+                  Google Cloud, and you can install more. Each is enabled independently and
+                  translates create, start, stop, and terminate into that cloud&rsquo;s own API.
                 </dd>
               </div>
               <div className="help-glossary-row">

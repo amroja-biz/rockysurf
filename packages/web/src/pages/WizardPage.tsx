@@ -500,16 +500,6 @@ function cloudSetupSteps(id: string): SetupStep[] {
       },
     ]
   }
-  if (id === 'byo') {
-    return [
-      {
-        text: 'Bring-your-own hosts connect over SSH with your own key — a path in providers.byo.identityFile, or the key your SSH agent already holds. There is nothing to type here.',
-      },
-      {
-        text: 'List your hosts under providers.byo.hosts in rockysurf.config.yaml or on the Settings page.',
-      },
-    ]
-  }
   return [
     {
       text: 'This cloud authenticates with your own credentials, outside Rocky Surf. Its options are on the Settings page.',

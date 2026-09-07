@@ -2617,7 +2617,7 @@ p.hint {
   gap: 1.25rem;
 }
 
-/* One entry of a list — a per-repository token, a BYO host. Inset a step from its section so
+/* One entry of a list — a per-repository token, a pack source. Inset a step from its section so
    the boundary between two entries is visible without a second border colour. */
 .settings-entry {
   background: var(--rs-bg);

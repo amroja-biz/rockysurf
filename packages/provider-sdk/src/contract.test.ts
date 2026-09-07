@@ -345,9 +345,9 @@ describe('error taxonomy', () => {
   })
 
   it('unsupportedOperationError names the provider and the operation', () => {
-    const err = unsupportedOperationError('byo', 'stop')
+    const err = unsupportedOperationError('example-cloud', 'stop')
     expect(err.code).toBe('invalid_spec')
-    expect(err.message).toContain('byo')
+    expect(err.message).toContain('example-cloud')
     expect(err.message).toContain('stop')
   })
 })

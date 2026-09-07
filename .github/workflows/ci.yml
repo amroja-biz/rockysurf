@@ -25,7 +25,7 @@ env:
 jobs:
   # WHICH JOBS A PULL REQUEST RUNS (owner ruling). A pull request that changes only the UI, the
   # docs or the agent notes runs typecheck, the unit tests and the secret scan — and nothing
-  # else. Release tarballs, the BYO lifecycle, the push-bootstrap gate and the structural lint
+  # else. Release tarballs, the push-bootstrap gate and the structural lint
   # guard boundaries that such a change cannot cross, so they wait for the push run on main,
   # which is never filtered.
   # Anything outside those paths — core, a provider, a pack, a script, this file —
@@ -206,41 +206,9 @@ jobs:
       - run: pnpm -r build
       - run: node scripts/verify-tarballs.mjs
 
-  # The BYO provider against a REAL OpenSSH server, in a container (rockysurf-ftl9.10). 75
-  # checks, well under two minutes, and — uniquely among this project's real-infrastructure
-  # runs — no cloud credentials, no secrets and no spend, which is what makes it the one that
-  # can gate a pull request instead of waiting for the nightly.
-  #
-  # It also exercises the push bootstrap's NOHUP launcher fallback, because a container has no
-  # /run/systemd/system. The nightly's cloud runs never reach that path: they both boot systemd.
-  # The two are complementary, not redundant.
-  #
-  # IT NEEDS NO PARTICULAR PORT FREE (rockysurf-ftl9.15). It used to need 127.0.0.1:22, because
-  # core dialled 22 unconditionally in push mode — rockysurf-ftl9.12 fixed that, and the script
-  # now publishes the container's sshd on a random non-22 port, with --port to pin one. It still
-  # preflights, but for the port it picked. The caveat this paragraph used to carry about
-  # self-hosted runners went with it: not needing 22 makes the job more portable, not less.
-  byo-host:
-    name: BYO lifecycle (real sshd)
-    needs: scope
-    if: needs.scope.outputs.beyond-ui == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # It drives the built binary, not the sources: the shipped article is the subject.
-      - run: pnpm -r build
-      - run: node scripts/e2e/byo-host.mjs
-
   # THE PUSH BOOTSTRAP AGAINST A REAL OpenSSH SERVER, in a container (issue #446). This is the
-  # job that keeps the two properties the BYO job above was carrying, neither of which belongs
-  # to the provider it was named after:
+  # job that keeps the two properties the old provider-driven container job carried, neither of
+  # which belongs to any particular provider:
   #
   #   1. it is the only real-infrastructure run with no cloud credential, no secret and no
   #      spend, which is what lets it gate a pull request instead of waiting for the nightly;
@@ -252,7 +220,7 @@ jobs:
   # order to have a server row at all is scripts/e2e/fixtures/bootstrap-target: test-only,
   # unpublished, not in compose.ts, loaded by path through the personal-provider mechanism.
   #
-  # SAME PATH FILTER AND SAME ROLE as the BYO job, deliberately: it runs when a pull request
+  # SAME PATH FILTER AND SAME ROLE as the job it replaced, deliberately: it runs when a pull request
   # reaches beyond the UI and the docs. Like every other path-conditional job here it must NEVER
   # be added to the protect-main ruleset's required checks — a required check that a filter
   # skips never reports, and a required check that never reports deadlocks the merge forever

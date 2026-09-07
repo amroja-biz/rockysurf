@@ -70,7 +70,6 @@ const DECLARED_BY_PROVIDER: Record<string, string> = {
   aws: 'awsProviderFactory.settings in packages/provider-aws/src/index.ts declares region, profile, sshAllowedCidr and securityGroupName',
   azure: 'azureProviderFactory.settings in packages/provider-azure/src/index.ts declares subscriptionId, resourceGroup, location and sshAllowedCidr',
   gcp: 'gcpProviderFactory.settings in packages/provider-gcp/src/index.ts declares projectId, zone and sshAllowedCidr',
-  byo: 'byoProviderFactory.settings in packages/provider-byo/src/index.ts declares identityFile and the hosts list',
 }
 
 /**
@@ -120,32 +119,40 @@ const SHIPPED_DECLARATIONS: Record<string, ProviderSettings> = {
       { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', help: 'Which networks may reach SSH on the boxes GCP creates here.' },
     ],
   }),
-  // BYO is the one with a list, no `sizes` key and a lower-case name for the sentences.
-  byo: declaration('Your own machines', 'host', 'the-nuc-under-the-desk', {
-    fields: [{ name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' }],
-    lists: [
-      {
-        name: 'hosts',
-        label: 'Hosts',
-        help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
-        itemFields: [
-          { name: 'name', label: 'Name', kind: 'string' },
-          { name: 'port', label: 'SSH port', kind: 'number', help: 'The SSH port, when it is not 22.' },
-        ],
-        add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
-        labelField: 'name',
-        empty: 'None yet. Enabling this provider requires at least one host.',
-      },
-    ],
-    offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
-  }),
 }
 
-/** The inventory the page really draws from: core's own rows merged with all five declarations. */
+/**
+ * A PROVIDER WITH A DECLARED LIST — personal, because no provider Rocky Surf ships declares one
+ * since issue #446, and the shape is still the SDK's and still drawn by the page.
+ */
+const LIST_DECLARATION: ProviderSettings = declaration('Metal Cloud', 'machine', 'the-nuc-under-the-desk', {
+  fields: [{ name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every machine below.' }],
+  lists: [
+    {
+      name: 'machines',
+      label: 'Machines',
+      help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
+      itemFields: [
+        { name: 'name', label: 'Name', kind: 'string' },
+        { name: 'port', label: 'SSH port', kind: 'number', help: 'The SSH port, when it is not 22.' },
+      ],
+      add: { noun: 'machine', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+      labelField: 'name',
+      empty: 'None yet. Enabling this provider requires at least one machine.',
+    },
+  ],
+  offering: { noun: 'machine', example: 'the-nuc-under-the-desk', label: 'your own metal', allowlist: false },
+})
+
+/**
+ * The inventory the page really draws from: core's own rows merged with all four shipped
+ * declarations, plus one personal provider whose configuration is a list.
+ */
 const merged = () =>
   buildSettingsInventory({
-    tree: {},
+    tree: { providers: { metalcloud: { package: 'p' } } },
     describeProvider: (id) => {
+      if (id === 'metalcloud') return { displayName: 'Metal Cloud', settings: LIST_DECLARATION }
       const settings = SHIPPED_DECLARATIONS[id]
       return settings ? { displayName: id, settings } : undefined
     },
@@ -196,9 +203,9 @@ describe('secret classification tracks config/schema.ts', () => {
   })
 
   it('leaves the path-shaped fields alone — a path to a key is not key material', () => {
-    expect(isSecretPath(['providers', 'byo', 'identityFile'])).toBe(false)
-    expect(isSecretPath(['providers', 'byo', 'hosts', 0, 'identityFile'])).toBe(false)
-    expect(isSecretPath(['providers', 'byo', 'hosts', 0, 'fingerprint'])).toBe(false)
+    expect(isSecretPath(['providers', 'gcp', 'keyFile'])).toBe(false)
+    expect(isSecretPath(['providers', 'metalcloud', 'identityFile'])).toBe(false)
+    expect(isSecretPath(['providers', 'metalcloud', 'machines', 0, 'fingerprint'])).toBe(false)
     expect(isSecretPath(['github', 'tokens'])).toBe(false)
   })
 
@@ -231,9 +238,9 @@ describe('the inventory is internally consistent', () => {
     expect(specFor(['github', 'tokens', 3, 'pat'])?.kind).toBe('secret')
     expect(specFor(['ssh', 'keys', 0, 'publicKey'])?.kind).toBe('string')
     expect(specFor(['server', 'nonsense'])).toBeUndefined()
-    // A DECLARED list's items match the same way, through the merged inventory — `providers.byo`
-    // is where that path used to be proved and its rows are the provider's now (issue #370).
-    expect(merged().specFor(['providers', 'byo', 'hosts', 0, 'port'])?.kind).toBe('number')
+    // A DECLARED list's items match the same way, through the merged inventory: the rows are the
+    // provider's now (issue #370), whether it is one Rocky Surf ships or one installed.
+    expect(merged().specFor(['providers', 'metalcloud', 'machines', 0, 'port'])?.kind).toBe('number')
   })
 
   it('declares an item shape for every list the editor offers', () => {
@@ -314,10 +321,11 @@ describe('the inventory is internally consistent', () => {
  */
 describe('every provider the config schema declares appears in the settings inventory', () => {
   /**
-   * Provider sections the page deliberately does not cover, name → reason. Empty today: even
-   * byo — whose nested `hosts` do not fit the flat field model — has its `enabled` switch and
-   * its section, with the hosts drawn as a list. An entry here is a claim that an operator
-   * cannot manage the provider from the page at all, so it costs a sentence saying why.
+   * Provider sections the page deliberately does not cover, name → reason. Empty today: even a
+   * provider whose configuration nests — a declared list does not fit the flat field model — has
+   * its `enabled` switch and its section, with the list drawn as a card. An entry here is a claim
+   * that an operator cannot manage the provider from the page at all, so it costs a sentence
+   * saying why.
    */
   const DELIBERATELY_ABSENT: Record<string, string> = {}
 
@@ -326,13 +334,13 @@ describe('every provider the config schema declares appears in the settings inve
   it('finds the provider sections, so an empty scan cannot make this vacuous', () => {
     expect(providerNames).toContain('hetzner')
     expect(providerNames).toContain('gcp')
-    expect(providerNames.length).toBeGreaterThanOrEqual(5)
+    expect(providerNames.length).toBeGreaterThanOrEqual(4)
   })
 
   /**
    * ASSERTED OVER THE MERGED INVENTORY (issue #370), which is where every provider's rows now
    * live. Reading `SETTINGS_FIELDS` alone would leave this vacuous the moment the last static
-   * provider moved — five names skipped, nothing checked, and a green test saying so.
+   * provider moved — every name skipped, nothing checked, and a green test saying so.
    */
   it('gives every provider at least its enabled switch, and a section to draw it in', () => {
     const inventory = merged()
@@ -398,7 +406,7 @@ describe('every setting on the page explains itself', () => {
    * surprise after somebody had typed one.
    *
    * NARROWED, NOT DELETED (rockysurf-7fyf.2). The rule now covers the secrets that still take a
-   * variable name — Hetzner and the BYO fields — because the owner reversed it for the two
+   * variable name — Hetzner's — because the owner reversed it for the two
    * GitHub PATs and nothing else. Deleting this case along with the reversal would have let the
    * Hetzner wording rot unwatched, which is why the literal fields get their own case below
    * rather than an exemption from this one.
@@ -511,7 +519,7 @@ describe('every setting on the page explains itself', () => {
   it('offers a saved machine type for every size on every cloud', () => {
     const fields = merged().fields
     const paths = fields.filter((f) => f.path.startsWith('preferences.tiers.')).map((f) => f.path)
-    for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
+    for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'metalcloud']) {
       for (const size of ['small', 'medium', 'large']) {
         const path = `preferences.tiers.${cloud}.${size}`
         const field = fields.find((f) => f.path === path)
@@ -521,8 +529,8 @@ describe('every setting on the page explains itself', () => {
         expect(field!.help, `${path}'s help does not say what happens when it is blank`).toContain('blank')
       }
     }
-    // Five providers, three sizes: there is no static table left, so the count is a count of
-    // what the declarations produced (issue #370).
+    // Five providers — four shipped and one installed — times three sizes: there is no static
+    // table left, so the count is a count of what the declarations produced (issue #370).
     expect(paths).toHaveLength(15)
     // Every one of them is a real machine type in that cloud's own words, not "a machine type".
     const examples = ['cpx21', 't4g.medium', 'Standard_B2ps_v2', 't2a-standard-2']

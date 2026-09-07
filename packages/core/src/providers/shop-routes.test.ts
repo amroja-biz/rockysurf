@@ -67,11 +67,10 @@ const CONFIG = [
   'server:',
   '  dataDir: DATA',
   'providers:',
-  '  byo:',
+  '  hetzner:',
   '    enabled: true',
-  '    hosts:',
-  '      - name: workshop',
-  '        host: 192.0.2.10',
+  '    token: "hz_example"',
+  '    location: fsn1',
   '',
 ].join('\n')
 
@@ -212,7 +211,7 @@ describe('installing', () => {
     expect(config).toContain(`package: "${PACKAGE}"`)
     expect(config).toMatch(/nimbus:[\s\S]*enabled: true/)
     // The rest of the file is untouched, comments and all — it went through the Document API.
-    expect(config).toMatch(/byo:[\s\S]*enabled: true/)
+    expect(config).toMatch(/hetzner:[\s\S]*enabled: true/)
   })
 
   it('then reports the entry as installed, at the version on disk', async () => {

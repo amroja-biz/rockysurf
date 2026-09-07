@@ -152,11 +152,11 @@ const STALE = {
 const ON_ANOTHER_CLOUD = { ...RUNNING, serverId: 'srv-other', name: 'other-box', provider: 'other' }
 
 /**
- * A box on a cloud the provider list does not carry — a bring-your-own machine, or a provider
- * the operator has since removed from their config. The row is still real and must still be on
- * the page; there is simply no display name to put over it.
+ * A box on a cloud the provider list does not carry — a personal Provider whose package no
+ * longer loads, or a provider the operator has since removed from their config. The row is still
+ * real and must still be on the page; there is simply no display name to put over it.
  */
-const ON_AN_UNLISTED_CLOUD = { ...RUNNING, serverId: 'srv-byo', name: 'byo-box', provider: 'byo' }
+const ON_AN_UNLISTED_CLOUD = { ...RUNNING, serverId: 'srv-unlisted', name: 'unlisted-box', provider: 'metalcloud' }
 
 /** And the degenerate case: a row that names no provider at all. */
 const ON_NO_CLOUD = { ...RUNNING, serverId: 'srv-none', name: 'nameless-box', provider: '' }
@@ -737,9 +737,9 @@ describe('the fleet, one tab per cloud', () => {
     const { container } = renderPage()
 
     await waitFor(() => expect(tabs(container)).toHaveLength(3))
-    expect(labels(container)).toContain('byo')
-    open(container, 'byo')
-    await waitFor(() => expect(cardFor(panel(container), 'byo-box')).toBeTruthy())
+    expect(labels(container)).toContain('metalcloud')
+    open(container, 'metalcloud')
+    await waitFor(() => expect(cardFor(panel(container), 'unlisted-box')).toBeTruthy())
   })
 
   it('puts a row naming no cloud at all under one generic tab, last', async () => {

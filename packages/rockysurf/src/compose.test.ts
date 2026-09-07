@@ -320,43 +320,6 @@ describe('what ends up in the registry', () => {
     expect(registry.ids()).toEqual(['gcp'])
   })
 
-  it('loads byo, which has hosts instead of a credential', () => {
-    const { registry, notes } = compose(
-      config({
-        byo: {
-          enabled: true,
-          identityFile: '/home/op/.ssh/id_ed25519',
-          hosts: [{ name: 'workshop', host: '10.0.0.9', fingerprint: 'SHA256:abc' }],
-        },
-      }),
-    )
-
-    expect(registry.ids()).toEqual(['byo'])
-    // The honest capability profile reaches the registry: no stop, no user-data, no injected
-    // host key. Core branches on these and on nothing else.
-    expect(registry.get('byo').capabilities).toMatchObject({ stop: false, generatesUserData: false })
-    expect(notes).toContain('byo: ready (credentials from the environment)')
-  })
-
-  it('reports a byo section the provider itself rejects, without stopping the boot', () => {
-    const { registry, notes } = compose(
-      config({
-        byo: {
-          enabled: true,
-          hosts: [
-            { name: 'workshop', host: '10.0.0.9' },
-            { name: 'workshop', host: '10.0.0.10' },
-          ],
-        },
-      }),
-    )
-
-    // Duplicate names are refused by the provider's own constructor — the name is its offering
-    // id, its claim key and its managed-resource id at once.
-    expect(registry.ids()).toEqual(['fake'])
-    expect(notes.find((n) => n.startsWith('byo:'))).toContain('duplicate BYO host name')
-  })
-
   it('leaves out a provider that is disabled', () => {
     const { registry, notes } = compose(config({ hetzner: { enabled: false, token: 'hz' } }))
     expect(registry.ids()).not.toContain('hetzner')

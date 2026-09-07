@@ -52,7 +52,8 @@ export interface ProviderCapabilities {
   /**
    * Hard ceiling, in bytes, on the rendered user-data document BEFORE any transport encoding.
    *
-   * AWS 16384, Hetzner 32768, BYO 0. Advisory in the sketch and now enforced twice: core
+   * AWS 16384, Hetzner 32768, and `0` for a provider that delivers no user-data at all.
+   * Advisory in the sketch and now enforced twice: core
    * checks when rendering, and `ComputeProvider.validateSpec` lets the provider reject a spec
    * before anything is created (ADR-0003, A7). The ceiling bit for real — embedding an agent
    * in-band for callback mode produced 19,130 bytes, which is fine on Hetzner and a
@@ -63,7 +64,7 @@ export interface ProviderCapabilities {
   /**
    * The provider delivers user-data to the box at all.
    *
-   * `false` for BYO, where there is no pre-boot hook and bootstrap is SSH push only. Core
+   * `false` where there is no pre-boot hook and bootstrap is SSH push only. Core
    * renders no document at all in that case, so `canInjectHostKeys` is necessarily `false`
    * too: with no user-data there is no way to place a host key before first contact.
    */
@@ -100,7 +101,8 @@ export interface ProviderCapabilities {
    *
    * Added by ADR-0021 (issue #304). **Additive and optional; absent means `false`**, which is
    * what a provider with no whitelist to maintain declares by saying nothing — Hetzner creates no
-   * firewall object at all, and BYO does not own the network its hosts sit on.
+   * firewall object at all, and a provider that did not create the network its machines sit on
+   * does not own the rules over it.
    *
    * `true` on `aws`, `azure` and `gcp`, each of which already creates exactly one shared object
    * (a security group, an NSG child rule, a firewall rule) and, before this release, only ever

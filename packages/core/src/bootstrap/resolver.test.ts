@@ -203,7 +203,7 @@ describe('phase 9: retiring the managed key (ADR-0008, issue #92)', () => {
     // The guard: fails closed under `set -euo pipefail` if the user's line is not present.
     expect(step.run).toContain('grep -qxF -- "$user_line" "$auth"')
     // Surgical removal — a whole-line filter on core's OWN key, never a rewrite of the file, so
-    // any other line a BYO host's authorized_keys already held survives untouched.
+    // any other line the box's authorized_keys already held survives untouched.
     expect(step.run).toContain('grep -vxF -- "$managed_line" "$auth" > "$auth.tmp"')
     expect(step.run).toContain(`user_line='${USER_KEY}'`)
     expect(step.run).toContain(`managed_line='${MANAGED_KEY}'`)

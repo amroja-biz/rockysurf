@@ -66,8 +66,8 @@ export interface ProvisionKeysInput {
   /**
    * Whether the MINTED host key becomes the row's pin. Defaults to true.
    *
-   * False for a provider with `canInjectHostKeys: false` — BYO — where the box was running long
-   * before core existed and will present its OWN host key, not one core generated. Writing the
+   * False for a provider with `canInjectHostKeys: false`, where the box was running long before
+   * core existed and will present its OWN host key, not one core generated. Writing the
    * minted fingerprint onto the row there would pin a key the machine can never present, and
    * every bootstrap connection would fail host-key verification with nothing on the row
    * explaining why. The keypair is still minted and still stored (the user half is how core logs

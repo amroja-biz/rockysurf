@@ -42,7 +42,6 @@
     "@rockysurf/core": "workspace:*",
     "@rockysurf/provider-aws": "workspace:*",
     "@rockysurf/provider-azure": "workspace:*",
-    "@rockysurf/provider-byo": "workspace:*",
     "@rockysurf/provider-gcp": "workspace:*",
     "@rockysurf/provider-hetzner": "workspace:*",
     "@rockysurf/provider-sdk": "workspace:*",

@@ -21,8 +21,8 @@ in the Rocky Surf repository.
 **In a checkout**, copy the freshest in-tree provider rather than starting from a blank file:
 `packages/provider-gcp` and `packages/provider-azure` are the most recent REST-shaped examples and
 carry the most current reasoning in their comments; `packages/provider-hetzner` is the smallest
-complete one and the best to read end to end; `packages/provider-byo` is the model for a provider
-that cannot stop and does not generate user-data.
+complete one and the best to read end to end; `scripts/e2e/fixtures/bootstrap-target` (test-only)
+is the minimal model for a provider that does not generate user-data.
 
 **Out of tree you have none of those** — they are not on npm as readable examples and you should not
 need them. What you do have, inside the tarballs you installed, is the authoritative contract:

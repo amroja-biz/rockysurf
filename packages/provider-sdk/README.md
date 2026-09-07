@@ -91,8 +91,8 @@ Three implementations are worth reading as worked examples:
 (a vendor SDK),
 [`@rockysurf/provider-hetzner`](https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-hetzner)
 (plain `fetch`), and
-[`@rockysurf/provider-byo`](https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-byo)
-(no cloud API at all, and the one that says `false` to three capabilities).
+[`@rockysurf/provider-digitalocean`](https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-digitalocean)
+(plain `fetch` again, and a personal Provider rather than a shipped one).
 
 ## Four rules that are expensive to get wrong
 

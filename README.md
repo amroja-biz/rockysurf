@@ -50,7 +50,6 @@ Rocky Surf stores no cloud credentials. Each cloud authenticates through its own
 | **AWS** | The standard AWS credential chain — environment, `AWS_PROFILE`, `aws sso login`, or an instance role. | `aws: { enabled: true, region: us-east-1, sshAllowedCidr: "203.0.113.7/32" }` |
 | **Azure** | `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`, a managed identity, or `az login`. | `azure: { enabled: true, subscriptionId: …, resourceGroup: rocky-surf-rg, location: eastus, sshAllowedCidr: "203.0.113.7/32" }` |
 | **GCP** | Application Default Credentials — `gcloud auth application-default login`, or a service-account key file at `keyFile`. | `gcp: { enabled: true, projectId: my-project-123456, zone: us-central1-a, sshAllowedCidr: "203.0.113.7/32" }` |
-| **BYO** | Your own SSH access to machines you already have. No cloud API. | `byo: { enabled: true, hosts: [ { name: workshop, host: 10.0.0.9, user: root } ] }` |
 
 `sshAllowedCidr` is required for AWS, Azure and GCP and has no default: it is which network may
 reach SSH on your boxes, and a list is accepted. Your address is

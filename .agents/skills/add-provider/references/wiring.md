@@ -102,8 +102,8 @@ before the provider's own schema sees the section, along with `enabled`.
   `packages/rockysurf/package.json` lacks your package: *"composition root is missing … — providers
   would not reach the registry"*
 
-That last list is hand-maintained and has already drifted — `@rockysurf/provider-byo` is wired in
-`compose.ts` and absent from it. Add yours; do not assume the list is complete.
+That last list is hand-maintained and has drifted before — a provider wired in `compose.ts` and
+absent from it. Add yours; do not assume the list is complete.
 
 ## Needed for correct behaviour, and for the test suite to pass
 
@@ -129,8 +129,8 @@ and since ADR-0027 it is hand-written for CORE'S OWN sections. A provider declar
 factory (`settings`: fields with kinds, labels and help, the machine-type vocabulary, advisories) and
 `settings/inventory.ts` turns that declaration into rows at request time. **No shipped provider has
 rows in `fields.ts`** — issue #370 moved the last four — so there is no static block to copy and none
-to add. Copy a factory instead: Hetzner for a token cloud, GCP for a firewall cloud, BYO for one with
-a list.
+to add. Copy a factory instead: Hetzner for a token cloud, GCP for a firewall cloud. No shipped provider
+declares a `lists` entry; the SDK still carries the shape, and `settings/inventory.ts` draws it.
 
 What is still true: the settings API refuses to save any path not in the merged inventory (*"this
 settings page does not edit that field"*), so a field your declaration does not name is edited in the
@@ -151,7 +151,7 @@ placeholders from the declaration, the `sshCidrList` kind with the same CIDR con
 cloud now gets through that same kind, advisories at the panel's head. There is no hand-written
 provider block left in the file to imitate or to fall back on. There is no `SECTION_ORDER`; sections come from core in
 the order core sends them, and a declared provider's tab slots into the order the page has always
-had (Hetzner first, then AWS, Azure, GCP, BYO; personal providers after, in file order).
+had (Hetzner first, then AWS, Azure, GCP; personal providers after, in file order).
 
 The only hand-written per-cloud code left in the SPA is the wizard's setup steps
 (`WizardPage.tsx`, the sanctioned exception, with a generic fallback for any id it does not know).

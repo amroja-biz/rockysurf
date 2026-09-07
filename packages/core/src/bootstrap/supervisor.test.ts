@@ -343,7 +343,7 @@ describe('retiring the managed key for a supplied-key box (ADR-0008, issue #92)'
   it('retires the stored private half once a supplied-key row reaches running', async () => {
     row = insertServer(db, {
       userId: row.userId,
-      name: 'byok-box',
+      name: 'own-key-box',
       provider: 'fake',
       size: 'small',
       offeringId: 'fake-small',
@@ -387,7 +387,7 @@ describe('retiring the managed key for a supplied-key box (ADR-0008, issue #92)'
   it('does not retire anything for a run that fails', async () => {
     row = insertServer(db, {
       userId: row.userId,
-      name: 'byok-box-failed',
+      name: 'own-key-box-failed',
       provider: 'fake',
       size: 'small',
       offeringId: 'fake-small',

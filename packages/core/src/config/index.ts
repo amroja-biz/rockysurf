@@ -91,7 +91,6 @@ export {
   configSchema,
   expandTilde,
   preferencesSchema,
-  type ByoHost,
   type Config,
   type PreferencesConfig,
   type TierPreferences,

@@ -6,7 +6,7 @@ import { z } from 'zod'
 /**
  * PERSONAL PROVIDERS IN THE CONFIG FILE (ADR-0026, issue #294).
  *
- * The five providers this distribution ships are declared by name in `providersSchema`, each with
+ * The four providers this distribution ships are declared by name in `providersSchema`, each with
  * its own strict section. A provider Rocky Surf did NOT ship — an npm package the operator
  * installed, or a directory they are developing in — is one more key under `providers:` whose
  * section names the `package` that implements it:
@@ -43,7 +43,7 @@ import { z } from 'zod'
  */
 
 /** The ids `providersSchema` declares by name. Anything else under `providers:` is personal. */
-export const SHIPPED_PROVIDER_IDS = ['aws', 'azure', 'gcp', 'hetzner', 'byo'] as const
+export const SHIPPED_PROVIDER_IDS = ['aws', 'azure', 'gcp', 'hetzner'] as const
 
 export type ShippedProviderId = (typeof SHIPPED_PROVIDER_IDS)[number]
 
@@ -65,6 +65,25 @@ export function missingPackageMessage(id: string): string {
     'naming the npm package (installed under <dataDir>/providers) or the path that implements it — ' +
     'see docs/self-hosting.md, "Personal providers".'
   )
+}
+
+/**
+ * Providers this distribution used to ship, and the sentence a config file that still names one
+ * gets. A removed id is NOT a typo and NOT a personal provider: the operator wrote a section that
+ * worked in an earlier build, so the message says what happened to it and what to do about it
+ * rather than offering to install something.
+ *
+ * The check applies only to a section with no `package:`. A section that names a package is a
+ * personal provider (ADR-0026) that happens to have reused the id, and core has no business
+ * refusing it.
+ */
+export const REMOVED_PROVIDER_MESSAGES: Readonly<Record<string, string>> = {
+  byo: 'providers.byo: the bring-your-own-server provider was removed in v0.1.0. Rocky Surf creates and destroys servers on public clouds; it does not manage machines you already run. Delete the `byo:` section (and any `preferences.tiers.byo`) from your config file and restart.',
+}
+
+/** The removal sentence for `id`, when `id` names a provider this distribution has removed. */
+export function removedProviderMessage(id: string): string | undefined {
+  return REMOVED_PROVIDER_MESSAGES[id]
 }
 
 /**
@@ -108,10 +127,12 @@ export function nearestShippedProviderId(id: string): ShippedProviderId | undefi
 /**
  * Validate the non-shipped keys of a raw `providers` block, adding one issue per problem.
  *
- * Runs as a `superRefine` on the providers object, AFTER the five shipped sections have parsed,
- * over the raw values the catchall admitted. Three refusals, in the order an operator would want
+ * Runs as a `superRefine` on the providers object, AFTER the four shipped sections have parsed,
+ * over the raw values the catchall admitted. Four refusals, in the order an operator would want
  * them:
  *
+ *  0. a key naming a provider this distribution REMOVED — the operator's file worked in an
+ *     earlier build, so it is told what happened and what to delete;
  *  1. a key one edit away from a shipped id with no `package` — "did you mean hetzner?", because
  *     the most common way to reach this code is a typo and telling that operator to install a
  *     package is confidently wrong advice;
@@ -130,6 +151,11 @@ export function refinePersonalProviderSections(
       typeof section === 'object' && typeof (section as { package?: unknown }).package === 'string'
 
     if (!hasPackage) {
+      const removed = removedProviderMessage(id)
+      if (removed) {
+        ctx.addIssue({ code: 'custom', path: [id], message: removed })
+        continue
+      }
       const nearest = nearestShippedProviderId(id)
       if (nearest) {
         ctx.addIssue({

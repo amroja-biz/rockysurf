@@ -96,8 +96,8 @@ import { SHOP_PROVIDERS_URL } from '../lib/links'
  * follows are all consequences of the same decision, that **the navigation is the inventory**:
  *
  *  1. **Nothing here lists the sections.** They come from `view.sections`, in the server's
- *     order, and a section whose id is inside another one's (`providers.byo.hosts` inside
- *     `providers.byo`) is a card on that tab rather than a tab of its own. Add a section to
+ *     order, and a section whose id is inside another one's (`registry.sources` inside
+ *     `registry`) is a card on that tab rather than a tab of its own. Add a section to
  *     `settings/fields.ts` and it appears here — with its fields in it — with no edit to this
  *     file. That is the property issue #124 needs, and `SettingsPage.wiring.test.tsx` asserts
  *     it against a section this page has never heard of.
@@ -160,9 +160,9 @@ const SECTION_PARAM = 'section'
 /**
  * The section a dotted path belongs to: the LONGEST section id that prefixes it.
  *
- * Longest, not first, because the sections nest — `providers.byo.hosts.0.name` is a host's
- * field and not a stray `providers.byo` one, and a first-match rule would put every host field
- * on the wrong card the moment the two sections were listed in the wrong order.
+ * Longest, not first, because the sections nest — `registry.sources.0.name` is a source's field
+ * and not a stray `registry` one, and a first-match rule would put every source field on the
+ * wrong card the moment the two sections were listed in the wrong order.
  */
 function sectionOf(path: string, ids: readonly string[]): string | undefined {
   let best: string | undefined
@@ -877,7 +877,7 @@ export function SettingsPage() {
   /**
    * A credential box, in one of the two shapes `FieldSpec.accepts` allows.
    *
-   * `'envVarName'` — the default, rockysurf-4o3o, and still what Hetzner and the BYO hosts get.
+   * `'envVarName'` — the default, rockysurf-4o3o, and still what Hetzner's token box gets.
    * PLAIN TEXT, DELIBERATELY: `type=password` over a variable name is theatre, the content is
    * not key material, masking it stops the operator proof-reading the one thing they have to get
    * right, and hiding it would suggest that pasting a token here is what the box is for. The
@@ -1930,11 +1930,11 @@ export function SettingsPage() {
    * — the token list's bespoke flow — so this is a floor under the page rather than a
    * replacement for it.
    *
-   * SINCE ISSUE #370 IT IS ALSO THE CEILING for a provider's lists. `providers.byo.hosts` was the
-   * last hand-written one, and its labels — Address, Admin login, Host key fingerprint — moved
-   * onto the declaration rather than being lost: `oneList` reads a label off the field's spec
-   * when the inventory carries one, and falls back to `humanize` when it does not, which is
-   * honestly worse than a written label and enormously better than nothing.
+   * SINCE ISSUE #370 IT IS ALSO THE CEILING for a provider's lists. The last hand-written one
+   * went with the provider that declared it, and the labels a declaration carries are not lost:
+   * `oneList` reads a label off the field's spec when the inventory carries one, and falls back
+   * to `humanize` when it does not, which is honestly worse than a written label and enormously
+   * better than nothing.
    */
   function genericList(id: string): ReactNode | undefined {
     /*
@@ -2132,7 +2132,7 @@ export function SettingsPage() {
 
     /*
       NO `providers.*` ENTRIES AT ALL (ADR-0027, completed by issue #370). Every provider panel —
-      Hetzner's token box, the three clouds' CIDR control, BYO's hosts card — arrives from the
+      Hetzner's token box, the three clouds' CIDR control, a provider's own list card — arrives from the
       factory's declared settings with its own labels, placeholders and sentences, and the generic
       renderer below draws it. The blocks that used to be here were the D4 gap: a cloud not in this
       file had no panel, and a cloud not in this repository could never be added to it.
@@ -2210,7 +2210,7 @@ export function SettingsPage() {
     ),
 
     /* A card on the Pack sources tab rather than a tab of its own: switching the shop on and
-       saying what it points at are one errand, exactly as with the BYO hosts above. */
+       saying what it points at are one errand. */
     'registry.sources': listSection(
       ['registry', 'sources'],
       [
@@ -2337,7 +2337,7 @@ export function SettingsPage() {
    * WHICH TAB IS OPEN. The URL says, and a value naming nothing falls back to the first tab
    * rather than to a blank page — a link that has outlived the section it pointed at is a bad
    * link, not a broken settings page. A deep link to a NESTED section opens the tab that holds
-   * it, so `?section=providers.byo.hosts` lands on Your own machines with the hosts in view.
+   * it, so `?section=registry.sources` lands on Pack sources with the sources in view.
    */
   const requested = searchParams.get(SECTION_PARAM)
   const active =

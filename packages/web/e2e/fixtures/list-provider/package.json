@@ -1,0 +1,12 @@
+{
+  "name": "rockysurf-provider-metalcloud",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A test-only provider fixture for the browser suite: the one provider the suite boots ENABLED, so the New Server page has machines to draw with no cloud credential, and the one that declares a settings LIST. Not published, not a workspace package, no dependencies.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./index.js"
+    }
+  }
+}

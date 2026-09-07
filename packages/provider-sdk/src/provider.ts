@@ -57,7 +57,7 @@ export const DESCRIBE_ABSENCE_GRACE = {
  * had changed.
  */
 export interface ComputeProvider {
-  /** Stable, lowercase: 'aws', 'hetzner', 'byo'. Core must NEVER branch on this. */
+  /** Stable, lowercase: 'aws', 'hetzner', 'gcp'. Core must NEVER branch on this. */
   readonly id: string
   /** Human-facing name for UI. */
   readonly displayName: string

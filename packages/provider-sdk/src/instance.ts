@@ -99,7 +99,7 @@ export interface InstanceView {
    * Additive, and only ever populated by a provider with `canInjectHostKeys: false`. On the two
    * cloud providers core generates the host key before the server exists and ships it in
    * user-data, so core already knows the answer and this field stays absent. A provider with no
-   * pre-boot hook — BYO — cannot be given a key to present, so it LEARNS the box's own key
+   * pre-boot hook cannot be given a key to present, so it LEARNS the box's own key
    * (trust-on-first-use on the provider's own connection, pinned and refused-on-change from then
    * on) and reports it here.
    *
@@ -149,7 +149,7 @@ export interface InstanceView {
    * (ADR-0003 amendment E16).
    *
    * Additive and optional. Absent means the provider cannot construct one honestly — it has no
-   * console at all (the in-memory provider), it did not create the machine (BYO), or it is
+   * console at all (the in-memory provider), it did not create the machine, or it is
    * missing a piece of configuration it cannot derive (Hetzner without `consoleProjectId`).
    * Absent is a real answer and core renders no link for it; a guessed URL is worse than no
    * link, because it lands an operator in somebody else's project.

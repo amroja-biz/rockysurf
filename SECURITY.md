@@ -399,26 +399,26 @@ Two related properties:
   finishes, core's key is retired (ADR-0008, issue #92).** The plan's last step — required, and
   run only after every step that needs SSH — verifies the supplied key is authorized before
   removing core's own line, surgically: a whole-line match on the exact bytes core minted,
-  never a rewrite of the file, because a BYO host's `authorized_keys` may already hold the
-  operator's own pre-existing access. Core then clears the stored private half; the host key
+  never a rewrite of the file, because `authorized_keys` on a machine core did not create from
+  scratch may already hold the operator's own pre-existing access. Core then clears the stored private half; the host key
   material it minted stays, because `GET /servers/:id/ssh-host-key` still serves that
   independent of which user key is authorized.
 
-### Bring-your-own hosts: trust on first use
+### A host key core did not mint: trust on first use
 
-BYO is the one provider where core cannot pre-place a host key. There is no pre-boot hook, so
-`generatesUserData` and `canInjectHostKeys` are both false and bootstrap is SSH push only. The
-contract is therefore:
+A Provider that has no pre-boot hook — `generatesUserData` and `canInjectHostKeys` both false —
+cannot be handed a host key to present, so bootstrap is SSH push only and the box presents its
+own key. The contract is therefore:
 
-- If you supply a fingerprint in config (`providers.byo.hosts[].fingerprint`), it is
-  **enforced** from the first connection — pinning, identical in strength to the managed case.
-- If you do not, the key seen on the first connection is recorded, and any later change refuses
+- If the Provider reports a fingerprint it obtained out of band, it is **enforced** from the
+  first connection — pinning, identical in strength to the managed case.
+- If it does not, the key seen on the first connection is recorded, and any later change refuses
   the connection.
 
-Trust-on-first-use is weaker than pinning and the difference is real: it trusts whatever
-answers first. Supply the fingerprint when you can get it out of band. `terminate` on a BYO
-host releases core's record and executes nothing on the machine — core does not own the box and
-does not pretend to.
+Trust-on-first-use is weaker than pinning and the difference is real: it trusts whatever answers
+first. No Provider Rocky Surf ships is in this position — all four create the machine and receive
+core's minted key through cloud-init — but the SDK allows it, and core's behaviour above is what
+a Provider in that position gets.
 
 ## Network defaults
 

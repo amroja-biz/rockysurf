@@ -8,7 +8,7 @@ import { test, expect } from './fixtures'
  * here, in a real browser, against the real click handlers, confirm dialog and follow-up request.
  *
  * A cloud that reports a stamped-but-unlisted network (`removable`) is a state only a real cloud
- * produces — the e2e control plane runs BYO only and never talks to one — so the sync route's
+ * produces — the e2e control plane runs one fixture provider and never talks to a cloud — so the sync route's
  * RESPONSE is stubbed to that shape. Everything downstream of the response is the real product:
  * the report renders, the Keep/Remove buttons are the page's own, the confirmation is the page's
  * one modal, and REMOVE issues a genuine second POST carrying the operator's confirmation. What is

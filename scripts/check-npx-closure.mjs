@@ -11,7 +11,7 @@
  * Why that is worth its own check. `@aws-sdk/client-ec2` and `@aws-sdk/client-ssm` are the two
  * heaviest things this project installs, by a wide margin. Core is the package every
  * installation loads on every start, so anything in its closure is paid for by everyone,
- * including the operator who runs Hetzner or BYO and will never call an AWS API. The edge lint
+ * including the operator who runs only Hetzner and will never call an AWS API. The edge lint
  * would not notice: nobody adds `@aws-sdk/client-ec2` to core's package.json, they add a small
  * helper that happens to depend on it, and the cost arrives through a name nobody reviewed.
  *

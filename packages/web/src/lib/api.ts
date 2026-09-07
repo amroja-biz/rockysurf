@@ -222,12 +222,12 @@ export interface Server {
   name: string
   /** The user's own words about what this box is for (issue #46). Absent until they say. */
   description?: string
-  /** Provider id — `'aws'`, `'hetzner'`, `'byo'`. The key for a capability lookup, never a
+  /** Provider id — `'aws'`, `'hetzner'`, `'gcp'`. The key for a capability lookup, never a
    *  thing to branch on directly. */
   provider: string
   /**
-   * The region this box was placed in, when its provider has regions (issue #125). Absent for a
-   * BYO host and for any provider that takes no region — never rendered as a guess.
+   * The region this box was placed in, when its provider has regions (issue #125). Absent for
+   * any provider that takes no region — never rendered as a guess.
    */
   region?: string
   /**
@@ -241,7 +241,7 @@ export interface Server {
   status: 'requested' | 'provisioning' | 'running' | 'stopped' | 'terminated' | 'failed'
   /** The unprivileged account the user SSHes in as. */
   sshUser: string
-  /** Absent unless sshd is somewhere other than 22 — a BYO machine core did not configure. */
+  /** Absent unless the provider reported sshd somewhere other than 22. */
   sshPort?: number
   /**
    * The key the user brought, when they brought one (issue #41). Absent means Rocky Surf's own

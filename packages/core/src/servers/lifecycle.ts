@@ -200,8 +200,8 @@ function safeFingerprint(publicKeyLine: string): string | undefined {
  *     Converting here would mean inventing an exchange rate, which is the one thing a spend
  *     figure must never do.
  *  2. **Unpriced stays honestly unpriced, and never blocks a create.** An offering with
- *     `hourly: null` (BYO quotes none — Rocky Surf has no idea what the operator's own hardware
- *     costs them, and `null` means unknown, never free) and a `listOfferings()` that throws
+ *     `hourly: null` (a provider that quotes no price for a machine type — `null` means
+ *     unknown, never free) and a `listOfferings()` that throws
  *     both land the same way: a row with no price, counted in `unpricedServers` and surfaced
  *     there rather than folded into a total as zero. The create is what the user asked for; the
  *     price is what we can say about it, and losing the second must never cost them the first.
@@ -212,7 +212,7 @@ function safeFingerprint(publicKeyLine: string): string | undefined {
  *     based on.
  *
  * The catalogue read is cheap on every provider in v0: AWS and the fake answer from a bundled
- * table, and BYO caches each host's hardware after the first probe. Hetzner really does call its
+ * table. Hetzner really does call its
  * API, and on the size-only create path that is a second read of a list the route just fetched —
  * paid knowingly, because a create is not a hot path and pricing every caller by construction is
  * worth one catalogue call.
@@ -347,8 +347,8 @@ export interface LifecycleDeps {
   /**
    * Override the rendered pre-boot document. Defaults to the inert push-mode cloud-config.
    *
-   * Providers that generate no user-data (`generatesUserData: false`, i.e. BYO) always get
-   * `''` regardless of this.
+   * Providers that generate no user-data (`generatesUserData: false`) always get `''`
+   * regardless of this.
    */
   renderUserData?: (row: ServerRow, provider: ComputeProvider, keys: ServerKeyHalves) => string
   /**
@@ -892,7 +892,7 @@ export function createLifecycleService(deps: LifecycleDeps): LifecycleService {
         offeringId: row.offeringId,
         arch: row.arch,
         sshPublicKeys: keys.sshPublicKeys,
-        // BYO has no pre-boot hook at all, so there is nothing to render for it.
+        // A provider with no pre-boot hook has nothing to render.
         userData: provider.capabilities.generatesUserData ? renderUserData(row, provider, keys) : '',
         tags: { 'managed-by': 'rockysurf', 'server-id': row.id },
         idempotencyKey,

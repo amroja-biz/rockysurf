@@ -25,7 +25,7 @@ a maintainer "fixes the typo", and that is exactly the edit these traps invite.
 `stop`/`start` exist even when unsupported: throw `unsupportedOperationError(providerId, 'stop')`
 and set `capabilities.stop = false`. Core branches on the capability flag and never on
 `typeof provider.stop === 'function'`, because two ways to ask the same question is how they drift
-apart. `@rockysurf/provider-byo` is the worked example, in a checkout.
+apart. `scripts/e2e/fixtures/bootstrap-target` is the worked example, in a checkout.
 
 (Pass the id explicitly rather than `this.id` — if the provider is built as a closure returning an
 object literal, which is the shape the scaffold uses, `this` is not what you want.)

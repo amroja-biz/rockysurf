@@ -16,7 +16,7 @@ looks broken. The worked example below is the case that produced this rule.
 
 | # | question | where the answer lands |
 |---|---|---|
-| 1 | **Can an instance be stopped and started again with its disk intact?** | `capabilities.stop`. If not, `stop`/`start` throw `unsupportedOperationError` and the flag is `false` (BYO is the model) |
+| 1 | **Can an instance be stopped and started again with its disk intact?** | `capabilities.stop`. If not, `stop`/`start` throw `unsupportedOperationError` and the flag is `false` |
 | 2 | **Does a STOPPED instance still bill compute, and at what rate?** | `capabilities.billsWhileStopped` (ADR-0025). `true` if the running rate. **A reduced rate fits no capability — stop and file.** A cloud with both a billing and a non-billing off-state uses the non-billing call (Azure `deallocate`) and leaves it absent |
 | 3 | **Does the public IP survive a stop/start?** | `capabilities.ipStableAcrossStop` |
 | 4 | **Can it take user-data at create, and what is the DOCUMENTED size ceiling, before or after encoding?** | `capabilities.generatesUserData`, `capabilities.userDataMaxBytes` (the ceiling on the rendered document, before transport encoding). **No documented ceiling: do not invent a round number** — see the traps in `contract.md` |

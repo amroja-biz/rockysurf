@@ -193,7 +193,7 @@ describe('GET /api/v1/servers/:id/ssh-host-key', () => {
   })
 
   it("serves the box's OWN key for a server core adopted, so it is pinned like any other", async () => {
-    // The key a BYO provider observed during the handshake it pinned (ADR-0003, E14). Generating
+    // The key a provider observed during the handshake it pinned (ADR-0003, E14). Generating
     // a real pair here rather than inventing strings is the point: the route re-hashes what it
     // serves, so only a genuine key/fingerprint pair gets through.
     const observed = generateServerKeys('the-box').host

@@ -1,6 +1,6 @@
 # Configuring a provider Rocky Surf already ships
 
-Five providers ship in the distribution: `hetzner`, `aws`, `azure`, `gcp` and `byo`. **Every one is
+Four providers ship in the distribution: `hetzner`, `aws`, `azure` and `gcp`. **Every one is
 disabled until switched on**, so a fresh install cannot spend money by accident. At least one has to
 be enabled before a server can be created.
 
@@ -105,7 +105,7 @@ can prove it created is offered keep-or-remove after the push, default keep, and
 prove it created is reported with the manual command. The "Push SSH access to the clouds" button
 repairs a cloud that drifted while the file stayed the same.
 
-Hetzner and BYO have no security-group model and take neither field.
+Hetzner has no security-group model and takes neither field.
 
 ## What "enabled but not working" looks like
 
@@ -152,10 +152,6 @@ and any credential that arrives through an environment variable.
   the operator did not pick. Note also that a default VPC ships with Google's own
   `default-allow-ssh` rule opening port 22 to the whole internet; Rocky Surf never touches that
   rule, but it is worth telling the operator to look.
-- **BYO** manages machines the operator already has, over SSH. Claiming a host creates a `rocky`
-  account with passwordless sudo and appends Rocky Surf's key to it. **Releasing a host does not
-  undo any of that** — terminate gives the host back to the pool and never runs anything on the
-  machine. Say this before someone claims a production box.
 
 ## Least-privilege credentials
 

@@ -47,7 +47,6 @@ const FORBIDDEN = {
     '@rockysurf/provider-azure',
     '@rockysurf/provider-gcp',
     '@rockysurf/provider-hetzner',
-    '@rockysurf/provider-byo',
     '@rockysurf/provider-digitalocean',
     '@rockysurf/web',
   ],
@@ -55,7 +54,6 @@ const FORBIDDEN = {
   '@rockysurf/provider-azure': ['@rockysurf/core'],
   '@rockysurf/provider-gcp': ['@rockysurf/core'],
   '@rockysurf/provider-hetzner': ['@rockysurf/core'],
-  '@rockysurf/provider-byo': ['@rockysurf/core'],
   /*
    * A PERSONAL provider (ADR-0026, issue #368). It lives here and is built and tested here, and it
    * is deliberately ABSENT from the composition root's required list below: nothing imports it,
@@ -72,7 +70,6 @@ const FORBIDDEN = {
     '@rockysurf/provider-azure',
     '@rockysurf/provider-gcp',
     '@rockysurf/provider-hetzner',
-    '@rockysurf/provider-byo',
     '@rockysurf/provider-digitalocean',
     '@rockysurf/web',
   ],

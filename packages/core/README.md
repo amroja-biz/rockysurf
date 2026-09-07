@@ -32,7 +32,7 @@ Core may import `@rockysurf/provider-sdk` and **nothing else** from this workspa
 concrete provider, never the web package. `scripts/check-core-deps.mjs` enforces the edge and
 `scripts/check-npx-closure.mjs` enforces what it is for: the AWS SDK, by a wide margin the
 heaviest thing this project installs, stays out of core's production closure, so an operator who
-runs Hetzner or BYO never downloads it.
+runs only Hetzner never downloads it.
 
 Providers therefore arrive already constructed, through `BootOptions.providers`. Filling that
 seam is the one job of the `rockysurf` package.
