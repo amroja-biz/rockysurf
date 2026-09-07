@@ -29,8 +29,9 @@ Your job has six parts, in this order:
 
 1. Check the preconditions on the user's computer.
 2. Ask the user the questions in this page, and get an answer to each one.
-3. Print the commands that touch the user's cloud account, and let the user run them.
-4. Install Rocky Surf, and have the user start it for the first time.
+3. Clone the repository, then print the commands that touch the user's cloud account and let the
+   user run them. The clone comes first because three of those commands read a file out of it.
+4. Build Rocky Surf, and have the user start it for the first time.
 5. Mint a token, and use it to configure the Providers through the HTTP API.
 6. Register the MCP server in the user's client, and verify the whole thing.
 
@@ -101,30 +102,36 @@ is not consent to use it.
    pointing it at a real account. Hetzner is the quickest to set up.
 2. **Which region do you want servers created in?** The field is called Location for Hetzner and
    Azure, Region for AWS, and Zone for Google Cloud.
-3. **What is the name of the environment variable or the profile that holds the credential?** For
+3. **Which account, project or subscription should Rocky Surf use?** Azure needs two answers: the
+   subscription id, which `az account show --query id -o tsv` prints, and the name of the
+   resource group the user creates for Rocky Surf. Google Cloud needs the project id — the id
+   `my-project-123456`, not the display name — which Rocky Surf never infers, because a Google
+   credential can be valid for many projects and names none of them. Hetzner and AWS need
+   neither: the token names the Hetzner project, and the profile names the AWS account.
+4. **What is the name of the environment variable or the profile that holds the credential?** For
    Hetzner, the variable holding the API token, `HETZNER_TOKEN` by default. For AWS, the named
    profile, or nothing to use the default credential chain. For Azure and Google Cloud, nothing:
    both read the credential from the sign-in you already have. Ask for the *name*, never the
    value.
-4. **Which public network should be allowed to reach SSH on your servers?** AWS, Azure and Google
+5. **Which public network should be allowed to reach SSH on your servers?** AWS, Azure and Google
    Cloud each require this and have no default; Hetzner has no such setting. Offer to find the
    address for them with the two commands under
    [Find the SSH address](#find-the-ssh-address), then show what you found and ask them to
    confirm it before you write it. Ask whether they work from more than one network, and take a
    list if so.
-5. **Do you want to save an SSH public key, so that servers authorize it?** If yes, ask for the
+6. **Do you want to save an SSH public key, so that servers authorize it?** If yes, ask for the
    path to the `.pub` file and a short name for it, such as `laptop`. Read only the `.pub` file.
-6. **What limits do you want?** The three are the number of servers that may exist at once, the
+7. **What limits do you want?** The three are the number of servers that may exist at once, the
    number of creates allowed per hour, and an optional monthly spend cap with a currency. All
    three are enforced before a machine is provisioned, for every caller.
-7. **Do you need to clone private repositories onto your servers?** Public repositories need
+8. **Do you need to clone private repositories onto your servers?** Public repositories need
    nothing. Private ones need a GitHub token, which the user adds themselves on the Settings
    page. Say so and move on: do not ask for a token.
-8. **What may a connected agent do?** The default grant is `[read, stop]`, which lets an agent
+9. **What may a connected agent do?** The default grant is `[read, stop]`, which lets an agent
    list servers and pause or resume them. `create` lets an agent create servers, which spends
    money. `terminate` lets an agent destroy them, which cannot be undone. Recommend the default,
    and change it only if the user asks.
-9. **Which MCP client do you use, and do you want it registered for your account or for one
+10. **Which MCP client do you use, and do you want it registered for your account or for one
    project?** Claude Code and Codex CLI are the two worked examples on this page, and any other
    MCP client takes the same values in its own file format. Account scope, which Codex CLI calls
    global, is the better default for a tool that manages servers regardless of which repository
@@ -154,11 +161,17 @@ Rocky Surf stores no cloud credentials. Each cloud authenticates through the pat
 already uses, so what the user runs here puts a credential where Rocky Surf can read it and
 nowhere else.
 
-**Three of these commands read a file out of the Rocky Surf repository**, and they are written
-with paths relative to the root of a checkout. Have the user run them from the checkout they
-cloned in [Install Rocky Surf and start it](#install-rocky-surf-and-start-it). The files are
-`deploy/aws/iam-role.yaml`, `deploy/azure/role.bicep` and `deploy/gcp/setup.sh`, and each one is
-also readable on its own:
+**Clone the repository first.** Three of the commands in this section read a file out of it, and
+the install in the next section needs it anyway before v0.1.0 is published:
+
+```bash
+git clone https://github.com/amroja-biz/rockysurf
+cd rockysurf
+```
+
+The commands below are written with paths relative to the root of that checkout, so have the user
+run them from there. The files are `deploy/aws/iam-role.yaml`, `deploy/azure/role.bicep` and
+`deploy/gcp/setup.sh`, and each one is also readable on its own:
 
 - <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/aws/iam-role.yaml>
 - <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/azure/role.bicep>
@@ -280,13 +293,23 @@ process starts.
      plain alternative, and the opening of this page and the closing checkout section both stop
      saying a clone is required. -->
 
-**Clone the repository and build it.** This is the only complete install path before v0.1.0 is
-published: it produces the same binary `npx` will fetch, and every command on the rest of this
-page has a working form on it. It needs Node.js 24 or later on the host, and `pnpm`.
+**This page says Rocky Surf v0.1.0 is not on npm. Check whether that is still true** before you
+commit to the fallback: the page is written to go stale on exactly this point, and one command
+settles it.
 
 ```bash
-git clone https://github.com/amroja-biz/rockysurf
-cd rockysurf
+npm view rockysurf version
+```
+
+If it prints a version, use `npx -y rockysurf` and skip the rest of this section. If it reports
+that the package does not exist, carry on.
+
+**Build the checkout.** This is the only complete install path before v0.1.0 is published: it
+produces the same binary `npx` will fetch, and every command on the rest of this page has a
+working form on it. It needs Node.js 24 or later on the host, and `pnpm`. You cloned the
+repository in the previous section, so this runs in that directory:
+
+```bash
 pnpm install && pnpm -r build
 node packages/rockysurf/dist/bin.js
 ```
@@ -444,7 +467,10 @@ Four rules govern this call:
   SSH allow-list is now stale.
 
 When `networkSyncNeeded` is not empty, push the allow-list to those clouds with
-`POST /api/v1/network/ssh-access/sync`.
+`POST /api/v1/network/ssh-access/sync`. It needs no request body: send the `Authorization` header
+and nothing else, and it authorizes every CIDR in the file on every cloud that maintains a
+firewall. A body of `{"revoke": {"aws": ["203.0.113.7/32"]}}` also *removes* the named ranges, so
+send one only when the user has asked for a removal and confirmed the exact list.
 
 This is the one call on this page that changes something in the user's cloud account, and it is
 allowed for two reasons: it is Rocky Surf applying its own setting rather than you reaching the
@@ -505,7 +531,8 @@ claude mcp add --scope user --env ROCKYSURF_TOKEN="$ROCKYSURF_TOKEN" \
   --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
 ```
 
-Claude Code project scope is this object in `.mcp.json` at the project root. The same object
+Claude Code project scope is this object in `.mcp.json` at the project root, written by hand —
+the file is the contract, and this is the form the Rocky Surf help page documents. The same object
 works in Claude Code's own account-scope file, `~/.claude.json`, and in Claude Desktop's
 configuration file. Write the real token where this shows `<redacted>`:
 
