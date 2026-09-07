@@ -203,8 +203,8 @@ config that run boots on is validated on every pull request by `packages/rockysu
 **A nightly real-cloud leg is for OFFICIAL providers only** — the ones composed into
 `packages/rockysurf/src/compose.ts`. This repository does not spend its money proving somebody
 else's package works, so a PERSONAL provider gets no leg: it ships a fully daggered column,
-verified by its author and by whoever installs it, against their own account. The `byo` column is
-the model for how that reads. Say it plainly in the README's "Verified" section and in the PR
+verified by its author and by whoever installs it, against their own account. The `digitalocean`
+column is the model for how that reads. Say it plainly in the README's "Verified" section and in the PR
 rather than letting the next reader discover it, and record what was actually run when someone
 runs it. (Owner ruling, 2026-09-05, on the reverted DigitalOcean leg.)
 

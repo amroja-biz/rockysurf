@@ -11,6 +11,12 @@ plugin loading" exclusion, and it adds amendment E18 — `ProviderFactory.creden
 author and installer, not by this repository's nightly. See
 [the amendment below](#amendment--who-verifies-a-personal-provider-2026-09-05-owner-ruling).
 
+**Amended again 2026-09-07** (issue [#446](https://github.com/amroja-biz/rockysurf/issues/446)):
+the 2026-09-05 amendment named the `byo` column as the model for how a daggered capability column
+reads; the bring-your-own-server provider is being removed before v0.1.0, and the model column is
+now `digitalocean`. Nothing else in that amendment changes. See
+[the second amendment below](#second-amendment--the-model-daggered-column-is-digitalocean-2026-09-07-issue-446).
+
 ## Context
 
 ADR-0003 cut "dynamic out-of-tree plugin loading" from v0.1 with the rest of the speculative
@@ -212,6 +218,33 @@ without touching a cloud — the pack-and-install test in
 Where this is written for the people it applies to: `docs/writing-a-provider.md` ("Before it
 merges" and "Out of tree: a personal provider"), `.agents/skills/add-provider/references/wiring.md`
 §13, and the DigitalOcean section of `docs/providers/capability-matrix.md`.
+
+## Second amendment — the model daggered column is `digitalocean` (2026-09-07, issue #446)
+
+The amendment above says a personal provider "ships a fully daggered capability column, verified
+by its author and by whoever installs it against their own cloud account; the `byo` column is the
+model for how that reads." **That model column is now `digitalocean`.**
+
+Nothing about who verifies a personal provider changes. What changes is which column an author is
+pointed at, and the reason is that the one they were being pointed at is going away: the owner
+ruled on 2026-09-07 that the bring-your-own-server provider is removed entirely before v0.1.0
+(issue #446), because Rocky Surf is a convenience layer for public clouds rather than the control
+plane for machines somebody already owns.
+
+`digitalocean` is the better model on its own merits, and would have been the right choice even
+without the removal. It is a real personal provider — `packages/provider-digitalocean`, in this
+repository, built and tested by CI, deliberately absent from `compose.ts` — so its column is
+exactly the artefact this amendment is describing: written from a vendor document, daggered
+almost everywhere, with the daggers coming off one at a time as its author and its installers run
+things and record what came back. `byo` was never that. It was the provider with no cloud API
+behind it, its column was settled by a container on the same machine, and it was an official
+provider rather than a personal one, so an author reading it for the shape of a personal
+provider's evidence was reading the wrong document.
+
+Where the model column is named, all now reading `digitalocean`: `docs/writing-a-provider.md`
+("Before it merges" and "Out of tree: a personal provider") and
+`.agents/skills/add-provider/references/wiring.md` §13. The DigitalOcean section of
+`docs/providers/capability-matrix.md` describes that column directly and needs no model.
 
 ## References
 
