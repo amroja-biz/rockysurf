@@ -88,12 +88,12 @@ function Screen() {
       <section style={{ marginTop:'1.5rem' }}>
         <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between' }}>
           <h2 style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Surge Packs</h2>
-          <p style={CAPS}>10 official</p>
+          <p style={CAPS}>11 official</p>
         </div>
         <Swell />
         <ul style={{ listStyle:'none', margin:'0.8rem 0 0', padding:0, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'0.75rem' }}>
-          {[['ai-coding-agents','AI Coding Agents','claude-code.png','Claude Code, Codex CLI and Amp on one box.'],
-            ['open-claw','Open Claw','open-claw.png','A desktop session with a browser-driving agent.'],
+          {[['ai-coding-agents','Claude Code','claude-code.png','Claude Code on the shared base toolchain.'],
+            ['open-claw','OpenClaw','open-claw.png','A desktop session with a browser-driving agent.'],
             ['gas-town','Gas Town','gas-town.png','The Gas Town harness and its dependencies.']].map(([id, name, img, desc]) => (
             <li key={id}>
               <Plate>

@@ -11,7 +11,7 @@ const STEP_LABELS = { requested:'Requested', instance_launching:'Launching serve
 const PROVIDERS = [
   ['hetzner','Hetzner','Read/write API token from console.hetzner.com'],
   ['aws','AWS','The standard credential chain, plus an explicit sshAllowedCidr'],  // eslint-disable-line
-  ['gcp','GCP','Application Default Credentials'],
+  ['gcp','Google Cloud','Application Default Credentials'],
   ['azure','Azure','Environment, managed identity, or az login'],
 ]
 const SIZES = [
@@ -20,9 +20,9 @@ const SIZES = [
   ['large','large','8 vCPU · 16 GB · cpx41','$0.034/hr'],
 ]
 const PACKS = [
-  ['ai-coding-agents','AI Coding Agents','claude-code.png','14 tools · Claude Code, Codex CLI, Amp, OpenCode'],
-  ['open-claw','Open Claw','open-claw.png','9 tools · a desktop session with a browser-driving agent'],
-  ['gas-town','Gas Town','gas-town.png','7 tools · the Gas Town harness and its dependencies'],
+  ['ai-coding-agents','Claude Code','claude-code.png','15 tools · Claude Code on the shared base toolchain'],
+  ['open-claw','OpenClaw','open-claw.png','17 tools · a desktop session with a browser-driving agent'],
+  ['gas-town','Gas Town','gas-town.png','19 tools · the Gas Town harness and its dependencies'],
 ]
 
 /*
@@ -158,7 +158,7 @@ function DetailScreen({ status, onToggle }) {
         <dl style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:'0.6rem 1rem', margin:'0.8rem 0 0', alignItems:'center' }}>
           {[['Address', running ? '203.0.113.10' : '—'],
             ['Size','medium · cx32 · arm64'],
-            ['Surge Pack','AI Coding Agents'],
+            ['Surge Pack','Claude Code'],
             ['Created','Aug 24, 2026']].map(([k, v]) => (
             <React.Fragment key={k}>
               <dt style={CAPS}>{k}</dt>
@@ -213,16 +213,16 @@ ripgrep 14.1.1 is already the newest version`}
       {running ? (
         <div style={{ marginTop:'1rem' }}>
           <Plate>
-            <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Getting started with AI Coding Agents</div>
+            <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700 }}>Getting started with Claude Code</div>
             <p style={{ fontSize:'0.8125rem', color:'#8a8494', margin:'0.4rem 0 0.7rem', lineHeight:1.5 }}>
               Written by the pack. Most steps run on the box once you are connected; where one runs on
               your own machine instead, the guide says which.
             </p>
             <pre style={{ background:'#0a0910', border:'1px solid rgba(252,245,232,.16)', padding:'0.75rem 1rem', lineHeight:1.6 }}>
-{`Sign the agents in — no credential of yours reached this box during bootstrap.
+{`Sign the agent in — no credential of yours reached this box during bootstrap.
 
-  claude login
-  codex login
+  claude              first run walks you through signing in
+  claude setup-token  mints a long-lived token instead
 
 Both open a device-code flow. Paste the code on your own machine.`}
             </pre>
@@ -247,9 +247,9 @@ Both open a device-code flow. Paste the code on your own machine.`}
           <div style={{ ...CAPS, color:'#e8c37a', fontWeight:700, marginBottom:'0.6rem' }}>Installed</div>
           <ToolList tools={[
             { toolId:'claude-code', name:'Claude Code', url:'#', description:"Anthropic's CLI harness" },
-            { toolId:'codex-cli', name:'Codex CLI', url:'#', description:"OpenAI's CLI harness" },
-            { toolId:'amp', name:'Amp' },
-            { toolId:'ripgrep', name:'ripgrep', description:'Fast recursive search' },
+            { toolId:'gh', name:'gh' },
+            { toolId:'git', name:'git' },
+            { toolId:'playwright', name:'playwright' },
           ]} />
         </Plate>
       </div>
