@@ -3,7 +3,7 @@ import { loadPacksFromDir, type LoadResult, type LoadedTool } from './loader.js'
 /**
  * The pack author contract, as a check somebody outside this repository can run.
  *
- * `docs/pack-contract.md` is normative and `packs.test.ts` has enforced its mechanical half
+ * `docs/surge-pack-contract.md` is normative and `packs.test.ts` has enforced its mechanical half
  * on the SHIPPED packs since ADR-0004. That was enough while every pack lived in `packs/`.
  * It stops being enough the moment packs arrive from a registry (rockysurf-arym): a rule that
  * only runs inside this repository's test suite cannot gate a pull request in
@@ -206,7 +206,7 @@ const SCRIPT_RULES: Array<{
     message:
       'installs with apt-get but never refreshes the package list. A stock ubuntu:24.04 has ' +
       'none, so the first install fails with "Unable to locate package" — use an ' +
-      '`apt_update_once`-style stamp (docs/pack-contract.md § Rule 1)',
+      '`apt_update_once`-style stamp (docs/surge-pack-contract.md § Rule 1)',
     when: (s) => s.body.includes('apt-get install') && !s.body.includes('apt-updated'),
   },
   {
@@ -234,7 +234,7 @@ const SCRIPT_RULES: Array<{
 ]
 
 /**
- * The documented `installOrder` bands (docs/pack-contract.md § "gaps-of-10"). Outside them a
+ * The documented `installOrder` bands (docs/surge-pack-contract.md § "gaps-of-10"). Outside them a
  * tool either runs before the base toolchain it depends on or after the setup that needed it.
  */
 const MIN_INSTALL_ORDER = 10

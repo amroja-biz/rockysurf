@@ -3,7 +3,7 @@
 Step 1E in `SKILL.md` is the workflow. This file is the worked example, the failures you will
 actually hit, and the two paths Step 1E only summarizes: amending a pack you own, and extending
 one outside a checkout entirely. Read it once when you are building on a pack that already
-exists rather than starting from `assets/pack-template.yaml`.
+exists rather than starting from `assets/surge-pack-template.yaml`.
 
 ## The worked example: deriving from `ai-coding-agents.yaml`
 

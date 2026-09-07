@@ -193,7 +193,7 @@ tools:
   # nobody's default should reroute a user's browser. The wallpaper is back (rockysurf-5cll):
   # the asset now ships in this repository (docs/media/openclaw-wallpaper.png) instead of a
   # private bucket, so a plain HTTPS fetch from the published repo replaces the S3 fetch, per
-  # pack-contract.md's "fetch assets over plain HTTPS from a public URL" — no AWS CLI, no
+  # surge-pack-contract.md's "fetch assets over plain HTTPS from a public URL" — no AWS CLI, no
   # credentials, and no phone-home to the control plane a self-hosted box may not even reach.
   - toolId: open-claw-onboard
     name: OpenClaw onboarding
@@ -211,7 +211,7 @@ tools:
       # Desktop wallpaper. rockysurf-5cll: the legacy SaaS fetched this from a private S3
       # bucket with the AWS CLI, guarded with `|| true` so a fetch failure never took the
       # desktop down with it — a self-hosted box has neither, so this fetches the same asset
-      # over plain HTTPS from the published repository instead (pack-contract.md). Pinned to
+      # over plain HTTPS from the published repository instead (surge-pack-contract.md). Pinned to
       # `main` rather than a commit: this repository's public history is a squashed, re-cut
       # branch (see `docs/history/`), so a commit-pinned URL would 404 the next time it is
       # re-cut, while a branch-pinned one keeps resolving — the same tradeoff ADR-0006 already

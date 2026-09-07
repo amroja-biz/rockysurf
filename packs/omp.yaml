@@ -14,9 +14,9 @@
 #
 # Upstream's own installer is `curl -fsSL https://omp.sh/install | sh`, and Homebrew and Nix
 # are also offered — none of those are used here. Vendor pipe-to-bash is against repo policy
-# (docs/pack-contract.md) regardless of who publishes it, and Homebrew/Nix aren't present on
+# (docs/surge-pack-contract.md) regardless of who publishes it, and Homebrew/Nix aren't present on
 # a stock box. `bun install -g @oh-my-pi/pi-coding-agent` is the registry channel omp's own
-# docs list first, it needs no privilege escalation, and per docs/pack-contract.md § Which
+# docs list first, it needs no privilege escalation, and per docs/surge-pack-contract.md § Which
 # version to install, an agent CLI belongs on latest — bun's own install is convergent, so a
 # second run changes nothing.
 #
@@ -104,7 +104,7 @@ tools:
       # SHASUMS256.txt so the download can be verified before anything runs it.
       #
       # Bun is base plumbing here — the substrate `omp` below stands on — so it keeps the
-      # pinned treatment docs/pack-contract.md gives Node, gh and Playwright, rather than
+      # pinned treatment docs/surge-pack-contract.md gives Node, gh and Playwright, rather than
       # the unpinned treatment given to the agent itself.
       #
       # To bump: change the version and both digests. The release publishes SHASUMS256.txt.
@@ -149,7 +149,7 @@ tools:
       set -euo pipefail
       export PATH="/usr/local/bin:$HOME/.bun/bin:$PATH"
 
-      # UNPINNED (deliberate), per docs/pack-contract.md § Which version to install: OMP is
+      # UNPINNED (deliberate), per docs/surge-pack-contract.md § Which version to install: OMP is
       # the agent this pack exists to deliver, npm (resolved here through bun's own client,
       # since the published CLI needs the bun runtime — see the file header) is a quota-free
       # registry channel, and `bun install -g` is convergent, so a second run changes

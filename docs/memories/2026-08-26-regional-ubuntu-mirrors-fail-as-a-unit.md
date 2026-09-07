@@ -36,7 +36,7 @@ neighbouring region: that needs a per-region table and can be sick too.
 Two boundaries of the fix worth knowing:
 
 - A pack script that hard-codes a mirror hostname is outside the fallback and was already
-  broken on every other cloud (`docs/writing-a-pack.md`).
+  broken on every other cloud (`docs/writing-a-surge-pack.md`).
 - A third-party apt repository a pack adds itself (`packages.mozilla.org` "Mirror sync in
   progress") has no global twin to swap to. It gets the retry below and nothing more.
 

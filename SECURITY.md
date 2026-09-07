@@ -280,7 +280,7 @@ Two consequences an operator should decide about rather than discover:
 
 The **instance-wide `github.pat` is still instance-wide**, and is not narrowed. It is this
 installation's general-purpose GitHub credential, packs read it as `$GITHUB_TOKEN`, and
-`docs/pack-contract.md` promises pack authors that `gh` works when it is configured. Every box
+`docs/surge-pack-contract.md` promises pack authors that `gh` works when it is configured. Every box
 gets it, whoever created it, and on an installation where other people hold accounts it reaches
 boxes they have root on. Scope the `pat` itself to what is meant to travel everywhere, and use
 `github.tokens` for everything else — a scoped entry reaches only the boxes that named its

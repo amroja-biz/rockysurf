@@ -834,7 +834,7 @@ written at mode `0600`, and the clone authenticates with it through a `git -c cr
 invocation that keeps it out of `ps` output and out of the checkout's `.git/config`
 (`packages/core/src/bootstrap/resolver.ts`). Packs see it as `$GITHUB_TOKEN`, which is also the
 name `gh` reads with no further configuration — see
-[`pack-contract.md` § The environment your scripts get](pack-contract.md#the-environment-your-scripts-get).
+[`surge-pack-contract.md` § The environment your scripts get](surge-pack-contract.md#the-environment-your-scripts-get).
 
 **One token per repository, when one token is not enough.** GitHub issues fine-grained PATs per
 repository, so following its own advice leaves you holding several, and a single `pat:` line
@@ -1113,7 +1113,7 @@ history file. Supply it in a file or in `ROCKYSURF_INPUT_<NAME>`. Everything is 
 the pack's declaration before anything is created, so a misspelled name costs a sentence.
 
 [ADR-0013](adr/0013-packs-declare-their-inputs.md) records the contract; pack authors should read
-the `inputs` section of [`pack-contract.md`](pack-contract.md#inputs--what-your-pack-asks-the-user-for).
+the `inputs` section of [`surge-pack-contract.md`](surge-pack-contract.md#inputs--what-your-pack-asks-the-user-for).
 
 ## Your own environment on a box
 
@@ -1231,7 +1231,7 @@ bootstrap:
   onFailure: keep   # default: terminate
 ```
 
-See ADR-0010 for the reasoning, and `docs/writing-a-pack.md` for the debugging workflow.
+See ADR-0010 for the reasoning, and `docs/writing-a-surge-pack.md` for the debugging workflow.
 
 ### Where the pack files come from
 
@@ -1336,7 +1336,7 @@ third of these; the second is a config-file thing, not a button on this page.
    the pack references, and importing that back would redefine — not reference — every one of
    them, up to and including the shared base tools other packs depend on. This seeds from the
    pack's tool **ids** instead, the same as picking them by hand, which is the UI version of
-   `docs/pack-contract.md` § "Building on an existing pack".
+   `docs/surge-pack-contract.md` § "Building on an existing pack".
 
 A source's URL says what shape it is. **Ending in `.yaml` or `.yml`, the URL is the pack** — one
 file, the way you publish one of your own. **Anything else is a directory** serving `index.json`

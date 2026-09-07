@@ -5,8 +5,8 @@
 **Status: normative for v0.1.** This document defines the wire formats and behavioural
 guarantees between three parties — the control plane ("core"), the on-box agent, and the
 pre-boot configuration that connects them. It is the machine-facing counterpart to
-[`pack-contract.md`](pack-contract.md), which is the author-facing one (and
-[`writing-a-pack.md`](writing-a-pack.md) is the guide to it): that page tells a
+[`surge-pack-contract.md`](surge-pack-contract.md), which is the author-facing one (and
+[`writing-a-surge-pack.md`](writing-a-surge-pack.md) is the guide to it): that page tells a
 human what their script must do, this page tells an implementer what the system promises.
 
 Every normative statement here is grounded in
@@ -132,7 +132,7 @@ wrong work. Determinism here is what makes the journal's ids meaningful.
 
 This is an **executor guarantee, not a scheduling tool**, and the distinction matters to pack
 authors: they must still express dependencies with distinct `installOrder` values and never lean
-on the tie-break. [`pack-contract.md`](pack-contract.md#installorder-and-the-gaps-of-10-convention)
+on the tie-break. [`surge-pack-contract.md`](surge-pack-contract.md#installorder-and-the-gaps-of-10-convention)
 states the same rule in the author's direction, and is the place to look for the band
 convention.
 
@@ -247,7 +247,7 @@ like a working install (a `PATH` line appended twice, a clone that aborts becaus
 exists, an installer that refuses to overwrite itself).
 
 The authoring rules, worked examples, and the CI gate that enforces them live in
-[`pack-contract.md` § Rule 1: Idempotent](pack-contract.md#rule-1-idempotent) and are **not
+[`surge-pack-contract.md` § Rule 1: Idempotent](surge-pack-contract.md#rule-1-idempotent) and are **not
 repeated here**. That page is the single source of truth for how to write a conforming step;
 this page states only that the executor's guarantees depend on it. The two documents share one
 rule, deliberately phrased once in each direction: authors are told *what to write*,
@@ -265,7 +265,7 @@ same applies to any local reproduction of the CI gate.
 
 This is the one place where the executor's correct behaviour and the test's purpose point in
 opposite directions, so it is stated in both documents: see
-[`pack-contract.md` § The CI smoke test](pack-contract.md#the-ci-smoke-test) for the harness
+[`surge-pack-contract.md` § The CI smoke test](surge-pack-contract.md#the-ci-smoke-test) for the harness
 side.
 
 ---
@@ -318,7 +318,7 @@ Consequently the agent MUST:
 - capture stdout and stderr per step, and keep the tail of a failing step for `logTail`.
 
 The environment guaranteed to a step is defined in
-[`pack-contract.md` § The environment your script gets](pack-contract.md#the-environment-your-script-gets).
+[`surge-pack-contract.md` § The environment your script gets](surge-pack-contract.md#the-environment-your-script-gets).
 The agent MUST NOT export control-plane credentials into it — see
 [Security invariants](#security-invariants).
 
@@ -767,7 +767,8 @@ An implementation conforms when all of the following hold.
 - [ADR-0002 — push bootstrap is the default; callback is a scoped fallback](adr/0002-push-bootstrap-default-callback-fallback.md) — the decision this document implements
 - [ADR-0003 — provider SDK shape](adr/0003-provider-sdk-shape-and-exclusions.md) — `validateSpec()` (`A7`), capability flags
 - [ADR-0004 — packs are PR-able YAML](adr/0004-packs-as-pr-able-yaml.md) — the `Tool`/`SurgePack` records a plan is rendered from
-- [`pack-contract.md`](pack-contract.md) — the author-facing contract; **the single source of truth for the four step rules**. [`writing-a-pack.md`](writing-a-pack.md) is the guide to it
+- [`surge-pack-contract.md`](surge-pack-contract.md) — the author-facing contract; **the single source of truth for the four step rules**
+- [`writing-a-surge-pack.md`](writing-a-surge-pack.md) — the guide to that contract
 - [`history/spike/findings.md`](history/spike/findings.md) — the evidence: exit questions 1–2, amendments `E1`, `E4`–`E10`, `A7`
 - Evidence recordings: `docs/history/spike/recordings/aws-lifecycle.txt`, `docs/history/spike/recordings/hetzner-lifecycle.txt`,
   `docs/history/spike/recordings/aws-callback-lifecycle.txt`
@@ -794,7 +795,7 @@ for the same pack.
 Rules that follow, and the reason each exists:
 
 - **The set of ROCKY SURF's own names is closed.** Every name in the first two rows is a promise
-  to pack authors, so adding one is a decision recorded here and in `docs/pack-contract.md`, not
+  to pack authors, so adding one is a decision recorded here and in `docs/surge-pack-contract.md`, not
   an implementation detail. A per-tool namespace is deliberately not offered.
 - **The last two rows are somebody else's namespace, not the platform's** (issues #189 and #197;
   ADR-0013, ADR-0014). They are rows rather than more names because nothing here can enumerate

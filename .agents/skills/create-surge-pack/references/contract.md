@@ -1,6 +1,6 @@
 # The pack contract, condensed
 
-`docs/pack-contract.md` in the Rocky Surf checkout is **normative**. This file is a working
+`docs/surge-pack-contract.md` in the Rocky Surf checkout is **normative**. This file is a working
 summary for authoring — when the two disagree, the checkout wins, and you should say so to the
 user rather than quietly following this page.
 

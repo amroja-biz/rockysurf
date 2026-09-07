@@ -68,7 +68,7 @@ subscribe to without a merge here.
 
 ## 1. A pull request against `packs/`
 
-Work through the checklist at the end of `docs/writing-a-pack.md` first, then open the PR. CI runs
+Work through the checklist at the end of `docs/writing-a-surge-pack.md` first, then open the PR. CI runs
 the smoke harness for every pack on both `amd64` and `arm64` and gates merge on it.
 
 The one design rule specific to this path: **reference the shared base tool ids, do not redefine

@@ -1,16 +1,18 @@
-# The pack contract
+# The surge pack contract
 
-*For pack authors and the agents that write packs.*
+*For surge pack authors and the agents that write surge packs.*
 
-This is the normative half of the pack documentation: the file format field by field, the four
-rules stated with worked right-and-wrong pairs, what a script may not assume about the box, the
-retry budget, which version of a tool to install, the environment every step is handed, the
-tool-file format, and the CI smoke test that gates all of it.
+This is the normative half of the surge pack documentation: the file format field by field, the
+four rules stated with worked right-and-wrong pairs, what a script may not assume about the box,
+the retry budget, which version of a tool to install, the environment every step is handed, the
+tool-file format, and the CI smoke test that gates all of it. The schema, the CLI and this page
+all shorten the name to *pack*.
 
-It is a reference, not a tutorial. Read [`writing-a-pack.md`](writing-a-pack.md) first — it
-explains how a pack runs, states the four rules in short, walks a complete pack, and carries the
-checklist you work through before opening a pull request. Come here to look a rule up. Where the
-guide and this page disagree, **this page wins**.
+It is a reference, not a tutorial. Read
+[`writing-a-surge-pack.md`](writing-a-surge-pack.md) first — it explains how a pack runs, states
+the four rules in short, walks a complete pack, and carries the checklist you work through before
+opening a pull request. Come here to look a rule up. Where the guide and this page disagree,
+**this page wins**.
 
 The bootstrap agent's side of the same contract — what the on-box agent guarantees, in
 implementer's terms — is [`bootstrap-contract.md`](bootstrap-contract.md).

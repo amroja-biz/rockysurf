@@ -116,7 +116,7 @@ one invocation with `runuser` and refuses every other form with
 
 ```
 sudo: not available to install scripts on a Rocky Surf box.
-  A 'runAs: rocky' script must not need root. See docs/writing-a-pack.md rule 4.
+  A 'runAs: rocky' script must not need root. See docs/writing-a-surge-pack.md rule 4.
 ```
 
 If you see that, the harness is right and the pack is wrong.

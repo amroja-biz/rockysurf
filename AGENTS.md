@@ -64,8 +64,8 @@ nothing else. If you did neither, say what you did instead.
   [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - Operator- and contributor-facing contracts: [`docs/self-hosting.md`](docs/self-hosting.md),
   [`docs/writing-a-provider.md`](docs/writing-a-provider.md),
-  [`docs/writing-a-pack.md`](docs/writing-a-pack.md) and its normative half
-  [`docs/pack-contract.md`](docs/pack-contract.md).
+  [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) and its normative half
+  [`docs/surge-pack-contract.md`](docs/surge-pack-contract.md).
 - Every document under `docs/` opens with an italic line naming the audience it was written
   for; write one into any document you add there.
 - Reusable Agent Skills for this repository: [`.agents/skills/`](.agents/skills/), indexed at

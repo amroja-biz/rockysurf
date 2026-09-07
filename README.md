@@ -155,9 +155,10 @@ Each pack carries a `guide`, shown once the box is running. No credential of you
 during bootstrap, so the guide is where a pack tells you how to sign the agents in.
 
 Scripts must be idempotent, architecture-aware and non-interactive; CI runs every shipped pack
-twice, on amd64 and arm64. The guide is [`docs/writing-a-pack.md`](docs/writing-a-pack.md) and
-the normative contract is [`docs/pack-contract.md`](docs/pack-contract.md), or let the repo's
-Claude Code skill write yours.
+twice, on amd64 and arm64. The guide is
+[`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) and the normative contract is
+[`docs/surge-pack-contract.md`](docs/surge-pack-contract.md), or let the repo's Claude Code
+skill write yours.
 
 ### Connect a GitHub repo
 
@@ -253,8 +254,8 @@ Every document below opens with the audience it was written for.
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Operators | Install paths, data, upgrades, backup and restore |
 | [`SECURITY.md`](SECURITY.md) | Operators | Credential custody, SSH trust, the MCP threat model |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each provider can do, and the evidence for it |
-| [`docs/writing-a-pack.md`](docs/writing-a-pack.md) | Pack authors | Writing a pack - how one runs, the four rules, a worked example, the checklist |
-| [`docs/pack-contract.md`](docs/pack-contract.md) | Pack authors | The normative half - file format, rules in full, environment, the CI smoke test |
+| [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) | Surge pack authors | Writing a surge pack - how one runs, the four rules, a worked example, the checklist |
+| [`docs/surge-pack-contract.md`](docs/surge-pack-contract.md) | Surge pack authors | The normative half - file format, rules in full, environment, the CI smoke test |
 | [`docs/adr/llms.txt`](docs/adr/llms.txt) | Contributors | The architecture decisions - start here for the design |
 | [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Contributors | Adding a cloud against the frozen SDK |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributors | Development setup, gates, conventions |

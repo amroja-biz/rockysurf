@@ -182,7 +182,7 @@ twice. Two architectures because a hardcoded `x86_64` in a download URL is the m
 bug and is invisible on one of them.
 
 `rockysurf pack lint` is the static half — the mechanical rules of
-[`docs/pack-contract.md`](../pack-contract.md), defined once in
+[`docs/surge-pack-contract.md`](../surge-pack-contract.md), defined once in
 `packages/core/src/packs/lint.ts` so this repository and `amroja-biz/rockysurf-shop` enforce the
 same rules. Neither command is a security check; what carries that is disclosure of every script
 to the operator before consent ([ADR-0006](../adr/0006-pack-registry-split-horizon.md)).

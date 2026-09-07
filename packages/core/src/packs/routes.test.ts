@@ -214,7 +214,7 @@ describe('public shapes match the SPA client', () => {
     // and nothing else in either package would notice.
     //
     // Scoped to the SHIPPED packs, because `guide` and `imageUrl` are optional in schema.ts and
-    // in docs/pack-contract.md. What the shipped six promise a user is stricter than what the
+    // in docs/surge-pack-contract.md. What the shipped six promise a user is stricter than what the
     // format requires of a contributor, and this is the stricter promise.
     const packs = await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))
     for (const pack of packs.filter((p: any) => SHIPPED_PACK_IDS.includes(p.packId))) {
@@ -232,7 +232,7 @@ describe('public shapes match the SPA client', () => {
 
 describe('a seventh pack file changes nothing about the application', () => {
   /**
-   * The promise `packs/README.md` and `docs/writing-a-pack.md` make out loud — a pack is data,
+   * The promise `packs/README.md` and `docs/writing-a-surge-pack.md` make out loud — a pack is data,
    * and adding one never means touching the application — asserted mechanically, because for a
    * while it was not true and nothing in this suite noticed (rockysurf-d5an). Three outside
    * contributors in a row wrote a valid pack and were told by CI that their pack was broken.

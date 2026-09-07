@@ -2,7 +2,7 @@
  * Packs: the frozen file format, the loader that reads `packs/*.yaml`, and the reconcile
  * that keeps the database in step with them.
  *
- * The authoring contract those files must satisfy is `docs/pack-contract.md`.
+ * The authoring contract those files must satisfy is `docs/surge-pack-contract.md`.
  */
 
 export {

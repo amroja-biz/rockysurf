@@ -10,7 +10,7 @@ import type { AdminSurgePack } from './api'
  *
  * What a fork is NOT is a copy of the pack's definition. `tools` is a list of ids and stays a
  * list of ids, so the fork keeps tracking the official tools' scripts as they are updated
- * (`docs/pack-contract.md` § "Building on an existing pack"). What freezes at fork time is
+ * (`docs/surge-pack-contract.md` § "Building on an existing pack"). What freezes at fork time is
  * membership: which tools, and the behaviour flags.
  */
 

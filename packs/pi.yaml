@@ -127,7 +127,7 @@ tools:
       # (There is a `legacy-node20` dist-tag for older runtimes. This pack does not want it:
       # it is a frozen branch, not the release channel.)
       #
-      # UNVERSIONED, per docs/pack-contract.md § Which version to install. npm is a
+      # UNVERSIONED, per docs/surge-pack-contract.md § Which version to install. npm is a
       # quota-free channel, so asking for the current release costs nothing and hands the
       # user the harness they actually read about, where a pin would hand them a stale one
       # and not even keep it — `pi update` exists and users run it. Dist-tags checked while

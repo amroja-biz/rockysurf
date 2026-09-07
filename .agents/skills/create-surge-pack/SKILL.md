@@ -68,7 +68,7 @@ cannot run the harness.
 
 Read `references/contract.md` now if you have not authored a pack in this session. It is the
 condensed contract: the field tables, the four rules, and the list of things you may not assume
-about the box. The normative source is `docs/pack-contract.md` in the checkout — when the two
+about the box. The normative source is `docs/surge-pack-contract.md` in the checkout — when the two
 disagree, the checkout wins, and say so to the user.
 
 ## Route first: new pack, or building on one that exists?
@@ -119,7 +119,7 @@ else, and infer what you reasonably can from what the user already said.
   **unversioned**, so there is no pin and nothing to bump. Anything that ships only as a GitHub
   release asset is pinned to a tag and checked against a `sha256`, and that pin needs bump
   instructions in the file — the upstream release page, a `checksums.txt`. A pin with no bump
-  instructions rots. See `docs/pack-contract.md` § Which version to install.
+  instructions rots. See `docs/surge-pack-contract.md` § Which version to install.
 - **Headless or a graphical desktop?** A desktop means `desktop: xfce` and almost always
   `requiresRdp: true` (Rocky Surf then asks for a remote-desktop password at create time).
 - **Does an install script need a value only the user has?** A licence key, an API key, an
@@ -202,7 +202,7 @@ just a list of ids, and it already resolves across files.
    instead (`acme-curl`), not the base's.
 6. **`installOrder` for the tools you add uses the gaps — never renumber the base's tools.** An
    add-on that needs `nodejs` (band 20) sits at 40; one that needs an agent already installed sits
-   at 50. The bands are in the dependency table above and in `docs/pack-contract.md`; `pack lint`
+   at 50. The bands are in the dependency table above and in `docs/surge-pack-contract.md`; `pack lint`
    rejects anything outside 10–60.
 7. **`guide`: start from the base's guide and append — do not replace it.** Every tool the base
    installed is still on the box, so its instructions are all still true. Add one block per tool
@@ -241,7 +241,7 @@ as a new pack, because that is what it is.
 
 ## Step 2 — Write the file
 
-Copy `assets/pack-template.yaml` into `packs/<pack-id>.yaml` in the checkout and fill it in. The
+Copy `assets/surge-pack-template.yaml` into `packs/<pack-id>.yaml` in the checkout and fill it in. The
 filename must match `packId` — the loader rejects a file where they disagree.
 
 Before you name anything, see what is taken. `toolId` must be unique across the **whole
@@ -309,7 +309,7 @@ could not keep. A tool that ships only as a GitHub release asset stays **pinned 
 `sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API, and a pack
 that calls it breaks for everyone the moment the quota runs out. Neither rule licenses piping a
 vendor's `install.sh` to `bash`. Full
-reasoning, and the narrow case where an agent may still be pinned, in `docs/pack-contract.md`
+reasoning, and the narrow case where an agent may still be pinned, in `docs/surge-pack-contract.md`
 § Which version to install.
 
 Two mechanical traps, both of which fail your file rather than merely advising you:
@@ -471,7 +471,7 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
 - **Pull request against `packs/`** in this repository — for a pack that is going to ship *inside*
   Rocky Surf, which is what "official" means and is not what a contribution becomes (ADR-0006).
   It gets the pack smoke-tested on both architectures by CI forever. Reference the shared base
-  tool ids; do not redefine them. Work through the checklist at the end of `docs/writing-a-pack.md`
+  tool ids; do not redefine them. Work through the checklist at the end of `docs/writing-a-surge-pack.md`
   first.
 - **Upload it into their own running instance** — Surge Packs (`/packs`) → Personal → New Surge
   Pack → Upload a pack file. An imported pack becomes a database row that boot never overwrites
@@ -520,4 +520,4 @@ check, and anything the guide admits the box cannot do. That honesty is the whol
 - `references/extending.md` — only when you are deriving from or amending a pack that already
   exists: a worked derive example end to end, a symptom→fix table for what goes wrong, and the
   amend and out-of-checkout/import paths. Step 1E above is enough for most cases.
-- `assets/pack-template.yaml` — a commented skeleton to copy into `packs/`.
+- `assets/surge-pack-template.yaml` — a commented skeleton to copy into `packs/`.

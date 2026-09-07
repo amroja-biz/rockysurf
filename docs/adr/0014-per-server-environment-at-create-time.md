@@ -185,7 +185,7 @@ Every precedence rule loses a value the user typed, silently.
 - `packages/core/src/env/names.ts` — the reserved names, the name and value rules.
 - `packages/core/src/servers/environment.ts` — `resolveServerEnvironment`, and the collision.
 - `packages/core/src/bootstrap/server-secrets.ts` — the four sources folded into one environment.
-- `docs/pack-contract.md` § env table; `docs/bootstrap-contract.md` § The `secrets.env` key-name
+- `docs/surge-pack-contract.md` § env table; `docs/bootstrap-contract.md` § The `secrets.env` key-name
   contract; `docs/self-hosting.md` § Your own environment on a box.
 
 ## Related decisions

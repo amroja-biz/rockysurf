@@ -1,17 +1,17 @@
-# Writing a pack
+# Writing a surge pack
 
-*For pack authors and the agents that write packs.*
+*For surge pack authors and the agents that write surge packs.*
 
-A **pack** is a curated bundle of tools that gets installed on a fresh cloud box. It is a
-single YAML file. You can read it, diff it, fork it, and send it as a pull request — which is
-the whole point: packs are data, not code, and adding one should never mean touching the
-application.
+A **surge pack** is a curated bundle of tools that gets installed on a fresh cloud box. It is a
+single YAML file, and the schema, the CLI and this page all shorten the name to *pack*. You can
+read it, diff it, fork it, and send it as a pull request — which is the whole point: packs are
+data, not code, and adding one should never mean touching the application.
 
 This page is the author guide: how a pack runs, the four rules every script obeys, a complete
 worked pack, and the checklist to work through before you open a pull request. The normative
 half — the file format field by field, what you may not assume about the box, the retry budget,
 the environment your scripts get, which version to install, and the CI smoke test — is
-[`pack-contract.md`](pack-contract.md). Where the two disagree, **the contract wins**.
+[`surge-pack-contract.md`](surge-pack-contract.md). Where the two disagree, **the contract wins**.
 
 The file format is **frozen at v0.1**. A pack written today keeps working.
 
@@ -69,7 +69,7 @@ Two consequences fall directly out of this design, and they are the reason rules
 Every `installScript` and every `setupScript` in your pack must be idempotent, `$ARCH`-aware,
 non-interactive, and `runAs`-honest. CI enforces all four. Each rule below states what it
 requires and why; the worked right-and-wrong pairs, and the evidence behind each rule, are in
-[`pack-contract.md` § The four rules](pack-contract.md#the-four-rules).
+[`surge-pack-contract.md` § The four rules](surge-pack-contract.md#the-four-rules).
 
 ### Rule 1: Idempotent
 
@@ -83,7 +83,7 @@ state, and prefer commands that are already convergent (`apt-get install`, `npm 
 real-world break is the shell-profile append: run it three times and the user's `PATH` carries
 three copies of the same line.
 
-→ [The worked examples](pack-contract.md#rule-1-idempotent)
+→ [The worked examples](surge-pack-contract.md#rule-1-idempotent)
 
 ### Rule 2: `$ARCH`-aware
 
@@ -96,7 +96,7 @@ time you need nothing: `apt-get install`, `npm install -g` and `pip install` res
 build themselves. You need `$ARCH` when you download a binary or a tarball by URL, and an
 unrecognised value should be a loud error rather than a silent download of the wrong binary.
 
-→ [The worked examples](pack-contract.md#rule-2-arch-aware)
+→ [The worked examples](surge-pack-contract.md#rule-2-arch-aware)
 
 ### Rule 3: Non-interactive
 
@@ -108,10 +108,10 @@ looks to the user like a box that never finishes booting. The agent already expo
 `DEBIAN_FRONTEND=noninteractive` for you, so pass `-y` to `apt-get` and `--yes` to `npx`, and
 avoid anything that merely *waits* as well. Where a download genuinely deserves one more go the
 bound is small and belongs on the command — see
-[`pack-contract.md` § Bounded retries](pack-contract.md#bounded-retries), which also covers the
+[`surge-pack-contract.md` § Bounded retries](surge-pack-contract.md#bounded-retries), which also covers the
 apt retry you do **not** have to write.
 
-→ [The worked examples](pack-contract.md#rule-3-non-interactive)
+→ [The worked examples](surge-pack-contract.md#rule-3-non-interactive)
 
 ### Rule 4: `runAs`-honest
 
@@ -127,7 +127,7 @@ unprivileged steps run with `-H`, so `$HOME` is `/home/rocky` where a root step'
 To decide, ask one question: **on your own laptop, would you run this command as yourself, or
 would you type `sudo` first?** The first is `rocky`, the second is `root`.
 
-→ [The worked examples](pack-contract.md#rule-4-runas-honest)
+→ [The worked examples](surge-pack-contract.md#rule-4-runas-honest)
 
 ---
 
@@ -296,13 +296,13 @@ optional step, and shows up as a warning on the running server.
 - [ ] Nothing assumes `jq`, `curl`, the AWS CLI, cloud credentials, or metadata.
 - [ ] No apt retry loop of your own — the agent already gives every step a second attempt. Every
       `curl` that matters carries `--retry 3 --retry-delay 2 --retry-all-errors`. See
-      [Bounded retries](pack-contract.md#bounded-retries).
+      [Bounded retries](surge-pack-contract.md#bounded-retries).
 - [ ] The agent installs **unversioned** from its registry channel — or, if it has no registry
       channel, is pinned to a version and verified against a `sha256`, the same treatment
       anything fetched from GitHub releases or a vendor CDN gets. Nothing resolves a version
-      through `api.github.com`. See [Which version to install](pack-contract.md#which-version-to-install).
+      through `api.github.com`. See [Which version to install](surge-pack-contract.md#which-version-to-install).
 - [ ] Each script ends with a command that verifies the install actually worked.
-- [ ] `installOrder` uses the [documented bands](pack-contract.md#installorder-and-the-gaps-of-10-convention) and leaves gaps of 10.
+- [ ] `installOrder` uses the [documented bands](surge-pack-contract.md#installorder-and-the-gaps-of-10-convention) and leaves gaps of 10.
 - [ ] `requiresRepos`, `requiresRdp`, `desktop` and `webPort` describe what your pack actually needs.
 - [ ] Every value your install scripts read from the environment is either one of the two names
       Rocky Surf promises or one your pack declares in `inputs` — nothing reads a variable
@@ -316,29 +316,29 @@ optional step, and shows up as a warning on the running server.
 
 ## The contract
 
-[`pack-contract.md`](pack-contract.md) is the normative half of this document, and the place to
+[`surge-pack-contract.md`](surge-pack-contract.md) is the normative half of this document, and the place to
 look a rule up:
 
-- [The file format](pack-contract.md#the-file-format) — every field of `Tool` and `SurgePack`,
-  [`installOrder` and the gaps-of-10 convention](pack-contract.md#installorder-and-the-gaps-of-10-convention),
-  [`inputs`](pack-contract.md#inputs--what-your-pack-asks-the-user-for),
-  [`guide`](pack-contract.md#guide--what-the-user-has-to-do-themselves), and
-  [building on an existing pack](pack-contract.md#building-on-an-existing-pack).
-- [The four rules, in full](pack-contract.md#the-four-rules) — the right and the wrong way to
+- [The file format](surge-pack-contract.md#the-file-format) — every field of `Tool` and `SurgePack`,
+  [`installOrder` and the gaps-of-10 convention](surge-pack-contract.md#installorder-and-the-gaps-of-10-convention),
+  [`inputs`](surge-pack-contract.md#inputs--what-your-pack-asks-the-user-for),
+  [`guide`](surge-pack-contract.md#guide--what-the-user-has-to-do-themselves), and
+  [building on an existing pack](surge-pack-contract.md#building-on-an-existing-pack).
+- [The four rules, in full](surge-pack-contract.md#the-four-rules) — the right and the wrong way to
   write each one.
-- [Bounded retries](pack-contract.md#bounded-retries) — the apt retry the agent owns, and the
+- [Bounded retries](surge-pack-contract.md#bounded-retries) — the apt retry the agent owns, and the
   three-attempt bound that is yours.
-- [What you may not assume](pack-contract.md#what-you-may-not-assume) — what is, and is not, on
+- [What you may not assume](surge-pack-contract.md#what-you-may-not-assume) — what is, and is not, on
   the box before your script runs.
-- [Which version to install](pack-contract.md#which-version-to-install) — latest from a
+- [Which version to install](surge-pack-contract.md#which-version-to-install) — latest from a
   quota-free registry channel; pinned and `sha256`-verified everywhere else.
-- [The environment your scripts get](pack-contract.md#the-environment-your-scripts-get) — every
+- [The environment your scripts get](surge-pack-contract.md#the-environment-your-scripts-get) — every
   variable a step is handed, and how to handle the two secrets.
-- [Sharing a single tool](pack-contract.md#sharing-a-single-tool) — the tool-file format, for
+- [Sharing a single tool](surge-pack-contract.md#sharing-a-single-tool) — the tool-file format, for
   when the thing worth sharing is one tool rather than a whole box.
-- [The CI smoke test](pack-contract.md#the-ci-smoke-test) — `rockysurf pack lint` and
+- [The CI smoke test](surge-pack-contract.md#the-ci-smoke-test) — `rockysurf pack lint` and
   `rockysurf pack check`, what the second run must satisfy, and publishing to the shop.
-- [Where these rules come from](pack-contract.md#where-these-rules-come-from) — the evidence
+- [Where these rules come from](surge-pack-contract.md#where-these-rules-come-from) — the evidence
   behind each one.
 
 The bootstrap agent's side of the same contract, in implementer's terms, is

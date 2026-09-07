@@ -132,7 +132,7 @@ tools:
       # whose postinstall goes and fetches the native binary anyway — a stale indirection over
       # the download this does directly.
       #
-      # PINNED, under docs/pack-contract.md § Which version to install: case 2 (a GitHub
+      # PINNED, under docs/surge-pack-contract.md § Which version to install: case 2 (a GitHub
       # release asset has no quota-free "latest") AND the narrow agent exception — v1.2.1's
       # `gt install --git` still cannot build the Beads-backed HQ this pack exists to hand the
       # user. Retested on a fresh arm64 container on 2026-08-27 with the prebuilt v1.2.1 binary:

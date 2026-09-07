@@ -125,8 +125,8 @@ export function HomePage() {
           have to wait on one. A new cloud is the same idea in the other direction: a provider
           package against a frozen SDK, not a change to the control plane. You wire providers in
           a config file and compose packs in YAML. The contracts are in{' '}
-          <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
-            writing a pack
+          <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
+            writing a surge pack
           </a>{' '}
           and{' '}
           <a href={repoDocUrl('docs/writing-a-provider.md')} target="_blank" rel="noreferrer">

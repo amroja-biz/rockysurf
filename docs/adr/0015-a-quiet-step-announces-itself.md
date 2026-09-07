@@ -118,7 +118,7 @@ time. From the timeline the two are indistinguishable from a hang, and a user wh
   been happening, and that it is still happening, in both bootstrap modes, with no core or web
   change and no new field.
 - A pack author whose install script is silent for a long stretch — a big `cargo build`, a
-  quiet `-qq` — gets the same line for free (`docs/pack-contract.md` § Bounded retries now
+  quiet `-qq` — gets the same line for free (`docs/surge-pack-contract.md` § Bounded retries now
   says so, and why letting the tools talk is the better answer).
 
 ### Negative
@@ -153,7 +153,7 @@ time. From the timeline the two are indistinguishable from a hang, and a user wh
 - `packages/core/src/bootstrap/quiet-step.test.ts` — the real agent, a one-second threshold;
   the retry notice with and without a URL.
 - `docs/bootstrap-contract.md` § state.json — the `notice` field.
-- `docs/pack-contract.md` § Bounded retries.
+- `docs/surge-pack-contract.md` § Bounded retries.
 
 ## Related decisions
 

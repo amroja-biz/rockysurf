@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The pack smoke test for THIS repository's `packs/` — `docs/pack-contract.md` § "The CI smoke
+ * The pack smoke test for THIS repository's `packs/` — `docs/surge-pack-contract.md` § "The CI smoke
  * test" specifies it as NORMATIVE and merge-gating.
  *
  *   node scripts/pack-smoke.mjs [--pack <id>] [--arch amd64|arm64] [--keep] [--json]

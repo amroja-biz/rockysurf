@@ -622,8 +622,8 @@ export function HelpPage() {
           guide. The Tools and Surge Packs admin pages let you inspect and edit what this
           installation offers. Writing your own is a contract, and CI enforces the mechanical half
           of it:{' '}
-          <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
-            writing a pack
+          <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
+            writing a surge pack
           </a>{' '}
           — or hand that contract to your agent with the <code>create-surge-pack</code> skill
           above.
@@ -779,8 +779,8 @@ export function HelpPage() {
             the capability matrix
           </a>{' '}
           for what each one can and cannot do. Extending it:{' '}
-          <a href={repoDocUrl('docs/writing-a-pack.md')} target="_blank" rel="noreferrer">
-            writing a pack
+          <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
+            writing a surge pack
           </a>{' '}
           and{' '}
           <a href={repoDocUrl('docs/writing-a-provider.md')} target="_blank" rel="noreferrer">
