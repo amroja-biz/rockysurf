@@ -1,5 +1,7 @@
 # Running Rocky Surf on Google Cloud
 
+*For operators.*
+
 What you need to give Rocky Surf so it can create, stop, start and destroy Compute Engine dev
 boxes in your own project — and nothing beyond that.
 
@@ -567,7 +569,7 @@ node packages/rockysurf/dist/bin.js
 `npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
 you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
 Docker Compose path in the [README](../../README.md#quickstart) works today too. See
-[`docs/RELEASING.md`](../RELEASING.md).
+[`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` reads the configured zone and fails with a plain message if the
 credential, the project, the API or the zone is wrong.

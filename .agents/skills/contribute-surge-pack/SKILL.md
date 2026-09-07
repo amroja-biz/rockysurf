@@ -26,8 +26,10 @@ contribute a *provider* (a package of code that runs inside Rocky Surf, not a YA
 **The normative documents are in two places and neither is this skill.** The shop's
 [`CONTRIBUTING.md`](https://github.com/amroja-biz/rockysurf-shop/blob/main/CONTRIBUTING.md) says
 what that repository expects; Rocky Surf's
+[`docs/pack-contract.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/pack-contract.md)
+is the authoring contract, and
 [`docs/writing-a-pack.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/writing-a-pack.md)
-is the authoring contract. When either disagrees with what you read here, it wins — say so to the
+is the guide to it. When either disagrees with what you read here, it wins — say so to the
 user and follow it.
 
 ## Prerequisites

@@ -79,7 +79,7 @@ export ARCH
 # --------------------------------------------------------------------------------------
 # the agent's own identity in the environment
 # --------------------------------------------------------------------------------------
-# docs/writing-a-pack.md promises every step `$HOME` — `/root` for a root step — and root steps
+# docs/pack-contract.md promises every step `$HOME` — `/root` for a root step — and root steps
 # get it by INHERITING this process's environment. Under the transient systemd unit core
 # launches (docs/bootstrap-contract.md § The systemd unit contract) that environment has no
 # HOME, USER or LOGNAME at all: systemd sets those only for units with `User=`, and this one
@@ -192,7 +192,7 @@ report_progress() {
 # --------------------------------------------------------------------------------------
 # EVERY TOOL STEP GETS TWO ATTEMPTS AT AN APT FETCH FAILURE, AND NO MORE (issue #188). That is
 # the agent's promise to every pack, so no pack script has to write its own retry loop and none
-# of them may (docs/writing-a-pack.md § Bounded retries). Between the two attempts the agent
+# of them may (docs/pack-contract.md § Bounded retries). Between the two attempts the agent
 # does what an operator would do by hand — swap a sick mirror if there is one to swap, wait for
 # an out-of-sync archive if there is not, refresh the lists, try again. A step that fails a
 # second time has failed for real: the plan stops, the box is released (ADR-0010) and the

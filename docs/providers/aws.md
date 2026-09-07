@@ -1,5 +1,7 @@
 # Running Rocky Surf on AWS
 
+*For operators.*
+
 What you need to give Rocky Surf so it can create, stop, start and destroy EC2 dev boxes in
 your own account — and nothing beyond that.
 
@@ -522,7 +524,7 @@ AWS_PROFILE=my-profile node packages/rockysurf/dist/bin.js
 published yet; from a checkout you have run `pnpm -r build` in,
 `packages/rockysurf/dist/bin.js` is the identical binary. The Docker Compose path in the
 [README](../../README.md#quickstart) works today too. See
-[`docs/RELEASING.md`](../RELEASING.md).
+[`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 `validateCredentials()` runs during the first provider call and fails with a plain message if
 the credentials or region are wrong.

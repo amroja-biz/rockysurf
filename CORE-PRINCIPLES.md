@@ -44,7 +44,8 @@ software this project has never heard of is the normal case, not an exception. T
 small and frozen, the four authoring rules are documented with worked examples, tools defined
 in any pack are reusable by id from any other, and CI proves every pack the honest way — by
 running it twice in a real container. The community registry exists so a finished pack is
-shareable with a URL. `docs/writing-a-pack.md` is the contract.
+shareable with a URL. `docs/writing-a-pack.md` is the guide and `docs/pack-contract.md` is
+the contract.
 
 ## 4. Make Rocky Surf easy to extend via modular components
 

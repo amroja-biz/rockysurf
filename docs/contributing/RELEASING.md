@@ -1,5 +1,7 @@
 # Releasing Rocky Surf to npm
 
+*For the maintainer.*
+
 Ten packages go to the public registry, in lockstep, from one command. This document is the
 procedure and the reasons — the reasons matter, because three of the steps look optional and are
 not.

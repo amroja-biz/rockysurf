@@ -280,7 +280,7 @@ Two consequences an operator should decide about rather than discover:
 
 The **instance-wide `github.pat` is still instance-wide**, and is not narrowed. It is this
 installation's general-purpose GitHub credential, packs read it as `$GITHUB_TOKEN`, and
-`docs/writing-a-pack.md` promises pack authors that `gh` works when it is configured. Every box
+`docs/pack-contract.md` promises pack authors that `gh` works when it is configured. Every box
 gets it, whoever created it, and on an installation where other people hold accounts it reaches
 boxes they have root on. Scope the `pat` itself to what is meant to travel everywhere, and use
 `github.tokens` for everything else — a scoped entry reaches only the boxes that named its
@@ -789,7 +789,7 @@ publish path is built to need no account and no token at all (issue #275):
 What an attacker needs is therefore write access to `main` *and* the owner's approval click, or
 control of the owner's npm account plus its second factor for a manual publish — which would
 also be visible as a version without provenance. The one-time setup, and the bootstrap script
-that attaches the trusted publisher to each package, are in [`docs/RELEASING.md`](docs/RELEASING.md).
+that attaches the trusted publisher to each package, are in [`docs/contributing/RELEASING.md`](docs/contributing/RELEASING.md).
 
 ## Residual risks
 

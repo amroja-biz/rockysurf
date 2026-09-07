@@ -1,5 +1,7 @@
 # Provider capability matrix
 
+*For operators.*
+
 What each provider declares in `ProviderCapabilities`, and the evidence behind it. Five of the
 columns are the providers this distribution ships; `digitalocean` is a PERSONAL provider
 ([ADR-0026](../adr/0026-personal-providers.md)) that lives in this repository, is built and tested

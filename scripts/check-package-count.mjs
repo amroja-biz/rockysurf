@@ -3,7 +3,7 @@
  * Package-count drift lint (rockysurf-aec9).
  *
  * The number of packages published to npm is stated as prose in three places — README.md,
- * docs/self-hosting.md and docs/RELEASING.md — plus a table in docs/RELEASING.md that lists
+ * docs/self-hosting.md and docs/contributing/RELEASING.md — plus a table in docs/contributing/RELEASING.md that lists
  * them by name. None of that is derived; all four are typed by hand, and they have drifted
  * before: README said "eight", self-hosting said "six", RELEASING published nine and listed
  * them in a table (found in rockysurf-emfu, fixed in PR #6).
@@ -41,7 +41,7 @@ const NUMBER_WORDS = {
   fifteen: 15,
 }
 
-const DOCS = ['README.md', 'docs/self-hosting.md', 'docs/RELEASING.md']
+const DOCS = ['README.md', 'docs/self-hosting.md', 'docs/contributing/RELEASING.md']
 const RELEASING_TABLE_HEADING = 'What is published, and what is not'
 
 /** Every `packages/*\/package.json` whose name is not `"private": true`, sorted. */
@@ -70,7 +70,7 @@ function publishablePackages() {
 }
 
 /**
- * The rows of the "What is published, and what is not" table in docs/RELEASING.md — the FIRST
+ * The rows of the "What is published, and what is not" table in docs/contributing/RELEASING.md — the FIRST
  * table after that heading (there is a second one, for the packages that stay private, which
  * this deliberately stops before). Returns `{ name }` per row, name with backticks stripped.
  *
@@ -81,7 +81,7 @@ function publishablePackages() {
 function releasingTableRows(source) {
   const headingIdx = source.indexOf(RELEASING_TABLE_HEADING)
   if (headingIdx === -1) {
-    throw new Error(`docs/RELEASING.md: no "${RELEASING_TABLE_HEADING}" heading found`)
+    throw new Error(`docs/contributing/RELEASING.md: no "${RELEASING_TABLE_HEADING}" heading found`)
   }
   const lines = source.slice(headingIdx).split('\n')
 
@@ -100,7 +100,7 @@ function releasingTableRows(source) {
     if (name) rows.push({ name })
   }
   if (rows.length === 0) {
-    throw new Error('docs/RELEASING.md: "What is published" table parsed to no rows — has it been reformatted?')
+    throw new Error('docs/contributing/RELEASING.md: "What is published" table parsed to no rows — has it been reformatted?')
   }
   return rows
 }
@@ -125,7 +125,7 @@ function main() {
   const packages = publishablePackages()
   const truth = packages.length
 
-  const releasingPath = join(repoRoot, 'docs', 'RELEASING.md')
+  const releasingPath = join(repoRoot, 'docs', 'contributing', 'RELEASING.md')
   const releasingSource = readFileSync(releasingPath, 'utf8')
   const tableRows = releasingTableRows(releasingSource)
   const tableNames = tableRows.map((r) => r.name).sort()
@@ -139,13 +139,13 @@ function main() {
     if (missingFromTable.length > 0) detail.push(`missing from the table: ${missingFromTable.join(', ')}`)
     if (extraInTable.length > 0) detail.push(`in the table but not a publishable package.json: ${extraInTable.join(', ')}`)
     problems.push(
-      `docs/RELEASING.md: "What is published" table (${tableRows.length} row(s)) disagrees with ` +
+      `docs/contributing/RELEASING.md: "What is published" table (${tableRows.length} row(s)) disagrees with ` +
         `packages/*/package.json (${truth} publishable package(s)) — ${detail.join('; ')}`,
     )
   }
 
   for (const doc of DOCS) {
-    const source = doc === 'docs/RELEASING.md' ? releasingSource : readFileSync(join(repoRoot, doc), 'utf8')
+    const source = doc === 'docs/contributing/RELEASING.md' ? releasingSource : readFileSync(join(repoRoot, doc), 'utf8')
     for (const statement of countStatements(source)) {
       if (statement.count !== truth) {
         problems.push(`${doc}:${statement.line}: says "${statement.text}", but the actual count is ${truth}`)

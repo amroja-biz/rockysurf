@@ -8,7 +8,7 @@
  * container and proves the SCRIPTS work — every URL it exercises is one a `curl` or an
  * `apt-get` fetched. Neither one ever loads the `url` field, because nothing on the box does.
  * It is the tool's home page, shown to the person on the consent screen so they can see what
- * they are about to install (docs/writing-a-pack.md § "Tool fields"). A link that rotted is
+ * they are about to install (docs/pack-contract.md § "Tool fields"). A link that rotted is
  * invisible to both gates and visible to every user.
  *
  * WHY IT IS NOT PART OF `pnpm run lint`. It is the only check in this repository that needs the

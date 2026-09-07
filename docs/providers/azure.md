@@ -1,5 +1,7 @@
 # Running Rocky Surf on Azure
 
+*For operators.*
+
 What you need to give Rocky Surf so it can create, stop, start and destroy Azure dev boxes in
 your own subscription — and nothing beyond that.
 
@@ -62,7 +64,7 @@ node packages/rockysurf/dist/bin.js
 `npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
 you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
 Docker Compose path in the [README](../../README.md#quickstart) works today too. See
-[`docs/RELEASING.md`](../RELEASING.md).
+[`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
 
 **Rocky Surf does not create the resource group, and that is deliberate.** A role cannot be
 scoped to a resource group that does not exist yet, so a provider that created its own scope

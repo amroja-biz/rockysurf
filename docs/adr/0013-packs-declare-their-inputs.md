@@ -19,7 +19,7 @@ Docker and installs headless only when several environment variables are set bef
 executes.
 
 Today there is no way to hand a pack's install step a user-supplied value at all.
-`docs/writing-a-pack.md` promises exactly two names — `$GITHUB_TOKEN` and `$RDP_PASSWORD` — and
+`docs/pack-contract.md` promises exactly two names — `$GITHUB_TOKEN` and `$RDP_PASSWORD` — and
 says the list is closed on purpose; the env table's row "your tool's secrets — whatever the user
 supplied" had nothing whatsoever behind it. A pack author reading that document was told a
 mechanism existed that did not.
@@ -89,7 +89,7 @@ reserved exact names and only `GIT_CONFIG_KEY_`/`GIT_CONFIG_VALUE_` remain prefi
 **4. The two lists are two different promises, and the document says so.** Rocky Surf's names are
 a platform commitment: closed, permanent, and true on every box. A pack's `inputs` are the pack
 author's own namespace — they chose the names, they document them, and the names exist only on
-boxes built from that pack. `writing-a-pack.md`'s "closed list" paragraph is amended to say
+boxes built from that pack. `pack-contract.md`'s "closed list" paragraph is amended to say
 exactly that rather than deleted: the platform still promises two names and only two.
 
 **5. Where the answers live at rest, split by what the pack declared.**
@@ -230,7 +230,7 @@ uninstalled. Two lists, two kinds of promise, stated as such.
 - `packages/core/src/packs/schema.ts` — the format, the reserved names, the value rules.
 - `packages/core/src/packs/inputs.ts` — `resolvePackInputs`, shared by the route and the CLI.
 - `packages/core/src/bootstrap/server-secrets.ts`, `bootstrap/push.ts` — delivery and quoting.
-- `docs/writing-a-pack.md` § `inputs`; `docs/bootstrap-contract.md` § The `secrets.env` key-name
+- `docs/pack-contract.md` § `inputs`; `docs/bootstrap-contract.md` § The `secrets.env` key-name
   contract; `docs/self-hosting.md` § Settings a pack asks you for.
 
 ## Related decisions

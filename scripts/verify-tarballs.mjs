@@ -282,7 +282,7 @@ function main() {
   } else {
     console.error(`tarball verification: ${violations.length} violation(s)\n`)
     for (const v of violations) console.error(`  ${v.package}: ${v.detail}`)
-    console.error('\nA tarball is the only honest evidence about a release. See docs/RELEASING.md.')
+    console.error('\nA tarball is the only honest evidence about a release. See docs/contributing/RELEASING.md.')
   }
 
   if (keep || !result.ok) console.error(`\nartifacts left in ${workDir}`)

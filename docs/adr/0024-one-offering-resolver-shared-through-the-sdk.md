@@ -87,7 +87,7 @@ One implementation, two call sites.
 
 **A new tiny workspace package (zero runtime deps).** Honest, and rejected on ceremony: core
 imports it at runtime, so it must be published — a twelfth npm package, a row in
-`docs/RELEASING.md`'s table, three hand-written package counts to move
+`docs/contributing/RELEASING.md`'s table, three hand-written package counts to move
 (`check-package-count.mjs`) and another surface for `check-npx-closure.mjs`, all for one file whose
 only inputs are `Offering` and `Architecture`, which the SDK already owns.
 

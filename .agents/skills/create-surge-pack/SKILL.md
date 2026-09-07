@@ -68,7 +68,7 @@ cannot run the harness.
 
 Read `references/contract.md` now if you have not authored a pack in this session. It is the
 condensed contract: the field tables, the four rules, and the list of things you may not assume
-about the box. The normative source is `docs/writing-a-pack.md` in the checkout — when the two
+about the box. The normative source is `docs/pack-contract.md` in the checkout — when the two
 disagree, the checkout wins, and say so to the user.
 
 ## Route first: new pack, or building on one that exists?
@@ -119,7 +119,7 @@ else, and infer what you reasonably can from what the user already said.
   **unversioned**, so there is no pin and nothing to bump. Anything that ships only as a GitHub
   release asset is pinned to a tag and checked against a `sha256`, and that pin needs bump
   instructions in the file — the upstream release page, a `checksums.txt`. A pin with no bump
-  instructions rots. See `docs/writing-a-pack.md` § Which version to install.
+  instructions rots. See `docs/pack-contract.md` § Which version to install.
 - **Headless or a graphical desktop?** A desktop means `desktop: xfce` and almost always
   `requiresRdp: true` (Rocky Surf then asks for a remote-desktop password at create time).
 - **Does an install script need a value only the user has?** A licence key, an API key, an
@@ -202,7 +202,7 @@ just a list of ids, and it already resolves across files.
    instead (`acme-curl`), not the base's.
 6. **`installOrder` for the tools you add uses the gaps — never renumber the base's tools.** An
    add-on that needs `nodejs` (band 20) sits at 40; one that needs an agent already installed sits
-   at 50. The bands are in the dependency table above and in `docs/writing-a-pack.md`; `pack lint`
+   at 50. The bands are in the dependency table above and in `docs/pack-contract.md`; `pack lint`
    rejects anything outside 10–60.
 7. **`guide`: start from the base's guide and append — do not replace it.** Every tool the base
    installed is still on the box, so its instructions are all still true. Add one block per tool
@@ -309,7 +309,7 @@ could not keep. A tool that ships only as a GitHub release asset stays **pinned 
 `sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API, and a pack
 that calls it breaks for everyone the moment the quota runs out. Neither rule licenses piping a
 vendor's `install.sh` to `bash`. Full
-reasoning, and the narrow case where an agent may still be pinned, in `docs/writing-a-pack.md`
+reasoning, and the narrow case where an agent may still be pinned, in `docs/pack-contract.md`
 § Which version to install.
 
 Two mechanical traps, both of which fail your file rather than merely advising you:

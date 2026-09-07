@@ -58,7 +58,7 @@ The owner's ruling, 2026-08-27:
    `packages/core/bootstrap/agent.sh` owns it, which means it applies to every shipped and
    community pack without a line of YAML, to the agent's own `jq` bootstrap, and to the CI Pack
    smoke harness — which runs this same `agent.sh` in its containers, so CI gets the standard
-   for free with no CI-only workaround. `docs/writing-a-pack.md` § Bounded retries states the
+   for free with no CI-only workaround. `docs/pack-contract.md` § Bounded retries states the
    promise and forbids pack-level apt retry loops; `curl` retries, which the agent cannot see
    inside, stay the script's own job at `--retry 3 --retry-delay 2 --retry-all-errors`.
 
@@ -206,7 +206,7 @@ smoke are unchanged.
 - `scripts/agent-smoke.sh` runs 5–7 — the same behaviours in a real `ubuntu:24.04` container,
   including the mirror rewrite a unit test cannot reach.
 - `docs/bootstrap-contract.md` § Failure semantics — the normative row.
-- `docs/writing-a-pack.md` § Bounded retries — the same contract, stated to pack authors.
+- `docs/pack-contract.md` § Bounded retries — the same contract, stated to pack authors.
 - `docs/memories/2026-08-26-regional-ubuntu-mirrors-fail-as-a-unit.md` — the apt measurements
   this decision rests on.
 

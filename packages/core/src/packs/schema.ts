@@ -4,7 +4,7 @@ import { ENV_VALUE_MAX_BYTES, envVarNameSchema, envVarValueSchema } from '../env
 /**
  * The frozen v0.1 pack file format, as a validator.
  *
- * `docs/writing-a-pack.md` is the normative statement of this format and this file must not
+ * `docs/pack-contract.md` is the normative statement of this format and this file must not
  * drift from it — `packs.test.ts` validates every shipped pack against these schemas, and the
  * document's own worked example is checked against them too, so a change here that the
  * document does not describe fails the suite.

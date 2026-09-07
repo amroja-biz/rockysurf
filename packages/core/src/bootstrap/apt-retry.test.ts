@@ -9,7 +9,7 @@ import { serializeInstallPlan, type InstallPlan, type InstallStep } from './plan
 /**
  * The tool-install retry standard, exercised against the real `agent.sh` (issue #188).
  *
- * The promise `docs/writing-a-pack.md` makes to every pack author is that the AGENT retries an
+ * The promise `docs/pack-contract.md` makes to every pack author is that the AGENT retries an
  * apt fetch failure, so no pack script writes its own loop: two attempts at every step, and no
  * more. It used to be one retry for the whole bootstrap — whichever step failed first spent it
  * and every later step got none — which is not something a pack author can rely on.

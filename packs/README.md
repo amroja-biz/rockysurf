@@ -5,7 +5,8 @@ per pack, PR-able by anyone. "Surge Pack" is what the product calls them; `pack`
 this directory are the spelling in code and in the file format, and neither is going to change
 to match the other.
 
-**The authoring contract is [`docs/writing-a-pack.md`](../docs/writing-a-pack.md).** Read it
+**The authoring contract is [`docs/pack-contract.md`](../docs/pack-contract.md), and
+[`docs/writing-a-pack.md`](../docs/writing-a-pack.md) is the guide to it.** Read them
 before adding a file here; it is normative, and CI enforces it. This README only says what
 lives in this directory.
 

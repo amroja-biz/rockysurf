@@ -50,7 +50,7 @@ Four directories, and each is load-bearing at runtime rather than a build leftov
 
 `public/` is produced by `@rockysurf/web` at build time, so a publish must follow a full
 workspace build — `pnpm -r build` — not a `--filter` of this package alone. See
-[docs/RELEASING.md](https://github.com/amroja-biz/rockysurf/blob/main/docs/RELEASING.md).
+[docs/contributing/RELEASING.md](https://github.com/amroja-biz/rockysurf/blob/main/docs/contributing/RELEASING.md).
 
 ## Development
 

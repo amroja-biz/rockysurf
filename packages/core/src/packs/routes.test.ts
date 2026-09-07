@@ -214,7 +214,7 @@ describe('public shapes match the SPA client', () => {
     // and nothing else in either package would notice.
     //
     // Scoped to the SHIPPED packs, because `guide` and `imageUrl` are optional in schema.ts and
-    // in docs/writing-a-pack.md. What the shipped six promise a user is stricter than what the
+    // in docs/pack-contract.md. What the shipped six promise a user is stricter than what the
     // format requires of a contributor, and this is the stricter promise.
     const packs = await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))
     for (const pack of packs.filter((p: any) => SHIPPED_PACK_IDS.includes(p.packId))) {

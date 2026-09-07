@@ -8,7 +8,7 @@ SOURCE: issue #158, the owner's first two personal packs
 
 # The systemd launcher hands the agent less than any shell does — and the harnesses all use a shell
 
-`docs/writing-a-pack.md` promises every step `$HOME`. Unprivileged steps get it explicitly
+`docs/pack-contract.md` promises every step `$HOME`. Unprivileged steps get it explicitly
 (`sudo -u rocky -H`); root steps inherit the bootstrap agent's own environment. On a real box
 that environment comes from `systemd-run --unit=rockysurf-bootstrap` with no `User=`, and
 systemd sets `HOME`, `USER` and `LOGNAME` **only** for units that have `User=`. So every root

@@ -1,5 +1,7 @@
 # Self-hosting Rocky Surf
 
+*For operators.*
+
 Rocky Surf is one process. It serves a web UI and an HTTP API on one port, keeps everything it
 knows in one directory, and talks out to whichever cloud you configured. There is no queue, no
 external database, no message bus and nothing to scale — the job loop runs in-process, and the
@@ -126,7 +128,7 @@ npx rockysurf
 ```
 
 > **Not published yet.** This path needs the ten packages on the public npm registry, which
-> happens at the v0.1.0 launch ([`RELEASING.md`](RELEASING.md)). Until then, use Compose, or run
+> happens at the v0.1.0 launch ([`RELEASING.md`](contributing/RELEASING.md)). Until then, use Compose, or run
 > `pnpm -r build` in a checkout and start `node packages/rockysurf/dist/bin.js` — the same binary
 > `npx` will fetch.
 
@@ -831,7 +833,8 @@ From there the path is already built: core hands the token to each box in `secre
 written at mode `0600`, and the clone authenticates with it through a `git -c credential.helper`
 invocation that keeps it out of `ps` output and out of the checkout's `.git/config`
 (`packages/core/src/bootstrap/resolver.ts`). Packs see it as `$GITHUB_TOKEN`, which is also the
-name `gh` reads with no further configuration — see [writing-a-pack.md](writing-a-pack.md).
+name `gh` reads with no further configuration — see
+[`pack-contract.md` § The environment your scripts get](pack-contract.md#the-environment-your-scripts-get).
 
 **One token per repository, when one token is not enough.** GitHub issues fine-grained PATs per
 repository, so following its own advice leaves you holding several, and a single `pat:` line
@@ -1110,7 +1113,7 @@ history file. Supply it in a file or in `ROCKYSURF_INPUT_<NAME>`. Everything is 
 the pack's declaration before anything is created, so a misspelled name costs a sentence.
 
 [ADR-0013](adr/0013-packs-declare-their-inputs.md) records the contract; pack authors should read
-the `inputs` section of [`writing-a-pack.md`](writing-a-pack.md#inputs--what-your-pack-asks-the-user-for).
+the `inputs` section of [`pack-contract.md`](pack-contract.md#inputs--what-your-pack-asks-the-user-for).
 
 ## Your own environment on a box
 
@@ -1333,7 +1336,7 @@ third of these; the second is a config-file thing, not a button on this page.
    the pack references, and importing that back would redefine — not reference — every one of
    them, up to and including the shared base tools other packs depend on. This seeds from the
    pack's tool **ids** instead, the same as picking them by hand, which is the UI version of
-   `docs/writing-a-pack.md` § "Building on an existing pack".
+   `docs/pack-contract.md` § "Building on an existing pack".
 
 A source's URL says what shape it is. **Ending in `.yaml` or `.yml`, the URL is the pack** — one
 file, the way you publish one of your own. **Anything else is a directory** serving `index.json`

@@ -106,7 +106,7 @@ Options:
   --json               Machine-readable output on stdout.
 
 Neither command is a security scan: install scripts are arbitrary root-privileged shell and no
-static check can decide whether they are benign. See docs/writing-a-pack.md.`
+static check can decide whether they are benign. See docs/pack-contract.md.`
 
 /* ------------------------------------------------------------------------ flag parsing */
 

@@ -10,7 +10,7 @@ import type { SecretsStore } from '../secrets/index.js'
  *
  * THE KEY NAMES ARE A CONTRACT, and this object is where it is defined. Every name here is a
  * promise to pack authors: a pack that reads `$GITHUB_TOKEN` must keep working, so the set is
- * deliberately small, closed, and documented in `docs/writing-a-pack.md` and the bootstrap
+ * deliberately small, closed, and documented in `docs/pack-contract.md` and the bootstrap
  * contract. Adding a name is a decision; a per-tool namespace is not offered, because it would
  * let packs depend on names core never agreed to and could not keep stable.
  *
@@ -244,7 +244,7 @@ export function createServerSecretsLoader(
      * (rockysurf-18lq). Narrowing asks "which of these tokens does this box's work need"; the
      * fallback's answer is always yes, because it is not a token for a repository — it is the
      * instance's general-purpose GitHub credential, and it is the one every pack guide promises
-     * (`docs/writing-a-pack.md`: `gh auth setup-git` works "when configured"). Shipping it only
+     * (`docs/pack-contract.md`: `gh auth setup-git` works "when configured"). Shipping it only
      * when some declared repository failed to match a scoped entry would make that promise
      * depend on which repositories a user happened to type, and would silently break `gh` on
      * exactly the boxes with the tidiest configuration — every private repo covered by a scoped

@@ -1,6 +1,6 @@
 name: Pack smoke
 
-# The NORMATIVE, merge-gating pack check from docs/writing-a-pack.md § "The CI smoke test".
+# The NORMATIVE, merge-gating pack check from docs/pack-contract.md § "The CI smoke test".
 # Its own workflow rather than a job in ci.yml because it is the one gate measured in minutes
 # rather than seconds, and because its matrix — every pack, on both architectures — is the part
 # most likely to need editing when a pack is added.

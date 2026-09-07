@@ -1,5 +1,7 @@
 # BYO — machines you already have
 
+*For operators.*
+
 `@rockysurf/provider-byo` manages boxes that exist already: a workstation under a desk, a rack
 in a colo, a VM someone else provisioned. There is no cloud API behind it. The API is `sshd`.
 

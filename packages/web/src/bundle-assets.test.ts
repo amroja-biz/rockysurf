@@ -104,7 +104,7 @@ describe('the Surge Pack images', () => {
   /**
    * The pack files this repository ships with a bundled card image, pinned by name so that
    * dropping one fails here. NOT counted from the directory: `imageUrl` is optional in
-   * `schema.ts` and in `docs/writing-a-pack.md`, so requiring one per file made a contributed
+   * `schema.ts` and in `docs/pack-contract.md`, so requiring one per file made a contributed
    * pack fail a test about our own cards (rockysurf-d5an). Adding a pack file changes nothing
    * about this list.
    */

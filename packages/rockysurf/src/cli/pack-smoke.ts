@@ -42,7 +42,7 @@ import {
  * interrupted install resumes. So a harness that merely re-invokes the agent gets the
  * contracted behaviour: a green run, in seconds, in which not one script body executed a
  * second time. The journal exists to PREVENT re-execution; a test of re-execution has to take
- * it away first. Both sides of the contract say so — `docs/writing-a-pack.md` § "The CI smoke
+ * it away first. Both sides of the contract say so — `docs/pack-contract.md` § "The CI smoke
  * test", and `docs/bootstrap-contract.md` § "Step idempotency".
  *
  * The second run must exit 0, and `/home/rocky/.bashrc`, `/root/.bashrc` and

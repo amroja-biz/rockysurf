@@ -767,7 +767,7 @@ describe('a box carries only the tokens its declared repositories need (rockysur
   it('SHIPS THE FALLBACK ANYWAY — the ruling, pinned', async () => {
     /*
      * `github.pat` is not narrowed, on any box, ever. It is not a token for a repository: it is
-     * the instance's general-purpose GitHub credential, and `docs/writing-a-pack.md` promises
+     * the instance's general-purpose GitHub credential, and `docs/pack-contract.md` promises
      * pack authors that `gh auth setup-git` works "when configured". Narrowing it away would
      * make that promise depend on which repositories somebody typed into a form, and would
      * break `gh` on precisely the best-configured boxes — every private repo covered by a

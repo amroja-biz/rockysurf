@@ -1,5 +1,7 @@
 # Write a compute provider
 
+*For contributors.*
+
 A provider is the only part of Rocky Surf that knows what a cloud is. Core knows how to boot a
 box, install software on it, watch it, bill it and reap it; a provider knows how to make one
 exist.
