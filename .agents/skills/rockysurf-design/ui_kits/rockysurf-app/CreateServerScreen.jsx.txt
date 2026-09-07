@@ -6,7 +6,7 @@ function CreateServerScreen({ onCreated }) {
   const [provider, setProvider] = React.useState('hetzner')
   const [name, setName] = React.useState('agent-box')
   const [size, setSize] = React.useState('medium')
-  const [packId, setPackId] = React.useState('ai-coding-agents')
+  const [packId, setPackId] = React.useState('claude-code')
   const [tab, setTab] = React.useState('official')
   const [repos, setRepos] = React.useState('https://github.com/you/api')
   const [force, setForce] = React.useState(false)

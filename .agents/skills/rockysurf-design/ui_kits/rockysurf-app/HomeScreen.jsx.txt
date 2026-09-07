@@ -19,7 +19,7 @@ function HomeScreen({ onNew }) {
       <section className="home-section">
         <h2>Bring your own cloud, keys and repos</h2>
         <ul className="home-claims">
-          <li><strong>BYOC — bring your own cloud.</strong> Your AWS account, your Hetzner project, Azure, GCP, or a machine you already own. Rocky Surf holds the credential and calls the API. The resources and the bill are yours.</li>
+          <li><strong>BYOC — bring your own cloud.</strong> Your AWS account, your Hetzner project, Azure, or Google Cloud. Rocky Surf holds the credential and calls the API. The resources and the bill are yours.</li>
           <li><strong>BYOK — bring your own keys.</strong> Your Claude Code subscription, your Codex login, your API keys. Rocky Surf installs the agents; you sign them in.</li>
           <li><strong>BYOR — bring your own repos.</strong> Your GitHub repositories, cloned onto the box during setup using a token you supply.</li>
         </ul>
