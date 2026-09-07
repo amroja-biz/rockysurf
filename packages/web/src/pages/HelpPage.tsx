@@ -139,6 +139,16 @@ const SKILLS = [
  */
 const DOC_GROUPS = [
   {
+    audience: 'Your coding agent',
+    docs: [
+      [
+        'docs/agent-quickstart.md',
+        'The agent quick start',
+        'Installing and configuring Rocky Surf on your behalf, end to end.',
+      ],
+    ],
+  },
+  {
     audience: 'Operators',
     docs: [
       [
