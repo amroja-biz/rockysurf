@@ -268,11 +268,19 @@ describe('HelpPage', () => {
 
   /**
    * "Enabling a cloud provider" (issue #112). The gap was that an operator had to leave the app
-   * to learn a provider needed a resource group, a role and three config keys — so what is
+   * to learn a provider needed a resource group, a role and three required settings — so what is
    * pinned is the WIRING, not the prose: every shipped provider has a heading, every one links
-   * its canonical `docs/providers/*.md` through `repoDocUrl`, and the keys the provider schemas
-   * actually refuse to boot without are named. A key that stops being required is a test that
-   * fails, which is the point.
+   * its canonical `docs/providers/*.md` through `repoDocUrl`, and the settings the provider
+   * schemas actually refuse to boot without are named. A setting that stops being required is a
+   * test that fails, which is the point.
+   *
+   * THOSE SETTINGS ARE ASSERTED BY THEIR SETTINGS-PAGE LABEL, not by their config key (owner
+   * review, 2026-09-07). The steps a reader follows are steps on the Settings page, so naming a
+   * required field there by its YAML key sent them looking for a control that does not carry
+   * that name. The labels are declared in each provider package's `src/index.ts`, so this still
+   * pins the help page to what the providers themselves say. `sshAllowedCidr` and
+   * `allowAllCidr` keep their key form as well, because the SSH block explains the file and
+   * because `sshAllowedCidr` is the name the startup refusal prints.
    */
   describe('the Enabling a cloud provider section', () => {
     const providersSection = () => {
@@ -312,14 +320,36 @@ describe('HelpPage', () => {
       }
     })
 
-    it('names the keys the provider schemas refuse to boot without', () => {
+    it('names the settings the provider schemas refuse to boot without', () => {
       const text = providers()
-      // packages/provider-*/src/config.ts: these are refusals, not defaults.
+      // packages/provider-*/src/config.ts: these are refusals, not defaults. Named here by the
+      // labels packages/provider-*/src/index.ts declares for them.
       expect(text).toContain('sshAllowedCidr')
       expect(text).toContain('allowAllCidr')
-      expect(text).toContain('subscriptionId')
-      expect(text).toContain('resourceGroup')
-      expect(text).toContain('projectId')
+      expect(text).toContain('SSH allowed from')
+      expect(text).toContain('Subscription id')
+      expect(text).toContain('Resource group')
+      expect(text).toContain('Project id')
+    })
+
+    it('gives every cloud the same shape, so no section assumes another was read first', () => {
+      // The owner's review of 2026-09-07: a help page is written for someone with no prior
+      // knowledge of Rocky Surf. Each cloud states what to do in the cloud first, then what to
+      // set on the Settings page, and both halves are labelled the same way everywhere.
+      const text = providers()
+      for (const cloud of ['Hetzner', 'AWS', 'Azure', 'Google Cloud']) {
+        expect(text, `${cloud} has no Settings steps`).toContain(`Then, in Settings → ${cloud}:`)
+      }
+      expect(text).toContain('Before you start, in Hetzner:')
+      expect(text).toContain('Before you start, create the role:')
+      expect(text).toContain('Before you start, in Azure:')
+      expect(text).toContain('Before you start, in Google Cloud:')
+      // The old "Config:" summary lines, which named keys with no context, are gone from every
+      // cloud that has been through this review.
+      for (const id of ['hetzner', 'aws', 'azure', 'gcp']) {
+        const block = providersSection().querySelector(`section[id="${id}"]`)!
+        expect(block.textContent, `#${id} still has a Config: line`).not.toContain('Config:')
+      }
     })
 
     it('states where credentials come from, and that they are not in the config file', () => {
