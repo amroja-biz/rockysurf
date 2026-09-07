@@ -49,7 +49,7 @@ const post = (path: string, body?: unknown, headers: Record<string, string> = {}
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 
-const CREATE = { size: 'small' as const, spotInstance: false, packId: 'ai-coding-agents' }
+const CREATE = { size: 'small' as const, spotInstance: false, packId: 'claude-code' }
 
 async function build(provider: FakeProvider = makeFakeProvider()): Promise<void> {
   fake = provider
@@ -141,7 +141,7 @@ describe('the routes the SPA already calls', () => {
     expect(body['size']).toBe('small')
     expect(body['offeringId']).toBe('fake-small')
     expect(body['arch']).toBeTruthy()
-    expect(body['packId']).toBe('ai-coding-agents')
+    expect(body['packId']).toBe('claude-code')
     expect(body['tools']).toEqual(expect.any(Array))
     expect(body['repositories']).toEqual(expect.any(Array))
 
@@ -629,7 +629,7 @@ describe('choosing the provider on create', () => {
 describe('size is optional once offeringId names the machine (rockysurf-kh3u)', () => {
   it('creates from offeringId + arch alone, with no size in the body at all', async () => {
     const res = await post('/api/v1/servers', {
-      packId: 'ai-coding-agents',
+      packId: 'claude-code',
       offeringId: 'fake-medium',
       arch: 'amd64',
     })
@@ -642,7 +642,7 @@ describe('size is optional once offeringId names the machine (rockysurf-kh3u)', 
   })
 
   it('creates from offeringId alone (no arch, no size), deriving both', async () => {
-    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents', offeringId: 'fake-medium' })
+    const res = await post('/api/v1/servers', { packId: 'claude-code', offeringId: 'fake-medium' })
     expect(res.status).toBe(201)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['offeringId']).toBe('fake-medium')
@@ -653,7 +653,7 @@ describe('size is optional once offeringId names the machine (rockysurf-kh3u)', 
   it('keeps a caller-supplied size alongside an offeringId, rather than overwriting it', async () => {
     // The column is display sugar; a caller who stated a real size gets to keep it.
     const res = await post('/api/v1/servers', {
-      packId: 'ai-coding-agents',
+      packId: 'claude-code',
       size: 'large',
       offeringId: 'fake-medium',
       arch: 'amd64',
@@ -663,7 +663,7 @@ describe('size is optional once offeringId names the machine (rockysurf-kh3u)', 
   })
 
   it('400s naming BOTH fields when neither size nor offeringId is sent', async () => {
-    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents' })
+    const res = await post('/api/v1/servers', { packId: 'claude-code' })
     expect(res.status).toBe(400)
     const body = (await res.json()) as { error: string; issues?: { path: string; message: string }[] }
     const paths = (body.issues ?? []).map((i) => i.path)
@@ -672,7 +672,7 @@ describe('size is optional once offeringId names the machine (rockysurf-kh3u)', 
   })
 
   it('never accepts the literal "custom" as a size from the wire', async () => {
-    const res = await post('/api/v1/servers', { packId: 'ai-coding-agents', size: 'custom' })
+    const res = await post('/api/v1/servers', { packId: 'claude-code', size: 'custom' })
     expect(res.status).toBe(400)
   })
 

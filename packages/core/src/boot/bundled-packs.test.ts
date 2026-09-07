@@ -68,7 +68,7 @@ describe('the bundled packs', () => {
   it('exist and hold the repository’s packs', () => {
     const names = readdirSync(BUNDLED_PACKS_DIR).filter((n) => n.endsWith('.yaml'))
     expect(names.length).toBeGreaterThan(0)
-    expect(names).toContain('ai-coding-agents.yaml')
+    expect(names).toContain('claude-code.yaml')
     expect(bundledPacksDir()).toBe(BUNDLED_PACKS_DIR)
   })
 
@@ -122,7 +122,7 @@ describe('a boot with no checkout around it', () => {
     expect(result.source).toBe('bundled')
     expect(result.reconciled).toBe(true)
     expect(result.packsSynced).toBeGreaterThan(0)
-    expect(listPacks(db).map((p) => p.id)).toContain('ai-coding-agents')
+    expect(listPacks(db).map((p) => p.id)).toContain('claude-code')
   })
 
   it('marks them file-backed, so a retired pack goes away on upgrade', () => {

@@ -6,7 +6,7 @@
 # byte-identical-.bashrc check on the second run. The npm route below is what amp and codex
 # already use, so all three agents now install the same way.
 #
-# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
 version: 1
 
 pack:

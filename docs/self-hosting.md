@@ -1024,8 +1024,8 @@ From the CLI, the script is a file rather than an argument, because an argument 
 through `ps` on the machine you typed it on:
 
 ```bash
-rockysurf create --pack ai-coding-agents --user-script ./boot.sh
-rockysurf create --pack ai-coding-agents --user-script ./boot.sh --user-script-as root
+rockysurf create --pack claude-code --user-script ./boot.sh
+rockysurf create --pack claude-code --user-script ./boot.sh --user-script-as root
 ```
 
 A bad path, an empty file or one over 16 KiB is refused before anything is provisioned.
@@ -1171,11 +1171,11 @@ tool definitions by referencing ids across files, and a reference to a tool that
 anywhere is itself a validation issue — charged to the file doing the *referencing*. So breaking
 a file that defines shared tools invalidates every file that depends on it.
 
-That is not hypothetical with the shipped set. `ai-coding-agents.yaml` defines the 16-tool base
+That is not hypothetical with the shipped set. `claude-code.yaml` defines the 16-tool base
 toolchain, and the other five packs reference 15 to 18 tools apiece that are defined outside
 themselves — `amp-agents`, `codex-cli`, `open-claw` and `open-code` each pull 15 from
-`ai-coding-agents`, and `gas-town` pulls 18 from three different files. A syntax error in
-`ai-coding-agents.yaml` alone therefore invalidates every shipped pack, and the boot log will
+`claude-code`, and `gas-town` pulls 18 from three different files. A syntax error in
+`claude-code.yaml` alone therefore invalidates every shipped pack, and the boot log will
 name all six files rather than the one you edited. **Read the log from the top: the first file
 listed is usually the one to fix.**
 

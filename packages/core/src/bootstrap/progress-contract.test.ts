@@ -101,7 +101,7 @@ async function createServer(): Promise<{ row: ServerRow; plan: InstallPlan }> {
   const res = await created.app.request('/api/v1/servers', {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/json' },
-    body: JSON.stringify({ size: 'small', packId: 'ai-coding-agents' }),
+    body: JSON.stringify({ size: 'small', packId: 'claude-code' }),
   })
   expect(res.status).toBe(201)
   const { serverId } = (await res.json()) as { serverId: string }

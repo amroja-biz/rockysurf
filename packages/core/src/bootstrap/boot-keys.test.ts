@@ -32,7 +32,7 @@ import { createSecretsStore, type SecretsStore } from '../secrets/store.js'
  */
 
 const PASSWORD = 'correct-horse-battery-staple'
-const CREATE = { size: 'small' as const, spotInstance: false, packId: 'ai-coding-agents' }
+const CREATE = { size: 'small' as const, spotInstance: false, packId: 'claude-code' }
 const config: Config = configSchema.parse({})
 
 /** Wraps the fake so the test can see the spec, without touching the shared fake provider. */

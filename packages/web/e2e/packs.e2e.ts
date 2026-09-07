@@ -11,7 +11,7 @@ import { test, expect } from './fixtures'
  */
 test.describe.configure({ mode: 'serial' })
 
-const SOURCE = 'Claude Code (ai-coding-agents)'
+const SOURCE = 'Claude Code (claude-code)'
 
 /**
  * THE PAGE IS CALLED SURGE PACKS, AND IT IS ONLY ABOUT PACKS (issue #394).
@@ -107,7 +107,7 @@ test('and the official pack it came from gets its own, different mark', async ({
  */
 test('editing a Personal pack lands back on the Personal tab, not Official', async ({ page }) => {
   await page.goto('/packs?tab=personal')
-  await page.getByTestId('pack-card-ai-coding-agents-copy').click()
+  await page.getByTestId('pack-card-claude-code-copy').click()
 
   await page.getByRole('button', { name: 'Edit' }).click()
   const form = page.getByTestId('pack-form')
@@ -122,5 +122,5 @@ test('editing a Personal pack lands back on the Personal tab, not Official', asy
   // every tab panel stays mounted (`hidden`, not unmounted — see the page's own docblock), so
   // the card being VISIBLE, not merely present, is what says Personal is the active panel.
   await expect(page).toHaveURL(/\/packs\?tab=personal/)
-  await expect(page.getByTestId('pack-card-ai-coding-agents-copy')).toBeVisible()
+  await expect(page.getByTestId('pack-card-claude-code-copy')).toBeVisible()
 })

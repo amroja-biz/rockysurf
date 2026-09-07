@@ -55,7 +55,7 @@ beforeEach(() => {
   tool({ id: 'apt-basics', installScript: 'apt-get install -y curl', runAs: 'root', installOrder: 0, bootstrap: true })
   tool({ id: 'claude-code', installScript: 'npm i -g @anthropic-ai/claude-code' })
   upsertPack(db, {
-    id: 'ai-coding-agents',
+    id: 'claude-code',
     name: 'AI coding agents',
     tools: ['claude-code'],
     displayOrder: 0,
@@ -71,7 +71,7 @@ afterEach(() => {
 
 describe('what lands on the row', () => {
   it('writes a parseable plan carrying the pack\'s tools', () => {
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     snapshotInstallPlan(db, row, { mode: 'push' })
 
     const plan = parseInstallPlan(getServer(db, row.id)!.installPlan!)
@@ -84,7 +84,7 @@ describe('what lands on the row', () => {
   it('always ends on a step that reports `ready`', () => {
     // That report is what promotes the row to `running` now that sync no longer does. A plan
     // with no such step would leave a healthy box provisioning until the timeout killed it.
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     const plan = snapshotInstallPlan(db, row, { mode: 'push' })
     expect(plan.steps.at(-1)?.reports).toBe('ready')
   })
@@ -97,13 +97,13 @@ describe('what lands on the row', () => {
   })
 
   it('honours an explicit per-server tool selection over the pack\'s list', () => {
-    const row = server({ packId: 'ai-coding-agents', tools: [] })
+    const row = server({ packId: 'claude-code', tools: [] })
     const plan = snapshotInstallPlan(db, row, { mode: 'push' })
     expect(plan.steps.map((s) => s.id)).toContain('tool:claude-code')
   })
 
   it('carries the repositories the user asked for', () => {
-    const row = server({ packId: 'ai-coding-agents', repositories: ['https://github.com/octocat/hello.git'] })
+    const row = server({ packId: 'claude-code', repositories: ['https://github.com/octocat/hello.git'] })
     const plan = snapshotInstallPlan(db, row, { mode: 'push' })
     expect(plan.steps.map((s) => s.id)).toContain('repo:hello')
   })
@@ -112,7 +112,7 @@ describe('what lands on the row', () => {
 describe("the shell-environment step's names (issue #244)", () => {
   it('takes the plain halves off the row and the secret halves from the caller — names only', () => {
     const row = server({
-      packId: 'ai-coding-agents',
+      packId: 'claude-code',
       packInputs: { HEADLONG_MODEL: 'large' },
       environment: { MY_ENDPOINT: 'https://api.example.com' },
     })
@@ -128,7 +128,7 @@ describe("the shell-environment step's names (issue #244)", () => {
   })
 
   it('renders the step with only GITHUB_TOKEN for a server that supplied nothing', () => {
-    const plan = snapshotInstallPlan(db, server({ packId: 'ai-coding-agents' }), { mode: 'push' })
+    const plan = snapshotInstallPlan(db, server({ packId: 'claude-code' }), { mode: 'push' })
     expect(plan.steps.find((s) => s.id === 'shell-environment')?.run).toContain("names=('GITHUB_TOKEN')")
   })
 })
@@ -138,7 +138,7 @@ describe('the supplied-key removal step (ADR-0008, issue #92)', () => {
   const MANAGED_KEY = 'ssh-ed25519 AAAAmanaged rockysurf'
 
   it('renders when the row carries a supplied key and the caller passes the managed one', () => {
-    const row = server({ packId: 'ai-coding-agents', userSuppliedPublicKey: USER_KEY })
+    const row = server({ packId: 'claude-code', userSuppliedPublicKey: USER_KEY })
     const plan = snapshotInstallPlan(db, row, { mode: 'push', managedPublicKey: MANAGED_KEY })
     expect(plan.steps.map((s) => s.id)).toContain('supplied-key-only')
     expect(plan.steps.at(-1)?.id).toBe('supplied-key-only')
@@ -146,21 +146,21 @@ describe('the supplied-key removal step (ADR-0008, issue #92)', () => {
   })
 
   it('is absent from a plain server, and absent when the caller omits managedPublicKey', () => {
-    const plain = server({ packId: 'ai-coding-agents' })
+    const plain = server({ packId: 'claude-code' })
     expect(snapshotInstallPlan(db, plain, { mode: 'push', managedPublicKey: MANAGED_KEY }).steps.map((s) => s.id)).not.toContain(
       'supplied-key-only',
     )
 
     // The caller not threading `managedPublicKey` through (a test, or a code path that snapshots
     // before keys exist) must not render a step whose script would embed `undefined`.
-    const supplied = server({ packId: 'ai-coding-agents', userSuppliedPublicKey: USER_KEY })
+    const supplied = server({ packId: 'claude-code', userSuppliedPublicKey: USER_KEY })
     expect(snapshotInstallPlan(db, supplied, { mode: 'push' }).steps.map((s) => s.id)).not.toContain('supplied-key-only')
   })
 })
 
 describe('topology', () => {
   it('gives a callback plan the URL the box posts to, built from core\'s public URL', () => {
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     const plan = snapshotInstallPlan(db, row, { mode: 'callback', publicUrl: 'https://core.example/' })
     expect(plan.callbackUrl).toBe(`https://core.example/internal/servers/${row.id}/status`)
   })
@@ -168,7 +168,7 @@ describe('topology', () => {
   it('gives a push plan no URL at all', () => {
     // A push-mode box is never told a core URL and never handed a credential; a callbackUrl in
     // its plan would be the first half of exactly that.
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     const plan = snapshotInstallPlan(db, row, { mode: 'push', publicUrl: 'https://core.example' })
     expect(plan.callbackUrl).toBeUndefined()
     expect(plan.mode).toBe('push')
@@ -204,7 +204,7 @@ describe('alwaysInstall (issue #295)', () => {
 
   it('reaches a plan built from a pack', () => {
     everywhere()
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     snapshotInstallPlan(db, row, { mode: 'push', branding: false })
     expect(stepIds(row)).toContain('tool:house-style')
     expect(stepIds(row)).toContain('tool:claude-code')
@@ -214,7 +214,7 @@ describe('alwaysInstall (issue #295)', () => {
     everywhere()
     // The selection WINS over the pack's list — the pack is a default, not a floor — so this is
     // the branch where a union written beside `pack.tools` would silently do nothing.
-    const row = server({ packId: 'ai-coding-agents', tools: ['claude-code'] })
+    const row = server({ packId: 'claude-code', tools: ['claude-code'] })
     snapshotInstallPlan(db, row, { mode: 'push', branding: false })
     expect(stepIds(row)).toContain('tool:house-style')
   })
@@ -240,7 +240,7 @@ describe('alwaysInstall (issue #295)', () => {
       runAs: 'rocky',
       alwaysInstall: true,
     })
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     snapshotInstallPlan(db, row, { mode: 'push', branding: false })
     expect(stepIds(row).filter((id) => id === 'tool:claude-code')).toHaveLength(1)
   })
@@ -259,7 +259,7 @@ describe('alwaysInstall (issue #295)', () => {
       runAs: 'rocky',
       alwaysInstall: true,
     })
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     snapshotInstallPlan(db, row, { mode: 'push', branding: false })
     expect(stepIds(row)).not.toContain('tool:retired')
   })
@@ -271,7 +271,7 @@ describe('alwaysInstall (issue #295)', () => {
    * reach back and change it.
    */
   it('does not change a plan that was already snapshotted', () => {
-    const row = server({ packId: 'ai-coding-agents' })
+    const row = server({ packId: 'claude-code' })
     snapshotInstallPlan(db, row, { mode: 'push', branding: false })
     const before = getServer(db, row.id)!.installPlan
 

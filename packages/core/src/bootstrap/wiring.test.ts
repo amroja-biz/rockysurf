@@ -41,7 +41,7 @@ const post = (path: string, body?: unknown) =>
   })
 
 async function createServer(): Promise<string> {
-  const res = await post('/api/v1/servers', { size: 'small', packId: 'ai-coding-agents' })
+  const res = await post('/api/v1/servers', { size: 'small', packId: 'claude-code' })
   expect(res.status).toBe(201)
   return ((await res.json()) as { serverId: string }).serverId
 }
@@ -91,7 +91,7 @@ describe('the create path', () => {
     // create path, wired the way `boot()` wires it, can.
     const res = await post('/api/v1/servers', {
       size: 'small',
-      packId: 'ai-coding-agents',
+      packId: 'claude-code',
       sshPublicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX6kWxlSdf7GU3Ve1I2dGGrKqdPBkR60OjKmHb9crV laptop',
     })
     expect(res.status).toBe(201)
@@ -113,7 +113,7 @@ describe('the create path', () => {
     // show that argument is actually threaded through. The value must not be in the plan.
     const res = await post('/api/v1/servers', {
       size: 'small',
-      packId: 'ai-coding-agents',
+      packId: 'claude-code',
       environment: { MY_ENDPOINT: { value: 'https://api.example.com' }, MY_TOKEN: { value: 'tok-secret-value', secret: true } },
     })
     expect(res.status).toBe(201)

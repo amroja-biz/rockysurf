@@ -43,7 +43,7 @@ const config: Config = configSchema.parse({})
  * rather than in someone's browser. The exact-equality version of this list also failed on any
  * SEVENTH pack, which is a different thing entirely and is the bug this shape exists to avoid.
  */
-const SHIPPED_PACK_IDS = ['ai-coding-agents', 'amp-agents', 'codex-cli', 'gas-town', 'open-claw', 'open-code']
+const SHIPPED_PACK_IDS = ['claude-code', 'amp-agents', 'codex-cli', 'gas-town', 'open-claw', 'open-code']
 
 let opened: OpenedDatabase
 let created: CreatedApp
@@ -188,7 +188,7 @@ describe('public shapes match the SPA client', () => {
     expect(openClaw.tools[0]).toHaveProperty('name')
     expect(openClaw.tools.some((t: any) => t.toolId === 'desktop-environment')).toBe(true)
 
-    const claude = packs.find((p: any) => p.packId === 'ai-coding-agents')
+    const claude = packs.find((p: any) => p.packId === 'claude-code')
     expect(claude).toMatchObject({ requiresRepos: true, requiresRdp: false })
     expect(claude.desktop).toBeUndefined()
 
@@ -368,7 +368,7 @@ describe('admin tools CRUD', () => {
   it('refuses to delete a tool a pack still uses', async () => {
     const res = await send('DELETE', '/api/v1/admin/tools/claude-code', undefined, auth())
     expect(res.status).toBe(409)
-    expect((await json(res)).error).toContain('ai-coding-agents')
+    expect((await json(res)).error).toContain('claude-code')
   })
 
   it('shows disabled tools to admins but hides them from the public list', async () => {
@@ -899,17 +899,17 @@ describe('a personal pack that was forked from another (issue #295)', () => {
     tools: ['claude-code'],
     requiresRepos: false,
     requiresRdp: false,
-    derivedFromPackId: 'ai-coding-agents',
+    derivedFromPackId: 'claude-code',
     ...over,
   })
 
   it('records the pack it was forked from, and serves it on both projections', async () => {
     const res = await send('POST', '/api/v1/admin/surge-packs', fork(), auth())
     expect(res.status).toBe(201)
-    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+    expect((await json(res)).derivedFromPackId).toBe('claude-code')
 
     const publicList = await json(await send('GET', '/api/v1/surge-packs', undefined, auth()))
-    expect(publicList.find((p: any) => p.packId === 'my-agents').derivedFromPackId).toBe('ai-coding-agents')
+    expect(publicList.find((p: any) => p.packId === 'my-agents').derivedFromPackId).toBe('claude-code')
   })
 
   it('refuses a parent that does not exist, and refuses itself', async () => {
@@ -932,7 +932,7 @@ describe('a personal pack that was forked from another (issue #295)', () => {
     await send('POST', '/api/v1/admin/surge-packs', fork(), auth())
     const res = await send('PUT', '/api/v1/admin/surge-packs/my-agents', { tools: ['claude-code', 'git'] }, auth())
     expect(res.status).toBe(200)
-    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+    expect((await json(res)).derivedFromPackId).toBe('claude-code')
   })
 
   it('survives its parent being deleted, keeping the id as the record', async () => {
@@ -940,11 +940,11 @@ describe('a personal pack that was forked from another (issue #295)', () => {
     // A release can drop a pack (#290 dropped one). The fork is a database row with a null
     // `sourceFile`, so nothing deletes it, and the dangling id is still the truth about where
     // it began — the UI checks before dereferencing rather than the column being cleared.
-    deletePack(opened.db, 'ai-coding-agents')
+    deletePack(opened.db, 'claude-code')
 
     const res = await send('GET', '/api/v1/admin/surge-packs/my-agents', undefined, auth())
     expect(res.status).toBe(200)
-    expect((await json(res)).derivedFromPackId).toBe('ai-coding-agents')
+    expect((await json(res)).derivedFromPackId).toBe('claude-code')
   })
 
   /**
@@ -1038,7 +1038,7 @@ describe('a personal pack that was forked from another (issue #295)', () => {
       'pack:',
       '  packId: pretender',
       '  name: Pretender',
-      '  derivedFromPackId: ai-coding-agents',
+      '  derivedFromPackId: claude-code',
       '  tools:',
       '    - pretender-tool',
       '  displayOrder: 50',

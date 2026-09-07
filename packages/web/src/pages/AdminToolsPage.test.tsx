@@ -35,9 +35,9 @@ const tool = (over: Partial<AdminTool> & { toolId: string }): AdminTool => ({
 const TRICKY_SCRIPT = 'set -euo pipefail\nif [ -f x ]; then\n\techo "  café ✓ $HOME  "\nfi\n\n'
 
 const TOOLS: AdminTool[] = [
-  tool({ toolId: 'claude-code', installOrder: 40, runAs: 'rocky', sourceFile: 'ai-coding-agents.yaml' }),
-  tool({ toolId: 'curl', installOrder: 10, sourceFile: 'ai-coding-agents.yaml' }),
-  tool({ toolId: 'git', installOrder: 10, sourceFile: 'ai-coding-agents.yaml' }),
+  tool({ toolId: 'claude-code', installOrder: 40, runAs: 'rocky', sourceFile: 'claude-code.yaml' }),
+  tool({ toolId: 'curl', installOrder: 10, sourceFile: 'claude-code.yaml' }),
+  tool({ toolId: 'git', installOrder: 10, sourceFile: 'claude-code.yaml' }),
   tool({ toolId: 'hand-rolled', installOrder: 30, installScript: TRICKY_SCRIPT }),
   tool({ toolId: 'switched-off', installOrder: 20, enabled: false }),
   tool({ toolId: 'always-on', installOrder: 50, alwaysInstall: true }),
@@ -57,7 +57,7 @@ const TOOLS: AdminTool[] = [
 
 const PACKS: AdminSurgePack[] = [
   {
-    packId: 'ai-coding-agents',
+    packId: 'claude-code',
     name: 'Claude Code',
     tools: ['curl', 'git', 'claude-code', 'switched-off', 'ghost'],
     displayOrder: 1,
@@ -65,7 +65,7 @@ const PACKS: AdminSurgePack[] = [
     requiresRepos: true,
     requiresRdp: false,
     // File-backed, so it can only be forked — the boot sync rewrites it from disk (issue #295).
-    sourceFile: 'ai-coding-agents.yaml',
+    sourceFile: 'claude-code.yaml',
     imageUrl: '/images/surge-packs/claude-code.png',
   },
   {
@@ -178,7 +178,7 @@ describe('the tools table', () => {
     // The filename is a <code> inside the cell now (#222), so the cell's own text nodes read
     // "file: " on their own — assert on the cell rather than on a text match.
     const sources = (await screen.findAllByTestId(/^file-backed-/)).map((el) => el.textContent)
-    expect(sources).toEqual(Array(3).fill('file: ai-coding-agents.yaml'))
+    expect(sources).toEqual(Array(3).fill('file: claude-code.yaml'))
     // `hand-rolled`, `switched-off` and `always-on` are plain database rows; `from-url` also
     // has no sourceFile but shows its URL origin instead, so it is not counted here.
     expect(await screen.findAllByText('database')).toHaveLength(3)
@@ -250,9 +250,9 @@ describe('editing a script', () => {
     expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull()
     expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull()
     expect(screen.getByTestId('readonly-hint-claude-code').textContent).toContain(
-      'edit ai-coding-agents.yaml and restart',
+      'edit claude-code.yaml and restart',
     )
-    expect(screen.getByTestId('file-backed-claude-code').textContent).toContain('ai-coding-agents.yaml')
+    expect(screen.getByTestId('file-backed-claude-code').textContent).toContain('claude-code.yaml')
   })
 
   it('still edits a row created in the database', async () => {
@@ -334,18 +334,18 @@ describe('editing a script', () => {
     it('forks an official pack rather than editing it, recording the parent', async () => {
       renderPage()
       fireEvent.click(await screen.findByTestId('add-to-pack-hand-rolled'))
-      fireEvent.click(await screen.findByTestId('fork-ai-coding-agents'))
+      fireEvent.click(await screen.findByTestId('fork-claude-code'))
 
       await waitFor(() => expect(writes.some((w) => w.method === 'POST')).toBe(true))
       const post = writes.find((w) => w.method === 'POST')!
       expect(post.path).toBe('/api/v1/admin/surge-packs')
       const body = JSON.parse(post.body)
-      expect(body.derivedFromPackId).toBe('ai-coding-agents')
+      expect(body.derivedFromPackId).toBe('claude-code')
       expect(body.tools).toContain('hand-rolled')
       // The fork wears its parent's face, which is how it is recognisable on the Personal tab.
       expect(body.imageUrl).toBe('/images/surge-packs/claude-code.png')
       // Nothing was written to the official pack itself.
-      expect(writes.some((w) => w.path === '/api/v1/admin/surge-packs/ai-coding-agents')).toBe(false)
+      expect(writes.some((w) => w.path === '/api/v1/admin/surge-packs/claude-code')).toBe(false)
     })
 
     /**

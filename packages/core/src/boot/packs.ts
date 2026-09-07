@@ -124,7 +124,7 @@ function hasPackFiles(dir: string): boolean {
  * so is the reasoning. One is no pack files: absent directory, empty directory, non-checkout
  * cwd. The other is files that all failed validation, which is not the exotic case it sounds
  * like — the shipped catalog has every pack referencing the base tools that
- * `ai-coding-agents.yaml` owns, so deleting or breaking that ONE file invalidates every other
+ * `claude-code.yaml` owns, so deleting or breaking that ONE file invalidates every other
  * pack by cascade and would otherwise empty the picker. Per-file deletion is untouched by
  * this: as long as one pack still validates, a file that went away still loses its rows,
  * which is the rule rockysurf-a0ss asked for and the case that actually has evidence behind

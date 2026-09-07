@@ -35,7 +35,7 @@ const goodEntries = [
   // without them packs cleanly and ships a control plane with no UI and no official packs.
   'package/public/index.html',
   'package/public/assets/index-abc123.js',
-  'package/packs/ai-coding-agents.yaml',
+  'package/packs/claude-code.yaml',
 ]
 
 const goodManifest = {

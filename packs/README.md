@@ -40,12 +40,12 @@ single run and fails the second one.
 
 ## What is here
 
-`ai-coding-agents` (Claude Code), `amp-agents`, `codex-cli`, `gas-town`, `open-claw`, and
+`claude-code`, `amp-agents`, `codex-cli`, `gas-town`, `open-claw`, and
 `open-code` were ported from the pre-open-source installation scripts and rewritten against
 the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, and `pi` have shipped
 since.
 
-`ai-coding-agents.yaml` also **defines the shared base toolchain** — the compiler, Node, the
+`claude-code.yaml` also **defines the shared base toolchain** — the compiler, Node, the
 Python bits, tmux, git, the GitHub CLI and so on — that the other packs reference by id. If you are adding a
 pack, list those ids in your `pack.tools` rather than redefining them; the loader rejects a
 `toolId` defined in two files.

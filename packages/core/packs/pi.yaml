@@ -5,7 +5,7 @@
 # in to is the provider you get. The guide leads with that rather than letting somebody discover
 # it from a Gemini answer they did not ask for.
 #
-# The base tool ids below are DEFINED in packs/ai-coding-agents.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
 # Only `pi` is defined in this file.
 version: 1
 

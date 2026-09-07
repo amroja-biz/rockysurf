@@ -82,7 +82,7 @@ being built on gets modified:
   after writing it should show exactly one new file.
 - **Amend** — editing the base file itself, right only when it is yours to change and every
   existing user of it should get the new tool too. Re-smoke the amended pack; if the file is
-  `packs/ai-coding-agents.yaml`, that is the shared base toolchain for every pack in the
+  `packs/claude-code.yaml`, that is the shared base toolchain for every pack in the
   repository, so re-smoke everything, not just the one pack touched.
 
 Full workflow, a worked example and the failures that come up: the `create-surge-pack` skill,
@@ -257,7 +257,7 @@ It is displayed on the server's page as soon as the server is running, **as plai
 app does not parse markdown and does not render HTML, so write it the way you would write a
 README in a terminal: short imperative lines, literal commands, and its own line breaks as the
 only structure. Every one of the shipped packs has one; copy the shape from
-`packs/ai-coding-agents.yaml`.
+`packs/claude-code.yaml`.
 
 ```yaml
   guide: |
@@ -755,7 +755,7 @@ boxes until upstream fixes it. Existing boxes are untouched — nothing re-runs 
 script on a server that already booted. This was weighed and accepted: the failure is loud,
 it is upstream's to fix, and it is rarer than the guaranteed staleness a pin produced.
 
-**One exception, recorded in `claude-code` (`packs/ai-coding-agents.yaml`):** the paragraph
+**One exception, recorded in the `claude-code` tool (`packs/claude-code.yaml`):** the paragraph
 above assumes a publisher's `latest` dist-tag IS their stable channel. `@anthropic-ai/claude-code`
 is a case where it is not — its `latest` runs *ahead* of a tag the publisher names `stable`
 (checked with `npm view @anthropic-ai/claude-code dist-tags`), so a bare install would not

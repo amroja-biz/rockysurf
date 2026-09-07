@@ -29,7 +29,7 @@
  *   MOVED     it resolves, but a redirect lands on a different GitHub owner or repository.
  *             This is the interesting one, and it is why the check exists. A GitHub rename
  *             leaves a redirect behind, so the link keeps working and the staleness is
- *             invisible until the day the redirect is switched off. `packs/ai-coding-agents.yaml`
+ *             invisible until the day the redirect is switched off. `packs/claude-code.yaml`
  *             already states the rule for its download URLs — "a redirect is a thing that can be
  *             turned off, so the canonical name is what is written" — and this applies it to the
  *             `url` field too.

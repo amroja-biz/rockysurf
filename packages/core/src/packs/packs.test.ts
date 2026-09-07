@@ -113,8 +113,8 @@ describe('loading a directory', () => {
   it('resolves a tool defined in one file and referenced from another', () => {
     const loaded = loadPacksFromDir(packsDir)
     expect(loaded.issues).toEqual([])
-    // `claude-code` is defined in ai-coding-agents.yaml and referenced by gas-town.yaml.
-    expect(loaded.tools.get('claude-code')?.sourceFile).toBe('ai-coding-agents.yaml')
+    // `claude-code` is defined in claude-code.yaml and referenced by gas-town.yaml.
+    expect(loaded.tools.get('claude-code')?.sourceFile).toBe('claude-code.yaml')
     expect(loaded.packs.find((p) => p.packId === 'gas-town')?.tools).toContain('claude-code')
   })
 
@@ -228,7 +228,7 @@ describe('syncing to the database', () => {
     expect(listTools(db).length).toBe(result.toolsUpserted)
     expect(getPack(db, 'open-claw')).toMatchObject({ requiresRdp: true, desktop: 'xfce' })
     expect(getPack(db, 'deepseek-harness')).toMatchObject({ webPort: 3080 })
-    expect(getTool(db, 'claude-code')?.sourceFile).toBe('ai-coding-agents.yaml')
+    expect(getTool(db, 'claude-code')?.sourceFile).toBe('claude-code.yaml')
   })
 
   it('is idempotent, and a second sync does not duplicate anything', () => {

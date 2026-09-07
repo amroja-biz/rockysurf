@@ -213,7 +213,7 @@ describe('syncing packs at boot', () => {
     expect(listPacks(opened.db)).toHaveLength(shipped.length)
 
     // A leaf pack: it owns one tool and no other pack references it, so removing it is a
-    // one-pack change rather than a cascade. (Removing ai-coding-agents.yaml is not — it owns
+    // one-pack change rather than a cascade. (Removing claude-code.yaml is not — it owns
     // the base tools every other pack lists, which is the case the guard below covers.)
     const gone = 'open-code.yaml'
     expect(shipped).toContain(gone)
@@ -238,7 +238,7 @@ describe('syncing packs at boot', () => {
      * that HAS a pack file and can load nothing from it — the state under test.
      *
      * The shipped set is not a fixture. This test used to build the same state by deleting
-     * `ai-coding-agents.yaml` and relying on every other shipped file referencing the base
+     * `claude-code.yaml` and relying on every other shipped file referencing the base
      * tools it owns — which stops being true the moment anyone adds a self-contained pack, and
      * then this test fails for a reason that has nothing to do with their pack (rockysurf-d5an).
      */
