@@ -139,6 +139,17 @@ it, and it costs nothing to retire the tool once the job it did is finished.
   removal step safe FOR that case (Decision 2's surgical removal) without deciding whether the
   combination should be offered in the UI.
 
+## Amendment — the surgical rule stands on its own merits (2026-09-07, issue #446)
+
+The bring-your-own-server Provider, whose hosts this decision cites as the reason retirement is
+surgical rather than a rewrite of `authorized_keys`, was removed before v0.1.0 (issue #446).
+
+**The rule does not change.** A whole-line match on the exact bytes core minted, guarded by a
+`grep -qxF` on the user's own line before anything is removed, is right on every Provider: a
+machine core did not create from scratch — one adopted, restored, or handed over — can carry
+access nobody here put there, and a step that cannot tell that access apart from noise has no
+business deleting it. The narrower justification is gone; the wider one was always the reason.
+
 ## References
 
 - Issue #92 (this ADR), issue #41 and PR #60 (the visibility fix this ADR builds on), PR #93 (the

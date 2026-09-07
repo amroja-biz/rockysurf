@@ -207,6 +207,36 @@ guard. What the schema knows and what a page needs are different things.
   advisory surface would replace them, and the boundary test that pins the exception makes that a
   deliberate change rather than a side effect.
 
+## Amendment — `lists` stays, with no shipped Provider declaring one (2026-09-07, issue #446)
+
+The bring-your-own-server Provider was removed before v0.1.0 (issue #446). It was the only shipped
+Provider that declared a `lists` entry — `providers.byo.hosts`, cited in decision 1 above as the
+shape `ProviderSettingList` was written for — and it is named in decisions 6 and 9 and in several
+consequences. `PROVIDER_ORDER` is now hetzner, aws, azure, gcp; everything else in this ADR reads
+as written.
+
+**The decision made here: `lists` and `ProviderSettingList` stay in the SDK.** Three reasons, in
+order of weight.
+
+1. **Removing a frozen shape is a bigger ruling than this issue.** ADR-0003 froze the v0 contract
+   and every change since has been additive; a Provider compiled outside this repository against
+   `@rockysurf/provider-sdk` may already declare a list. Deleting a type because the only in-tree
+   user went away would be this issue quietly making a contract decision that belongs to its own.
+2. **A repeated sub-object is an ordinary shape for a Provider's configuration**, and a personal
+   Provider (ADR-0026) is exactly where the next one will appear. The alternative — "edit it in the
+   file" — is the D4 gap this ADR was written to close.
+3. **The renderer is not dead code.** `settings/inventory.ts` still builds a `ListSpec` from a
+   declaration and `SettingsPage.tsx`'s `genericList` still draws it, because `ssh.keys` and
+   `registry.sources` are lists too. What the removal took away is Provider-declared coverage, so
+   that coverage is now carried by fixtures on purpose: `inventory.test.ts` and `fields.test.ts`
+   declare a personal Provider with a list, and the browser suite boots one
+   (`packages/web/e2e/fixtures/list-provider`) so a declared list is still drawn, added to and
+   saved in a real browser.
+
+**Where an author is told about it:** `docs/writing-a-provider.md` says no shipped Provider
+declares a list and the shape is there for one whose configuration is genuinely a repeated
+sub-object. If that stays true for long enough to look permanent, removing it is its own ADR.
+
 ## References
 
 - Issue #294; the plan and its review, recorded as a comment there.

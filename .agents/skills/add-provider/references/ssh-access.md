@@ -23,8 +23,8 @@ Three pieces, and they are one claim checked in both directions by conformance:
 
 1. **`capabilities.managesSshAccess: true`** — the provider maintains a shared cloud object that
    decides which networks may reach SSH, and can bring it in line with its own `sshAllowedCidr`
-   without provisioning. Absent means false (Hetzner has no whitelist object; BYO does not own the
-   network).
+   without provisioning. Absent means false — Hetzner has no whitelist object, and neither does a
+   provider that did not create the network its machines sit on.
 2. **`syncSshAccess(options?): Promise<SshAccessSyncResult>`** — the one OPTIONAL method on the
    interface. REQUIRED when the flag is true, absent otherwise; `assertProviderShape` fails on
    either mismatch. It takes **no CIDR list**: the provider reads its own config, which after a

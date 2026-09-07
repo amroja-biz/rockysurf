@@ -80,7 +80,7 @@ locally when you have those.
 |---|---|---|
 | pack smoke | `node scripts/pack-smoke.mjs --pack <id> --arch arm64` | Docker |
 | pack lint | `rockysurf pack lint packs/` | a built workspace — and `pnpm run check` runs it anyway |
-| BYO lifecycle | `node scripts/e2e/byo-host.mjs` | Docker, and `127.0.0.1:22` free |
+| push bootstrap | `node scripts/e2e/bootstrap-host.mjs` | Docker |
 | release tarballs | `node scripts/verify-tarballs.mjs` | ~30s, packs and npm-installs |
 | secret scan | `gitleaks git . --config .gitleaks.toml` | the `gitleaks` binary |
 | browser UI | `pnpm run test:ui` | a built workspace and Chromium — see below |
@@ -161,7 +161,6 @@ packages/
 ├── core/                  # the control plane: Hono + Drizzle/SQLite + SSE + in-process jobs
 ├── provider-aws/          # AWS EC2 — plain RunInstances, no CloudFormation
 ├── provider-hetzner/      # Hetzner Cloud — plain fetch, no vendor SDK
-├── provider-byo/          # bring-your-own hosts over SSH
 ├── provider-conformance/  # the shared provider test suite; resolved from source in-workspace
 ├── rockysurf/             # the composition root: the CLI, the MCP server, the npm name
 └── web/                   # React SPA; its build output is bundled into core
@@ -341,7 +340,7 @@ put a secret, credential, IP address, or account ID in either one.
   or `.pass-along/` runs typecheck, the unit tests, the secret scan and the browser suite, and
   nothing else. `UI (browser)` runs on **every** pull request regardless of paths — it is the
   layer a UI-only change most needs, and a job that will become a required check must never be
-  path-filtered. Release tarballs, the BYO lifecycle, the structural lint and Pack smoke wait
+  path-filtered. Release tarballs, the push-bootstrap gate, the structural lint and Pack smoke wait
   for the push to `main`,
   which always runs everything. Pack smoke runs on a pull request only when it touches what runs
   on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile

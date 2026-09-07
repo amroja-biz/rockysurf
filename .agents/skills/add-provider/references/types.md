@@ -127,7 +127,7 @@ interface ProviderSettings {
   title: string                      // the panel's title
   help: string                       // one or two sentences under it — a SENTENCE, conformance checks
   fields: readonly ProviderSettingField[]   // in the order the panel draws them
-  lists?: readonly ProviderSettingList[]    // the providers.byo.hosts shape
+  lists?: readonly ProviderSettingList[]    // a repeated sub-object; no shipped provider has one
   offering: { noun: string; example: string }   // 'server type' / 'cpx21' — for the saved-type fields
   advisories?: readonly { surface: 'settings' | 'create'; text: string }[]
 }

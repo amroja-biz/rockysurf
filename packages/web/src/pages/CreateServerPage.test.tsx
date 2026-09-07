@@ -1091,7 +1091,7 @@ describe('acceptance criteria a reviewer can grep for', () => {
   const code = sources.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   it('contains no provider-id conditionals', () => {
-    for (const literal of ['aws', 'hetzner', 'byo']) {
+    for (const literal of ['aws', 'hetzner', 'gcp']) {
       expect(code).not.toMatch(new RegExp(`['"\`]${literal}['"\`]`))
     }
     expect(code).not.toMatch(/provider\.id\s*===/)

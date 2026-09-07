@@ -81,22 +81,28 @@ async function freePort(): Promise<number> {
 /**
  * The installation these tests drive.
  *
- * BYO IS THE ONLY PROVIDER ON, and that is a deliberate choice rather than a convenience. The
+ * ONE TEST-ONLY PROVIDER IS ON, and that is a deliberate choice rather than a convenience. The
  * New Server page needs a provider that offers machines or it has nothing to draw, and every
- * cloud provider would reach a real API for its offerings — a credential this suite must not
- * have, a network call CI must not depend on, and a bill. BYO's "machine types" are the hosts
- * named right here in this file, so the page renders a complete, honest picker and no packet
- * leaves the machine. The host itself is a documentation-range address that is never dialled:
- * nothing in these flows creates a server.
+ * cloud Rocky Surf ships would reach a real API for its offerings — a credential this suite must
+ * not have, a network call CI must not depend on, and a bill. `fixtures/list-provider`'s machine
+ * types are the entries named right here in this file, so the page renders a complete, honest
+ * picker and no packet leaves the machine. Nothing in these flows creates a server.
  *
  * `registry.enabled: false` and `pricing.enabled: false` for the same reason — both are
  * outbound fetches on page load, and a suite whose result depends on GitHub being up is a
  * suite that will be muted within a month.
  */
 /**
+ * The enabled fixture provider (ADR-0026), named by PATH in the config below. It is also the one
+ * provider anywhere in this repository that declares a settings LIST, which is what keeps the
+ * list renderer covered in a browser now that no shipped provider declares one (issue #446).
+ */
+const listProviderDir = fileURLToPath(new URL('./fixtures/list-provider', import.meta.url))
+
+/**
  * The personal provider fixture (ADR-0026): a plain-JS package beside these tests, named by PATH
- * in the config below. DISABLED, so every test that was written against a BYO-only installation
- * still sees exactly one loaded provider; what it adds is a personal section for the Settings
+ * in the config below. DISABLED, so every test that was written against a one-provider
+ * installation still sees exactly one loaded provider; what it adds is a personal section for the Settings
  * page to draw, and a factory the binary has loaded so a test can switch it on from that page.
  */
 const personalProviderDir = fileURLToPath(new URL('./fixtures/personal-provider', import.meta.url))
@@ -284,9 +290,10 @@ function configYaml(port: number, dataDir: string, sshPort: number, registry: Re
     `  port: ${port}`,
     `  dataDir: ${dataDir}`,
     'providers:',
-    '  byo:',
+    '  metalcloud:',
+    `    package: ${listProviderDir}`,
     '    enabled: true',
-    '    hosts:',
+    '    machines:',
     '      - name: workshop',
     '        host: 127.0.0.1',
     `        port: ${sshPort}`,
@@ -434,8 +441,8 @@ async function boot(options: BootOptions): Promise<ControlPlane> {
   mkdirSync(home, { recursive: true })
   const configPath = join(dir, 'config.yaml')
   const port = await freePort()
-  /* The BYO host's SSH port — see `configYaml`. Also from the OS, and deliberately NOT bound:
-     a loopback port with no listener refuses instantly, which is the behaviour wanted here. */
+  /* The fixture machine's SSH port — see `configYaml`. Also from the OS, and deliberately NOT
+     bound: a loopback port with no listener refuses instantly, which is what is wanted here. */
   const sshPort = await freePort()
   const password = adminPassword()
   const registry = options.registry ?? 'off'

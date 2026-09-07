@@ -99,7 +99,7 @@ export function createSshKeyRoutes(deps: SshRoutesDeps): Hono<AppEnv> {
    * has no pre-boot hook to install it with, so that box presents its OWN key forever. Core
    * knows this and already acts on it — `lifecycle` withholds the minted fingerprint from the
    * row and adopts the one the provider observed instead — but this route read the secrets
-   * material regardless, so on a BYO server it answered with a key the machine will never
+   * material regardless, so on such a server it answered with a key the machine will never
    * present. That is not a degraded answer, it is the worst possible one: a `known_hosts` entry
    * GUARANTEED to fail verification, and host-key failure is the alarm that means "someone is
    * intercepting this connection". A client that cried wolf on every ordinary connection would

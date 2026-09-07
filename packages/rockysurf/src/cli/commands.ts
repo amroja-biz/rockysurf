@@ -767,7 +767,7 @@ function toConfigServer(server: ServerSummary): SshConfigServer {
  * minted public key, which can be pinned; a 409 carrying the fingerprint a provider observed on
  * a box core did not key, which a human can compare but ssh cannot check; or nothing at all.
  * Collapsing the middle case into "no key" would throw away the only verification available on
- * a BYO fleet, so it is carried through and shown.
+ * a box core did not key, so it is carried through and shown.
  */
 async function fetchHostKey(
   deps: CliDeps,

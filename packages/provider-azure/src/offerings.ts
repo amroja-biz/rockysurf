@@ -20,7 +20,7 @@ import type { ArmResourceSku, ArmUsage } from './types.js'
  *    drift from what Azure will actually sell.
  *
  * A SIZE WHOSE SHAPE CANNOT BE READ IS OMITTED, never given a fabricated one. That is the same
- * rule `@rockysurf/provider-byo` follows for a host it cannot measure, and for the same reason: a
+ * rule any provider follows for a machine type it cannot measure, and for the same reason: a
  * catalogue entry claiming 8 GB on a machine that has 4 is worse than a catalogue entry that is
  * not there.
  *

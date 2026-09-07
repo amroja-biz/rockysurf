@@ -33,14 +33,14 @@ import {
  *    the page and the provider can be switched on; its own fields are edited in the file.
  *
  * WHAT STAYS HAND-WRITTEN. Core's own sections (`server`, `github`, `ssh`, `limits`, `registry`,
- * `mcp`, `backup`) — not provider variability. Since issue #370 that is the whole of it: all five
+ * `mcp`, `backup`) — not provider variability. Since issue #370 that is the whole of it: all four
  * shipped providers declare, so every `providers.*` row and every `preferences.tiers.*` row on the
  * page is built here from a declaration. The merge is kept all the same, because a factory with no
  * `settings` is still legal (an SDK-only provider from before ADR-0027) and still has to be
  * switchable on.
  *
  * ORDER IS PRESERVED, NOT DERIVED. The provider tabs have always run hetzner, aws, azure, gcp,
- * byo, and the saved-type cards under Preferences the same way; ordering them by the schema's key
+ * and the saved-type cards under Preferences the same way; ordering them by the schema's key
  * order (aws first) would move Hetzner from the first tab to the fourth. `PROVIDER_ORDER` says the
  * order; personal providers follow in the order the file lists them.
  *
@@ -80,7 +80,7 @@ export interface SettingsInventoryDeps {
 }
 
 /** The order the provider tabs and the saved-type cards have always had. */
-export const PROVIDER_ORDER: readonly string[] = ['hetzner', 'aws', 'azure', 'gcp', 'byo']
+export const PROVIDER_ORDER: readonly string[] = ['hetzner', 'aws', 'azure', 'gcp']
 
 /** Core's three fields of a provider section, the only ones it can vouch are not credentials. */
 const CORE_PROVIDER_FIELDS = new Set(['enabled', 'package', 'sizes'])
@@ -175,8 +175,8 @@ function declaredList(id: string, list: ProviderSettingList): { list: ListSpec; 
       empty: list.empty,
     },
     // An item's own sentence when it wrote one, and the list's otherwise: six boxes that each
-    // need a different explanation (`providers.byo.hosts`) and two that share one (`mirrors`)
-    // are both ordinary, and neither should have to repeat the other's shape.
+    // need a different explanation and two that share one (`mirrors`) are both ordinary, and
+    // neither should have to repeat the other's shape.
     fields: list.itemFields.map((item) => ({
       path: `${path}.*.${item.name}`,
       kind: item.kind,
@@ -283,7 +283,7 @@ function undeclaredPersonalRows(id: string, displayName: string | undefined): Pr
  * Until every provider declared, the splice point was found by looking for the first `providers.*`
  * section in `SETTINGS_SECTIONS` — there was always at least AWS's to anchor on. There is not any
  * more, so the two anchors are named: the provider tabs come immediately before `limits` (which is
- * exactly where AWS through BYO have always sat, after the SSH keys), and the saved-type cards
+ * exactly where the cloud tabs have always sat, after the SSH keys), and the saved-type cards
  * immediately after `preferences`, which is the tab they are cards on. `fields.test.ts` pins the
  * static list and `inventory.test.ts` pins the merged result, so a rename of either anchor that
  * silently sent a run to the bottom of the page fails in both.

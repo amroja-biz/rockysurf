@@ -10,7 +10,8 @@ import { test, expect } from './fixtures'
  * on from that panel puts it in the registry without a restart, because the package was loaded at
  * boot whether or not it was enabled.
  *
- * Serial, and LAST to enable: once Nimbus is on, this worker's installation has two providers.
+ * Serial, and LAST to enable: once Nimbus is on, this worker's installation has two providers —
+ * the fixture the control plane boots enabled, and this one.
  */
 test.describe.configure({ mode: 'serial' })
 
@@ -18,9 +19,13 @@ test('a personal provider has a panel with controls, titled by the name its pack
   await page.goto('/settings?section=providers.nimbus')
 
   await expect(page.getByRole('heading', { name: 'Nimbus Cloud' })).toBeVisible()
-  /* The sentence is said twice on purpose — at the section's head and under the package box —
-     so this asserts it is on the page, not that it appears exactly once. */
-  await expect(page.getByText("runs with Rocky Surf's full access — install ones you trust").first()).toBeVisible()
+  /* Scoped to THIS provider's panel: the installation boots a second package-named provider (the
+     fixture the New Server page draws machines from), so an unscoped match would land on that
+     one's hidden tab. Inside the panel the sentence is said twice on purpose — at the section's
+     head and under the package box — so this asserts it is on the page, not that it appears
+     exactly once. */
+  const panel = page.locator('#settings-panel-providers\\.nimbus')
+  await expect(panel.getByText("runs with Rocky Surf's full access — install ones you trust").first()).toBeVisible()
 
   const enabled = page.locator('#providers\\.nimbus\\.enabled')
   await expect(enabled).toBeVisible()
@@ -72,7 +77,7 @@ test('every provider tab points at the Shop tab and the command-line steps for a
   )
 
   /* And on a provider that DID ship, because the instruction is the same wherever it is read. */
-  await page.goto('/settings?section=providers.byo')
+  await page.goto('/settings?section=providers.hetzner')
   await expect(page.locator('[data-provider-shop-pointer]:visible')).toHaveCount(1)
 
   /* Never on one of core's own sections: they have nothing to do with providers. */

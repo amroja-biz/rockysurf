@@ -24,7 +24,6 @@ authenticates through your own auth path, described in its row below.
 | **AWS** | Uses the standard credential chain, never a key in the config file. Needs an IAM policy and an explicit `sshAllowedCidr` — [`providers/aws.md`](providers/aws.md). |
 | **Azure** | Credentials from your environment, a managed identity, or `az login` — never from the config file. Needs a resource group you create, a least-privilege role and an explicit `sshAllowedCidr` — [`providers/azure.md`](providers/azure.md). |
 | **GCP** | Uses Application Default Credentials — `gcloud auth application-default login`, a key file, or the metadata server — never a key in the config file. Needs a project and an explicit `sshAllowedCidr` — [`providers/gcp.md`](providers/gcp.md). |
-| **BYO** | Machines you already have, over SSH. No cloud API — [see below](#bring-your-own-hosts). |
 | **A cloud not listed here** | A provider you install yourself, written against the provider SDK — [Personal providers](#personal-providers). |
 
 There are two ways to run it. Both give you the same thing: one process, one port, one data
@@ -127,7 +126,7 @@ every exit path and never touches a volume you are using.
 npx rockysurf
 ```
 
-> **Not published yet.** This path needs the ten packages on the public npm registry, which
+> **Not published yet.** This path needs the nine packages on the public npm registry, which
 > happens at the v0.1.0 launch ([`RELEASING.md`](contributing/RELEASING.md)). Until then, use Compose, or run
 > `pnpm -r build` in a checkout and start `node packages/rockysurf/dist/bin.js` — the same binary
 > `npx` will fetch.
@@ -458,7 +457,7 @@ Six things worth knowing:
   declares that a stopped machine still bills at the running rate
   ([ADR-0025](adr/0025-billing-while-stopped-is-a-capability.md)), the meter keeps running through
   `stopped`, the server page says "Stopped, and still billing", and only terminating ends the
-  charge. None of the five shipped providers is such a cloud; DigitalOcean is.
+  charge. None of the four shipped providers is such a cloud; DigitalOcean is.
 - **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
   is deliberately no stale bundled fallback: creating, stopping and terminating servers all
   work, the create form says prices are unavailable, and the spend cap reports the affected
@@ -483,38 +482,9 @@ Six things worth knowing:
   the feed buys is the fix path: correcting a transcribed number reaches you on the next publish
   instead of the next release.
 
-## Bring-your-own hosts
-
-You do not need a cloud account at all. `@rockysurf/provider-byo` manages machines that already
-exist — a workstation under a desk, a rack in a colo, a VM someone else provisioned. There is no
-cloud API behind it; the API is `sshd`. Configuration, host-key trust and the full contract are
-in [`providers/byo.md`](providers/byo.md).
-
-Two consequences are worth knowing before you enable it, because they are properties of the box
-rather than of Rocky Surf:
-
-- **Claiming a host changes it.** The provider creates a `rocky` account, appends Rocky Surf's
-  public key to that account's `authorized_keys` (appended, never truncated — your own access is
-  in that file), and writes `/etc/sudoers.d/90-rockysurf-rocky` granting it passwordless sudo.
-  The bootstrap agent installs software as root, so that sudo grant is load-bearing, not a
-  convenience.
-- **Releasing a host leaves that behind.** `terminate` on a BYO host **runs nothing on your
-  machine — not one command, not one connection.** It releases the claim and returns the host to
-  the pool. That is a rule, not an omission: the machine is yours, it was running before Rocky
-  Surf existed, and a background reconciler sweep is the last thing that should be deleting
-  accounts on it. So the `rocky` account, its authorized key and its sudoers file stay. Remove
-  them yourself if you want them gone:
-
-  ```bash
-  sudo userdel -r rocky && sudo rm -f /etc/sudoers.d/90-rockysurf-rocky
-  ```
-
-`stop` and `start` are unsupported on BYO — core does not own the power state of a machine it did
-not create — and the UI hides those buttons rather than offering them and failing.
-
 ## Personal providers
 
-The five providers above ship with Rocky Surf. A cloud that is not among them can still be driven
+The four providers above ship with Rocky Surf. A cloud that is not among them can still be driven
 by an installation you run, without a change to this repository: a **personal provider** is an
 npm package written against
 [`@rockysurf/provider-sdk`](../packages/provider-sdk/README.md) — yours, or somebody else's — that

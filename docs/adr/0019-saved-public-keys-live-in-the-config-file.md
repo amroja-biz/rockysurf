@@ -182,6 +182,16 @@ Whether `rockysurf create` should learn `--ssh-key <name>`. It has no SSH-key fl
 so this ADR leaves the CLI exactly as it found it; the question reopens the first time somebody
 wants a saved key on a non-browser create.
 
+## Amendment — one of the two example lists is gone (2026-09-07, issue #446)
+
+The bring-your-own-server Provider was removed before v0.1.0 (issue #446), and with it
+`providers.byo.hosts` — cited above as one of the two generic lists this decision's editor had to
+serve, and the reason the trap it describes was latent in more than one place.
+
+**Nothing here changes.** `ssh.keys` and `registry.sources` are still lists in the config file, a
+Provider may still declare one of its own (`ProviderSettingList`, ADR-0027), and the editor still
+draws every list the same way. The example moved; the shape did not.
+
 ## References
 
 - Issue #302.

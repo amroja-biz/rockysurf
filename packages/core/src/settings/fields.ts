@@ -16,7 +16,7 @@
  * EITHER (ADR-0027, completed by issue #370). A provider DECLARES its panel on its factory —
  * `ProviderFactory.settings`: fields with a closed set of kinds, hand-written labels and
  * sentences, a vocabulary, advisories — and `settings/inventory.ts` turns that declaration into
- * the same `FieldSpec`s this file writes by hand, merged with what is here. All five shipped
+ * the same `FieldSpec`s this file writes by hand, merged with what is here. All four shipped
  * providers declare; a personal provider (ADR-0026) was never here at all. So this file is
  * core's own sections and nothing else, which is what the rule above always meant.
  *
@@ -143,7 +143,7 @@ export interface FieldSpec {
    *
    * `'envVarName'` is the default and is rockysurf-4o3o's standing rule: the box takes the NAME
    * of an environment variable, the file gets `${VAR}`, and a copy of the file carries nothing.
-   * That reasoning is unchanged and still governs `providers.hetzner.token` and the BYO fields.
+   * That reasoning is unchanged and still governs `providers.hetzner.token`.
    *
    * `'literal'` is set on the two GitHub PAT paths ONLY, on the owner's ruling that for those
    * two the indirection costs more than it buys: three steps, two of them off-screen, and the
@@ -203,9 +203,10 @@ const TIER_PREFERENCE_SIZES = ['small', 'medium', 'large'] as const
 export interface TierPreferenceCloud {
   id: string
   /**
-   * How the cloud is named INSIDE the sentences below — "AWS", "your own machines". Distinct
-   * from `title` for exactly one reason: a capitalised panel title read mid-sentence ("whenever
-   * you ask Your own machines for a small box") is wrong, and BYO is the provider that has both.
+   * How the cloud is named INSIDE the sentences below — "AWS", "a Hetzner project". Distinct
+   * from `title` for one reason: a capitalised panel title read mid-sentence ("whenever you ask
+   * Your Own Cloud for a small box") is wrong, so a Provider whose title is a phrase rather than
+   * a proper noun declares both.
    */
   label: string
   noun: string
@@ -438,7 +439,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
    * YOUR OWN SSH PUBLIC KEYS, SAVED BY NAME (issue #302).
    *
    * A list, so the page draws it as a card with Add and Remove — the same machinery
-   * `registry.sources` and `providers.byo.hosts` use, and the reason no line of
+   * `registry.sources` uses, and the reason no line of
    * `SettingsPage.tsx` changed to add this. Both fields are plain strings: a public key is
    * published material, `kind: 'secret'` would be a lie about what it is, and the redaction
    * that classification triggers would hide from an operator the one value they need to be
@@ -474,7 +475,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
   /* ----------------------------------------------------------------------- providers */
   /*
    * NO PROVIDER ROWS HERE AT ALL (issue #370, ADR-0027). Every provider's panel — Hetzner, AWS,
-   * Azure, GCP, BYO and any provider installed from npm — is DECLARED on its factory
+   * Azure, GCP and any provider installed from npm — is DECLARED on its factory
    * (`ProviderFactory.settings`) and turned into rows by `settings/inventory.ts` from the
    * descriptors the composition root records. The prose moved there verbatim.
    *
@@ -665,8 +666,8 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
   /*
    * NO `providers.*` SECTIONS EITHER (issue #370). A provider's panel heading and its sentence
    * are `ProviderSettings.title`/`help`, spliced in here — between the SSH keys and Limits — by
-   * `settings/inventory.ts` in `PROVIDER_ORDER`. A card nested under a provider's tab
-   * (`providers.byo.hosts`) is its declared list's label and help, through the same path.
+   * `settings/inventory.ts` in `PROVIDER_ORDER`. A card nested under a provider's tab is its
+   * declared list's label and help, through the same path.
    */
   {
     id: 'limits',
@@ -677,8 +678,8 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
   },
   /**
    * A TAB PER SUBJECT, and this one nests (issue #124): `preferences` is the tab, and each
-   * cloud below it is a card on that tab, the same way `providers.byo.hosts` is a card on Your
-   * own machines. The page derives all of that from these ids alone — the longest id prefixing
+   * cloud below it is a card on that tab, the same way a Provider's declared list is a card on
+   * that Provider's tab. The page derives all of that from these ids alone — the longest id prefixing
    * a field's path owns the field — so no edit to `SettingsPage.tsx` was needed to add any of
    * it, which is the property issue #122 built and this section is the first user of.
    */
@@ -695,8 +696,8 @@ export const SETTINGS_SECTIONS: readonly SectionSpec[] = [
    * the note on the fields above. They slot in here, between Preferences and Pack sources.
    */
   /**
-   * A TAB, and its sources are a card on it — the same nesting `providers.byo.hosts` uses, for
-   * the same reason: switching the shop on and saying what it points at are one errand.
+   * A TAB, and its sources are a card on it — the same nesting a Provider's declared list uses,
+   * for the same reason: switching the shop on and saying what it points at are one errand.
    */
   {
     id: 'registry',
@@ -809,9 +810,9 @@ export const SETTINGS_LISTS: readonly ListSpec[] = [
       'without saving it here.',
   },
   /*
-   * `providers.byo.hosts` IS NOT HERE (issue #370). It is BYO's declared `lists` entry — the
-   * first one a shipped provider has — and `settings/inventory.ts` builds this exact spec from
-   * it, `add` placeholders and all.
+   * A PROVIDER'S OWN LIST IS NOT HERE (issue #370). It is that provider's declared `lists` entry,
+   * and `settings/inventory.ts` builds a spec of exactly this shape from it, `add` placeholders
+   * and all. No shipped Provider declares one today.
    */
   {
     path: 'registry.sources',

@@ -190,7 +190,7 @@ describe('every create path prices the row it writes', () => {
 /* ------------------------------------------------------------- honestly unpriced */
 
 describe('a provider that quotes no price', () => {
-  /** BYO's shape: one offering per registered host, `hourly: null` — unknown, never free. */
+  /** The unpriced shape: an offering with `hourly: null` — unknown, never free. */
   const unpricedHost: Offering[] = [
     { id: 'fake-small', cpu: 2, memoryGb: 4, arch: 'arm64', hourly: null, available: true, region: 'fake-1' },
   ]

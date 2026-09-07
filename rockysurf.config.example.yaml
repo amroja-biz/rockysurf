@@ -320,35 +320,8 @@ providers:
     # t2a-* are ARM and are the cheap, fast default where they are available.
     # sizes: [t2a-standard-2, t2a-standard-4, e2-standard-2]
 
-  byo:
-    # Machines you already have, managed over SSH. No cloud API, no provisioning — Rocky Surf
-    # installs onto them and manages them from there.
-    #
-    # Claiming a host creates a `rocky` account on it with passwordless sudo, and appends Rocky
-    # Surf's key to that account's authorized_keys. Releasing a host does NOT undo any of that:
-    # terminate gives the host back to the pool and never runs anything on your machine.
-    enabled: false
-    hosts: []
-
-    # Default private key used to log in to every host below. Omit it to use your SSH agent
-    # (SSH_AUTH_SOCK) — if you can already `ssh` to these boxes, that is usually enough.
-    # identityFile: ~/.ssh/id_ed25519
-
-    # hosts:
-    #   - name: workshop          # what you will call it in the UI; also picks the host
-    #     host: 10.0.0.9          # hostname or IP
-    #     user: root              # the ADMIN login Rocky Surf claims with (default: root).
-    #                             # Needs root or passwordless sudo. This is NOT the account
-    #                             # Rocky Surf later connects as — that one is `rocky`, and it
-    #                             # is created for you.
-    #     port: 22                # SSH port (default: 22)
-    #     fingerprint: "SHA256:…" # optional; omit to trust the key on first connect. Supplying
-    #                             # it (`ssh-keyscan` + `ssh-keygen -lf`) means even the first
-    #                             # connection is verified.
-    #     identityFile: ~/.ssh/workshop_ed25519   # optional; overrides the default above
-
   # A PERSONAL PROVIDER — a cloud Rocky Surf does not ship, written against @rockysurf/provider-sdk
-  # and installed by you. Any key here that is not one of the five above is one, and it must name
+  # and installed by you. Any key here that is not one of the four above is one, and it must name
   # the package that implements it. Install the package under the data directory, where an upgrade
   # cannot remove it:
   #
@@ -404,9 +377,6 @@ limits:
 #       medium: Standard_B2ps_v2
 #     gcp:
 #       small: t2a-standard-2
-#     byo:
-#       # BYO "machine types" are host names, so a preference here is "always claim this one".
-#       large: the-nuc-under-the-desk
 
 registry:
   # The Surge Pack shops — where the admin UI browses community packs and installs them without a

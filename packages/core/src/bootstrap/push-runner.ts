@@ -168,9 +168,9 @@ export async function runPushBootstrap(
   const port = options.sshPort ?? row.sshPort ?? undefined
   const target: PushTarget = {
     host: row.publicIp,
-    // From the ROW, which is where the provider's answer landed. Before this, the port a BYO
-    // host was registered on died at the provider boundary and core dialled 22 unconditionally
-    // — so a host on 2222 was claimed, prepared, and then never bootstrapped (ftl9.12).
+    // From the ROW, which is where the provider's answer landed. Before this, a port a provider
+    // reported died at the provider boundary and core dialled 22 unconditionally — so a host on
+    // 2222 was claimed, prepared, and then never bootstrapped (ftl9.12).
     ...(port ? { port } : {}),
     user: row.sshUser ?? 'rocky',
     privateKey: material.userPrivateKey,

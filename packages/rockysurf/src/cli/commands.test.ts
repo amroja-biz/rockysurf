@@ -72,9 +72,9 @@ function deps(overrides: Partial<CliDeps> = {}): CliDeps & { stdout: string[]; s
  * key core never minted, so `/ssh-host-key` refuses with the fingerprint its provider observed
  * (rockysurf-ftl9.12 and ftl9.13, both found by the real-sshd run).
  */
-const BYO_FINGERPRINT = 'SHA256:therealoneontheboxtherealoneontheboxthereal'
+const OBSERVED_FINGERPRINT = 'SHA256:therealoneontheboxtherealoneontheboxthereal'
 
-function byoDeps(overrides: Partial<CliDeps> = {}): CliDeps & { stdout: string[]; stderr: string[] } {
+function observedKeyDeps(overrides: Partial<CliDeps> = {}): CliDeps & { stdout: string[]; stderr: string[] } {
   const client = {
     get: (async (path: string) => {
       if (path === '/api/v1/servers') {
@@ -85,7 +85,7 @@ function byoDeps(overrides: Partial<CliDeps> = {}): CliDeps & { stdout: string[]
         // the pin it does hold — never the minted key, which the box will never present.
         throw Object.assign(new Error('conflict'), {
           status: 409,
-          body: { error: 'presents its own host key', code: 'conflict', fingerprint: BYO_FINGERPRINT },
+          body: { error: 'presents its own host key', code: 'conflict', fingerprint: OBSERVED_FINGERPRINT },
         })
       }
       return {}
@@ -529,7 +529,7 @@ describe('ssh verifies the host', () => {
       return { status: 0 }
     })
 
-    const d = byoDeps({ spawn: spawn as unknown as CliDeps['spawn'] })
+    const d = observedKeyDeps({ spawn: spawn as unknown as CliDeps['spawn'] })
     await sshCommand(d, 'workshop')
 
     expect(args[args.indexOf('-p') + 1]).toBe('2222')
@@ -542,7 +542,7 @@ describe('ssh verifies the host', () => {
       return { status: 0 }
     })
 
-    const d = byoDeps({ spawn: spawn as unknown as CliDeps['spawn'] })
+    const d = observedKeyDeps({ spawn: spawn as unknown as CliDeps['spawn'] })
     await sshCommand(d, 'workshop')
 
     // NO known_hosts file: an entry written from core's minted key would fail verification on
@@ -551,7 +551,7 @@ describe('ssh verifies the host', () => {
     expect(args).not.toContain('StrictHostKeyChecking=yes')
     expect(args).not.toContain(DISABLED)
     // What a human can actually check, on the screen where they will be asked to check it.
-    expect(d.stderr.join('\n')).toContain(BYO_FINGERPRINT)
+    expect(d.stderr.join('\n')).toContain(OBSERVED_FINGERPRINT)
   })
 
   it('refuses a server with no address, with the status as the reason', async () => {
@@ -612,7 +612,7 @@ describe('ssh-config', () => {
   it('writes no known_hosts entry for an adopted host, and says which hosts are unpinned', async () => {
     const home = mkdtempSync(join(tmpdir(), 'rockysurf-home-'))
     const paths = defaultPaths(home)
-    const d = byoDeps({ paths })
+    const d = observedKeyDeps({ paths })
 
     expect(await sshConfigCommand(d, { write: true })).toBe(0)
 
@@ -625,7 +625,7 @@ describe('ssh-config', () => {
     expect(include).toContain('StrictHostKeyChecking yes')
     expect(include).not.toContain('StrictHostKeyChecking ask')
     expect(include).toContain('No pinned host key is available')
-    expect(include).toContain(BYO_FINGERPRINT)
+    expect(include).toContain(OBSERVED_FINGERPRINT)
     expect(d.stderr.join('\n')).toContain('workshop')
   })
 

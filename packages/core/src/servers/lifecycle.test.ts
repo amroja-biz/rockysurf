@@ -805,7 +805,7 @@ describe('ssh identity is provisioned before the provider is called', () => {
 
     await service.create({
       userId,
-      name: 'byo-box',
+      name: 'no-userdata-box',
       provider: 'fake',
       size: 'small',
       offeringId: 'fake-small',
@@ -847,7 +847,7 @@ describe('ssh identity is provisioned before the provider is called', () => {
     const OBSERVED = `SHA256:${'o'.repeat(43)}`
     const { service } = withSecrets(makeFakeProvider({ capabilities: { canInjectHostKeys: false } }))
     const original = fake.provision.bind(fake)
-    // What a BYO-shaped provider does: it connected first, learned the box's own host key, and
+    // What a provider with no pre-boot hook does: it connected first, learned the box's own key, and
     // hands core a fingerprint to pin. Core does the trusting nowhere — it is told.
     vi.spyOn(fake, 'provision').mockImplementation(async (spec) => {
       const result = await original(spec)
@@ -856,7 +856,7 @@ describe('ssh identity is provisioned before the provider is called', () => {
 
     const row = await service.create({
       userId,
-      name: 'byo-shaped',
+      name: 'observed-key-box',
       provider: 'fake',
       size: 'small',
       offeringId: 'fake-small',

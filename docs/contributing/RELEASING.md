@@ -2,7 +2,7 @@
 
 *For the maintainer.*
 
-Ten packages go to the public registry, in lockstep, from one command. This document is the
+Nine packages go to the public registry, in lockstep, from one command. This document is the
 procedure and the reasons — the reasons matter, because three of the steps look optional and are
 not.
 
@@ -17,7 +17,6 @@ not.
 | `@rockysurf/provider-azure` | |
 | `@rockysurf/provider-gcp` | |
 | `@rockysurf/provider-hetzner` | |
-| `@rockysurf/provider-byo` | |
 | `@rockysurf/provider-conformance` | the acceptance bar a provider runs against itself, so an out-of-tree author can run it too |
 | `@rockysurf/provider-digitalocean` | a PERSONAL provider (ADR-0026): nothing imports it and the CLI does not bundle it, so it is public because installing it is the only way to have it |
 
@@ -71,9 +70,9 @@ after the account-side steps:
    name is taken, every scoped package name below has to change before anything else happens.
 3. `npm install -g npm@latest` (`npm trust` needs 11.15.0+), `npm login`, `npm whoami`.
 4. **`node scripts/npm-bootstrap-trust.mjs`** (add `--dry-run` first to see the plan). For each of
-   the ten publishable packages it: publishes a deprecated `0.0.0` placeholder if the name is not
+   the nine publishable packages it: publishes a deprecated `0.0.0` placeholder if the name is not
    on the registry yet, because npm cannot attach a trusted publisher to a package that does not
-   exist and nine of the ten do not; attaches the trusted publisher (this repository,
+   exist and eight of the nine do not; attaches the trusted publisher (this repository,
    `release.yml`, environment `npm`); and sets `mfa=publish`, so a human publish needs a second
    factor and automation tokens are refused. It prompts for a one-time password per placeholder.
 5. **The `npm` environment on GitHub** — created 2026-09-06 with the owner as required reviewer
@@ -141,7 +140,7 @@ fix the workflow.
 
 ### `pnpm publish`, never `npm publish`
 
-None of the ten packages contains its own `LICENSE` file. They are MIT because the workspace root
+None of the nine packages contains its own `LICENSE` file. They are MIT because the workspace root
 is, and the text reaches each tarball **only because pnpm copies the root `LICENSE` into packages
 that lack one**. Running `npm publish` from inside `packages/provider-sdk` produces a package that
 claims MIT in its manifest and ships no license text at all — a bare claim, which is worse than no

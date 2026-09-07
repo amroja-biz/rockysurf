@@ -373,7 +373,7 @@ describe('retiring the managed key over callback (ADR-0008, issue #92)', () => {
 
     const supplied = insertServer(opened.db, {
       userId: server.userId,
-      name: 'byok-box',
+      name: 'own-key-box',
       provider: 'fake',
       size: 'small',
       offeringId: 'small',

@@ -45,10 +45,6 @@ providers:
     enabled: false
     region: us-east-1
 
-  byo:
-    enabled: false
-    hosts: []
-
 limits:
   maxServers: 5
   createRatePerHour: 4

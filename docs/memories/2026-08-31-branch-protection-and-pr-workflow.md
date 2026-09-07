@@ -21,9 +21,9 @@ workflow-level path-filtered — or a matrix job, whose reported names vary — 
 all on some PRs, and a required check that never reports deadlocks the merge forever. That is
 why `rockysurf-shop`'s ruleset has no required checks: its PR jobs only trigger on `packs/**`.
 
-**2026-09-07 (#446).** `Push bootstrap (real sshd)` is the new name of the credential-free
-real-infrastructure gate; it replaces `BYO lifecycle (real sshd)`, which goes away with the
-bring-your-own-server provider. It is path-conditional on the same filter, so the ruleset is
+**2026-09-07 (#446).** `Push bootstrap (real sshd)` is the name of the credential-free
+real-infrastructure gate. It replaced a job driven through the bring-your-own-server Provider,
+which was removed before v0.1.0. It is path-conditional on the same filter, so the ruleset is
 unchanged and must stay unchanged: neither name was ever a required check, and adding the new
 one would deadlock every UI- or docs-only pull request.
 

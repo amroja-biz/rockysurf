@@ -9,8 +9,8 @@ import { test, expect } from './fixtures'
  * thing, and it is the kind a component test cannot see: both halves can be individually
  * correct while nothing carries the key from one to the other.
  *
- * NOTHING HERE CREATES A SERVER. The form is filled and inspected, never submitted — the BYO
- * host in the test configuration is a loopback port with no listener, deliberately.
+ * NOTHING HERE CREATES A SERVER. The form is filled and inspected, never submitted — the fixture
+ * provider's machine is a loopback port with no listener, deliberately.
  */
 /* ITS OWN INSTALLATION (see `installation` in `fixtures.ts`). This file saves a public key
    named `laptop`, and so does the other one — whichever ran second on a shared worker saw a

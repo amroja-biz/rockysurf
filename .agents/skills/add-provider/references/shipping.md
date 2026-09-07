@@ -172,8 +172,8 @@ reader is being told the wrong thing about how their servers will behave.
 **A verification section states what has been run and nothing more.** Name the machine type, the
 region, the date and where the evidence lives; if a nightly job re-runs it, say so, because a
 lifecycle proved once is a lifecycle that was true once. A provider nobody has pointed at real
-hardware says exactly that, in those words — `@rockysurf/provider-byo`'s Verified section is the
-worked example, in a checkout.
+hardware says exactly that, in those words — `packages/provider-digitalocean`'s status section is
+the worked example, in a checkout.
 
 ## Listing it in the shop *(personal and community providers)*
 

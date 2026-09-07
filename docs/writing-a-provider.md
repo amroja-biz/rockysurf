@@ -115,7 +115,7 @@ Four of those have bitten someone already, which is why the SDK README calls the
 4. **`stop` and `start` exist even when unsupported.** Throw
    `unsupportedOperationError(this.id, 'stop')` and set `capabilities.stop = false`. Core branches
    on the capability flag and never on `typeof provider.stop === 'function'`, because two ways to
-   ask the same question is how they drift apart. `@rockysurf/provider-byo` is the worked example.
+   ask the same question is how they drift apart.
 
 ## Capabilities
 
@@ -152,8 +152,8 @@ The conformance suite checks one dependency between them: `canInjectHostKeys` re
 `canInjectHostKeys` is a **security posture**, not a feature toggle. `true` means there's no
 trust-on-first-use window, and the first connection, the one carrying the secrets file, is
 verified against a key core generated itself. If you set it `false`, say plainly in your
-provider's docs what the operator is trusting instead;
-[`docs/providers/byo.md`](providers/byo.md) is the model.
+provider's docs what the operator is trusting instead: which key is recorded, when it is
+recorded, and what a later change to it does.
 
 ## Declare your settings
 
@@ -190,15 +190,15 @@ Anything core has to COMPUTE with is a capability, never a sentence.
 
 Two more knobs on `offering` are optional, and both are for providers whose panel doesn't read
 like a proper noun. Use `label` for how the provider is named inside a sentence ("whenever you ask
-*your own machines* for a small box") when that isn't the `title` over its panel. Set
+*your own metal* for a small box") when that isn't the `title` over its panel. Set
 `allowlist: false` when this provider has no `sizes` allowlist at all, because its catalogue is
-already the operator's own list. `@rockysurf/provider-byo` sets both; every other shipped provider
-sets neither. A list's item fields may also carry their own `help`; the list's sentence covers them
-all when they don't.
+already the operator's own list. No shipped provider sets either. A list's item fields may also
+carry their own `help`; the list's sentence covers them all when they don't.
 
 Every shipped provider is a worked example. Hetzner (`packages/provider-hetzner/src/index.ts`) is
-the token shape, GCP, AWS and Azure are the firewall shape with no credential field at all, and BYO
-is the one with a declared list. No provider rows remain in
+the token shape, and GCP, AWS and Azure are the firewall shape with no credential field at all.
+No shipped provider declares a `lists` entry today; the shape is there for a provider whose
+configuration is genuinely a repeated sub-object. No provider rows remain in
 `packages/core/src/settings/fields.ts` — it's core's own sections and nothing else — so a new
 provider adds none.
 

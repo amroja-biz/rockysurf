@@ -108,7 +108,6 @@ const DISPLAY_NAMES: Record<string, string> = {
   aws: 'Amazon EC2',
   azure: 'Microsoft Azure',
   gcp: 'Google Compute Engine',
-  byo: 'Bring your own hosts',
 }
 
 export function computeSetupState(deps: SetupStateDeps): SetupState {
@@ -135,17 +134,12 @@ export function computeSetupState(deps: SetupStateDeps): SetupState {
     /**
      * Whether the config file itself supplies the credential.
      *
-     * `byo` has no credential at all — its "configuration" is a list of hosts. A PERSONAL
-     * provider (ADR-0026) is reported `'none'` unless the environment supplies something: core
-     * does not know which of its fields is the credential, and guessing from a key's name would
-     * be a heuristic that is wrong for the next cloud. The provider's own `credentialEnv` (E18)
+     * A PERSONAL provider (ADR-0026) is reported `'none'` unless the environment supplies
+     * something: core does not know which of its fields is the credential, and guessing from a
+     * key's name would be a heuristic that is wrong for the next cloud. The provider's own `credentialEnv` (E18)
      * names the variables the composition root reads, and that is what `envCredential` sees.
      */
-    const inConfig = !shipped
-      ? false
-      : id === 'byo'
-        ? (configured.byo.hosts.length ?? 0) > 0
-        : Boolean((configured[id] as { token?: string }).token)
+    const inConfig = shipped && Boolean((configured[id] as { token?: string }).token)
 
     // Config first, then the environment — the same order the composition root resolves in,
     // so this report never disagrees with what actually loaded. A `${VAR}` reference in the
@@ -158,7 +152,7 @@ export function computeSetupState(deps: SetupStateDeps): SetupState {
       id,
       // A loaded provider names itself; a factory the composition root loaded but did not build
       // from (disabled, or its section refused) is named by its descriptor; the table covers the
-      // shipped five when neither applies; and a personal provider whose package never loaded is
+      // shipped four when neither applies; and a personal provider whose package never loaded is
       // shown by its id, which is the only name anyone has for it.
       displayName: registryHas
         ? deps.registry.get(id).displayName

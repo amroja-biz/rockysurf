@@ -530,6 +530,27 @@ The memo lists these as not-yet-decidable, and this ADR does not decide them:
   group; Hetzner needs none and a server is SSH-reachable the moment it boots. Inheriting that
   difference is a product decision, not an interface one.
 
+## Amendment — the provider that motivated E12, E13 and E14 was removed (2026-09-07, issue #446)
+
+The bring-your-own-server Provider was removed before v0.1.0, on the owner's ruling that Rocky
+Surf is a convenience layer for public clouds and not a control plane for machines someone already
+owns. It was the first and only shipped provider with `canInjectHostKeys: false`,
+`generatesUserData: false`, a non-22 `sshPort` and `stop: false`, so it is named throughout the
+amendments above. **Nothing in this ADR changes.** Every rule those amendments settled is a rule
+about a SHAPE, not about that package:
+
+- **`stop`/`start` exist and throw** (`unsupportedOperationError`, `capabilities.stop: false`).
+  The rule stands for any future Provider that cannot stop a machine — core branches on the flag,
+  returns 501, and never on `typeof provider.stop`. No shipped Provider declares `false` today.
+- **E12 (`hostKeyFingerprint`), E13 (`sshPort`) and E14** stay in the frozen SDK, additive and
+  optional as they always were. They are what a Provider with no pre-boot hook needs, and the
+  push-bootstrap gate `scripts/e2e/bootstrap-host.mjs` still exercises all three against a real
+  sshd through `scripts/e2e/fixtures/bootstrap-target` — a test-only Provider-shaped stand-in that
+  is not composed into the product (issue #446, PR 1).
+
+Sentences above that read as present tense about that provider are history and are left as
+written; this repository does not rewrite an accepted decision to match a later ruling.
+
 ## References
 
 - `docs/history/spike/findings.md` — amendments A1–A7, B1–B3, C1–C3, D1–D6, E2/E4, F1–F2; "Deliberately

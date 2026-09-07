@@ -49,7 +49,9 @@ body:
       options:
         - Hetzner
         - AWS
-        - BYO (your own hosts)
+        - Azure
+        - Google Cloud
+        - A Provider I installed myself
         - None / the in-memory provider
         - Not provider-specific
     validations:

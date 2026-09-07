@@ -46,7 +46,7 @@ test('Download hands over a real artifact: right magic, versioned, config includ
   }
   expect(artifact.artifact).toBe('rockysurf-backup')
   expect(artifact.formatVersion).toBe(1)
-  /* The instance's own file travelled — the BYO host it was booted with is in it. */
+  /* The instance's own file travelled — the fixture machine it was booted with is in it. */
   expect(artifact.config.text).toContain('workshop')
   expect(artifact.users.length).toBeGreaterThan(0)
 })

@@ -22,7 +22,7 @@ import type { AgentState } from './push.js'
  * WHERE CORE ACTUALLY DIALS (rockysurf-ftl9.12).
  *
  * The bug this file exists for was invisible to every test that stubbed the SSH drive: the port
- * a BYO host is registered on reached the provider, the provider used it for its own probe and
+ * a host is registered on reached the provider, the provider used it for its own probe and
  * claim — and then died at the boundary, because `InstanceView` carried no port and the row had
  * no column. Core dialled 22. The host was claimed, given an account, keys and a sudoers rule,
  * and then never bootstrapped.
@@ -87,7 +87,7 @@ beforeEach(async () => {
   row = insertServer(db, {
     userId,
     name: 'workshop',
-    provider: 'byo',
+    provider: 'metalcloud',
     size: 'small',
     offeringId: 'workshop',
     arch: 'arm64',

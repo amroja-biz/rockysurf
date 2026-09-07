@@ -283,14 +283,14 @@ describe('HelpPage', () => {
 
     it('gives every shipped provider its own heading', () => {
       renderHelp('providers')
-      for (const name of [/^Hetzner$/, /^AWS$/, /^Azure$/, /^Google Cloud$/, /your own machines/i]) {
+      for (const name of [/^Hetzner$/, /^AWS$/, /^Azure$/, /^Google Cloud$/]) {
         expect(screen.getByRole('heading', { name }), `no heading for ${name}`).toBeTruthy()
       }
     })
 
     it('links each canonical provider doc, in the repository', () => {
       const section = providersSection()
-      for (const doc of ['hetzner.md', 'aws.md', 'azure.md', 'gcp.md', 'byo.md']) {
+      for (const doc of ['hetzner.md', 'aws.md', 'azure.md', 'gcp.md']) {
         const link = [...section.querySelectorAll('a')].find(
           (a) => a.getAttribute('href') === `${GITHUB_URL}/blob/main/docs/providers/${doc}`,
         )
@@ -306,7 +306,6 @@ describe('HelpPage', () => {
         'providers.aws',
         'providers.azure',
         'providers.gcp',
-        'providers.byo.hosts',
       ]) {
         expect(hrefs, `no Settings deep link for ${id}`).toContain(`/settings?section=${id}`)
       }
@@ -428,7 +427,7 @@ describe('HelpPage', () => {
           `${GITHUB_URL}/blob/main/${path}`,
         )
       }
-      for (const cloud of ['hetzner', 'aws', 'azure', 'gcp', 'byo']) {
+      for (const cloud of ['hetzner', 'aws', 'azure', 'gcp']) {
         expect(hrefs, `no Provider page for ${cloud}`).toContain(
           `${GITHUB_URL}/blob/main/docs/providers/${cloud}.md`,
         )

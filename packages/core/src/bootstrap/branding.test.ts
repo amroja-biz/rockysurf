@@ -94,7 +94,7 @@ describe('brandingScript', () => {
   it('is the shape agent.sh requires: strict, guarded, and never reaching for sudo', () => {
     expect(script.startsWith('set -euo pipefail\n')).toBe(true)
     // The step already declares runAs: 'root' and the agent dispatches the privilege. A
-    // container has no sudo, and byo-host.mjs is a container.
+    // container has no sudo, and bootstrap-host.mjs is a container.
     expect(script).not.toContain('sudo')
     // `if [ -f … ]` rather than `[ -f … ] &&`, which under `set -e` exits on the first absent
     // file — i.e. on every non-Ubuntu box, where none of them exist.

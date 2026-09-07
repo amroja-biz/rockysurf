@@ -48,7 +48,6 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/provider-aws/package.json packages/provider-aws/
 COPY packages/provider-azure/package.json packages/provider-azure/
-COPY packages/provider-byo/package.json packages/provider-byo/
 COPY packages/provider-conformance/package.json packages/provider-conformance/
 COPY packages/provider-gcp/package.json packages/provider-gcp/
 COPY packages/provider-hetzner/package.json packages/provider-hetzner/

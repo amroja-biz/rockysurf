@@ -29,9 +29,9 @@ import type { BackupArtifact } from './format.js'
  * "restored" — the machines live in the operator's cloud accounts and never left. Restored
  * server rows are records; the reconciler and `lifecycle.sync` then discover which machines
  * still answer, with the same flag-don't-terminate rules that govern a laptop reopened after
- * a week (`jobs/reconciler.ts`). BYO trust-on-first-use records travel too: the pinned or
- * recorded host-key fingerprint is a row column, so a restored BYO server keeps exactly the
- * trust decision its operator made.
+ * a week (`jobs/reconciler.ts`). Trust-on-first-use records travel too: the pinned or recorded
+ * host-key fingerprint is a row column, so a restored server whose host key core never minted
+ * keeps exactly the trust decision its operator made.
  *
  * USER IDENTITY IS RECONCILED, NOT COPIED. The person restoring already exists here (the
  * local admin is `githubId: 'local:admin'` on every installation), and `users` is unique on

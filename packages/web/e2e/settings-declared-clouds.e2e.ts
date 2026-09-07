@@ -3,16 +3,17 @@ import { test, expect } from './fixtures'
 /**
  * EVERY SHIPPED PROVIDER'S PANEL, IN A REAL BROWSER (ADR-0027, issue #370).
  *
- * All five providers now declare their settings on their factory, and the SPA has no hand-written
- * block for any of them: what an operator sees on the Hetzner, AWS, Azure, Google Cloud and Your
- * own machines tabs is `settings/inventory.ts` turning a declaration into rows and the generic
+ * All four shipped providers declare their settings on their factory, and the SPA has no
+ * hand-written block for any of them: what an operator sees on the Hetzner, AWS, Azure and
+ * Google Cloud tabs is `settings/inventory.ts` turning a declaration into rows and the generic
  * renderer drawing them. That is exactly the arrangement two component-test-green regressions were
  * shipped under, so it is driven here instead — the fields, their order, their labels, their help
  * sentences, the two-act firewall control, and a save that reaches the file.
  *
- * The control plane runs BYO only (see `control-plane.ts`), which is what makes the other four
- * worth driving: their sections are not in the config file at all, so a panel built from a
- * declaration has to work for a provider whose section the operator has never written.
+ * The control plane runs one test-only fixture provider (see `control-plane.ts`), which is what
+ * makes the four shipped panels worth driving: their sections are not in the config file at all,
+ * so a panel built from a declaration has to work for a provider whose section the operator has
+ * never written.
  */
 test.describe.configure({ mode: 'serial' })
 
@@ -65,18 +66,20 @@ const PANELS: { id: string; heading: string; fields: [string, string][] }[] = [
     ],
   },
   {
-    /* The BYO tab carries two cards: the provider's own field, then its declared `hosts` list. */
-    id: 'byo',
-    heading: 'Your own machines',
+    /* The fixture provider's tab carries two cards: its own field, then its declared list. */
+    id: 'metalcloud',
+    heading: 'Metal Cloud',
     fields: [
-      ['providers.byo.enabled', 'Enabled'],
-      ['providers.byo.identityFile', 'Default private key path'],
-      ['providers.byo.hosts.0.name', 'Name'],
-      ['providers.byo.hosts.0.host', 'Address'],
-      ['providers.byo.hosts.0.user', 'Admin login'],
-      ['providers.byo.hosts.0.port', 'SSH port'],
-      ['providers.byo.hosts.0.fingerprint', 'Host key fingerprint'],
-      ['providers.byo.hosts.0.identityFile', 'Private key path'],
+      ['providers.metalcloud.enabled', 'Enabled'],
+      /* Core's own row for a provider it did not ship: which package this section loads. */
+      ['providers.metalcloud.package', 'Package'],
+      ['providers.metalcloud.identityFile', 'Default private key path'],
+      ['providers.metalcloud.machines.0.name', 'Name'],
+      ['providers.metalcloud.machines.0.host', 'Address'],
+      ['providers.metalcloud.machines.0.user', 'Admin login'],
+      ['providers.metalcloud.machines.0.port', 'SSH port'],
+      ['providers.metalcloud.machines.0.fingerprint', 'Host key fingerprint'],
+      ['providers.metalcloud.machines.0.identityFile', 'Private key path'],
     ],
   },
 ]
@@ -143,17 +146,19 @@ test('a network typed into the GCP whitelist is saved into a file that had no gc
 })
 
 /**
- * BYO'S HOSTS, THE FIRST LIST A SHIPPED PROVIDER DECLARES.
+ * A PROVIDER'S DECLARED LIST, DRAWN IN A BROWSER.
  *
- * The card, its six boxes and their labels used to be a hand-written block in `SettingsPage.tsx`.
- * They are `byoProviderFactory.settings.lists[0]` now, drawn by the same `genericList` that draws
- * `ssh.keys` — so a wrong label here would be a declaration the page ignored.
+ * A card of this shape used to be a hand-written block in `SettingsPage.tsx`. It is a
+ * `ProviderSettingList` now (ADR-0027), drawn by the same `genericList` that draws `ssh.keys` —
+ * so a wrong label here would be a declaration the page ignored. No provider Rocky Surf ships
+ * declares a list since #446, which is exactly why the fixture provider does: the renderer is
+ * still what a personal provider gets, so it stays covered here.
  */
-test('the BYO hosts card is drawn from the declared list, with the provider’s own Add form', async ({ page }) => {
-  await page.goto('/settings?section=providers.byo.hosts')
-  await expect(page.getByRole('heading', { name: 'Hosts', exact: true })).toBeVisible()
-  await expect(page.locator('#providers\\.byo\\.hosts\\.0\\.name')).toHaveValue('workshop')
-  await expect(page.getByRole('button', { name: 'Add host' })).toBeVisible()
+test('a declared list is drawn as a card, with the provider’s own Add form', async ({ page }) => {
+  await page.goto('/settings?section=providers.metalcloud.machines')
+  await expect(page.getByRole('heading', { name: 'Machines', exact: true })).toBeVisible()
+  await expect(page.locator('#providers\\.metalcloud\\.machines\\.0\\.name')).toHaveValue('workshop')
+  await expect(page.getByRole('button', { name: 'Add machine' })).toBeVisible()
 })
 
 /**

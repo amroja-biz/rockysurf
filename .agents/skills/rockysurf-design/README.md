@@ -27,7 +27,7 @@
 Rocky Surf is an open-source control plane for **cloud servers for agentic engineering**. You run
 one process on your own machine; it creates a Linux box on your own cloud account, installs your
 coding agents on it from a **Surge Pack**, and hands you an SSH command. No SaaS, no accounts, no
-telemetry, no phone-home. AWS, Azure, GCP, Hetzner, and BYO machines over SSH are supported.
+telemetry, no phone-home. AWS, Azure, GCP and Hetzner are supported, and you can install more.
 
 The product is one thing, and this design system covers one surface: **the control plane's web
 UI** — a single-page app served by the same process that holds the API. There is no marketing

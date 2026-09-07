@@ -43,7 +43,7 @@ body:
         - Control plane / web UI
         - CLI
         - MCP server (agent-facing tools)
-        - A provider (AWS, Hetzner, BYO)
+        - A provider (AWS, Azure, Google Cloud, Hetzner)
         - A new provider
         - Packs
         - Packaging, self-hosting or docs

@@ -104,7 +104,8 @@ export const gcpConfigSchema = z
     /**
      * Path to a service-account key file. Omit to use the ambient credential chain.
      *
-     * A PATH, NEVER KEY MATERIAL, which is the same posture `providers.byo.identityFile` takes.
+     * A PATH, NEVER KEY MATERIAL, which is the posture every credential field in this project
+     * takes.
      * There is deliberately no field in this schema that can hold a private key: the object is
      * strict, so `privateKey`, `credentials` or a pasted JSON blob is a parse error rather than a
      * secret written into a file that gets committed. The key stays where the operator's own

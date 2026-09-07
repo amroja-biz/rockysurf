@@ -36,7 +36,6 @@ window.RS_DATA = {
     { id: 'aws', displayName: 'AWS', detail: 'The standard credential chain, plus an explicit sshAllowedCidr' },
     { id: 'gcp', displayName: 'GCP', detail: 'Application Default Credentials' },
     { id: 'azure', displayName: 'Azure', detail: 'Environment, managed identity, or az login' },
-    { id: 'byo', displayName: 'BYO', detail: 'Machines you already have, over SSH' },
   ],
   sizes: [
     { id: 'small', name: 'small', detail: '2 vCPU · 4 GB · cx22 · $0.007/hr' },

@@ -11,7 +11,6 @@ import {
 import type { ComputeProvider, ProviderFactory } from '@rockysurf/provider-sdk'
 import awsProviderFactory from '@rockysurf/provider-aws'
 import azureProviderFactory from '@rockysurf/provider-azure'
-import byoProviderFactory from '@rockysurf/provider-byo'
 import gcpProviderFactory from '@rockysurf/provider-gcp'
 import hetznerProviderFactory from '@rockysurf/provider-hetzner'
 import {
@@ -82,7 +81,7 @@ interface ProviderWiring<TConfig> {
    * Fields core injects that are not part of the provider's own config section — today only
    * the hosted price feed's URL and read cadence (gh issue #100, ADR-0009), for the providers
    * whose prices the feed carries. Absent for providers that price themselves: Hetzner reads
-   * prices live, GCP's are transcribed, BYO's machines have no price at all.
+   * prices live.
    */
   extras?: (config: Config) => Record<string, unknown>
   /** Where a missing credential comes from, for the error message. */
@@ -106,8 +105,8 @@ function pricingExtras(config: Config, doc: 'aws.json' | 'azure.json' | 'gcp.jso
 /**
  * Every provider this distribution ships.
  *
- * `byo` arrived as exactly what this design predicted: one more row, no core change, no new
- * interface (`rockysurf-ftl9.3`).
+ * Adding one is one more row here, no core change and no new interface — which is what the
+ * provider SDK was shaped to make true (`rockysurf-ftl9.3`).
  */
 const WIRINGS: ProviderWiring<never>[] = [
   {
@@ -161,16 +160,6 @@ const WIRINGS: ProviderWiring<never>[] = [
     extras: (config) => pricingExtras(config, 'gcp.json'),
     credentialHint:
       'run `gcloud auth application-default login`, set GOOGLE_APPLICATION_CREDENTIALS, or set providers.gcp.keyFile',
-  },
-  {
-    factory: byoProviderFactory as unknown as ProviderFactory<never>,
-    section: (config) => config.providers.byo,
-    // No credential to resolve. BYO authenticates with the operator's OWN SSH key — a path in
-    // `identityFile`, or an agent — and a path is not a secret to store, so there is nothing
-    // for `resolveCredential` to resolve.
-    credentialField: null,
-    input: ({ enabled: _enabled, ...rest }) => rest,
-    credentialHint: 'set providers.byo.identityFile, or run an SSH agent that holds the key you log in with',
   },
 ]
 

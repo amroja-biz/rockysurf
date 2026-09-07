@@ -659,10 +659,9 @@ function rdpScript(): string {
  * credential").
  *
  * SURGICAL, NOT A REWRITE. The tempting version — overwrite the file with just the supplied
- * key — is wrong in general: a BYO host's `authorized_keys` may already hold the operator's OWN
- * pre-existing access from before Rocky Surf ever touched the box (`provider-byo/prepare.ts`
- * appends to it for exactly that reason, and `docs/self-hosting.md` documents it), and this
- * step has no way to tell that access apart from noise. So it removes exactly the one line it
+ * key — is wrong in general: `authorized_keys` on a box a provider did not create from scratch
+ * may already hold the operator's OWN pre-existing access from before Rocky Surf ever touched
+ * it, and this step has no way to tell that access apart from noise. So it removes exactly the one line it
  * knows the exact bytes of, because it minted them, and leaves every other line — however it
  * got there — alone.
  *

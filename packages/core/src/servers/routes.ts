@@ -84,8 +84,8 @@ const PROVIDER_ERROR_STATUS: Record<ProviderErrorCode, ContentfulStatusCode> = {
  *
  * Chosen over 409 deliberately, and worth stating because the SDK routes it through
  * `ProviderError('invalid_spec')`, which would otherwise land on 400. It is not a conflict
- * with the resource's current state — a BYO host is not "temporarily un-stoppable", it can
- * never be stopped — and it is not a malformed request, because asking a provider to stop is
+ * with the resource's current state — a machine a provider cannot stop is not "temporarily
+ * un-stoppable", it can never be stopped — and it is not a malformed request, because asking a provider to stop is
  * perfectly well-formed. 501 is the status for "this server does not support the
  * functionality required", which is precisely the case.
  */
@@ -349,7 +349,7 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * The column has existed since the first migration and was the one placement fact this
      * function dropped — which nobody missed on a running box, whose address and console link
      * say where it is, and which is unanswerable on a terminated one, where the row is all that
-     * is left. Absent when the provider takes no region (a BYO host, a single-region cloud).
+     * is left. Absent when the provider takes no region (a single-region cloud).
      */
     region: row.region ?? undefined,
     size: row.size,

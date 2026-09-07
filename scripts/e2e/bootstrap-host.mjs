@@ -9,8 +9,8 @@
  * you want the first time something in here fails. `--port` publishes the container's sshd
  * somewhere specific; the default is a random non-22 port.
  *
- * WHY THIS EXISTS. Two properties of this project's testing arrangement used to live in the
- * "BYO lifecycle (real sshd)" job, and neither belongs to the provider it was named after:
+ * WHY THIS EXISTS. Two properties of this project's testing arrangement used to live in a CI job
+ * driven through a shipped provider, and neither belongs to any particular provider:
  *
  *  1. it is the only real-infrastructure run with no cloud credential, no secret and no spend,
  *     which is what lets it gate a pull request instead of waiting for the nightly;
@@ -18,8 +18,8 @@
  *     contract #10), because a container has no `/run/systemd/system` and every cloud image the
  *     nightly boots does have one.
  *
- * The bring-your-own-server provider is being removed before v0.1.0, so both properties are
- * rebuilt here against core directly. Nothing under `packages/` is involved beyond core itself:
+ * That provider was removed before v0.1.0 (issue #446), so both properties are rebuilt here
+ * against core directly. Nothing under `packages/` is involved beyond core itself:
  * the Provider-shaped object core needs in order to have a server row at all is
  * `scripts/e2e/fixtures/bootstrap-target`, which is test-only, unpublished, and not composed
  * into the product. See its header for what it stands in for and what it refuses to fake.

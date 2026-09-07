@@ -83,8 +83,8 @@ export interface FakeProviderOptions {
   failures?: Partial<Record<FakeMethod, ProviderError>>
   /**
    * Replace the catalogue below, for a test that needs a shape the defaults do not have —
-   * most usefully an offering with `hourly: null`, which is how BYO reports the operator's own
-   * hardware and the case that must create successfully while staying unpriced.
+   * most usefully an offering with `hourly: null`, which is how a provider reports a machine
+   * type it has no price for — the case that must create successfully while staying unpriced.
    *
    * It replaces the list `validateSpec` checks against too, so an overridden catalogue is the
    * whole truth about this provider rather than a second opinion the create path would reject.

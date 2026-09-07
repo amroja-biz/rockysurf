@@ -56,13 +56,12 @@ const NIMBUS: ProviderSettings = {
 }
 
 /**
- * THE OTHER FOUR SHIPPED PROVIDERS, ABBREVIATED (issue #370).
+ * THE OTHER THREE SHIPPED PROVIDERS, ABBREVIATED (issue #370).
  *
- * They declare too now, so the merged order below is a merge of five declarations rather than one
- * declaration spliced into four static sections. Kept short on purpose: the real prose is the
+ * They declare too now, so the merged order below is a merge of four declarations rather than one
+ * declaration spliced into three static sections. Kept short on purpose: the real prose is the
  * provider's and is held to its own conformance suite; what is pinned here is the SHAPE and the
- * ORDER an operator sees. BYO is the interesting one — a list, no `sizes`, and a lower-case name
- * for the sentences the saved-type cards are made of.
+ * ORDER an operator sees.
  */
 const AWS: ProviderSettings = {
   title: 'AWS',
@@ -94,27 +93,33 @@ const GCP: ProviderSettings = {
   offering: { noun: 'machine type', example: 't2a-standard-2' },
 }
 
-const BYO: ProviderSettings = {
-  title: 'Your own machines',
-  help: 'Machines you already have, managed over SSH.',
+/**
+ * A PROVIDER WHOSE MACHINE TYPES ARE ITS OWN LIST — the two shapes nothing else here exercises:
+ * `offering.allowlist: false`, so no `sizes` row is generated at all, and an `offering.label`
+ * that differs from the panel title, because a capitalised title read mid-sentence is wrong.
+ * Personal (ADR-0026): no provider Rocky Surf ships is shaped this way since issue #446.
+ */
+const METAL: ProviderSettings = {
+  title: 'Metal Cloud',
+  help: 'Machines in a rack somebody else racked, managed over SSH.',
   fields: [
-    { name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
+    { name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every machine below.' },
   ],
   lists: [
     {
-      name: 'hosts',
-      label: 'Hosts',
+      name: 'machines',
+      label: 'Machines',
       help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
       itemFields: [
         { name: 'name', label: 'Name', kind: 'string' },
         { name: 'user', label: 'Admin login', kind: 'string', help: 'The admin login Rocky Surf claims the machine with.' },
       ],
-      add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+      add: { noun: 'machine', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
       labelField: 'name',
-      empty: 'None yet. Enabling this provider requires at least one host.',
+      empty: 'None yet. Enabling this provider requires at least one machine.',
     },
   ],
-  offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
+  offering: { noun: 'machine', example: 'the-nuc-under-the-desk', label: 'your own metal', allowlist: false },
 }
 
 const SHIPPED: Record<string, { displayName: string; settings: ProviderSettings }> = {
@@ -122,16 +127,17 @@ const SHIPPED: Record<string, { displayName: string; settings: ProviderSettings 
   aws: { displayName: 'Amazon EC2', settings: AWS },
   azure: { displayName: 'Microsoft Azure', settings: AZURE },
   gcp: { displayName: 'Google Compute Engine', settings: GCP },
-  byo: { displayName: 'Bring your own hosts', settings: BYO },
 }
 
 const describeProvider = (id: string) =>
   SHIPPED[id] ??
   (id === 'nimbus'
     ? { displayName: 'Nimbus Cloud', settings: NIMBUS }
-    : id === 'cumulus'
-      ? { displayName: 'Cumulus' }
-      : undefined)
+    : id === 'metalcloud'
+      ? { displayName: 'Metal Cloud', settings: METAL }
+      : id === 'cumulus'
+        ? { displayName: 'Cumulus' }
+        : undefined)
 
 const tree = (personal: Record<string, unknown>) => ({ providers: personal })
 
@@ -163,22 +169,14 @@ describe('a declared shipped provider (Hetzner)', () => {
       'providers.aws',
       'providers.azure',
       'providers.gcp',
-      'providers.byo',
-      'providers.byo.hosts',
     ])
     const tiers = ids.filter((id) => /^preferences\.tiers\./.test(id))
     expect(tiers).toEqual(PROVIDER_ORDER.map((id) => `preferences.tiers.${id}`))
-    // BYO's card is titled by `title` and its sentences named by `offering.label` — the two
-    // differ for exactly one provider, and a capitalised title read mid-sentence is why.
-    expect(inv.sections.find((s) => s.id === 'preferences.tiers.byo')).toMatchObject({
-      title: 'Your own machines',
-      help: expect.stringContaining('each size means on your own machines'),
-    })
     // And everything around them is where fields.ts puts it.
     expect(ids.indexOf('ssh.keys')).toBeLessThan(ids.indexOf('providers.hetzner'))
-    expect(ids.indexOf('providers.byo.hosts')).toBeLessThan(ids.indexOf('limits'))
+    expect(ids.indexOf('providers.gcp')).toBeLessThan(ids.indexOf('limits'))
     expect(ids.indexOf('preferences')).toBeLessThan(ids.indexOf('preferences.tiers.hetzner'))
-    expect(ids.indexOf('preferences.tiers.byo')).toBeLessThan(ids.indexOf('registry'))
+    expect(ids.indexOf('preferences.tiers.gcp')).toBeLessThan(ids.indexOf('registry'))
   })
 
   it('generates the saved-type fields from the declared vocabulary, with the same sentence the table uses', () => {
@@ -186,8 +184,6 @@ describe('a declared shipped provider (Hetzner)', () => {
     expect(small.help).toContain('The server type to use whenever you ask Hetzner for a small box — cpx21, for instance')
     const aws = inv.specFor(['preferences', 'tiers', 'aws', 'small'])!
     expect(aws.help).toContain('The instance type to use whenever you ask AWS for a small box — t4g.medium, for instance')
-    const byo = inv.specFor(['preferences', 'tiers', 'byo', 'small'])!
-    expect(byo.help).toContain('The host to use whenever you ask your own machines for a small box')
     expect(inv.sections.find((s) => s.id === 'preferences.tiers.hetzner')?.title).toBe('Hetzner')
   })
 
@@ -202,7 +198,7 @@ describe('a declared shipped provider (Hetzner)', () => {
   })
 })
 
-describe('the other four shipped providers, declared (issue #370)', () => {
+describe('the other three shipped providers, declared (issue #370)', () => {
   const inv = buildSettingsInventory({ tree: tree({}), describeProvider })
 
   it('gives each firewall cloud the two-act whitelist as one declared kind plus core\u2019s checkbox', () => {
@@ -228,25 +224,57 @@ describe('the other four shipped providers, declared (issue #370)', () => {
     expect(inv.specFor(['providers', 'azure', 'sizes'])?.label).toBe('Offered VM sizes')
     expect(inv.specFor(['providers', 'gcp', 'sizes'])?.label).toBe('Offered machine types')
   })
+})
 
-  it('gives BYO a list and no sizes at all, because its machine types are the hosts', () => {
-    expect(paths(inv).filter((p) => p.startsWith('providers.byo.'))).toEqual([
-      'providers.byo.enabled',
-      'providers.byo.identityFile',
-      'providers.byo.hosts.*.name',
-      'providers.byo.hosts.*.user',
+/**
+ * A DECLARED PROVIDER WHOSE MACHINE TYPES ARE ITS OWN LIST.
+ *
+ * The two shapes nothing else in this file exercises: `offering.allowlist: false`, which
+ * generates no `sizes` row at all, and an `offering.label` that differs from the panel title, so
+ * the saved-type sentences read as sentences. No provider Rocky Surf ships is shaped this way
+ * since issue #446, and the shapes are the SDK's, so the coverage stays here.
+ */
+describe('a declared provider whose machine types are its own list (Metal Cloud)', () => {
+  const inv = buildSettingsInventory({
+    tree: tree({ metalcloud: { package: 'p', enabled: false } }),
+    describeProvider,
+  })
+
+  it('gets a list and no sizes at all, because its machine types are the entries', () => {
+    expect(paths(inv).filter((p) => p.startsWith('providers.metalcloud.'))).toEqual([
+      'providers.metalcloud.enabled',
+      'providers.metalcloud.package',
+      'providers.metalcloud.identityFile',
+      'providers.metalcloud.machines.*.name',
+      'providers.metalcloud.machines.*.user',
     ])
-    expect(inv.lists.find((l) => l.path === 'providers.byo.hosts')).toMatchObject({
+    expect(inv.lists.find((l) => l.path === 'providers.metalcloud.machines')).toMatchObject({
       itemFields: ['name', 'user'],
       labelField: 'name',
-      add: { noun: 'host', required: ['name', 'host'] },
-      empty: 'None yet. Enabling this provider requires at least one host.',
+      add: { noun: 'machine', required: ['name', 'host'] },
+      empty: 'None yet. Enabling this provider requires at least one machine.',
     })
     // An item field's own sentence when it wrote one, the list's when it did not.
-    expect(inv.specFor(['providers', 'byo', 'hosts', 0, 'user'])?.help).toContain('admin login')
-    expect(inv.specFor(['providers', 'byo', 'hosts', 0, 'name'])?.help).toContain('Rocky Surf may claim')
+    expect(inv.specFor(['providers', 'metalcloud', 'machines', 0, 'user'])?.help).toContain('admin login')
+    expect(inv.specFor(['providers', 'metalcloud', 'machines', 0, 'name'])?.help).toContain('Rocky Surf may claim')
     // And the switch reads as a sentence, which is what `offering.label` is for.
-    expect(inv.specFor(['providers', 'byo', 'enabled'])?.help).toContain('with your own machines')
+    expect(inv.specFor(['providers', 'metalcloud', 'enabled'])?.help).toContain('with your own metal')
+  })
+
+  it('titles the saved-type card by `title` and words its sentences by `offering.label`', () => {
+    expect(inv.sections.find((s) => s.id === 'preferences.tiers.metalcloud')).toMatchObject({
+      title: 'Metal Cloud',
+      help: expect.stringContaining('each size means on your own metal'),
+    })
+    expect(inv.specFor(['preferences', 'tiers', 'metalcloud', 'small'])?.help).toContain(
+      'The machine to use whenever you ask your own metal for a small box',
+    )
+  })
+
+  it('draws its list as a card on its own tab', () => {
+    const ids = inv.sections.map((s) => s.id)
+    expect(ids[ids.indexOf('providers.metalcloud') + 1]).toBe('providers.metalcloud.machines')
+    expect(ids.indexOf('providers.metalcloud.machines')).toBeLessThan(ids.indexOf('limits'))
   })
 })
 
@@ -280,10 +308,10 @@ describe('a declared personal provider (Nimbus)', () => {
 
   it('is placed after the shipped providers with its list as a card on its tab, and its saved types after theirs', () => {
     const ids = inv.sections.map((s) => s.id)
-    expect(ids.indexOf('providers.nimbus')).toBe(ids.indexOf('providers.byo.hosts') + 1)
+    expect(ids.indexOf('providers.nimbus')).toBe(ids.indexOf('providers.gcp') + 1)
     expect(ids[ids.indexOf('providers.nimbus') + 1]).toBe('providers.nimbus.mirrors')
     expect(ids.indexOf('providers.nimbus.mirrors')).toBeLessThan(ids.indexOf('limits'))
-    expect(ids.indexOf('preferences.tiers.nimbus')).toBe(ids.indexOf('preferences.tiers.byo') + 1)
+    expect(ids.indexOf('preferences.tiers.nimbus')).toBe(ids.indexOf('preferences.tiers.gcp') + 1)
     expect(inv.sections.find((s) => s.id === 'providers.nimbus')).toMatchObject({
       title: 'Nimbus Cloud',
       advisories: ['Nimbus is a fixture.'],

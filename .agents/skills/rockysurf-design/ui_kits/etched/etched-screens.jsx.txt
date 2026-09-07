@@ -12,7 +12,7 @@ const PROVIDERS = [
   ['hetzner','Hetzner','Read/write API token from console.hetzner.com'],
   ['aws','AWS','The standard credential chain, plus an explicit sshAllowedCidr'],  // eslint-disable-line
   ['gcp','GCP','Application Default Credentials'],
-  ['byo','BYO','Machines you already have, over SSH'],
+  ['azure','Azure','Environment, managed identity, or az login'],
 ]
 const SIZES = [
   ['small','small','2 vCPU · 4 GB · cx22','$0.007/hr'],

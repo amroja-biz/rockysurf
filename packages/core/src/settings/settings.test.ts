@@ -161,36 +161,6 @@ function shippedDeclared(): ProviderRegistry {
           offering: { noun: 'machine type', example: 't2a-standard-2' },
         },
       },
-      {
-        id: 'byo',
-        displayName: 'Bring your own hosts',
-        settings: {
-          title: 'Your own machines',
-          help: 'Machines you already have, managed over SSH.',
-          fields: [
-            { name: 'identityFile', kind: 'string', label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
-          ],
-          lists: [
-            {
-              name: 'hosts',
-              label: 'Hosts',
-              help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
-              itemFields: [
-                { name: 'name', label: 'Name', kind: 'string' },
-                { name: 'host', label: 'Address', kind: 'string' },
-                { name: 'user', label: 'Admin login', kind: 'string' },
-                { name: 'port', label: 'SSH port', kind: 'number' },
-                { name: 'fingerprint', label: 'Host key fingerprint', kind: 'string' },
-                { name: 'identityFile', label: 'Private key path', kind: 'string' },
-              ],
-              add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
-              labelField: 'name',
-              empty: 'None yet. Enabling this provider requires at least one host.',
-            },
-          ],
-          offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
-        },
-      },
     ],
   )
 }
@@ -298,11 +268,11 @@ describe('the yaml Document API, before anything is built on it', () => {
   })
 
   it('turns an empty inline list into a block list when the first entry is added', () => {
-    const text = 'providers:\n  byo:\n    hosts: []\n'
+    const text = 'registry:\n  sources: []\n'
     const after = applyChanges(text, [
-      { path: ['providers', 'byo', 'hosts', 0], value: { name: 'workshop', host: '10.0.0.9' } },
+      { path: ['registry', 'sources', 0], value: { name: 'my-packs', url: 'https://example.com/packs' } },
     ])
-    expect(after).toBe('providers:\n  byo:\n    hosts:\n      - name: workshop\n        host: 10.0.0.9\n')
+    expect(after).toBe('registry:\n  sources:\n    - name: my-packs\n      url: https://example.com/packs\n')
   })
 })
 
@@ -582,14 +552,16 @@ describe('validation is the config schema itself', () => {
   })
 
   it('reports a schema refinement in the schema\'s own words', async () => {
+    // A per-repository token naming a repo and no owner: refused by the schema's own refinement,
+    // which reports against `owner` rather than against the field that was written.
     const res = await save({
       mtimeMs: mtime(),
-      changes: [{ path: ['providers', 'byo', 'enabled'], value: true }],
+      changes: [{ path: ['github', 'tokens', 0], value: { repo: 'widgets', pat: 'ghp_x' } }],
     })
     expect(res.status).toBe(400)
     const body = (await res.json()) as { issues: { path: string; message: string }[] }
-    expect(body.issues[0]?.path).toBe('providers.byo.hosts')
-    expect(body.issues[0]?.message).toContain('no hosts are listed')
+    expect(body.issues[0]?.path).toBe('github.tokens.0.owner')
+    expect(body.issues[0]?.message).toContain('repo requires owner')
   })
 
   it('refuses a path the editor does not offer, rather than writing it', async () => {
@@ -1166,7 +1138,7 @@ describe('a personal provider section in the file', () => {
     expect(section?.help).toContain("runs with Rocky Surf's full access — install ones you trust")
     // Placed with the other provider tabs, before Limits.
     const ids = view.sections.map((s) => s.id)
-    expect(ids.indexOf('providers.nimbus')).toBeGreaterThan(ids.indexOf('providers.byo.hosts'))
+    expect(ids.indexOf('providers.nimbus')).toBeGreaterThan(ids.indexOf('providers.gcp'))
     expect(ids.indexOf('providers.nimbus')).toBeLessThan(ids.indexOf('limits'))
   })
 

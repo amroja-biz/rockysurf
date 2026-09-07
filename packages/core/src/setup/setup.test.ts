@@ -93,11 +93,11 @@ describe('GET /api/v1/setup', () => {
 
     expect(body.needsProvider).toBe(true)
     expect(body.complete).toBe(false)
-    expect(body.providers.map((p) => p.id).sort()).toEqual(['aws', 'azure', 'byo', 'gcp', 'hetzner'])
+    expect(body.providers.map((p) => p.id).sort()).toEqual(['aws', 'azure', 'gcp', 'hetzner'])
     expect(body.providers.every((p) => !p.enabled)).toBe(true)
   })
 
-  it('lists a personal provider beside the shipped five, named by its factory when the registry knows it (ADR-0026)', async () => {
+  it('lists a personal provider beside the shipped four, named by its factory when the registry knows it (ADR-0026)', async () => {
     // What the composition root records about a factory it loaded but built no provider from.
     await build(
       'providers:\n  nimbus:\n    package: rockysurf-provider-nimbus\n    enabled: true\n',
@@ -216,12 +216,10 @@ describe('setup state', () => {
     expect(state.providers.find((p) => p.id === 'hetzner')?.unavailableReason).toBeUndefined()
   })
 
-  it('counts byo as configured by its host list rather than a credential', () => {
-    const config = configSchema.parse({
-      providers: { byo: { enabled: true, hosts: [{ name: 'a', host: '10.0.0.1' }] } },
-    })
+  it('reports a shipped cloud whose credential is in the file as configured from the config', () => {
+    const config = configSchema.parse({ providers: { hetzner: { enabled: true, token: 'hz_x' } } })
     const state = computeSetupState({ config, registry, env: {} })
-    expect(state.providers.find((p) => p.id === 'byo')).toMatchObject({ configured: true, source: 'config' })
+    expect(state.providers.find((p) => p.id === 'hetzner')).toMatchObject({ configured: true, source: 'config' })
   })
 })
 

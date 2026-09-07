@@ -422,7 +422,7 @@ npx playwright install-deps chromium       # no --yes: prompts to install the pa
 curl "https://cdn/x?$(date +%s)"           # cache-busting guarantees a different payload each run
 go install github.com/org/tool@latest      # unpinned: CI tested something else
 aws s3 cp s3://bucket/asset .              # no cloud credentials, no AWS CLI, maybe not even AWS
-curl http://169.254.169.254/latest/meta-data/  # no metadata service on a BYO box
+curl http://169.254.169.254/latest/meta-data/  # no metadata service outside a cloud
 systemctl --user enable mytool             # no user session at bootstrap; see the linger idiom
 systemctl start x && sleep 60              # waits blind; use a bounded check
 ```

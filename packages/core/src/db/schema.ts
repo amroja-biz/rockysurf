@@ -156,7 +156,7 @@ export const servers = sqliteTable(
     description: text('description'),
 
     /* --- placement --- */
-    /** Provider id, matching `ComputeProvider.id`: 'aws', 'hetzner', 'byo'. */
+    /** Provider id, matching `ComputeProvider.id`: 'aws', 'hetzner', 'gcp'. */
     provider: text('provider').notNull(),
     /**
      * T-shirt size the user picked, or `'custom'` for a server created by naming an offering

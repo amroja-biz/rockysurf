@@ -30,39 +30,24 @@ const bootHere = () =>
   boot({ argv: [], cwd: dir, env: {}, listen: false, announce: (m) => announced.push(m) })
 
 /**
- * WHAT BYO'S SETTINGS PANEL IS MADE OF (ADR-0027, issue #370), abbreviated.
+ * WHAT A PROVIDER'S SETTINGS PANEL IS MADE OF (ADR-0027, issue #370), abbreviated.
  *
  * A provider's rows come from its factory's declaration, recorded on the registry by the
  * composition root — so a boot with no composition root has no provider panels and does not
- * pretend to. The two tests below SAVE into `providers.byo`, so they compose the way the product
- * does: a registry that carries the descriptor. The prose is the provider's and is checked in its
- * own package; what matters here is that the rows exist to be written.
+ * pretend to. The two tests below SAVE into `providers.hetzner`, so they compose the way the
+ * product does: a registry that carries the descriptor. The prose is the provider's and is
+ * checked in its own package; what matters here is that the rows exist to be written.
  */
-const byoDescriptor = {
-  id: 'byo',
-  displayName: 'Bring your own hosts',
+const hetznerDescriptor = {
+  id: 'hetzner',
+  displayName: 'Hetzner Cloud',
   settings: {
-    title: 'Your own machines',
-    help: 'Machines you already have, managed over SSH.',
+    title: 'Hetzner',
+    help: 'Servers in a Hetzner Cloud project.',
     fields: [
-      { name: 'identityFile', kind: 'string' as const, label: 'Default private key path', help: 'A path to the private key used to log in to every host below.' },
+      { name: 'location', kind: 'string' as const, label: 'Location', help: 'Which datacentre new servers are created in.' },
     ],
-    lists: [
-      {
-        name: 'hosts',
-        label: 'Hosts',
-        help: 'The machines Rocky Surf may claim. Enabling the provider above requires at least one.',
-        itemFields: [
-          { name: 'name', label: 'Name', kind: 'string' as const },
-          { name: 'host', label: 'Address', kind: 'string' as const },
-          { name: 'user', label: 'Admin login', kind: 'string' as const },
-        ],
-        add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
-        labelField: 'name',
-        empty: 'None yet. Enabling this provider requires at least one host.',
-      },
-    ],
-    offering: { noun: 'host', example: 'the-nuc-under-the-desk', label: 'your own machines', allowlist: false },
+    offering: { noun: 'server type', example: 'cpx21' },
   },
 }
 
@@ -429,8 +414,8 @@ describe('settings reach the running process (issue #264)', () => {
       env: {},
       listen: false,
       announce: (m) => announced.push(m),
-      // Composed, because the BYO save below writes rows the DECLARATION supplies (ADR-0027).
-      providers: () => new ProviderRegistry([], [], [byoDescriptor]),
+      // Composed, because the save below writes rows the DECLARATION supplies (ADR-0027).
+      providers: () => new ProviderRegistry([], [], [hetznerDescriptor]),
     })
     const token = await login()
 
@@ -440,14 +425,13 @@ describe('settings reach the running process (issue #264)', () => {
     // `/health` reads `config.providers` inside the handler, so it is the cheapest end-to-end
     // witness that a route sees the file rather than the values this process booted on.
     expect(await (await booted.app.request('/health')).json()).toMatchObject({ providers: [] })
-    // BYO needs no cloud credential; the schema does require it to name at least one machine,
-    // so the host and the switch travel together the way the page would send them.
-    const turnByoOn = [
-      { path: ['providers', 'byo', 'hosts', 0], value: { name: 'workshop', host: '10.0.0.9', user: 'admin' } },
-      { path: ['providers', 'byo', 'enabled'], value: true },
+    // The location and the switch travel together, the way the page would send them.
+    const turnHetznerOn = [
+      { path: ['providers', 'hetzner', 'location'], value: 'nbg1' },
+      { path: ['providers', 'hetzner', 'enabled'], value: true },
     ]
-    expect((await save(token, turnByoOn)).status, await (await save(token, turnByoOn)).text()).toBe(200)
-    expect(await (await booted.app.request('/health')).json()).toMatchObject({ providers: ['byo'] })
+    expect((await save(token, turnHetznerOn)).status, await (await save(token, turnHetznerOn)).text()).toBe(200)
+    expect(await (await booted.app.request('/health')).json()).toMatchObject({ providers: ['hetzner'] })
   })
 
   /**
@@ -465,11 +449,11 @@ describe('settings reach the running process (issue #264)', () => {
       listen: false,
       announce: () => {},
       providers: ({ config }) => {
-        composedWith.push(config.providers.byo.enabled)
+        composedWith.push(config.providers.hetzner.enabled)
         return new ProviderRegistry(
-          config.providers.byo.enabled ? [makeFakeProvider({ bootMs: 1, terminateMs: 1 })] : [],
+          config.providers.hetzner.enabled ? [makeFakeProvider({ bootMs: 1, terminateMs: 1 })] : [],
           [],
-          [byoDescriptor],
+          [hetznerDescriptor],
         )
       },
     })
@@ -477,13 +461,13 @@ describe('settings reach the running process (issue #264)', () => {
 
     const token = await login()
     const res = await save(token, [
-      { path: ['providers', 'byo', 'hosts', 0], value: { name: 'workshop', host: '10.0.0.9', user: 'admin' } },
-      { path: ['providers', 'byo', 'enabled'], value: true },
+      { path: ['providers', 'hetzner', 'location'], value: 'nbg1' },
+      { path: ['providers', 'hetzner', 'enabled'], value: true },
     ])
     expect(res.status, await res.text()).toBe(200)
     expect(composedWith).toEqual([false, true])
 
-    // And a save that leaves the providers block alone does not rebuild five cloud clients.
+    // And a save that leaves the providers block alone does not rebuild every cloud client.
     expect((await save(token, [{ path: ['limits', 'maxServers'], value: 9 }])).status).toBe(200)
     expect(composedWith).toEqual([false, true])
   })

@@ -246,6 +246,22 @@ Where the model column is named, all now reading `digitalocean`: `docs/writing-a
 `.agents/skills/add-provider/references/wiring.md` §13. The DigitalOcean section of
 `docs/providers/capability-matrix.md` describes that column directly and needs no model.
 
+## Third amendment — the removal landed (2026-09-07, issue #446, PR 2 of 2)
+
+The Provider the amendment above replaced as the model column is now gone: its package, its
+config section, its capability-matrix column and its Settings, wizard and Help entries were all
+deleted (issue #446, PR 2). Four Providers ship, and everything else is personal.
+
+Two consequences for this ADR, neither of them a change to it:
+
+- `SHIPPED_PROVIDER_IDS` is now `aws`, `azure`, `gcp`, `hetzner`. Any other key under `providers:`
+  is still a personal section and is still refused unless it names a `package:`.
+- A key naming a Provider this distribution REMOVED is refused ahead of both of the existing
+  refusals, with a sentence saying what happened and what to delete — not "did you mean", and not
+  an invitation to install a package nobody publishes. `REMOVED_PROVIDER_MESSAGES` in
+  `packages/core/src/config/personal-providers.ts` holds those sentences, and the check applies
+  only to a section with no `package:`, so a personal Provider that reuses the id still loads.
+
 ## References
 
 - Issue #294 (the settled direction; the plan and its review, recorded as a comment).

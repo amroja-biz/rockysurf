@@ -1,6 +1,6 @@
 ---
 name: add-provider
-description: Add a cloud to Rocky Surf, or configure one it already supports. Use when the user wants to switch on or configure a provider (AWS, Azure, GCP, Hetzner, BYO) — credentials, region, sshAllowedCidr, the setup wizard, the Settings page — or wants to add support for a cloud Rocky Surf does not have yet by writing a new provider package against @rockysurf/provider-sdk, either as a personal provider installed into their own Rocky Surf or as one shipped in the repository. Triggers on "add a provider", "configure AWS/Azure/GCP/Hetzner", "add DigitalOcean/Vultr/Linode/OVH support", "write a compute provider", "new provider package", "personal provider", "provider credentials", "sshAllowedCidr", "my provider isn't showing up", "provider conformance".
+description: Add a cloud to Rocky Surf, or configure one it already supports. Use when the user wants to switch on or configure a provider (AWS, Azure, GCP, Hetzner) — credentials, region, sshAllowedCidr, the setup wizard, the Settings page — or wants to add support for a cloud Rocky Surf does not have yet by writing a new provider package against @rockysurf/provider-sdk, either as a personal provider installed into their own Rocky Surf or as one shipped in the repository. Triggers on "add a provider", "configure AWS/Azure/GCP/Hetzner", "add DigitalOcean/Vultr/Linode/OVH support", "write a compute provider", "new provider package", "personal provider", "provider credentials", "sshAllowedCidr", "my provider isn't showing up", "provider conformance".
 ---
 
 # Rocky Surf providers
@@ -13,7 +13,7 @@ Two different jobs share that word. Ask which one this is before doing anything:
 
 | the user wants | mode | go to |
 |---|---|---|
-| to switch on or adjust a cloud Rocky Surf already ships — AWS, Azure, GCP, Hetzner, BYO | **Configure** | [references/configuring.md](references/configuring.md) |
+| to switch on or adjust a cloud Rocky Surf already ships — AWS, Azure, GCP, Hetzner | **Configure** | [references/configuring.md](references/configuring.md) |
 | to add a cloud Rocky Surf does not support — DigitalOcean, Vultr, OVH, an internal API | **Author** | the arc below |
 
 ## Prerequisites

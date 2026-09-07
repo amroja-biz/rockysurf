@@ -71,16 +71,24 @@ export interface ProviderSettingListItemField {
    *
    * Optional, and the default is the LIST's `help` for every item — which is the right answer
    * for a list whose entries are one idea (`mirrors`: a name and a URL). It is the wrong answer
-   * for `providers.byo.hosts`, where the admin login, the port and the fingerprint each need
-   * their own sentence and repeating "the machines Rocky Surf may claim" under all six boxes
-   * would say nothing about any of them. A sentence when present, checked like every other.
+   * for a list whose boxes are different ideas — an address, a login, a port and a fingerprint
+   * each need their own sentence, and repeating the list's one line under all of them would say
+   * nothing about any of them. A sentence when present, checked like every other.
    */
   help?: string
 }
 
 /**
- * A list of entries the page can add to and remove from — `providers.byo.hosts` is the shape.
- * `add` is what the blank form asks for; without it the list renders and offers no Add.
+ * A list of entries the page can add to and remove from — a repeated sub-object under the
+ * provider's own config section. `add` is what the blank form asks for; without it the list
+ * renders and offers no Add.
+ *
+ * NO SHIPPED PROVIDER DECLARES ONE (issue #446). The only one that ever did was the
+ * bring-your-own-server provider's host list, which was removed before v0.1.0; the declaration
+ * and its renderer are kept because a personal Provider whose configuration is genuinely a list
+ * is an ordinary thing to write, and because the SDK's shapes are frozen for the packages
+ * outside this repository that compile against them. `settings/inventory.ts` still builds the
+ * page from it and `inventory.test.ts` still covers it end to end.
  */
 export interface ProviderSettingList {
   name: string
@@ -88,7 +96,7 @@ export interface ProviderSettingList {
   help: string
   itemFields: readonly ProviderSettingListItemField[]
   add?: {
-    /** The singular the buttons speak — "Add host". */
+    /** The singular the buttons speak — "Add machine". */
     noun: string
     /** A complete entry the schema accepts, shown greyed; never written by itself. */
     example: Readonly<Record<string, string | number | boolean>>
@@ -137,18 +145,16 @@ export interface ProviderSettings {
      * How this provider is named INSIDE a sentence, when that is not its `title`.
      *
      * Default `title`, which reads correctly for a proper noun ("whenever you ask AWS for a
-     * small box"). BYO is the case that needs the other one: its panel is titled "Your own
-     * machines" and its sentences say "whenever you ask your own machines for a small box",
-     * which a capitalised title would break mid-sentence.
+     * small box"). A provider whose panel title is a phrase rather than a name needs the other
+     * one — a capitalised title read mid-sentence breaks the sentence.
      */
     label?: string
     /**
      * Whether core's `sizes` allowlist applies to this provider. Default `true`.
      *
      * `false` says the provider's catalogue is ALREADY the operator's own list, so a second
-     * allowlist over it would be a control for a config key that does not exist. BYO is the
-     * one: its machine types are the hosts named in `hosts` below, and core's `providers.byo`
-     * section has no `sizes` key for a panel to write.
+     * allowlist over it would be a control for a config key that does not exist — true of a
+     * provider whose machine types are entries the operator wrote in their own config section.
      */
     allowlist?: boolean
   }

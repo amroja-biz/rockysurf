@@ -74,7 +74,7 @@ const FIELDS: SettingsField[] = (
     { path: 'providers.hetzner.token', kind: 'secret', writable: true, label: 'Token Environment Variable', example: 'HETZNER_TOKEN' },
     { path: 'providers.hetzner.location', kind: 'string', writable: true, label: 'Location' },
     { path: 'providers.hetzner.consoleProjectId', kind: 'number', writable: true, label: 'Console project id' },
-    // AWS, Azure, GCP and BYO arrive declared too since issue #370 — so every row below carries
+    // AWS, Azure and GCP arrive declared too since issue #370 — so every row below carries
     // the provider's own label, the CIDR list says `sshCidrList` rather than `stringList`, and
     // the page has no hand-written block for any of them. This fixture is what core now sends.
     { path: 'providers.aws.enabled', kind: 'boolean', writable: true },
@@ -133,15 +133,18 @@ const FIELDS: SettingsField[] = (
       label: 'Offered machine types',
       reason: 'An allowlist of machine types, edited in the file.',
     },
-    { path: 'providers.byo.enabled', kind: 'boolean', writable: true },
-    { path: 'providers.byo.identityFile', kind: 'string', writable: true, label: 'Default private key path' },
+    // A FICTIONAL PERSONAL PROVIDER (ADR-0026) that declares a list, which is what makes this
+    // fixture the page's generic list-shape case: no shipped Provider declares `lists` today, and
+    // the renderer that draws one is still what a personal Provider gets (issue #446).
+    { path: 'providers.metalcloud.enabled', kind: 'boolean', writable: true },
+    { path: 'providers.metalcloud.identityFile', kind: 'string', writable: true, label: 'Default private key path' },
     // A declared list's item rows carry their labels too, which is what `oneList` reads them from.
-    { path: 'providers.byo.hosts.*.name', kind: 'string', writable: true, label: 'Name' },
-    { path: 'providers.byo.hosts.*.host', kind: 'string', writable: true, label: 'Address' },
-    { path: 'providers.byo.hosts.*.user', kind: 'string', writable: true, label: 'Admin login' },
-    { path: 'providers.byo.hosts.*.port', kind: 'number', writable: true, label: 'SSH port' },
-    { path: 'providers.byo.hosts.*.fingerprint', kind: 'string', writable: true, label: 'Host key fingerprint' },
-    { path: 'providers.byo.hosts.*.identityFile', kind: 'string', writable: true, label: 'Private key path' },
+    { path: 'providers.metalcloud.machines.*.name', kind: 'string', writable: true, label: 'Name' },
+    { path: 'providers.metalcloud.machines.*.host', kind: 'string', writable: true, label: 'Address' },
+    { path: 'providers.metalcloud.machines.*.user', kind: 'string', writable: true, label: 'Admin login' },
+    { path: 'providers.metalcloud.machines.*.port', kind: 'number', writable: true, label: 'SSH port' },
+    { path: 'providers.metalcloud.machines.*.fingerprint', kind: 'string', writable: true, label: 'Host key fingerprint' },
+    { path: 'providers.metalcloud.machines.*.identityFile', kind: 'string', writable: true, label: 'Private key path' },
     { path: 'limits.maxServers', kind: 'number', writable: true },
     { path: 'limits.createRatePerHour', kind: 'number', writable: true },
     // Your own public keys, saved by name (issue #302). Plain strings, key included: masking a
@@ -195,8 +198,8 @@ const SECTIONS: SettingsSection[] = [
   { id: 'providers.aws', title: 'AWS', help: 'EC2 instances in one region.' },
   { id: 'providers.azure', title: 'Azure', help: 'Virtual machines in one Azure region.' },
   { id: 'providers.gcp', title: 'Google Cloud', help: 'Compute Engine instances in one zone.' },
-  { id: 'providers.byo', title: 'Your own machines', help: 'Machines you already have.' },
-  { id: 'providers.byo.hosts', title: 'Hosts', help: 'The machines Rocky Surf may claim.' },
+  { id: 'providers.metalcloud', title: 'Metal Cloud', help: 'Servers at Metal Cloud.' },
+  { id: 'providers.metalcloud.machines', title: 'Machines', help: 'The machines Rocky Surf may claim.' },
   { id: 'limits', title: 'Limits', help: 'Guardrails, enforced server-side.' },
   { id: 'registry', title: 'Pack sources', help: 'Where Surge Packs may come from.' },
   { id: 'registry.sources', title: 'Sources', help: 'The sources this instance browses.' },
@@ -218,7 +221,7 @@ const VIEW: SettingsView = {
     providers: {
       hetzner: { enabled: true, token: { secret: true, state: 'set' }, location: 'fsn1' },
       aws: { enabled: false, sizes: ['t4g.small', 't4g.medium'] },
-      byo: { enabled: false, hosts: [{ name: 'workshop', host: '10.0.0.9' }] },
+      metalcloud: { enabled: false, machines: [{ name: 'workshop', host: '10.0.0.9' }] },
     },
     ssh: { keys: [{ name: 'laptop', publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKPX laptop' }] },
     limits: { maxServers: 5 },
@@ -232,7 +235,7 @@ const VIEW: SettingsView = {
     server: { port: 3000, host: '127.0.0.1', dataDir: '/home/rocky/.rockysurf' },
     auth: { mode: 'local' },
     github: { tokens: [] },
-    providers: { hetzner: { enabled: false, location: 'fsn1' }, aws: { enabled: false, region: 'us-east-1' }, byo: { enabled: false, hosts: [] } },
+    providers: { hetzner: { enabled: false, location: 'fsn1' }, aws: { enabled: false, region: 'us-east-1' }, metalcloud: { enabled: false, machines: [] } },
     limits: { maxServers: 5, createRatePerHour: 4 },
     mcp: { scopes: ['read', 'stop'] },
   },
@@ -254,11 +257,11 @@ const VIEW: SettingsView = {
       empty: 'None yet. Add one and the New Server page will offer it.',
     },
     {
-      path: 'providers.byo.hosts',
+      path: 'providers.metalcloud.machines',
       itemFields: ['name', 'host', 'user', 'port', 'fingerprint', 'identityFile'],
-      add: { noun: 'host', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
+      add: { noun: 'machine', example: { name: 'build-box', host: '10.0.0.1' }, required: ['name', 'host'] },
       labelField: 'name',
-      empty: 'None yet. Enabling this provider requires at least one host.',
+      empty: 'None yet. Enabling this provider requires at least one machine.',
     },
     {
       path: 'registry.sources',
@@ -1388,12 +1391,12 @@ describe('what the page sends', () => {
     renderPage()
     await loaded()
 
-    open('Your own machines')
+    open('Metal Cloud')
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     expect(screen.getByRole('dialog').textContent).toContain('workshop')
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
 
-    expect((await onlySave()).changes).toEqual([{ path: ['providers', 'byo', 'hosts', 0], unset: true }])
+    expect((await onlySave()).changes).toEqual([{ path: ['providers', 'metalcloud', 'machines', 0], unset: true }])
   })
 
   /**
@@ -1414,18 +1417,18 @@ describe('what the page sends', () => {
     await loaded()
 
     // An edit somewhere else cannot renumber this list, so it does not block it — m29b blocked
-    // on any pending edit at all, which made adding a host mean saving the port first.
+    // on any pending edit at all, which made adding a machine mean saving the port first.
     fireEvent.change(control('server.port'), { target: { value: '8080' } })
-    open('Your own machines')
-    expect(screen.getByRole('button', { name: 'Add host' }).hasAttribute('disabled')).toBe(false)
+    open('Metal Cloud')
+    expect(screen.getByRole('button', { name: 'Add machine' }).hasAttribute('disabled')).toBe(false)
 
-    fireEvent.change(control('providers.byo.hosts.0.name'), { target: { value: 'renamed' } })
+    fireEvent.change(control('providers.metalcloud.machines.0.name'), { target: { value: 'renamed' } })
     expect(
       screen.getByRole('button', { name: 'Remove' }).hasAttribute('disabled'),
       'Remove should wait, because removing an entry renumbers the rest',
     ).toBe(true)
     expect(
-      screen.getByRole('button', { name: 'Add host' }).hasAttribute('disabled'),
+      screen.getByRole('button', { name: 'Add machine' }).hasAttribute('disabled'),
       'Add appends at the end and renumbers nothing, so it must stay usable',
     ).toBe(false)
     expect(saves).toHaveLength(0)
@@ -1753,7 +1756,7 @@ describe('finding your way around the page', () => {
     renderPage()
     await loaded()
 
-    // Eleven tabs for fourteen sections: `providers.byo.hosts` is inside `providers.byo`,
+    // Eleven tabs for fourteen sections: `providers.metalcloud.machines` is inside `providers.metalcloud`,
     // `registry.sources` inside `registry` and `ssh.keys` inside `ssh`, so each is a card on
     // its parent's tab rather than a tab beside it.
     expect(tabNames()).toEqual([
@@ -1764,7 +1767,7 @@ describe('finding your way around the page', () => {
       'AWS',
       'Azure',
       'Google Cloud',
-      'Your own machines',
+      'Metal Cloud',
       'Limits',
       'Pack sources',
       'MCP',
@@ -1785,8 +1788,8 @@ describe('finding your way around the page', () => {
     expect(panelOf('limits').hasAttribute('hidden')).toBe(false)
     expect(selected()!.textContent).toContain('Limits')
     // The nested section rides along with its parent rather than being lost between tabs.
-    open('Your own machines')
-    expect(panelOf('providers.byo').textContent).toContain('The machines Rocky Surf may claim')
+    open('Metal Cloud')
+    expect(panelOf('providers.metalcloud').textContent).toContain('The machines Rocky Surf may claim')
   })
 
   it('opens the section a link names, so a reload comes back to where it was', async () => {
@@ -1798,10 +1801,10 @@ describe('finding your way around the page', () => {
   })
 
   it('opens the tab that HOLDS a nested section a link names', async () => {
-    renderPage('/settings?section=providers.byo.hosts')
+    renderPage('/settings?section=providers.metalcloud.machines')
     await loaded()
 
-    expect(selected()!.textContent).toContain('Your own machines')
+    expect(selected()!.textContent).toContain('Metal Cloud')
   })
 
   it('falls back to the first tab rather than a blank page when the link names nothing', async () => {
@@ -1923,8 +1926,8 @@ describe('finding your way around the page', () => {
    * THE SHAPE ISSUE #124 ACTUALLY SHIPPED, which the generic test above does not cover.
    *
    * `preferences.tiers` is not one flat section: it is a tab (`preferences`) with a card per
-   * cloud nested inside it (`preferences.tiers.aws`, …), the same arrangement `providers.byo`
-   * and `providers.byo.hosts` already use. What is checked here is that the nesting rule —
+   * cloud nested inside it (`preferences.tiers.aws`, …), the same arrangement `providers.metalcloud`
+   * and `providers.metalcloud.machines` already use. What is checked here is that the nesting rule —
    * longest section id prefixing a field's path owns the field — puts each cloud's three boxes
    * on the right card and puts all of them behind one tab, and that a save names the path the
    * config file has. Still no edit to `SettingsPage.tsx`.
@@ -1956,7 +1959,7 @@ describe('finding your way around the page', () => {
     await loaded()
 
     // ONE tab for seven sections' worth of new material — the clouds are cards on it, not tabs
-    // beside it, exactly as `providers.byo.hosts` is a card on Your own machines.
+    // beside it, exactly as `providers.metalcloud.machines` is a card on Metal Cloud.
     expect(tabNames()).toContain('Preferences')
     expect(tabNames()).not.toContain('AWS boxes')
     expect(tabNames()).not.toContain('GCP boxes')

@@ -43,13 +43,10 @@ providers:
     enabled: true
     region: us-east-1
     sizes: [t4g.small, t4g.medium]
-  byo:
-    enabled: true
-    hosts:
-      - name: workshop
-        host: 10.0.0.9
-        user: rocky
-        fingerprint: "SHA256:abc"
+registry:
+  sources:
+    - name: My packs
+      url: "https://example.com/packs"
 limits:
   maxServers: 12
   spendCap:
@@ -87,18 +84,16 @@ describe('happy path', () => {
     expect(config.providers.hetzner).toMatchObject({ enabled: true, token: 'hz_example', location: 'fsn1' })
     expect(config.providers.aws).toMatchObject({ enabled: true, region: 'us-east-1' })
     expect(config.providers.aws.sizes).toEqual(['t4g.small', 't4g.medium'])
-    expect(config.providers.byo.hosts).toHaveLength(1)
 
     expect(config.limits.maxServers).toBe(12)
     expect(config.limits.createRatePerHour).toBe(2)
     expect(config.limits.spendCap).toEqual({ amount: 40, currency: 'EUR' })
   })
 
-  it('fills in per-host defaults', () => {
+  it('fills in per-entry defaults inside a list', () => {
     const config = parseConfig(FULL, 'test.yaml', ENV)
-    const host = config.providers.byo.hosts[0]
-    expect(host).toMatchObject({ name: 'workshop', host: '10.0.0.9', user: 'rocky', port: 22 })
-    expect(host?.fingerprint).toBe('SHA256:abc')
+    const source = config.registry.sources[0]
+    expect(source).toMatchObject({ name: 'My packs', url: 'https://example.com/packs', trust: 'community' })
   })
 })
 
@@ -120,7 +115,7 @@ describe('defaults materialize', () => {
     const config = parseConfig('', 'test.yaml', {})
     expect(config.providers.aws).toMatchObject({ enabled: false, region: 'us-east-1' })
     expect(config.providers.hetzner).toMatchObject({ enabled: false, location: 'fsn1' })
-    expect(config.providers.byo).toMatchObject({ enabled: false, hosts: [] })
+    expect(config.providers.gcp).toMatchObject({ enabled: false, zone: 'us-central1-a' })
   })
 
   it('pricing defaults to the hosted feed, enabled (gh #100)', () => {
@@ -267,9 +262,9 @@ describe('defaults materialize', () => {
     expect(config.providers.aws.enabled).toBe(false)
   })
 
-  it('treats an empty hosts list written as a bare key as an empty list', () => {
-    const config = parseConfig('providers:\n  byo:\n    hosts:\n', 'test.yaml', {})
-    expect(config.providers.byo.hosts).toEqual([])
+  it('treats a list written as a bare key as an empty list', () => {
+    const config = parseConfig('registry:\n  sources:\n', 'test.yaml', {})
+    expect(config.registry.sources).toEqual([])
   })
 
   it('a half-specified section keeps the defaults for the rest of its fields', () => {
@@ -628,6 +623,25 @@ describe('validation errors name the offending field', () => {
     )
   })
 
+  /**
+   * A CONFIG FILE THAT STILL NAMES A REMOVED PROVIDER (issue #446).
+   *
+   * `providers.byo` was a shipped section until v0.1.0. An operator whose file still has one gets
+   * neither "did you mean" nor an invitation to install a package — both would be wrong, and the
+   * second would send them looking for something nobody publishes. It names what happened and
+   * what to delete, and it is fatal, because a section core silently ignored would leave an
+   * operator waiting for a provider that is never coming back.
+   */
+  it('refuses a section naming a provider this release removed, and says what to delete', () => {
+    const err = configErrorFrom(() =>
+      parseConfig('providers:\n  byo:\n    enabled: true\n    hosts:\n      - name: workshop\n        host: 10.0.0.9\n', 'test.yaml', {}),
+    )
+    expect(err.message).toContain('the bring-your-own-server provider was removed in v0.1.0')
+    expect(err.message).toContain('Delete the `byo:` section')
+    expect(err.message).not.toContain('did you mean')
+    expect(err.message).not.toContain('needs `package:`')
+  })
+
   it('catches a misspelled shipped provider with "did you mean", not with advice to install a package', () => {
     const err = configErrorFrom(() => parseConfig('providers:\n  hetzer:\n    enabled: true\n', 'test.yaml', {}))
     expect(err.message).toContain('providers.hetzer is not a provider Rocky Surf ships — did you mean hetzner?')
@@ -651,7 +665,7 @@ describe('validation errors name the offending field', () => {
     // `enabled` defaults to false, like every shipped section.
     const off = parseConfig('providers:\n  nimbus:\n    package: p\n', 'test.yaml', {})
     expect(personalProviderSections(off)['nimbus']?.enabled).toBe(false)
-    // The five shipped sections keep their own types — no index signature widened them.
+    // The four shipped sections keep their own types — no index signature widened them.
     expect(config.providers.hetzner.location).toBe('fsn1')
   })
 
@@ -704,11 +718,6 @@ describe('validation errors name the offending field', () => {
       profile: 'dev',
       sshAllowedCidr: '203.0.113.4/32',
     })
-  })
-
-  it('catches an enabled byo with no hosts', () => {
-    const err = configErrorFrom(() => parseConfig('providers:\n  byo:\n    enabled: true\n', 'test.yaml', {}))
-    expect(err.message).toContain('providers.byo.hosts')
   })
 
   it('rejects a malformed publicUrl', () => {
@@ -1025,7 +1034,7 @@ describe('the shipped example files', () => {
     const { providers } = parseConfig(exampleConfig, 'example', { HETZNER_TOKEN: 'hz_example' })
     expect(providers.hetzner).toMatchObject({ enabled: true, token: 'hz_example', location: 'fsn1' })
     expect(providers.aws.enabled).toBe(false)
-    expect(providers.byo.enabled).toBe(false)
+    expect(providers.gcp.enabled).toBe(false)
   })
 
   /**
@@ -1040,7 +1049,7 @@ describe('the shipped example files', () => {
    * turned on, and every documented key must survive into the parsed section.
    */
   it('accepts every provider block with every documented option turned on', () => {
-    for (const provider of ['hetzner', 'aws', 'azure', 'gcp', 'byo'] as const) {
+    for (const provider of ['hetzner', 'aws', 'azure', 'gcp'] as const) {
       const { yaml, options } = extractProviderBlock(exampleConfig, provider)
       const config = parseConfig(
         `providers:\n${yaml}`,

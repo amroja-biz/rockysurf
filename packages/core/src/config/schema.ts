@@ -469,50 +469,7 @@ const gcpProviderSchema = section(
 )
 
 /**
- * One pre-existing machine reachable over SSH. BYO is push-only by construction — a box with no
- * user-data cannot be told anything before boot — so a host is identified by where to connect
- * and as whom. `fingerprint` is optional because BYO records it on first connect when it is not
- * supplied; supplying it turns trust-on-first-use into strict verification.
- *
- * The authoritative shape lands with `@rockysurf/provider-byo`; this is the minimum core needs
- * in order to validate a config file today.
- */
-const byoHostSchema = z.strictObject({
-  name: z.string().trim().min(1),
-  host: z.string().trim().min(1),
-  user: z.string().trim().min(1).default('root'),
-  port: z.coerce.number().int().min(1).max(65535).default(22),
-  fingerprint: z.string().trim().min(1).optional(),
-  /**
-   * Path to the private key the provider claims this host with. Falls back to the section-level
-   * `identityFile`, then to the SSH agent named by `SSH_AUTH_SOCK`.
-   *
-   * A PATH, never key material: the key stays where the operator's own SSH already keeps it, and
-   * nothing copies it into a config file or the database.
-   */
-  identityFile: z.string().trim().min(1).optional(),
-})
-
-const byoProviderSchema = section(
-  z
-    .strictObject({
-      enabled: z.boolean().default(false),
-      /** Default private key for every host that does not name its own. */
-      identityFile: z.string().trim().min(1).optional(),
-      hosts: z
-        .array(byoHostSchema)
-        .default([])
-        // `hosts:` with every entry commented out parses as null, same trap as a section.
-        .or(z.null().transform(() => [] as z.output<typeof byoHostSchema>[])),
-    })
-    .refine((v) => !v.enabled || v.hosts.length > 0, {
-      path: ['hosts'],
-      error: 'byo is enabled but no hosts are listed',
-    }),
-)
-
-/**
- * The five shipped sections by name, and ANY OTHER KEY as a personal provider (ADR-0026).
+ * The four shipped sections by name, and ANY OTHER KEY as a personal provider (ADR-0026).
  *
  * The catchall is on the INNER object, not on `section()`'s preprocess wrapper — which exposes
  * no `.catchall` and would silently lose the null-tolerance that lets a `providers:` with every
@@ -532,7 +489,6 @@ const providersSchema = section(
       azure: azureProviderSchema,
       gcp: gcpProviderSchema,
       hetzner: hetznerProviderSchema,
-      byo: byoProviderSchema,
     })
     .catchall(z.unknown())
     .superRefine((providers, ctx) => refinePersonalProviderSections(providers, ctx)),
@@ -790,8 +746,6 @@ const preferencesSchema = section(
           azure: tierPreferenceSchema,
           gcp: tierPreferenceSchema,
           hetzner: tierPreferenceSchema,
-          /** BYO offerings are host NAMES, so a preference here is "always claim this machine". */
-          byo: tierPreferenceSchema,
         })
         // The catchall is on the inner object for the reason `providersSchema` gives.
         .catchall(tierPreferenceSchema),
@@ -954,7 +908,6 @@ export type McpConfig = Config['mcp']
 export type RegistryConfig = Config['registry']
 export type RegistrySource = RegistryConfig['sources'][number]
 export type McpScope = McpConfig['scopes'][number]
-export type ByoHost = Config['providers']['byo']['hosts'][number]
 export type PricingConfig = Config['pricing']
 export type PreferencesConfig = Config['preferences']
 /** One cloud's remembered types, as `{ small?, medium?, large? }`. */

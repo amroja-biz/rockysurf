@@ -2,7 +2,7 @@
 
 *For operators.*
 
-What each provider declares in `ProviderCapabilities`, and the evidence behind it. Five of the
+What each provider declares in `ProviderCapabilities`, and the evidence behind it. Four of the
 columns are the providers this distribution ships; `digitalocean` is a PERSONAL provider
 ([ADR-0026](../adr/0026-personal-providers.md)) that lives in this repository, is built and tested
 by CI, and is installed rather than composed — it is in the table because core branches on these
@@ -20,16 +20,16 @@ and the two real-cloud capstone transcripts beside it.
 
 ## The matrix
 
-| capability | `aws` | `azure` | `gcp` | `hetzner` | `byo` | `digitalocean` |
-|---|---|---|---|---|---|---|
-| `stop` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
-| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` | `true` † |
-| `canInjectHostKeys` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
-| `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `0` | `65536` † |
-| `generatesUserData` | `true` | `true` | `true` | `true` | **`false`** | `true` † |
-| `managesSshAccess` | `true` † | `true` † | `true` † | absent | absent | `true` |
-| `simulatedInstances` | absent | absent | absent | absent | absent | absent |
-| `billsWhileStopped` | absent | absent | absent | absent | absent | **`true`** † |
+| capability | `aws` | `azure` | `gcp` | `hetzner` | `digitalocean` |
+|---|---|---|---|---|---|
+| `stop` | `true` | `true` | `true` | `true` | `true` † |
+| `ipStableAcrossStop` | **`false`** | `true` | **`false`** † | `true` † | `true` † |
+| `canInjectHostKeys` | `true` | `true` | `true` | `true` | `true` † |
+| `userDataMaxBytes` | `16384` | `49152` † | `262144` | `32768` | `65536` † |
+| `generatesUserData` | `true` | `true` | `true` | `true` | `true` † |
+| `managesSshAccess` | `true` † | `true` † | `true` † | absent | `true` |
+| `simulatedInstances` | absent | absent | absent | absent | absent |
+| `billsWhileStopped` | absent | absent | absent | absent | **`true`** † |
 
 `aws` and `hetzner` values are measured — both providers were built and run end to end against
 real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
@@ -103,29 +103,12 @@ the common case, not a promise — but it means the `false` reading has still ne
 documented per-metadata-value ceiling, structural and never approached.
 
 One difference in the *form* of the evidence, since this table is where people come to compare
-it: `aws`, `hetzner` and `byo` have committed transcripts you can read, and `aws`, `hetzner` and
-`gcp` are re-run nightly.
+it: `aws` and `hetzner` have committed transcripts you can read, and `aws`, `hetzner` and `gcp`
+are re-run nightly.
 The GCP run was driven by hand and through the MCP server, and no transcript of it was recorded
 into the repository — what backs the column is a report of a run rather than an artefact of one.
 [The status block in `gcp.md`](gcp.md#status-proven-on-real-google-cloud-nightly) has it
 in full.
-
-`byo` is now **implemented** (`@rockysurf/provider-byo`, `rockysurf-ftl9.3`) and its column is
-measured against a real OpenSSH server rather than only against the package's own tests
-(`rockysurf-ftl9.10`). The shipped binary was driven through core's HTTP API against an
-`ubuntu:24.04` container running `openssh-server` on a non-22 port, and the transcript is
-committed at [`scripts/e2e/recordings/byo-container.log`](https://github.com/amroja-biz/rockysurf/blob/main/scripts/e2e/recordings/byo-container.log).
-What that settles, which no in-process SSH server could: a real `useradd` made the account and
-**sudo itself** parsed the sudoers drop-in; real sshd consulted `authorized_keys` and the first
-claim appended to it rather than replacing it; terminate is bookkeeping, shown by sshd's own
-connection count being unchanged across it; and after `ssh-keygen -A` gave the box new host keys,
-both a TOFU-learned pin and a configured fingerprint refused it inside a real handshake, with no
-credential reaching the changed host.
-
-**Nobody has pointed it at a rack**, and that half stands. A container on the same machine
-reached over loopback is a real sshd with a real PAM stack, and it is still not remote hardware
-on a real network. The run also needs Docker, so it gates a pull request but `pnpm run check`
-never sees it.
 
 **`digitalocean` is daggered in every row but one.** The package
 (`packages/provider-digitalocean`, issue #368) was written from DigitalOcean's published
@@ -173,8 +156,7 @@ is a PERSONAL provider
 this repository imports it, it is not composed into `packages/rockysurf/src/compose.ts`, and this
 repository does not spend money proving somebody else's provider works. A nightly real-cloud leg exists for the
 OFFICIAL providers only. A personal provider ships a fully daggered column, and its author and
-whoever installs it are the ones who verify it, the way the `byo` column was verified before its
-transcript was committed.
+whoever installs it are the ones who verify it.
 
 For this column that is issues #372 (build the provider through the `add-provider` skill and
 install it as a personal provider) and #373 (create, stop, start, SSH into and terminate a real
@@ -187,8 +169,10 @@ lifecycle run, and no green tick is evidence for a claim the run never made.
 
 ### `stop` — can the instance be stopped and restarted with its disk intact?
 
-All four shipped clouds can, and so can DigitalOcean. BYO cannot: core does not own the machine's
-power state, so there is nothing to call.
+All four shipped clouds can, and so can DigitalOcean. A provider that cannot — one whose machines
+core does not own the power state of — declares `stop: false` and throws
+`unsupportedOperationError`, and core returns 501 rather than pretending
+([ADR-0003](../adr/0003-provider-sdk-shape-and-exclusions.md), amendment A2).
 
 **DigitalOcean can stop and it does not save you anything**, which is a combination no shipped
 provider has: the disk survives a `shutdown`/`power_on` pair and the meter never pauses. That is
@@ -255,9 +239,6 @@ after the start, for both readings of the flag — so the next nightly that comp
 stop/start cycle will settle this row. **The dagger comes off when a run has carried it**, not
 when the assertion was written.
 
-**BYO: yes**, trivially — the address is whatever the operator configured, and core never
-changes it.
-
 This is what drives the `previousIp` / `ipChangedAt` UX: on a provider where the address moves,
 core must re-read it after every start and tell the user their SSH config is stale.
 
@@ -287,19 +268,17 @@ Renamed from `canPinHostKey` (ADR-0003, E4) because the old name hid what it dec
   architectures. The specific failure this row was written to be honest about did not happen:
   GCE's guest agent does not regenerate the host key out from under a `ssh_keys:` block, so the
   value stays `true` and it is now an observation. GCP has no trust-on-first-use window either.
-- **`false` (BYO)** — with no user-data there is no way to place a key before first contact, so
-  the key has to be learned instead: recorded on first connection, refused on any change
-  afterwards, and said plainly in the UI.
+- **`false`** — no shipped provider declares it, and the SDK allows it: with no user-data there
+  is no way to place a key before first contact, so the key has to be learned instead — recorded
+  on first connection, refused on any change afterwards, and said plainly in the UI.
 
-  **Where that trust decision lives is the part worth knowing.** It is not in core. The BYO
+  **Where that trust decision lives is the part worth knowing.** It is not in core. Such a
   provider connects to the box before core ever does — it must, in order to install the account
   and authorized keys that cloud-init installs elsewhere — so it does the trusting, pins the
   result, and reports the fingerprint to core through `InstanceView.hostKeyFingerprint`
   (ADR-0003, amendment E12). Core folds it onto the server row and then verifies **strictly**, the
-  same way it does for a cloud box. Core has no trust-on-first-use path and does not grow one for
-  BYO; what it receives is a pin, not permission to trust. An operator who supplies
-  `fingerprint:` in the host's configuration closes the remaining window: the provider's own first
-  connection is then verified too.
+  same way it does for a cloud box. Core has no trust-on-first-use path and does not grow one;
+  what it receives is a pin, not permission to trust.
 
 Strictly this is a property of the image's cloud-init rather than of the provider API — it works
 because cloud-init honours `ssh_keys:` and neither cloud strips user-data. It lives in
@@ -310,7 +289,7 @@ capabilities because core has nowhere else to ask.
 AWS's 16,384-byte limit is the binding one; Hetzner's 32,768 has never been approached, and
 GCP's 262,144 — Google's documented ceiling on a single metadata *value*, inside a 512 KB total
 across all entries — is sixteen times AWS's and could not be reached by anything core renders.
-BYO is `0` because there is no pre-boot hook at all. DigitalOcean's 65,536 is its create
+A provider with no pre-boot hook at all declares `0`. DigitalOcean's 65,536 is its create
 endpoint's documented `user_data` ceiling — "plain text and may not exceed 64 KiB in size" — and
 because it is plain text there is no encoding step to read the number two ways, which is what makes
 it a straight transcription rather than Azure's judgement call below.
@@ -350,19 +329,19 @@ the row above: a box cannot present a host key core minted unless cloud-init con
 document carrying it. Note the difference in strength, though — AWS and Hetzner were compared
 byte-for-byte against the file on the box, and no GCP run has done that.
 
-BYO does not. Core renders no document, and bootstrap is SSH push only — which is the same push
-path both clouds already use after first boot, so BYO is a subset rather than a separate
-mechanism. Note the dependency: `generatesUserData: false` forces `canInjectHostKeys: false`.
-
-What cloud-init would have done before boot, the BYO provider does over SSH at claim time:
-create the account core connects as, write `authorized_keys` (appending, never truncating — the
-operator's own access is in that file), and grant passwordless sudo, which the bootstrap agent
-needs to install anything. Everything after that point is the ordinary push bootstrap.
+A provider that declares `false` renders no document, and bootstrap is SSH push only — which is
+the same push path every cloud already uses after first boot, so it is a subset rather than a
+separate mechanism. Note the dependency: `generatesUserData: false` forces
+`canInjectHostKeys: false`. What cloud-init would have done before boot, such a provider does over
+SSH in `provision()`: create the account core connects as, write `authorized_keys`, and grant
+passwordless sudo, which the bootstrap agent needs to install anything. Everything after that
+point is the ordinary push bootstrap, and `scripts/e2e/fixtures/bootstrap-target` is the worked
+example — test-only, and the harness that keeps the path covered.
 
 ### `managesSshAccess` — does the provider own a whitelist Rocky Surf can push to?
 
 **`true` on `aws`, `azure`, `gcp` and `digitalocean`; absent — which is the answer `false` — on
-`hetzner` and `byo`.** Optional, added by issue #304 and recorded in
+`hetzner`.** Optional, added by issue #304 and recorded in
 [ADR-0021](../adr/0021-ssh-access-is-pushed-on-save-not-only-on-provision.md).
 
 It answers one question: is there a cloud object whose contents are `sshAllowedCidr`, which Rocky
@@ -385,8 +364,8 @@ cannot prove it created is reported with the command that removes it by hand.
 `hetzner` declares nothing because it has no whitelist at all: a Hetzner server is reachable the
 moment it boots, there is no firewall object to create or adopt, and there is no `sshAllowedCidr`
 setting on that provider to push. It is therefore **absent from the sync report**, not reported as
-a failure — there is nothing there to be wrong. `byo` declares nothing because the machine is
-already the operator's and its network is already whatever they made it.
+a failure — there is nothing there to be wrong. So does any provider that did not create the
+network its machines sit on.
 
 **This is the first OPTIONAL method on the interface**, and the flag is what makes it safe:
 `syncSshAccess()` exists only on the providers that set this, and core calls it through
@@ -425,13 +404,12 @@ Added by [ADR-0025](../adr/0025-billing-while-stopped-is-a-capability.md) (ADR-0
 E17). `true` means a `stopped` instance is charged at the SAME hourly rate as a running one, and
 core's meter keeps running through `stopped` on the strength of it.
 
-The five shipped clouds say nothing, which means `false`, and the evidence is per cloud: AWS stops
+The four shipped clouds say nothing, which means `false`, and the evidence is per cloud: AWS stops
 compute charges at `stopped` (the EBS volume keeps costing, which core has never priced — see
 `BILLING_INSTANCE_STATES`); GCP and Hetzner likewise; **Azure** has both a billing off-state
 (`powerOff`, Stopped/Allocated) and a non-billing one (`deallocate`), and the shipped provider
 chooses `deallocate` — confirmed on the real-cloud run of 2026-08-26 — which is why it leaves the
-flag absent rather than setting it; BYO's machines are the operator's own and cost Rocky Surf
-nothing to count.
+flag absent rather than setting it.
 
 The cloud it was added for is **DigitalOcean**, and that column now exists: a powered-off droplet
 bills at the full rate and there is no `deallocate`-shaped call to choose instead (issue #294, gap
@@ -486,7 +464,8 @@ exist:
   region plus instance id. Azure needs nothing extra either — an ARM resource id already contains
   the subscription, the group and the name, and the portal resolves one without being told the
   tenant — and GCP likewise, since the project, zone and instance name are all things its provider
-  already holds. BYO and the in-memory provider have no console at all. This is
+  already holds. The in-memory provider has no console at all, and neither does any provider that
+  did not create the machine. This is
   per-instance rather than per-provider, so it is expressed by `InstanceView.consoleUrl`
   (ADR-0003, amendment E16), which is absent when the provider cannot construct one honestly.
 - **Base image contents.** All three clouds run "Ubuntu 24.04" and they are not the same image —
@@ -497,4 +476,5 @@ exist:
 ## Adding a provider
 
 Fill in a column here in the same PR that adds the provider, with a note on how each value was
-established. A value nobody has exercised should say so, the way the `byo` column does.
+established. A value nobody has exercised should say so, the way the daggers in the
+`digitalocean` column do.

@@ -332,6 +332,18 @@ explicit confirmed sync revokes, and what is missing is authorized before what i
 The `add-provider` skill's `references/ssh-access.md` carries the two shapes and how to tell
 which one a cloud is.
 
+## Amendment — one of the two providers that declared nothing is gone (2026-09-07, issue #446)
+
+The bring-your-own-server Provider was removed before v0.1.0 (issue #446). It is named above as
+one of the two Providers that declare no `managesSshAccess`, because the machine and its network
+were already the operator's.
+
+**Nothing here changes.** Absent still means `false`, `hetzner` still declares nothing because it
+has no firewall object at all, and the reason generalises: a Provider that did not create the
+network its machines sit on owns no rules over it, and is absent from the sync report rather than
+reported as a failure. The anti-lockout rules — additive provision, authorize-before-revoke, an
+itemized revoke only on explicit confirmation — are untouched.
+
 ## References
 
 - Issue #304.
