@@ -92,7 +92,7 @@ function Screen() {
         </div>
         <Swell />
         <ul style={{ listStyle:'none', margin:'0.8rem 0 0', padding:0, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:'0.75rem' }}>
-          {[['ai-coding-agents','Claude Code','claude-code.png','Claude Code on the shared base toolchain.'],
+          {[['claude-code','Claude Code','claude-code.png','Claude Code and the base toolchain on one box.'],
             ['open-claw','OpenClaw','open-claw.png','A desktop session with a browser-driving agent.'],
             ['gas-town','Gas Town','gas-town.png','The Gas Town harness and its dependencies.']].map(([id, name, img, desc]) => (
             <li key={id}>

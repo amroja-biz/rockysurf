@@ -20,7 +20,7 @@ const SIZES = [
   ['large','large','8 vCPU · 16 GB · cpx41','$0.034/hr'],
 ]
 const PACKS = [
-  ['ai-coding-agents','Claude Code','claude-code.png','15 tools · Claude Code on the shared base toolchain'],
+  ['claude-code','Claude Code','claude-code.png','16 tools · Claude Code and the base toolchain'],
   ['open-claw','OpenClaw','open-claw.png','17 tools · a desktop session with a browser-driving agent'],
   ['gas-town','Gas Town','gas-town.png','19 tools · the Gas Town harness and its dependencies'],
 ]
@@ -63,7 +63,7 @@ function Label({ children, help }) {
 function CreateScreen({ onCreate }) {
   const [provider, setProvider] = React.useState('hetzner')
   const [size, setSize] = React.useState('medium')
-  const [pack, setPack] = React.useState('ai-coding-agents')
+  const [pack, setPack] = React.useState('claude-code')
   const [name, setName] = React.useState('agent-box')
   const [force, setForce] = React.useState(false)
   const chosen = SIZES.find((s) => s[0] === size)

@@ -1,8 +1,8 @@
 /* Fixture data for the UI kit. Shapes follow packages/web/src/lib/api.ts; values are invented. */
 window.RS_DATA = {
   packs: [
-    { packId: 'ai-coding-agents', name: 'Claude Code', imageUrl: '../../assets/surge-packs/claude-code.png', trust: 'official',
-      description: 'Claude Code on the shared base toolchain.', toolCount: 15,
+    { packId: 'claude-code', name: 'Claude Code', imageUrl: '../../assets/surge-packs/claude-code.png', trust: 'official',
+      description: 'Claude Code and the base toolchain.', toolCount: 16,
       tools: [
         { toolId: 'claude-code', name: 'Claude Code', url: 'https://claude.ai/code', description: "Anthropic's CLI harness" },
         { toolId: 'gh', name: 'gh' },
@@ -44,7 +44,7 @@ window.RS_DATA = {
   ],
   servers: [
     { serverId: 's1', name: 'dev-box', status: 'running', provider: 'hetzner', publicIp: '203.0.113.10', uptime: '2h 14m', cost: '$0.42',
-      size: 'medium', offeringId: 'cx32', arch: 'arm64', packId: 'ai-coding-agents', sshUser: 'rocky', created: 'Aug 24, 2026',
+      size: 'medium', offeringId: 'cx32', arch: 'arm64', packId: 'claude-code', sshUser: 'rocky', created: 'Aug 24, 2026',
       repositories: ['https://github.com/you/api', 'https://github.com/you/web'], tokenScopes: ['github.com/you'] },
     { serverId: 's2', name: 'claw-1', status: 'provisioning', provider: 'hetzner', publicIp: null, uptime: '0s', cost: '$0.00',
       size: 'large', offeringId: 'cpx41', arch: 'x86_64', packId: 'open-claw', sshUser: 'rocky', created: 'Aug 26, 2026',
