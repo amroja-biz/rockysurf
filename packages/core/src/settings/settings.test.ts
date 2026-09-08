@@ -137,7 +137,7 @@ function shippedDeclared(): ProviderRegistry {
       },
       {
         id: 'azure',
-        displayName: 'Microsoft Azure',
+        displayName: 'Azure',
         settings: {
           title: 'Azure',
           help: 'Virtual machines in one region, in one resource group you create.',
@@ -150,7 +150,7 @@ function shippedDeclared(): ProviderRegistry {
       },
       {
         id: 'gcp',
-        displayName: 'Google Compute Engine',
+        displayName: 'Google Cloud',
         settings: {
           title: 'Google Cloud',
           help: 'Compute Engine instances in one zone, in one project you name.',

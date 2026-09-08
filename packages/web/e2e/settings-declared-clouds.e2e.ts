@@ -21,7 +21,7 @@ test.describe.configure({ mode: 'serial' })
 const PANELS: { id: string; heading: string; fields: [string, string][] }[] = [
   {
     id: 'hetzner',
-    heading: 'Hetzner',
+    heading: 'Hetzner Cloud',
     fields: [
       ['providers.hetzner.enabled', 'Enabled'],
       ['providers.hetzner.token', 'Token Environment Variable'],

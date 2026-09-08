@@ -5,8 +5,30 @@ import { AppShell } from '../components/AppShell'
 import { BackupRestoreCards } from '../components/BackupRestoreCards'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { ConnectGitHubCard, DISCONNECT_CONFIRMATION } from '../components/ConnectGitHubCard'
-import { MachineTypePicker } from '../components/MachineTypePicker'
 import { ProviderFailure } from '../components/ProviderErrorNotice'
+import {
+  acceptsLiteral,
+  asReferences,
+  boolField as drawBoolField,
+  cidrListField as drawCidrListField,
+  genericField,
+  helpFor as drawHelpFor,
+  helpId as drawHelpId,
+  humanize,
+  keyOf,
+  patternOf,
+  readOnlyField as drawReadOnlyField,
+  refusalLine,
+  RestartNote,
+  secretAt,
+  secretField as drawSecretField,
+  secretInput as drawSecretInput,
+  secretStateHint,
+  textField as drawTextField,
+  valueAt,
+  type Edits,
+  type FieldsContext,
+} from '../components/settingsFields'
 import { Tabs } from '../components/Tabs'
 import {
   ApiError,
@@ -143,19 +165,20 @@ import { SHOP_PROVIDERS_URL } from '../lib/links'
  * ── WHY THE CONTROLS ARE FUNCTIONS AND NOT COMPONENTS ─────────────────────────────────
  * `textField(...)` is called; it is not `<TextField/>`. A component DECLARED inside this
  * function is a new component type on every render, so React unmounts and remounts its subtree
- * each time state changes — and an input that remounts loses focus after every keystroke. The
- * alternative is hoisting them out with `edits`, `setEdit`, `specs` and `fieldErrors` threaded
- * through every call. Calling them keeps the reconciler seeing one stable tree.
+ * each time state changes — and an input that remounts loses focus after every keystroke.
+ * Calling them keeps the reconciler seeing one stable tree.
+ * ──────────────────────────────────────────────────────────────────────────────────────
+ *
+ * ── AND WHERE THEY LIVE NOW: `components/settingsFields.tsx` (issue #474) ─────────────
+ * The renderers moved out of this function and the closure they had over `edits`, `specs`,
+ * `values` and `fieldErrors` became one explicit `FieldsContext`, built once per render below.
+ * The reason is the setup wizard: its whole job is to SET a cloud UP rather than describe
+ * setting it up, so it draws that cloud's Settings fields in place — and "the same fields, the
+ * same labels, the same validation, the same save" is only true if it is the same code. They are
+ * still called rather than mounted, for the reason directly above; nothing about what this page
+ * renders changed.
  * ──────────────────────────────────────────────────────────────────────────────────────
  */
-
-type Edits = Record<string, SettingsChange>
-
-/** `['github','tokens',0,'pat']` → `'github.tokens.0.pat'`, the key edits and issues are held by. */
-const keyOf = (path: (string | number)[]) => path.join('.')
-
-/** The same path with list indices generalised, which is how the server names a field spec. */
-const patternOf = (path: (string | number)[]) => path.map((s) => (typeof s === 'number' ? '*' : s)).join('.')
 
 /** The query parameter carrying the open section, so a link and a reload both land on it. */
 const SECTION_PARAM = 'section'
@@ -174,19 +197,6 @@ function sectionOf(path: string, ids: readonly string[]): string | undefined {
     if (best === undefined || id.length > best.length) best = id
   }
   return best
-}
-
-/**
- * `preferences.tiers.aws.small` → `aws`, and anything else → undefined (issue #212).
- *
- * THE SHAPE, NOT A LIST OF CLOUDS. Core generates these fields from one table, so a cloud added
- * there appears here with no edit to this file (issue #124) — a hand-written case per cloud would
- * give that property straight back. What the id has to match is a provider this installation
- * actually loaded, which is a fact about the running process rather than anything written here.
- */
-function tierCloudOf(path: string): string | undefined {
-  const parts = path.split('.')
-  return parts.length === 4 && parts[0] === 'preferences' && parts[1] === 'tiers' ? parts[2] : undefined
 }
 
 /**
@@ -211,36 +221,8 @@ function tabOf(id: string, ids: readonly string[]): string {
   }
 }
 
-/**
- * `sshAllowedCidr` → `Ssh Allowed Cidr`.
- *
- * ONLY EVER A FALLBACK. Every field this page has a hand-written block for has a hand-written
- * label; this is what a field core added after this build shipped gets, so that it renders with
- * a readable name instead of not rendering at all.
- */
-function humanize(segment: string): string {
-  const spaced = segment.replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
 /** An edit key belonging to the unified token list, which saves per entry rather than in bulk. */
 const isTokenKey = (key: string) => key === 'github.pat' || key.startsWith('github.tokens.')
-
-function valueAt(tree: unknown, path: (string | number)[]): unknown {
-  let node: unknown = tree
-  for (const segment of path) {
-    if (node === null || node === undefined || typeof node !== 'object') return undefined
-    node = (node as Record<string | number, unknown>)[segment]
-  }
-  return node
-}
-
-/** A secret field's state, tolerating a file where the key is simply absent. */
-function secretAt(tree: unknown, path: (string | number)[]): SecretView {
-  const found = valueAt(tree, path)
-  if (found && typeof found === 'object' && 'secret' in found) return found as SecretView
-  return { secret: true, state: 'unset' }
-}
 
 interface ListField {
   name: string
@@ -265,26 +247,6 @@ function RestartHint({ segments }: { segments: SettingsView['restartHintSegments
         segment.code ? <code key={segment.text}>{segment.text}</code> : <span key={segment.text}>{segment.text}</span>,
       )}
     </>
-  )
-}
-
-/**
- * The note under a control that a running Rocky Surf cannot honour yet (issue #264).
- *
- * PER FIELD, AT THE CONTROL, and the wording is core's. The old page put one banner over
- * everything saying nothing had taken effect; the true statement is about five specific
- * settings, and the place to make it is beside each of them — where somebody about to change
- * the port reads it before they click Save, rather than after.
- *
- * Rendered for the writable and the read-only alike: `server.dataDir` is not editable here and
- * an operator still has to know that moving it is a stop-and-start, not an edit.
- */
-function RestartNote({ spec }: { spec: SettingsField | undefined }) {
-  if (spec?.appliesAt !== 'restart' || !spec.restartReason) return null
-  return (
-    <p className="hint settings-restart-note" data-restart-required={spec.path}>
-      <strong>Takes effect after a restart.</strong> {spec.restartReason}
-    </p>
   )
 }
 
@@ -460,51 +422,6 @@ export function SettingsPage() {
   }
 
   /**
-   * Every credential change, with the box's text turned into the file's reference — or the keys
-   * that cannot be, because what is in them is not a variable name (rockysurf-4o3o).
-   *
-   * ONE SEAM, so no caller can bypass it: the bulk Save, a token card's own Save, a removal and a
-   * confirmation all reach the file through `submit`, and this runs on whatever they hand it.
-   * `specs` decides what is a credential — the same server inventory that decides everything else
-   * about a field — rather than the page guessing from the path.
-   *
-   * IT DESCENDS INTO A CHANGE'S VALUE, because two of them are whole blocks rather than scalars: a
-   * new token entry is written as one `github.tokens.<n>` change carrying `{ repo, pat }`, and a
-   * spend cap as `{ amount, currency }`. Checking only the change's own path would leave the
-   * credential inside the first of those unexamined — which is exactly the shape a new entry
-   * arrives in, so it would be the common case rather than an edge one.
-   */
-  function asReferences(changes: SettingsChange[]): { sent: SettingsChange[]; refused: string[] } {
-    const refused: string[] = []
-
-    const convert = (path: (string | number)[], value: unknown): unknown => {
-      const spec = specs.get(patternOf(path))
-      // A paste box sends what was pasted, verbatim (rockysurf-7fyf.2). Converting it would
-      // write `${ghp_…}` into the file — a reference to a variable named after a token.
-      if (spec?.kind === 'secret' && spec.accepts === 'literal') return value
-      if (spec?.kind === 'secret') {
-        const reference = envVarReference(String(value ?? ''))
-        if (reference !== null) return reference
-        refused.push(keyOf(path))
-        return value
-      }
-      // Objects only: a list arriving as a whole value is a shape nothing on this page writes,
-      // and walking one would invent index paths that no spec could answer for.
-      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-        return Object.fromEntries(
-          Object.entries(value).map(([key, item]) => [key, convert([...path, key], item)]),
-        )
-      }
-      return value
-    }
-
-    const sent = changes.map((change) =>
-      change.unset ? change : { ...change, value: convert(change.path, change.value) },
-    )
-    return { sent, refused }
-  }
-
-  /**
    * Send a set of changes, and report whether the file took them.
    *
    * `only` carries a save that must travel alone: a structural change to a list, or one entry of
@@ -526,7 +443,7 @@ export function SettingsPage() {
 
     // Nothing is sent when a token box holds something other than a variable name. The box itself
     // is already showing the policy and the reason, so this says which box and stops.
-    const { sent, refused } = asReferences(changes)
+    const { sent, refused } = asReferences(specs, changes)
     if (refused.length > 0) {
       setFormError(
         `Nothing was saved: ${refused.join(', ')} must name an environment variable rather than hold a token.`,
@@ -702,368 +619,63 @@ export function SettingsPage() {
   /* ------------------------------------------------------------------ field renderers */
 
   /**
-   * The help line, under the label and above the control (rockysurf-5qzg, directive 3).
+   * WHAT THE CONTROLS NEED IN PLACE OF THIS FUNCTION'S SCOPE (issue #474).
    *
-   * ONE MECHANISM, EVERYWHERE, and it is deliberately not a tooltip. A `title` attribute is
-   * invisible on a touch screen, invisible to a keyboard, and not reliably announced by a screen
-   * reader — so on a page whose whole job is explaining a config file to somebody who has not
-   * read it, the explanation would be missing for exactly the readers most in need of it. A `?`
-   * popover is worse value again: JS state, focus handling and a second interaction pattern, for
-   * one sentence. An always-visible line is what this page already does for warnings, secret
-   * state and read-only reasons, so it is the house style rather than a new one, and
-   * `aria-describedby` ties it to the control it belongs to.
+   * The renderers below used to be declared here, closing over `edits`, `specs`, `values` and the
+   * rest. They now live in `components/settingsFields.tsx` because the setup wizard draws the same
+   * fields — the same labels, the same validation, the same `PUT /api/v1/settings` — and a second
+   * implementation of them would have been a second set of labels to drift and a second idea of
+   * what a credential box accepts. The closure becomes this object; nothing else about them
+   * changed, and they are still CALLED rather than mounted, for the focus reason at the top of
+   * this file.
    */
-  function helpFor(specPath: string, id: string): ReactNode {
-    const help = specs.get(specPath)?.help
-    return help ? (
-      <p className="field-help" id={`${id}-help`}>
-        {help}
-      </p>
-    ) : null
+  const fieldsContext: FieldsContext = {
+    values,
+    defaults,
+    specs,
+    edits,
+    fieldErrors,
+    warnings,
+    setEdit,
+    providers,
+    cidrDrafts,
+    setCidrDrafts,
+    confirm: setPendingRemoval,
+    draw,
+    hoistedWarnings,
+    passwordFormOwners,
   }
 
-  const helpId = (specPath: string, id: string) => (specs.get(specPath)?.help ? `${id}-help` : undefined)
-
-  /** Label, help, control, the server's warning for the field, and any error from a save. */
-  function wrap(path: (string | number)[], label: string, control: ReactNode): ReactNode {
-    const pattern = patternOf(path)
-    const spec = specs.get(pattern)
-    draw(pattern)
-    // A hidden field is not drawn even when a call site asks for it: the inventory decides.
-    if (spec?.hidden) return null
-    const key = keyOf(path)
-    const error = fieldErrors[key]
-    return (
-      <div className="form-group" data-field={key} key={key}>
-        <label htmlFor={key}>{label}</label>
-        {helpFor(pattern, key)}
-        {control}
-        {spec?.warning && !hoistedWarnings.has(pattern) && (
-          <p className="hint settings-warning">{spec.warning}</p>
-        )}
-        <RestartNote spec={spec} />
-        {warnings[key] && <p className="warning settings-field-warning">{warnings[key]}</p>}
-        {error && <p className="error settings-field-error">{error}</p>}
-      </div>
-    )
-  }
-
-  /** A field the editor shows and will not write, with the server's reason for that. */
-  function readOnlyField(path: (string | number)[], label: string): ReactNode {
-    const pattern = patternOf(path)
-    const spec = specs.get(pattern)
-    draw(pattern)
-    if (spec?.hidden) return null
-    const key = keyOf(path)
-    const current = valueAt(values, path) ?? valueAt(defaults, path)
-    const shown = current === undefined ? 'not set' : Array.isArray(current) ? current.join(', ') : String(current)
-    return (
-      <div className="form-group" data-field={key} key={key}>
-        <label>{label}</label>
-        {helpFor(pattern, key)}
-        <p className="settings-value">{shown}</p>
-        <p className="read-only">{spec?.reason}</p>
-        <RestartNote spec={spec} />
-      </div>
-    )
-  }
-
-  /** What a text box for this path is showing right now: the pending edit, else the file. */
-  function shownText(path: (string | number)[]): string {
-    const edit = edits[keyOf(path)]
-    const current = valueAt(values, path)
-    if (edit) return edit.unset ? '' : String(edit.value ?? '')
-    return current === undefined || current === null ? '' : String(current)
-  }
-
-  /**
-   * `extra` is drawn under the box, inside the same form group.
-   *
-   * The one caller that passes anything is the saved-type field (issue #212), whose catalogue
-   * picker belongs to its box rather than beside it: the two controls edit the same setting, and
-   * the label, the help, the warning and the save error above and below them are that setting's.
-   */
-  function textField(
+  /* The thin wrappers the blocks below call. One argument shorter at every call site, and the
+     ledger, the drafts and the confirmation all reach the shared controls the same way. */
+  const helpFor = (specPath: string, id: string): ReactNode => drawHelpFor(fieldsContext, specPath, id)
+  const helpId = (specPath: string, id: string) => drawHelpId(fieldsContext, specPath, id)
+  const textField = (
     path: (string | number)[],
     label: string,
     type: 'text' | 'number' = 'text',
     extra?: ReactNode,
-  ): ReactNode {
-    const key = keyOf(path)
-    const fallback = valueAt(defaults, path)
-    const shown = shownText(path)
-
-    return wrap(
-      path,
-      label,
-      <>
-        <input
-          id={key}
-          type={type}
-          value={shown}
-          aria-describedby={helpId(patternOf(path), key)}
-          placeholder={fallback === undefined ? '' : `default: ${String(fallback)}`}
-          onChange={(e) => {
-            const raw = e.target.value
-            // An emptied box says nothing about the field, which is how the file gets back to the
-            // default rather than to an empty string.
-            if (raw === '') return setEdit(path, { path, unset: true })
-            const asNumber = Number(raw)
-            setEdit(path, {
-              path,
-              value: type === 'number' && Number.isFinite(asNumber) ? asNumber : raw,
-            })
-          }}
-        />
-        {extra}
-      </>,
-    )
-  }
-
-  /**
-   * A saved type for one (cloud, size), with that cloud's own catalogue under it (issue #212).
-   *
-   * THE BOX IS STILL THERE and still does everything it did — it is the picker that is new, and
-   * it writes into the same pending edit a keystroke would. Emptying the box, or selecting the
-   * already-selected row, unsets the field: blank is the default (the cheapest type that meets
-   * the size's floor) and it has to stay reachable in one move.
-   *
-   * NO CATALOGUE, NO PICKER — and no apology for one either. A cloud switched off in this very
-   * file loads no provider, `/providers` is advisory here, and either way the answer is the box
-   * this field has always had, which can still hold a type this installation cannot offer today.
-   * That is deliberate: a saved type is the operator's answer, not a second guess at it, and core
-   * already says which and why when it has to fall back.
-   */
-  function tierField(path: (string | number)[], label: string, cloud: string): ReactNode {
-    const catalogue = providers.find((p) => p.id === cloud)
-    const offerings = catalogue?.offerings ?? []
-    if (!catalogue || offerings.length === 0) return textField(path, label)
-
-    const saved = shownText(path)
-    const known = offerings.some((o) => o.id === saved)
-    return textField(
-      path,
-      label,
-      'text',
-      <>
-        <MachineTypePicker
-          instanceId={keyOf(path)}
-          offerings={offerings}
-          selectedId={saved === '' ? null : saved}
-          onSelect={(offering) => setEdit(path, { path, value: offering.id })}
-          onClear={() => setEdit(path, { path, unset: true })}
-          // The saved type is never hidden by "Available only": it is the row this operator came
-          // to look at, and its own unavailable reason is why they came.
-          preferredIds={new Set(saved === '' ? [] : [saved])}
-          summary={`Choose from ${catalogue.displayName}`}
-          hint={
-            'The catalogue the New Server page resolves against, narrowed by this installation’s own ' +
-            'allowlist. Selecting a type fills the box above; selecting it again empties the box, which ' +
-            'is the default — the cheapest type that meets this size’s floor.'
-          }
-        />
-        {/* Not an error, and not a refusal: the file may name a type from another region, one
-            outside `providers.<cloud>.sizes`, or one no longer sold. Core falls back to the
-            floor and says so on the New Server page (issue #124); this is where somebody
-            wondering why the list shows no selection finds that out. */}
-        {saved !== '' && !known && (
-          <p className="hint" data-tier-unlisted={keyOf(path)}>
-            {catalogue.displayName} is not currently offering {saved} to this installation, so it is
-            not in the list above. It is kept as written — a Server asking for this size falls back
-            to the cheapest type that meets the floor until it can be bought again.
-          </p>
-        )}
-      </>,
-    )
-  }
-
-  function boolField(path: (string | number)[], label: string): ReactNode {
-    const key = keyOf(path)
-    const edit = edits[key]
-    const current = valueAt(values, path) ?? valueAt(defaults, path) ?? false
-    return wrap(
-      path,
-      label,
-      <input
-        id={key}
-        type="checkbox"
-        aria-describedby={helpId(patternOf(path), key)}
-        checked={edit ? Boolean(edit.value) : Boolean(current)}
-        onChange={(e) => setEdit(path, { path, value: e.target.checked })}
-      />,
-    )
-  }
-
+  ): ReactNode => drawTextField(fieldsContext, path, label, type, extra)
+  const boolField = (path: (string | number)[], label: string): ReactNode =>
+    drawBoolField(fieldsContext, path, label)
+  const readOnlyField = (path: (string | number)[], label: string): ReactNode =>
+    drawReadOnlyField(fieldsContext, path, label)
+  const secretField = (path: (string | number)[], label: string, example: string): ReactNode =>
+    drawSecretField(fieldsContext, path, label, example)
+  const secretInput = (path: (string | number)[], specPath: string, example: string) =>
+    drawSecretInput(fieldsContext, path, specPath, example)
+  const cidrListField = (cloud: string, label: string): ReactNode =>
+    drawCidrListField(fieldsContext, cloud, label)
   /** True when this field's box takes a pasted token rather than a variable name. */
-  const acceptsLiteral = (specPath: string) => specs.get(specPath)?.accepts === 'literal'
-
+  const acceptsLiteralBox = (specPath: string) => acceptsLiteral(fieldsContext, specPath)
   /**
-   * A credential box, in one of the two shapes `FieldSpec.accepts` allows.
+   * A control for a field the blocks below do not name — rule 2 at the top of this file.
    *
-   * `'envVarName'` — the default, rockysurf-4o3o, and still what Hetzner's token box gets.
-   * PLAIN TEXT, DELIBERATELY: `type=password` over a variable name is theatre, the content is
-   * not key material, masking it stops the operator proof-reading the one thing they have to get
-   * right, and hiding it would suggest that pasting a token here is what the box is for. The
-   * policy is enforced instead of implied — `envVarReference` refuses anything that is not a
-   * name, in words, before anything is sent.
-   *
-   * `'literal'` — the two GitHub PATs, since rockysurf-7fyf.2. `type=password`, and that INVERTS
-   * the sentence above rather than contradicting it: masking a variable name is theatre, masking
-   * key material is not. No live refusal, because there is nothing left to refuse.
-   *
-   * ── THE PREFILL TRAP, WHICH IS WHY THE `reference` CASE SPLITS ────────────────────────
-   * An env-var box prefills a `${VAR}` state with the bare name, as editable text — correct,
-   * because the name is exactly what that box wants. Doing the same in a PASTE box would put
-   * `GITHUB_PAT` in a box that now takes tokens, where the operator's first keystroke turns a
-   * working reference into a literal nobody meant to write.
-   *
-   * So for a paste box a `reference` renders the way `set` already does: a STATE LINE and an
-   * EMPTY input. Blank means keep, which the hint says in as many words, and the file is
-   * preserved by rule 2 of `settings/routes.ts` — a save carries only what changed, and an
-   * untouched secret is not in the payload.
-   * ──────────────────────────────────────────────────────────────────────────────────────
+   * The same renderer the wizard draws a whole Provider panel with, which is not a coincidence:
+   * since ADR-0027 a Provider's panel IS a list of inventory fields, and this page has had no
+   * hand-written `providers.*` block since issue #370.
    */
-  function secretInput(
-    path: (string | number)[],
-    specPath: string,
-    example: string,
-  ): { input: ReactNode; state: SecretView; cleared: boolean; refusal: string | null } {
-    const key = keyOf(path)
-    const state = secretAt(values, path)
-    const edit = edits[key]
-    const cleared = edit?.unset === true
-    const literal = acceptsLiteral(specPath)
-    draw(specPath)
-
-    // Masked boxes get a form owner of their own (see `passwordFormOwners`). Only masked ones:
-    // an env-var-name box is plain text, holds no key material, and is part of the bulk save.
-    const owner = literal ? passwordFormOwner(key) : undefined
-    if (owner) passwordFormOwners.push(owner)
-
-    const typed = edit && !cleared ? String(edit.value ?? '') : undefined
-    const fromFile =
-      !cleared && typed === undefined && !literal && state.state === 'reference'
-        ? envVarDisplay(state.reference)
-        : ''
-    const shown = cleared ? '' : (typed ?? fromFile)
-    // Live, because a refusal that waited for the Save button would let an operator type a whole
-    // token before being told the box never wanted one. An empty box is not a refusal: blank
-    // means keep. A paste box refuses nothing.
-    const refusal =
-      !literal && typed !== undefined && typed.trim() !== '' && envVarReference(typed) === null
-        ? ENV_VAR_ONLY
-        : null
-
-    const input = (
-      <input
-        id={key}
-        type={literal ? 'password' : 'text'}
-        spellCheck={false}
-        // `off` and not `new-password`: this is a personal access token for a forge, not a
-        // password for this site, and the hint that would invite a browser to remember it is
-        // also the hint that makes Chrome ask for a username field to file it under. Measured
-        // both ways — see the note on `passwordFormOwners`.
-        autoComplete="off"
-        {...(owner ? { form: owner } : {})}
-        disabled={cleared}
-        value={shown}
-        aria-describedby={helpId(specPath, key)}
-        placeholder={placeholderFor(state, { cleared, literal, example })}
-        onChange={(e) => {
-          // Blank means KEEP — the one kind of field on this page where it does. Removing a
-          // credential is a labelled button, so a half-finished edit can never delete one.
-          const raw = e.target.value
-          setEdit(path, raw === '' ? null : { path, value: raw })
-        }}
-      />
-    )
-    return { input, state, cleared, refusal }
-  }
-
-  /**
-   * What the file currently says about a credential, in a sentence.
-   *
-   * The `literal` half is not the same sentence with a word changed. For a paste box, a stored
-   * token is the NORMAL state rather than something to migrate out of, and a `${VAR}` reference
-   * is a working configuration this page must not talk anyone out of — the file still supports
-   * it, and a hand-edited one keeps loading forever.
-   */
-  function secretStateHint(state: SecretView, literal: boolean): string {
-    if (state.state === 'set') {
-      return literal
-        ? 'A token is stored in the configuration file and cannot be displayed here. Paste a new one ' +
-            'to replace it. '
-        : 'A literal token is stored in the configuration file, and cannot be displayed here. Move it ' +
-            'into an environment variable and name that variable here; the file will then hold only the ' +
-            'reference. '
-    }
-    if (state.state === 'reference') {
-      return literal
-        ? 'This entry names an environment variable, which Rocky Surf reads at startup — that still ' +
-            'works and the file is unchanged. Leave the box empty to keep it, or paste a token to ' +
-            'replace it. '
-        : 'Read from this environment variable at startup. The file holds the reference — never what it expands to. '
-    }
-    return 'Not set in the configuration file. '
-  }
-
-  /** The greyed text in a credential box, which differs by state and by what the box takes. */
-  function placeholderFor(
-    state: SecretView,
-    { cleared, literal, example }: { cleared: boolean; literal: boolean; example: string },
-  ): string {
-    if (cleared) return 'Will be removed when you save'
-    if (literal) {
-      if (state.state === 'set') return 'A token is stored in the file — paste a new one to replace it'
-      if (state.state === 'reference') return 'Leave empty to keep the environment variable this names'
-      return example
-    }
-    if (state.state === 'set') return 'A token is stored in the file — name a variable to replace it'
-    return example
-  }
-
-  /** The live refusal under a token box, when what is in it is not a variable name. */
-  function refusalLine(key: string, refusal: string | null): ReactNode {
-    return refusal ? (
-      <p className="error settings-field-error" data-refusal={key}>
-        {refusal}
-      </p>
-    ) : null
-  }
-
-  function secretField(path: (string | number)[], label: string, example: string): ReactNode {
-    const key = keyOf(path)
-    const pattern = patternOf(path)
-    const spec = specs.get(pattern)
-    if (spec?.hidden) return null
-    const { input, state, cleared, refusal } = secretInput(path, pattern, example)
-
-    return (
-      <div className="form-group" data-field={key} key={key}>
-        <label htmlFor={key}>{label}</label>
-        {helpFor(pattern, key)}
-        {input}
-        {refusalLine(key, refusal)}
-        <p className="hint">
-          {secretStateHint(state, acceptsLiteral(pattern))}
-          Leave this blank to keep it as it is.
-        </p>
-        {spec?.warning && !hoistedWarnings.has(pattern) && (
-          <p className="hint settings-warning">{spec.warning}</p>
-        )}
-        {fieldErrors[key] && <p className="error settings-field-error">{fieldErrors[key]}</p>}
-        {(state.state !== 'unset' || cleared) && (
-          <button
-            type="button"
-            className="btn-secondary settings-clear"
-            onClick={() => setEdit(path, cleared ? null : { path, unset: true })}
-          >
-            {cleared ? 'Keep it after all' : 'Remove this credential'}
-          </button>
-        )}
-      </div>
-    )
-  }
+  const fallbackField = (spec: SettingsField): ReactNode => genericField(fieldsContext, spec)
 
   /** One half of a spend cap that does not exist in the file yet — see the note at its use. */
   function newCapField(name: 'amount' | 'currency', label: string, type: 'text' | 'number'): ReactNode {
@@ -1089,198 +701,6 @@ export function SettingsPage() {
           }}
         />
         {fieldErrors[id] && <p className="error settings-field-error">{fieldErrors[id]}</p>}
-      </div>
-    )
-  }
-
-  /**
-   * A control for a field the blocks below do not name — rule 2 at the top of this file.
-   *
-   * IT IS NOT A FORM GENERATOR, and the m29b note about why this page has none still holds: the
-   * hand-written blocks decide what the settings page LOOKS like, and this decides only what
-   * happens to a field they have not caught up with. The difference that matters is that this
-   * one cannot invent a control the inventory did not describe — it reads `kind`, `writable` and
-   * `hidden` off the same spec every other control here obeys, and its label is the field's own
-   * last path segment because a spec carries no label. A hand-written block for the field later
-   * takes over silently, because a drawn field is no longer left over.
-   */
-  function fallbackField(spec: SettingsField): ReactNode {
-    if (spec.hidden) return null
-    const path = spec.path.split('.')
-    // A row from a provider's declared settings carries its own label (ADR-0027); a core row the
-    // blocks below did not draw falls back to its path. Same for the placeholder.
-    const label = spec.label ?? humanize(path[path.length - 1] ?? spec.path)
-    if (!spec.writable) return readOnlyField(path, label)
-    // A saved type is a string field with a catalogue behind it (issue #212). Recognised by the
-    // SHAPE of its path rather than named cloud by cloud, so this stays a rule about a kind of
-    // setting — which is what a fallback renderer is — instead of becoming the hand-written
-    // block per cloud that issue #124 exists to avoid.
-    const cloud = spec.kind === 'string' ? tierCloudOf(spec.path) : undefined
-    if (cloud !== undefined) return tierField(path, label, cloud)
-    switch (spec.kind) {
-      case 'boolean':
-        return boolField(path, label)
-      case 'number':
-        return textField(path, label, 'number')
-      case 'secret':
-        return secretField(path, label, spec.example ?? 'A_VARIABLE_NAME')
-      // The two-act SSH whitelist a provider DECLARED (ADR-0027): the same control the
-      // hand-written clouds get, keyed on the provider id in the path, never on a name.
-      case 'sshCidrList':
-        return cidrListField(String(path[1]), label)
-      // A list and a whole optional block are the two shapes a generic control would have to
-      // guess at — how many entries, and what half a block means — so this says what the file
-      // holds and where to change it rather than offering a box that would write the wrong
-      // shape. `mcp.scopes` and `limits.spendCap` have hand-written editors and never land here.
-      case 'stringList':
-      case 'group':
-        return uneditableFallback(spec, label)
-      default:
-        return textField(path, label)
-    }
-  }
-
-  /** The value, and the honest sentence that this build has no control for a field of this shape. */
-  function uneditableFallback(spec: SettingsField, label: string): ReactNode {
-    const path = spec.path.split('.')
-    const current = valueAt(values, path) ?? valueAt(defaults, path)
-    const shown =
-      current === undefined
-        ? 'not set'
-        : Array.isArray(current)
-          ? current.join(', ')
-          : JSON.stringify(current)
-    return (
-      <div className="form-group" data-field={spec.path} key={spec.path}>
-        <label>{label}</label>
-        {helpFor(spec.path, spec.path)}
-        <p className="settings-value">{shown}</p>
-        <p className="read-only">
-          This page has no editor for a setting of this shape yet. Change <code>{spec.path}</code>{' '}
-          in the configuration file itself.
-        </p>
-      </div>
-    )
-  }
-
-  /**
-   * The networks allowed to reach SSH on one cloud (issue #304).
-   *
-   * A hand-written control rather than the generic `stringList` fallback, because this list is
-   * the one setting on the page where REMOVING an entry is itself a request to change a firewall:
-   * the operator is not editing a preference, they are ending SSH from a network. The generic
-   * renderer says "this page has no editor for a setting of this shape", which was the honest
-   * answer while nothing pushed the value anywhere and is the wrong one now.
-   *
-   * ONE function taking a cloud, not three blocks. Every provider that maintains a whitelist gets
-   * the same control, for the same reason the field inventory drives the rest of the page.
-   *
-   * Two rules are enforced here rather than left to the save to reject:
-   * - the LAST entry cannot be removed, because an empty list means SSH reachable from nowhere
-   *   and the operator almost certainly meant to add the replacement first;
-   * - `0.0.0.0/0` is confirmed before it is added, and then needs `allowAllCidr` as well — the
-   *   two-act guard the providers have always had, which until now had no control on this page
-   *   at all, so the one procedure the docs describe could not be carried out here.
-   */
-  function cidrListField(cloud: string, label: string): ReactNode {
-    const path = ['providers', cloud, 'sshAllowedCidr']
-    const key = path.join('.')
-    const spec = specs.get(key)
-    if (!spec) return null
-
-    const savedRaw = valueAt(values, path) ?? valueAt(defaults, path)
-    // Tolerates the pre-#304 scalar in an operator's file: one CIDR is a list of one.
-    const saved = savedRaw === undefined ? [] : Array.isArray(savedRaw) ? (savedRaw as string[]) : [String(savedRaw)]
-    const pending = (edits[key]?.value as string[] | undefined) ?? saved
-    const draft = cidrDrafts[key] ?? ''
-    const setList = (next: string[]) => setEdit(path, { path, value: next })
-
-    function addDraft() {
-      const value = draft.trim()
-      if (value === '' || pending.includes(value)) return
-      const commit = () => {
-        setList([...pending, value])
-        setCidrDrafts((drafts) => ({ ...drafts, [key]: '' }))
-      }
-      if (value === '0.0.0.0/0') {
-        setPendingRemoval({
-          title: 'Open SSH to the whole internet?',
-          label: value,
-          message:
-            '0.0.0.0/0 means every address on the internet may reach SSH on every box this cloud ' +
-            'creates. These boxes run agent-authored code and hold your git token. You will also ' +
-            'have to tick "Allow all CIDR" below before this can be saved.',
-          confirmLabel: 'Add 0.0.0.0/0',
-          confirm: commit,
-        })
-        return
-      }
-      commit()
-    }
-
-    const lastOne = pending.length === 1
-
-    return (
-      <div className="form-group" data-field={key}>
-        <fieldset aria-describedby={helpId(key, key)}>
-          <legend>{label}</legend>
-          {helpFor(key, key)}
-          {pending.length === 0 ? (
-            <p className="hint">
-              None set. SSH would be unreachable from anywhere — add the network you connect from.
-            </p>
-          ) : (
-            <ul className="settings-cidr-list">
-              {pending.map((cidr) => (
-                <li key={cidr}>
-                  <code>{cidr}</code>
-                  <button
-                    type="button"
-                    className="link-button"
-                    disabled={lastOne}
-                    title={
-                      lastOne
-                        ? 'SSH would be unreachable from anywhere — add the replacement first.'
-                        : undefined
-                    }
-                    onClick={() =>
-                      setPendingRemoval({
-                        title: 'Remove this network?',
-                        label: cidr,
-                        message:
-                          `Removing ${cidr} immediately ends new SSH connections from that ` +
-                          'network; existing sessions survive. It is pushed to the cloud when you save.',
-                        confirm: () => setList(pending.filter((entry) => entry !== cidr)),
-                      })
-                    }
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="settings-cidr-add">
-            <input
-              type="text"
-              aria-label={`Add a network for ${cloud}`}
-              placeholder="203.0.113.7/32"
-              value={draft}
-              onChange={(e) => setCidrDrafts((drafts) => ({ ...drafts, [key]: e.target.value }))}
-            />
-            <button type="button" onClick={addDraft} disabled={draft.trim() === ''}>
-              Add
-            </button>
-          </div>
-        </fieldset>
-        {spec.warning && <p className="hint settings-warning">{spec.warning}</p>}
-        {fieldErrors[key] && <p className="error">{fieldErrors[key]}</p>}
-        {/*
-          The second act, shown only once the dangerous value is actually in the list — a
-          permanent checkbox offering to open SSH to the internet is an invitation, and this is
-          not one. It is an ordinary boolean field, so its help and warning come from core.
-        */}
-        {pending.includes('0.0.0.0/0') && boolField(['providers', cloud, 'allowAllCidr'], 'Allow all CIDR')}
       </div>
     )
   }
@@ -1537,7 +957,7 @@ export function SettingsPage() {
           {input}
           {refusalLine(patKey, refusal)}
           <p className="hint">
-            {secretStateHint(state, acceptsLiteral(patSpec))}
+            {secretStateHint(state, acceptsLiteralBox(patSpec))}
             Leave this blank to keep it as it is.
           </p>
         </div>
@@ -1621,7 +1041,7 @@ export function SettingsPage() {
     // draft's destination is decided by what is typed above it, and a future scoped field that
     // still wants a variable name would need it back.
     const draftRefusal =
-      !acceptsLiteral(draftPrefix === 'github.pat' ? 'github.pat' : 'github.tokens.*.pat') &&
+      !acceptsLiteralBox(draftPrefix === 'github.pat' ? 'github.pat' : 'github.tokens.*.pat') &&
       draft.pat.trim() !== '' &&
       envVarReference(draft.pat) === null
         ? ENV_VAR_ONLY
@@ -1629,7 +1049,7 @@ export function SettingsPage() {
     // The draft's box is masked for the same reason a saved card's is, so it takes a form owner
     // on the same terms — recorded here because this box is built by hand rather than by
     // `secretInput`.
-    const draftIsMasked = acceptsLiteral('github.tokens.*.pat')
+    const draftIsMasked = acceptsLiteralBox('github.tokens.*.pat')
     const draftOwner = draftIsMasked ? passwordFormOwner('github.tokens.new.pat') : undefined
     if (draftOwner) passwordFormOwners.push(draftOwner)
 

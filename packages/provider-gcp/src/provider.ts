@@ -435,7 +435,7 @@ export function makeGcpProvider(options: GcpProviderOptions): ComputeProvider {
 
   const provider: ComputeProvider = {
     id: 'gcp',
-    displayName: 'Google Compute Engine',
+    displayName: 'Google Cloud',
     capabilities: CAPABILITIES,
 
     async validateCredentials() {

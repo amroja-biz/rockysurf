@@ -283,7 +283,7 @@ describe('what ends up in the registry', () => {
     )
 
     expect(registry.ids()).toEqual(['gcp'])
-    expect(registry.get('gcp').displayName).toBe('Google Compute Engine')
+    expect(registry.get('gcp').displayName).toBe('Google Cloud')
     // Constructed without touching a key file or the network: Application Default Credentials
     // are resolved on the first authenticated call, not at boot.
     expect(notes).toContain('gcp: ready (credentials from the environment)')

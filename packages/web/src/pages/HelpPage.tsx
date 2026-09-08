@@ -478,7 +478,7 @@ export function HelpPage() {
               read another cloud's section, because they will not have.
             */}
             <section className="help-block" id="hetzner">
-              <h3>Hetzner</h3>
+              <h3>Hetzner Cloud</h3>
               <p>
                 Hetzner Cloud is the one Provider with a credential field, and even that field does
                 not hold a token: it holds the <em>name</em> of an environment variable. Rocky Surf
@@ -519,7 +519,7 @@ export function HelpPage() {
                 </li>
               </ol>
               <p>
-                <strong>Then, in Settings &rarr; Hetzner:</strong>
+                <strong>Then, in Settings &rarr; Hetzner Cloud:</strong>
               </p>
               <ol className="help-steps">
                 <li>
@@ -557,7 +557,7 @@ export function HelpPage() {
                 <a href={repoDocUrl('docs/providers/hetzner.md')} target="_blank" rel="noreferrer">
                   docs/providers/hetzner.md
                 </a>{' '}
-                &middot; <Link to="/settings?section=providers.hetzner">Settings &rarr; Hetzner</Link>
+                &middot; <Link to="/settings?section=providers.hetzner">Settings &rarr; Hetzner Cloud</Link>
               </p>
             </section>
 

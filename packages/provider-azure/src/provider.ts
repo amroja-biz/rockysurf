@@ -724,7 +724,7 @@ export function makeAzureProvider(options: AzureProviderOptions): ComputeProvide
 
   const provider: ComputeProvider = {
     id: AZURE_PROVIDER_ID,
-    displayName: 'Microsoft Azure',
+    displayName: 'Azure',
     capabilities: CAPABILITIES,
 
     /**

@@ -96,7 +96,7 @@ export type * from './types.js'
  */
 export const azureProviderFactory: ProviderFactory<AzureProviderConfig> = {
   id: AZURE_PROVIDER_ID,
-  displayName: 'Microsoft Azure',
+  displayName: 'Azure',
   configSchema: azureConfigSchema,
   createProvider: (config) => makeAzureProvider({ config }),
   /**

@@ -291,7 +291,7 @@ describe('HelpPage', () => {
 
     it('gives every shipped provider its own heading', () => {
       renderHelp('providers')
-      for (const name of [/^Hetzner$/, /^AWS$/, /^Azure$/, /^Google Cloud$/]) {
+      for (const name of [/^Hetzner Cloud$/, /^AWS$/, /^Azure$/, /^Google Cloud$/]) {
         expect(screen.getByRole('heading', { name }), `no heading for ${name}`).toBeTruthy()
       }
     })
@@ -336,7 +336,7 @@ describe('HelpPage', () => {
       // knowledge of Rocky Surf. Each cloud states what to do in the cloud first, then what to
       // set on the Settings page, and both halves are labelled the same way everywhere.
       const text = providers()
-      for (const cloud of ['Hetzner', 'AWS', 'Azure', 'Google Cloud']) {
+      for (const cloud of ['Hetzner Cloud', 'AWS', 'Azure', 'Google Cloud']) {
         expect(text, `${cloud} has no Settings steps`).toContain(`Then, in Settings → ${cloud}:`)
       }
       expect(text).toContain('Before you start, in Hetzner:')
