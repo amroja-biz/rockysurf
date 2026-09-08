@@ -160,9 +160,9 @@ export function WizardPage() {
         <section>
           <h2>Welcome</h2>
           <p>
-            Rocky Surf gives you a persistent dev box on your own cloud, with your coding agents
-            already installed. Three short steps and you are done — you can skip any of them and
-            finish later from Settings.
+            Rocky Surf is a lightweight layer for managing Linux VMs running on your own cloud
+            accounts, pre-installed with your favorite AI coding agent harnesses and GitHub repos.
+            Follow this short wizard to get working.
           </p>
           <button type="button" onClick={() => setStep('account')} data-testid="next">
             Get started
