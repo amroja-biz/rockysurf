@@ -73,6 +73,12 @@ const ALLOWED = [
   'pool provider', // GCP's workload identity pool provider resource
   'providers section of the rocky surf shop', // the shop repository's own anchor text
   'providers directory', // the `<dataDir>/providers` folder, a path
+  // "cloud provider" splits by sense, not as a class (owner ruling on #469): capitalized where
+  // it means the Rocky Surf plugin ("add a new cloud Provider"), lowercase where the vendor
+  // could be named instead — if "AWS" would fit in its place, it is AWS's word, not ours.
+  'cloud provider credentials', // credentials belonging to AWS, Azure, GCP or Hetzner
+  'your cloud provider in the clear', // the public key is handed to the cloud, not to a plugin
+  'the cloud provider reported an error', // the vendor's API answered; mirrors the SPA's notice
   'providers.json', // a file name that happens to survive the code-span strip
   // --- tool: MCP's word, a CLI, or the ordinary noun ---
   'mcp tool', // covers "MCP tools", "MCP tool call", "MCP tool list"

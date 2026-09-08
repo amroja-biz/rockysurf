@@ -1661,7 +1661,7 @@ export function HelpPage() {
                 <strong>This is sensitive.</strong> Together, <code>secret.key</code> and{' '}
                 <code>rockysurf.db</code> decrypt every managed Server&rsquo;s SSH private key and any
                 remote-desktop password Rocky Surf holds for you — a Connect-GitHub token lives there
-                too. Cloud Provider credentials are not among them: Rocky Surf stores none. A backup
+                too. Cloud provider credentials are not among them: Rocky Surf stores none. A backup
                 of the directory is that same secret material, copied. Keep{' '}
                 <code>secret.key</code> out of the backup entirely by setting{' '}
                 <code>ROCKYSURF_SECRET_KEY</code> instead of letting Rocky Surf write it to disk.

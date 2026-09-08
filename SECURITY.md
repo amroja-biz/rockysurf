@@ -26,7 +26,7 @@ replaced rather than accumulated:
 That is the complete list. The following are **never stored** — and in most cases the code
 refuses to store them, rather than merely abstaining:
 
-- **Cloud Provider credentials.** No kind exists for them (issue #280 removed the one that
+- **Cloud provider credentials.** No kind exists for them (issue #280 removed the one that
   did, and migration 0017 deleted its rows). See [Provider credentials](#provider-credentials).
 - **GitHub tokens from the config file** (`github.pat`, `github.tokens`). Read at boot, passed
   to the code that builds each box's `secrets.env`, written to no table.
@@ -38,7 +38,7 @@ refuses to store them, rather than merely abstaining:
 - **Your own SSH private keys.** `ssh.keys` in the config file saves PUBLIC halves by name, so
   the New Server page can offer them (issue #302) and an agent can ask for one by name over MCP
   (issue #360; names only — see the MCP threat model). A public key is published material — it is
-  handed to your cloud Provider in the clear on every create and written into `authorized_keys`
+  handed to your cloud provider in the clear on every create and written into `authorized_keys`
   on the box — so it is stored in the config file in plain text, deliberately, and is not
   encrypted, not masked on the settings page, and not a secret kind above. The parser
   `packages/core/src/ssh/public-key.ts` **refuses** anything containing `PRIVATE KEY`, at the
@@ -728,7 +728,7 @@ validator and one column — the MCP server is a translation layer here as every
 parsing of its own.
 
 This is **not** the credential case below. A public key authenticates nobody and unlocks
-nothing; it is handed to your cloud Provider in the clear on every create, so there is nothing
+nothing; it is handed to your cloud provider in the clear on every create, so there is nothing
 to weigh against the agent's transcript. What matters is the other direction: `PRIVATE KEY` in
 `ssh_public_key` is refused by `packages/core/src/ssh/public-key.ts`, by name and before any
 other complaint, exactly as it is refused at a settings save and on the web form — and the

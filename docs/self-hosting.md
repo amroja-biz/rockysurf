@@ -299,7 +299,7 @@ a warning rather than a refusal, since an operator may have deliberate reasons.
 Two of the things in it deserve separate thought:
 
 - **`secret.key`** is the master key for every stored secret — per-server SSH private keys,
-  remote-desktop passwords, the Connect-GitHub token (cloud Provider credentials are not among
+  remote-desktop passwords, the Connect-GitHub token (cloud provider credentials are not among
   them: Rocky Surf stores none, issue #280). Lose it and every one of them is unrecoverable and
   every Server has to be recreated. Obtain it, and all of them decrypt. It is written `0600` and
   the process refuses to start if its permissions are looser than that. You can hold it outside
@@ -376,7 +376,7 @@ anything.
 
 **Treat the backup like the key it contains.** It holds every managed Server's private key and
 your Connect-GitHub token in encrypted form, with the key to decrypt them in the same archive —
-and the configuration file, cleartext pasted tokens included. (Cloud Provider credentials are
+and the configuration file, cleartext pasted tokens included. (Cloud provider credentials are
 not in it, because Rocky Surf stores none — issue #280.) Encrypt it, or store `secret.key`
 separately via `ROCKYSURF_SECRET_KEY` and back up only the database.
 
