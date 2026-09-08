@@ -34,8 +34,11 @@ reason.
 
 The lint scripts are structural checks a reviewer would have to remember otherwise: core's
 dependency direction, the published AWS IAM policy matching what the Provider actually calls, the
-AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, and — the
-newest, and a scar — that nothing under a package's `src/` is gitignored.
+AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, that the
+markdown capitalizes the four primitives (`check-primitive-nouns.mjs`, and
+[`docs/memories/2026-09-08-capitalized-product-nouns.md`](docs/memories/2026-09-08-capitalized-product-nouns.md)
+is the rule it enforces), and — the newest, and a scar — that nothing under a package's `src/` is
+gitignored.
 
 That last one is `rockysurf-ys0i`. A bare `packs/` in `packages/core/.gitignore` matched
 `src/packs/` too, because a pattern with no slash matches at any depth; a new file there was

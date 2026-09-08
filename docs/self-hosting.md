@@ -1471,7 +1471,7 @@ must not depend on anything a particular pack installs, since **a Tool that fail
 terminates the box**, and one that is wrong here breaks every new Server rather than one. Servers
 that already exist never change — a Server's install plan is written when it is created. The New
 Server page lists these under the pack chooser so what you are about to install is on the screen
-before you install it, and deleting such a tool warns you, because the guard that refuses to delete
+before you install it, and deleting such a Tool warns you, because the guard that refuses to delete
 a Tool a pack is using cannot see this one: no pack lists it.
 
 Community carries a fixed caption naming where its catalogue comes from — *Community packs from

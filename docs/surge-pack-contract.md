@@ -582,7 +582,7 @@ on another Provider now.
 The first attempt is the one that takes the time when a mirror is merely slow to answer:
 `apt-get update -qq` prints nothing until it has succeeded or given up, and apt waits two
 minutes per connection before it does. The agent tells the user about that too — a step that
-has written nothing for a minute is announced under "Installing tools" with the elapsed time
+has written nothing for a minute is announced under "Installing Tools" with the elapsed time
 ("build-essential has said nothing for 4 min … Nothing is stuck."), re-posted each minute and
 withdrawn the moment your script prints a line. You need do nothing for this either, but it is
 one more reason to let your script's tools talk: `-qq` on an `apt-get install`, or `-s` on a
