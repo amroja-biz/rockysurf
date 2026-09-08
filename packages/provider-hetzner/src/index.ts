@@ -79,7 +79,7 @@ export const hetznerProviderFactory: ProviderFactory<HetznerProviderConfig> = {
    * the `add-provider` skill tells authors to copy, so it should be the shape they copy.
    */
   settings: {
-    title: 'Hetzner',
+    title: 'Hetzner Cloud',
     help: 'The quickest provider to start with: an API token from console.hetzner.com is the whole setup.',
     fields: [
       {

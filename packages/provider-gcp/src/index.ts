@@ -37,7 +37,7 @@ export const GCP_PROVIDER_ID = 'gcp'
  */
 export const gcpProviderFactory: ProviderFactory<GcpProviderConfig> = {
   id: GCP_PROVIDER_ID,
-  displayName: 'Google Compute Engine',
+  displayName: 'Google Cloud',
   configSchema: gcpConfigSchema,
   createProvider: (config) => makeGcpProvider({ config }),
   /**

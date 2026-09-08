@@ -125,8 +125,8 @@ const METAL: ProviderSettings = {
 const SHIPPED: Record<string, { displayName: string; settings: ProviderSettings }> = {
   hetzner: { displayName: 'Hetzner Cloud', settings: HETZNER },
   aws: { displayName: 'AWS', settings: AWS },
-  azure: { displayName: 'Microsoft Azure', settings: AZURE },
-  gcp: { displayName: 'Google Compute Engine', settings: GCP },
+  azure: { displayName: 'Azure', settings: AZURE },
+  gcp: { displayName: 'Google Cloud', settings: GCP },
 }
 
 const describeProvider = (id: string) =>

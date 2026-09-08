@@ -103,11 +103,26 @@ export interface SetupStateDeps {
   env?: NodeJS.ProcessEnv
 }
 
+/**
+ * THE FALLBACK NAMES, and the naming rule they follow (issue #474).
+ *
+ * A Provider names itself once it loads, and its factory's descriptor names it before that; this
+ * table is only for a shipped cloud whose package this process never loaded at all. It is here
+ * all the same because the wizard shows it, and a wizard that calls a cloud something its own
+ * website does not is a wizard that has already lost the reader.
+ *
+ * THE RULE, on the owner's ruling: each cloud is called what the company calls the account you
+ * sign in to — AWS, Azure, Google Cloud — never one of its product names. "Amazon EC2" and
+ * "Google Compute Engine" are services inside those accounts; the thing being switched on here is
+ * the account. Hetzner and DigitalOcean already name themselves that way. The same four strings
+ * are each Provider factory's `displayName` and its declared settings `title`, so the wizard, the
+ * Settings tab and the Provider package cannot say three different things.
+ */
 const DISPLAY_NAMES: Record<string, string> = {
   hetzner: 'Hetzner Cloud',
   aws: 'AWS',
-  azure: 'Microsoft Azure',
-  gcp: 'Google Compute Engine',
+  azure: 'Azure',
+  gcp: 'Google Cloud',
 }
 
 export function computeSetupState(deps: SetupStateDeps): SetupState {

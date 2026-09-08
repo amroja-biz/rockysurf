@@ -141,7 +141,7 @@ describe('checking Provider credentials', () => {
       working('aws', 'AWS'),
       {
         id: 'azure',
-        displayName: 'Microsoft Azure',
+        displayName: 'Azure',
         validateCredentials: async () => {
           throw new ProviderError('network', 'fetch failed')
         },
