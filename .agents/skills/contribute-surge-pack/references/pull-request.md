@@ -46,7 +46,7 @@ request.
 ## Regenerate the index, last
 
 ```bash
-node /tmp/rockysurf/packages/rockysurf/dist/bin.js pack index --source packs --out index.json
+npx -y rockysurf@0.1.0 pack index --source packs --out index.json
 ```
 
 After the pack file is final — see `references/checks.md` §5 for why the order matters and for

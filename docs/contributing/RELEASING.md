@@ -193,6 +193,10 @@ checking the tarball, not the release.
 
 ### Retire the pre-publish notes, once, after v0.1.0
 
+**Done on 2026-09-07, after v0.1.0 published.** The sweep below has run; what follows is the
+record of the procedure, not work still outstanding. A future pre-publish note — if one is ever
+written again — retires the same way.
+
 Until `rockysurf` is on the registry, `npx rockysurf` is advice npm cannot honour, so several
 documents carry a note saying so and pointing at `node packages/rockysurf/dist/bin.js` instead
 (`rockysurf-lsi1`, `rockysurf-emfu`). **They become false at the first successful publish**, and

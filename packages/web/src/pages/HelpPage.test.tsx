@@ -124,16 +124,16 @@ describe('HelpPage', () => {
     expect(container.querySelector('a[href="/settings?section=mcp"]')).toBeTruthy()
   })
 
-  it('mints the token with a command that works before v0.1.0 is on npm (rockysurf-lsi1)', () => {
-    // The owner caught the first version teaching `rockysurf token` — a command npm cannot
-    // supply until the packages are published. The page must show the checkout form and say
-    // out loud why, the same honesty the README's quickstart carries.
+  it('mints the token with the published command, and carries no pre-publish fallback (rockysurf-lsi1)', () => {
+    // v0.1.0 is on the public registry, so `npx -y rockysurf` is the command. The old note
+    // pointing at a built checkout is false now, and a stale note is worse than none: the page
+    // must not send a reader to `node packages/rockysurf/dist/bin.js` for the token or the MCP
+    // server. It shows the same npx form the README does.
     const { container } = renderHelp()
     const text = container.textContent ?? ''
-    expect(text).toContain('node packages/rockysurf/dist/bin.js token')
-    expect(text).toContain('until v0.1.0 is on npm')
-    // The launch-shape JSON stays, with the pre-npm substitution beside it.
-    expect(text).toContain('"command": "node"')
+    expect(text).toContain('npx -y rockysurf token')
+    expect(text).not.toContain('dist/bin.js')
+    expect(text).not.toContain('until v0.1.0')
   })
 
   it('tells an outsider how to take the skills with them', () => {

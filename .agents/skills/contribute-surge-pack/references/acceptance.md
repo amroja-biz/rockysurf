@@ -66,7 +66,8 @@ stops the next edit from removing something load-bearing.
 **2026-09-06, on the machine that wrote this skill.** A local clone of
 `amroja-biz/rockysurf-shop` at `main`, `assets/sample-surge-pack.yaml` placed as
 `packs/ripgrep-demo.yaml`, and the harness built from this repository's own worktree
-(`packages/rockysurf/dist/bin.js`), which is what the shop's `pack-harness` action builds.
+(`packages/rockysurf/dist/bin.js`), which is what the shop's `pack-harness` action builds. The
+published `rockysurf` CLI runs the same commands.
 
 Exercised, all green:
 

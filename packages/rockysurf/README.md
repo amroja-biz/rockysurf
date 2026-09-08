@@ -4,12 +4,8 @@ Self-hosted, persistent cloud dev boxes with your coding agents already installe
 your cloud, under your budget cap.
 
 ```bash
-npx rockysurf
+npx -y rockysurf
 ```
-
-Reading this in a git checkout, before the v0.1.0 release? Then `npx` has no `rockysurf` to
-fetch yet — this package is the one that claims the name. Run `pnpm -r build` once and use
-`node packages/rockysurf/dist/bin.js`, which is the same binary `npx` will fetch.
 
 First boot prints an admin password once, opens the web UI, and walks you through adding a
 cloud. With no cloud configured it still comes up with an in-memory provider, so you can create
