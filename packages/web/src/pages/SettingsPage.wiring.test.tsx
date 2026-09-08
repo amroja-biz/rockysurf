@@ -343,7 +343,7 @@ beforeEach(async () => {
   }
   credentialCalls = []
   credentialResponse = {
-    checked: [{ provider: 'aws', displayName: 'Amazon EC2', status: 'verified', detail: '' }],
+    checked: [{ provider: 'aws', displayName: 'AWS', status: 'verified', detail: '' }],
   }
   setAuthToken('test-token')
 
@@ -2099,7 +2099,7 @@ describe('finding your way around the page', () => {
 
   it('offers the cloud’s own catalogue under a saved-type box, and saves what was picked', async () => {
     servePreferences()
-    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+    catalogues = [catalogue('aws', 'AWS', ['t4g.small', 't4g.large'])]
 
     renderPage()
     await loaded()
@@ -2120,7 +2120,7 @@ describe('finding your way around the page', () => {
   it('gets back to blank — the cheapest that meets the floor — in one move', async () => {
     servePreferences()
     served.values.preferences = { tiers: { aws: { small: 't4g.large' } } }
-    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+    catalogues = [catalogue('aws', 'AWS', ['t4g.small', 't4g.large'])]
 
     renderPage()
     await loaded()
@@ -2139,7 +2139,7 @@ describe('finding your way around the page', () => {
 
   it('keeps the free-text box for a cloud this installation has no catalogue for', async () => {
     servePreferences(['aws', 'gcp'])
-    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small'])]
+    catalogues = [catalogue('aws', 'AWS', ['t4g.small'])]
 
     renderPage()
     await loaded()
@@ -2160,7 +2160,7 @@ describe('finding your way around the page', () => {
   it('says so when the saved type is not in the catalogue, rather than showing nothing selected', async () => {
     servePreferences()
     served.values.preferences = { tiers: { aws: { small: 'm7i.metal-48xl' } } }
-    catalogues = [catalogue('aws', 'Amazon EC2', ['t4g.small', 't4g.large'])]
+    catalogues = [catalogue('aws', 'AWS', ['t4g.small', 't4g.large'])]
 
     renderPage()
     await loaded()
@@ -2978,7 +2978,7 @@ describe('verifying a Provider’s credentials on save (issue #450)', () => {
       checked: [
         {
           provider: 'aws',
-          displayName: 'Amazon EC2',
+          displayName: 'AWS',
           status: 'failed',
           code: 'auth',
           providerCode: 'AuthFailure',

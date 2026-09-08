@@ -128,7 +128,7 @@ type AwsConfig = z.infer<typeof configSchema>
 
 export const factory: ProviderFactory<AwsConfig> = {
   id: 'aws',
-  displayName: 'Amazon EC2',
+  displayName: 'AWS',
   configSchema, // structurally a ConfigSchema<AwsConfig> — no import from the SDK needed
   createProvider: (config) => makeAwsProvider(config),
 }

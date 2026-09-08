@@ -24,7 +24,7 @@ export const AWS_PROVIDER_ID = 'aws'
  */
 export const awsProviderFactory: ProviderFactory<AwsProviderConfig> = {
   id: AWS_PROVIDER_ID,
-  displayName: 'Amazon EC2',
+  displayName: 'AWS',
   configSchema: awsConfigSchema,
   createProvider: (config) => makeAwsProvider({ config }),
   /**

@@ -26,7 +26,7 @@ const freshInstall: SetupState = {
   needsProvider: true,
   providers: [
     { id: 'hetzner', displayName: 'Hetzner Cloud', enabled: false, configured: false, source: 'none', loaded: false },
-    { id: 'aws', displayName: 'Amazon EC2', enabled: false, configured: false, source: 'none', loaded: false },
+    { id: 'aws', displayName: 'AWS', enabled: false, configured: false, source: 'none', loaded: false },
   ],
 }
 
@@ -44,7 +44,7 @@ const enabledWaiting: SetupState = {
       loaded: false,
       unavailableReason: 'no credential found — export HETZNER_TOKEN (or HCLOUD_TOKEN) and restart',
     },
-    { id: 'aws', displayName: 'Amazon EC2', enabled: false, configured: false, source: 'none', loaded: false },
+    { id: 'aws', displayName: 'AWS', enabled: false, configured: false, source: 'none', loaded: false },
   ],
 }
 
