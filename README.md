@@ -308,6 +308,7 @@ Every document below opens with the audience it was written for.
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributors | Development setup, gates, conventions |
 | [`docs/contributing/TESTING.md`](docs/contributing/TESTING.md) | Contributors | The testing strategy - every layer, where it runs, and the nightly real-cloud run |
 | [`docs/contributing/RELEASING.md`](docs/contributing/RELEASING.md) | The maintainer | Publishing to npm - the procedure, and the reasons behind each step |
+| [`docs/RELEASE_SOP.md`](docs/RELEASE_SOP.md) | The maintainer | The release checklist - choosing the version number, the steps in order, and what to do when a run fails |
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,
 no multi-tenancy.
