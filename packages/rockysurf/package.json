@@ -1,6 +1,6 @@
 {
   "name": "rockysurf",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-hosted persistent cloud dev boxes for coding agents. The composition root: wires the compute providers into the control plane.",
   "license": "MIT",
   "type": "module",

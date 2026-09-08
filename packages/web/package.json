@@ -1,6 +1,6 @@
 {
   "name": "@rockysurf/web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "React SPA. Built to static assets and bundled into @rockysurf/core, which serves them from the same process.",
   "type": "module",

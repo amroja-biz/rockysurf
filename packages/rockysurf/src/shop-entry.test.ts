@@ -34,11 +34,19 @@ const bin = join(sdkDir, 'dist', 'bin', 'shop-entry.js')
 const validator = fileURLToPath(new URL('./shop-validate-providers.fixture.mjs', import.meta.url))
 const PNPM = process.env['ROCKYSURF_PNPM'] ?? 'pnpm'
 
-/** The entry merged in rockysurf-shop#16, hand-written, at commit 06cacf3 of that repository. */
+/**
+ * The entry merged in rockysurf-shop#16, hand-written, at commit 06cacf3 of that repository.
+ *
+ * The version is the one thing in it that moves with every release (the lockstep rule in
+ * docs/RELEASE_SOP.md), so it is read from the provider's manifest rather than transcribed: the
+ * hand-written entry said 0.1.0 because the package said 0.1.0, and the claim under test is that
+ * the generator reads what the package says.
+ */
+const providerManifest = JSON.parse(readFileSync(join(providerDir, 'package.json'), 'utf8')) as { version: string }
 const MERGED_BY_HAND = {
   providerId: 'digitalocean',
   name: 'DigitalOcean',
-  version: '0.1.0',
+  version: providerManifest.version,
   package: '@rockysurf/provider-digitalocean',
   settings: [
     { name: 'token', label: 'Token Environment Variable', kind: 'secret' },
