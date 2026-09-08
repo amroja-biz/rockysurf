@@ -7,7 +7,7 @@ import { ApiError, UNREACHABLE_DETAIL, createAdminTool } from './api'
  * Every form in the SPA renders `err.detail` for an ApiError and a generic "could not save X"
  * for anything else. `fetch` rejects with a bare TypeError when nothing answered — core
  * stopped, wrong port — which used to land in the generic branch: an operator whose core was
- * simply not running read "Could not save this tool" and went looking for a validation
+ * simply not running read "Could not save this Tool" and went looking for a validation
  * problem. The wrapper now wraps that rejection so the form says what actually happened.
  */
 

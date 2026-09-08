@@ -10,7 +10,7 @@ import type { BootstrapFailure, BootstrapReport as Report, StepReport } from '..
  * lines pulled out of the log and the whole log underneath for whoever wants it.
  *
  * Warnings are the other case: the box came up, but a repository did not clone. Those get a
- * card each, because "your server is ready" beside a repository that is not on it is the
+ * card each, because "your Server is ready" beside a repository that is not on it is the
  * contradiction the owner asked never to see again.
  */
 

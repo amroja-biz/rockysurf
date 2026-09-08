@@ -470,7 +470,7 @@ describe('a failed row whose machine is still running', () => {
  * not already say so — which includes a box that is coming up on purpose, because an instance
  * meters from the moment it is asked for. Rendering on `billing` alone put "This machine is
  * still running, and still billing. Terminate it to stop the charge, or leave it up and SSH in
- * to diagnose what went wrong" on a first launch, while "Launching server" was still on screen.
+ * to diagnose what went wrong" on a first launch, while "Launching Server" was still on screen.
  * Nothing had failed and there was nothing to diagnose; the notice was telling a new user to
  * destroy a healthy machine.
  */
@@ -555,9 +555,9 @@ describe('the destructive button a failed card offers', () => {
     fireEvent.click(buttonOn(cardFor(container, 'dev-box'), 'Dismiss')!)
 
     expect(screen.getByText('Dismiss dev-box?')).toBeTruthy()
-    expect(screen.getByText(/clears the failed server and its report/)).toBeTruthy()
+    expect(screen.getByText(/clears the failed Server and its report/)).toBeTruthy()
     // The terminate warning would be a lie here: there is no disk left to destroy.
-    expect(screen.queryByText(/destroys the server and its disk/)).toBeNull()
+    expect(screen.queryByText(/destroys the Server and its disk/)).toBeNull()
   })
 
   it('still says Terminate when the failure KEPT the machine, which is still billing', async () => {

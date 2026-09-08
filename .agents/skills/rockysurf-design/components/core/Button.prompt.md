@@ -1,4 +1,4 @@
-<Button variant="primary" href="/servers/new">New server</Button>
+<Button variant="primary" href="/servers/new">New Server</Button>
 <Button onClick={stop}>Stop</Button>
 <Button variant="destructive" onClick={terminate}>Terminate</Button>
 

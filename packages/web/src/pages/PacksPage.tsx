@@ -727,7 +727,7 @@ function PackCard({
           <div className="pack-popup-actions">
             {view.enabled && (
               <Link className="button primary new-action" to={`/servers/new?pack=${view.packId}`}>
-                New server
+                New Server
               </Link>
             )}
             <button type="button" className="button secondary" onClick={() => onExport(view)}>
@@ -1172,7 +1172,7 @@ export function PacksPage(): React.JSX.Element {
                     <code>{view.derivedFromPackId}</code>, which is no longer installed
                   </>
                 )}
-                . It is a copy: nothing here changes when that pack does, except the tools&apos; own
+                . It is a copy: nothing here changes when that pack does, except the Tools&apos; own
                 scripts, which it references rather than copies.
               </p>
             )}
@@ -1191,12 +1191,12 @@ export function PacksPage(): React.JSX.Element {
         {view.enabled ? (
           <p>
             <Link className="button primary new-action" to={`/servers/new?pack=${view.packId}`}>
-              Launch a server with this pack
+              Launch a Server with this pack
             </Link>
           </p>
         ) : (
           <p className="hint" data-testid="launch-unavailable">
-            This pack is disabled, so it cannot be used to create a server.
+            This pack is disabled, so it cannot be used to create a Server.
           </p>
         )}
 
@@ -1307,7 +1307,7 @@ export function PacksPage(): React.JSX.Element {
   return (
     <AppShell title="Surge Packs">
       <p className="hint">
-        A Surge Pack decides which tools a new box is set up with. Official packs shipped with
+        A Surge Pack decides which Tools a new box is set up with. Official packs shipped with
         this Rocky Surf release; Community packs come from a Pack Shop registry, installed here
         or not yet; Personal packs were created or imported on this installation.
       </p>
@@ -1378,10 +1378,10 @@ export function PacksPage(): React.JSX.Element {
         </p>
 
         {/* The way to the shop itself (issue #426): browsing and installing live on the Rocky Surf
-            Shop tab, which lists packs and providers together. This sub-tab keeps its own
+            Shop tab, which lists packs and Providers together. This sub-tab keeps its own
             catalogue and filter exactly as before — the link is an addition, not a move. */}
         <p className="hint" data-testid="community-shop-link">
-          Browse and install community packs and providers on the{' '}
+          Browse and install community packs and Providers on the{' '}
           <Link to="/shop">Rocky Surf Shop</Link> tab.
         </p>
 

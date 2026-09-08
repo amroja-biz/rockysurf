@@ -30,7 +30,7 @@ import { formatDateTime } from '../lib/format'
  * rather than through this one. That is a wider set than this notice has anything to say about:
  *
  *  - `requested` / `provisioning` — a box coming up on purpose. The instance meters from the
- *    moment it is asked for, so a first launch carried this notice while the "Launching server"
+ *    moment it is asked for, so a first launch carried this notice while the "Launching Server"
  *    step was still running: nothing has failed, there is nothing to diagnose, and the sentence
  *    reads as an instruction to terminate a healthy machine (compare issue #205).
  *  - `stopped` with a live instance — a start core has issued that the cloud has not finished

@@ -112,7 +112,7 @@ export function AddToPackModal({
       <div className="modal modal-wide">
         <h3>Add {tool.name} to a pack</h3>
         <p className="hint">
-          A tool only reaches a box through a Surge Pack. Adding it to one of your own packs changes
+          A Tool only reaches a box through a Surge Pack. Adding it to one of your own packs changes
           that pack; adding it to an official pack makes you your own copy of that pack, because the
           official ones are rewritten from their files every time Rocky Surf restarts.
         </p>
@@ -153,7 +153,7 @@ export function AddToPackModal({
           <h4>Official and community packs</h4>
           <p className="hint">
             These cannot be changed here. Copying one gives you a pack of your own that starts as an
-            exact copy — it keeps following the official tools as they are updated, and only the list
+            exact copy — it keeps following the official Tools as they are updated, and only the list
             of what is in it is yours.
           </p>
           <ul className="add-to-pack-list">
@@ -185,10 +185,10 @@ export function AddToPackModal({
           ) : confirmingAlways ? (
             <>
               <p role="alert" data-testid="always-install-confirm">
-                Every server you create from now on will install {tool.name}, whichever pack you pick
+                Every Server you create from now on will install {tool.name}, whichever pack you pick
                 and even if you pick none. Make sure it does not depend on anything a pack might not
-                have installed: <strong>a tool that fails to install terminates the box</strong>, so a
-                tool that is wrong here breaks every new server, not one. Boxes that already exist do
+                have installed: <strong>a Tool that fails to install terminates the box</strong>, so a
+                Tool that is wrong here breaks every new Server, not one. Boxes that already exist do
                 not change.
               </p>
               <button

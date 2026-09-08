@@ -80,7 +80,7 @@ export const TRANSITION_WINDOW_MS: Record<TransitionAction, number> = {
 
 /** Said out loud when the window closes, in place of a spinner that would never stop. */
 export const TRANSITION_STALLED_HINT =
-  'Still waiting for the provider to confirm this. Refresh the page, or try again.'
+  'Still waiting for the Provider to confirm this. Refresh the page, or try again.'
 
 export interface ServerTransition {
   /** The action still waiting on the provider, or null. Drives the pill and the buttons. */

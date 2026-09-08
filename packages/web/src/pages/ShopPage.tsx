@@ -167,7 +167,7 @@ export function ShopPage(): React.JSX.Element {
   return (
     <AppShell title="Rocky Surf Shop">
       <p className="hint" data-testid="shop-caption">
-        Community Surge Packs and providers from{' '}
+        Community Surge Packs and Providers from{' '}
         <a href={SHOP_URL} target="_blank" rel="noreferrer">
           Rocky Surf Shop
         </a>
@@ -190,7 +190,7 @@ export function ShopPage(): React.JSX.Element {
           )}
         </div>
         <p className="hint">
-          A Surge Pack is the software a server is created with. Before one is installed, the page
+          A Surge Pack is the software a Server is created with. Before one is installed, the page
           shows every script it will run, which of them run as root, and every URL they download
           from. Installing a pack takes effect immediately; packs already on this installation are
           on the <Link to="/packs?tab=community">Surge Packs</Link> page.

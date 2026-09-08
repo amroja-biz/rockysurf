@@ -212,7 +212,7 @@ export function ConnectGitHubCard({ connection, onChanged, onDisconnect }: Conne
             <li>
               On the same form, tick <strong>Enable Device Flow</strong> and leave{' '}
               <strong>Expire user access tokens</strong> unticked — an expiring token would strand
-              the servers that carry it.
+              the Servers that carry it.
             </li>
             <li>
               Paste its Client ID into the <strong>OAuth App client ID</strong> box below (it is{' '}

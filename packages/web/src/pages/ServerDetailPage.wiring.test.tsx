@@ -243,19 +243,19 @@ describe('the step timeline, fed by the live stream', () => {
 
     // The starting picture: the first step is where the row says it is.
     await waitFor(() => expect(stateOf('Requested')).toBe('active'))
-    expect(stateOf('Installing tools')).toBe('pending')
+    expect(stateOf('Installing Tools')).toBe('pending')
     await waitFor(() => expect(streams.length).toBeGreaterThan(0))
 
     // The frame core emits from BOTH bootstrap topologies: the row's vocabulary in `step`,
     // the plan's own step id alongside it.
     await broadcastUntil(
       { type: 'bootstrap-progress', serverId: SERVER_ID, step: 'installing_tools', stepId: 'tool:beads', status: 'provisioning' },
-      () => expect(stateOf('Installing tools')).toBe('active'),
+      () => expect(stateOf('Installing Tools')).toBe('active'),
     )
 
     // Everything before it is behind us, everything after is still to come.
     expect(stateOf('Requested')).toBe('done')
-    expect(stateOf('Launching server')).toBe('done')
+    expect(stateOf('Launching Server')).toBe('done')
     expect(stateOf('Ready')).toBe('pending')
   })
 
@@ -265,7 +265,7 @@ describe('the step timeline, fed by the live stream', () => {
     await waitFor(() => expect(stateOf('Requested')).toBe('active'))
     await waitFor(() => expect(streams.length).toBeGreaterThan(0))
     await broadcastUntil({ type: 'bootstrap-progress', serverId: SERVER_ID, step: 'installing_tools' }, () =>
-      expect(stateOf('Installing tools')).toBe('active'),
+      expect(stateOf('Installing Tools')).toBe('active'),
     )
 
     // A plan step id in the `step` field is what core used to send from push mode. It must
@@ -273,7 +273,7 @@ describe('the step timeline, fed by the live stream', () => {
     // `indexOf` answers -1 and every step goes pending.
     broadcast({ type: 'bootstrap-progress', serverId: SERVER_ID, step: 'tool:claude-code' })
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(stateOf('Installing tools')).toBe('active')
+    expect(stateOf('Installing Tools')).toBe('active')
   })
 
   it('gives way to the connection details when the server reaches running', async () => {
@@ -290,7 +290,7 @@ describe('the step timeline, fed by the live stream', () => {
       () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
     )
 
-    expect(screen.queryByText('Installing tools')).toBeNull()
+    expect(screen.queryByText('Installing Tools')).toBeNull()
     expect(screen.getByText('203.0.113.7')).toBeTruthy()
   })
 })

@@ -72,7 +72,7 @@ describe('HomePage', () => {
     const sections = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)
     expect(sections).toEqual([
       'Bring your own cloud, keys and repos',
-      'Creating a server',
+      'Creating a Server',
       'A pack of your own',
       'Room to work',
     ])
@@ -80,7 +80,7 @@ describe('HomePage', () => {
 
   it('names the four clouds a create can use, a Surge Pack, and a GitHub repo', () => {
     renderHome()
-    const create = screen.getByRole('heading', { name: 'Creating a server' }).closest('section')
+    const create = screen.getByRole('heading', { name: 'Creating a Server' }).closest('section')
     expect(create).toBeTruthy()
     const text = create!.textContent ?? ''
     for (const cloud of ['AWS', 'GCP', 'Azure', 'Hetzner']) {
@@ -110,7 +110,7 @@ describe('HomePage', () => {
     const main = within(screen.getByRole('main'))
     expect(main.getByRole('link', { name: 'GitHub' }).getAttribute('href')).toBe(GITHUB_URL)
     expect(main.getByRole('link', { name: /^Help$/ }).getAttribute('href')).toBe('/help')
-    expect(main.getByRole('link', { name: 'Create a server' }).getAttribute('href')).toBe(
+    expect(main.getByRole('link', { name: 'Create a Server' }).getAttribute('href')).toBe(
       '/servers/new',
     )
   })

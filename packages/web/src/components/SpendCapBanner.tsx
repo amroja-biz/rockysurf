@@ -58,8 +58,8 @@ export function SpendCapBanner({ fraction, overCap, cap, spent }: SpendCapBanner
       <span style={{ color: tone, fontSize: '0.875rem' }}>
         {spentText ? `${spentText} of ${money(cap.amount, cap.currency)} this month.` : null}{' '}
         {overCap
-          ? 'New servers are blocked until the cap resets or you raise it. Servers already running are NOT stopped — they keep running, and keep costing.'
-          : 'Creating servers will be blocked once you reach it.'}
+          ? 'New Servers are blocked until the cap resets or you raise it. Servers already running are NOT stopped — they keep running, and keep costing.'
+          : 'Creating Servers will be blocked once you reach it.'}
       </span>{' '}
       <Link to="/costs" style={{ color: tone, fontSize: '0.875rem' }}>
         View costs

@@ -28,7 +28,7 @@ const STEP_LABELS: Record<ProvisioningStep, string> = {
   requested: 'Requested',
   instance_launching: 'Launching the machine',
   instance_running: 'Machine running, waiting for SSH',
-  installing_tools: 'Installing tools',
+  installing_tools: 'Installing Tools',
   tools_installed: 'Tools installed',
   cloning_repos: 'Cloning repositories',
   // Whose script it is, said out loud: this is the one step the user can debug themselves,
@@ -112,7 +112,7 @@ export function ProvisioningFeed({ serverId, onReady }: ProvisioningFeedProps) {
 
       {status === 'running' && !failure && (
         <p className="success">
-          {report && report.warnings.length > 0 ? 'Your server is ready — with something missing, below.' : 'Your server is ready.'}
+          {report && report.warnings.length > 0 ? 'Your Server is ready — with something missing, below.' : 'Your Server is ready.'}
         </p>
       )}
 

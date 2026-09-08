@@ -831,7 +831,7 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
 /**
  * `?pack=<packId>` PRESELECTION (rockysurf-4d8h, issue #51).
  *
- * Arriving from a pack's "Launch a server with this pack" button. The existing selection rule
+ * Arriving from a pack's "Launch a Server with this pack" button. The existing selection rule
  * — lowest `displayOrder` wins absent a request, and the tab follows whichever pack ends up
  * selected — is untouched; the query parameter only supplies a different STARTING pack. Naming
  * one that is not on offer (absent, or disabled) must be stated rather than silently swallowed.

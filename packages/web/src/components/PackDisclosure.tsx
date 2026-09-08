@@ -74,7 +74,7 @@ export function PackDisclosurePanel({
                 </>
               )}
             </li>
-            {disclosure.requiresRdp && <li>Asks you for a remote-desktop password when you create a server.</li>}
+            {disclosure.requiresRdp && <li>Asks you for a remote-desktop password when you create a Server.</li>}
             {disclosure.requiresRepos && <li>Expects at least one repository; you are asked to confirm if you name none.</li>}
             {/* WHAT IT WILL ASK YOU FOR (issue #189). Part of the disclosure because a pack that
                 wants an API key is asking you to put a credential on a box, and that belongs in
@@ -83,7 +83,7 @@ export function PackDisclosurePanel({
             {disclosure.inputs?.length ? (
               <li>
                 Asks you for {disclosure.inputs.length} setting{disclosure.inputs.length === 1 ? '' : 's'} when you
-                create a server, delivered to its install scripts as environment variables:
+                create a Server, delivered to its install scripts as environment variables:
                 <ul className="disclosure-urls">
                   {disclosure.inputs.map((input) => (
                     <li key={input.name}>

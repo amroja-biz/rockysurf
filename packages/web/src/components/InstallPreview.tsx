@@ -61,7 +61,7 @@ export function InstallPreview({ pack, tools }: { pack: AdminSurgePack; tools: A
               <span className="run-as">as {tool.runAs}</span>
               {tool.setupScript && <span className="badge">+ setup</span>}
               {tied && (
-                <span className="badge tie" title="Shares an install order; ordered by tool id for determinism">
+                <span className="badge tie" title="Shares an install order; ordered by Tool id for determinism">
                   tie-break
                 </span>
               )}

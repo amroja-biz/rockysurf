@@ -48,12 +48,12 @@ export function destructiveAction(server: Pick<Server, 'status' | 'billing' | 'n
         pendingLabel: 'Dismissing…',
         confirmTitle: `Dismiss ${server.name}?`,
         confirmMessage:
-          'The machine is already gone. This clears the failed server and its report from your list.',
+          'The machine is already gone. This clears the failed Server and its report from your list.',
       }
     : {
         label: 'Terminate',
         pendingLabel: 'Terminating…',
         confirmTitle: `Terminate ${server.name}?`,
-        confirmMessage: 'This destroys the server and its disk. It cannot be undone.',
+        confirmMessage: 'This destroys the Server and its disk. It cannot be undone.',
       }
 }

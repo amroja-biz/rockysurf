@@ -54,7 +54,7 @@ describe('HelpPage', () => {
       'Start here',
       'Cloud Providers',
       'Servers',
-      'Surge Packs and tools',
+      'Surge Packs and Tools',
       'Private repositories',
       'MCP & Skills',
       'Costs and caps',
@@ -200,7 +200,7 @@ describe('HelpPage', () => {
       // The client ID goes to the config file, which is now re-read when Settings saves it.
       expect(text).toContain('the button works straight away, with no restart')
       // A pasted PAT goes to the same file, and is read when a box is created.
-      expect(text).toContain('It applies to the next server you create, with no restart.')
+      expect(text).toContain('It applies to the next Server you create, with no restart.')
       // The connected token goes to the encrypted store, read at create.
       expect(text).toContain('immediately')
       expect(text).toContain('stored encrypted')

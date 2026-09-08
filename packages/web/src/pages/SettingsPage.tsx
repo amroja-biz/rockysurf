@@ -869,7 +869,7 @@ export function SettingsPage() {
         {saved !== '' && !known && (
           <p className="hint" data-tier-unlisted={keyOf(path)}>
             {catalogue.displayName} is not currently offering {saved} to this installation, so it is
-            not in the list above. It is kept as written — a server asking for this size falls back
+            not in the list above. It is kept as written — a Server asking for this size falls back
             to the cheapest type that meets the floor until it can be bought again.
           </p>
         )}
@@ -1948,7 +1948,7 @@ export function SettingsPage() {
         })}
         {add && draftValues && draftForm(add, draftValues)}
         {/*
-          CYAN, LIKE EVERY BUTTON THAT CREATES SOMETHING NEW — "New server", "New Surge Pack",
+          CYAN, LIKE EVERY BUTTON THAT CREATES SOMETHING NEW — "New Server", "New Surge Pack",
           and now this. `btn-primary` for the base skin, `new-action` so the etched skin colours
           it as a create rather than a start; the pairing is #183's convention, stated at the
           `.new-action` rule in etched.css.
@@ -2198,7 +2198,7 @@ export function SettingsPage() {
 
     limits: (
       <>
-        {textField(['limits', 'maxServers'], 'Most servers at once', 'number')}
+        {textField(['limits', 'maxServers'], 'Most Servers at once', 'number')}
         {textField(['limits', 'createRatePerHour'], 'Most created per hour', 'number')}
 
         <div className="form-group" data-field="limits.spendCap">

@@ -8,7 +8,7 @@ import { GITHUB_URL, SHOP_PROVIDERS_URL, repoDocUrl } from '../lib/links'
  * The in-app Help page (issue #16, reorganized for #364).
  *
  * WHAT IT IS. Each section summarizes and links; the document it links — SECURITY.md,
- * docs/self-hosting.md, a provider page, the pack contract — is the normative reference, so a
+ * docs/self-hosting.md, a Provider page, the pack contract — is the normative reference, so a
  * claim here should never need to be read against the code to be trusted. If a claim below is
  * wrong, fix it or cut it; it should not describe what an older release did.
  *
@@ -54,7 +54,7 @@ const SECTIONS = [
     label: 'Servers',
     anchors: ['create', 'boot', 'connect', 'lifecycle', 'stale-servers'],
   },
-  { id: 'packs', label: 'Surge Packs and tools', anchors: [] },
+  { id: 'packs', label: 'Surge Packs and Tools', anchors: [] },
   { id: 'repositories', label: 'Private repositories', anchors: ['git-auth'] },
   { id: 'agents', label: 'MCP & Skills', anchors: ['mcp', 'mcp-scopes', 'skills'] },
   { id: 'costs', label: 'Costs and caps', anchors: [] },
@@ -120,9 +120,9 @@ const SCOPE_TOOLS = [
 /** The skills in the repository, and the job each one does. */
 const SKILLS = [
   ['create-surge-pack', 'Write a Surge Pack that passes the real smoke harness.'],
-  ['register-a-tool', 'Register one tool, reusable across packs and exportable as a file.'],
+  ['register-a-tool', 'Register one Tool, reusable across packs and exportable as a file.'],
   ['contribute-surge-pack', 'Get a working pack listed in the community shop.'],
-  ['contribute-provider', 'Get a working provider listed in the community shop.'],
+  ['contribute-provider', 'Get a working Provider listed in the community shop.'],
   ['add-provider', 'Switch on a cloud, or add support for one Rocky Surf does not have yet.'],
   ['rockysurf-design', 'Change the web UI, or make something that looks like Rocky Surf.'],
 ] as const
@@ -299,15 +299,15 @@ export function HelpPage() {
               <li>
                 <strong>Create a Server, choosing a Surge Pack.</strong> Pick a Provider and a
                 Surge Pack on the New Server page, describe the machine you want, and create it.
-                The server&rsquo;s own page shows the install as it happens, and then the SSH
-                command that connects you to it. For a server&rsquo;s whole life, see{' '}
+                The Server&rsquo;s own page shows the install as it happens, and then the SSH
+                command that connects you to it. For a Server&rsquo;s whole life, see{' '}
                 <Link to="/help#servers">Servers</Link>; for what a Surge Pack is and where
                 community ones come from, see{' '}
-                <Link to="/help#packs">Surge Packs and tools</Link>.
+                <Link to="/help#packs">Surge Packs and Tools</Link>.
               </li>
               <li>
                 <strong>Optional: Connect private repositories.</strong> The repositories you
-                list when you create a server are cloned onto the box during setup. Public ones
+                list when you create a Server are cloned onto the box during setup. Public ones
                 clone with no credential; private ones need a GitHub token, and Settings takes
                 one two ways. For both, see{' '}
                 <Link to="/help#repositories">Private repositories</Link>.
@@ -324,7 +324,7 @@ export function HelpPage() {
               Two more panels are worth reading before you leave a machine running:{' '}
               <Link to="/help#costs">Costs and caps</Link>, for the limits Rocky Surf enforces
               before a machine is provisioned, and <Link to="/help#backup">Backups</Link>, for
-              what to copy so that a lost computer does not take your server records with it.
+              what to copy so that a lost computer does not take your Server records with it.
             </p>
           </section>
 
@@ -389,7 +389,7 @@ export function HelpPage() {
               <h3>Set the SSH allow-list</h3>
               <p>
                 <strong>SSH allowed from</strong> is the Settings field that says which networks may
-                reach SSH on the servers a Provider creates. It is called{' '}
+                reach SSH on the Servers a Provider creates. It is called{' '}
                 <code>sshAllowedCidr</code> in the configuration file, which is the name the startup
                 error uses.{' '}
                 <strong>AWS, Azure and Google Cloud will not load without it</strong>: Rocky Surf
@@ -399,7 +399,7 @@ export function HelpPage() {
                 <code>0.0.0.0/0</code> anywhere in the list is refused unless{' '}
                 <code>allowAllCidr: true</code> sits beside it in the configuration file, because
                 opening SSH to the internet is two separate decisions. Hetzner has no such field: a
-                Hetzner server is reachable the moment it boots, and there is no firewall object for
+                Hetzner Server is reachable the moment it boots, and there is no firewall object for
                 Rocky Surf to own.
               </p>
               <p>
@@ -411,7 +411,7 @@ export function HelpPage() {
               </p>
               <ol className="help-steps">
                 <li>
-                  Read the address a server sees on port 22. This is the one SSH uses:
+                  Read the address a Server sees on port 22. This is the one SSH uses:
                   <pre>
                     <code>curl http://portquiz.net:22/</code>
                   </pre>
@@ -435,7 +435,7 @@ export function HelpPage() {
               </ol>
               <p>
                 <strong>Saving the list pushes it to the cloud immediately</strong> — launching a
-                server is not required for it to take effect. Settings writes the configuration
+                Server is not required for it to take effect. Settings writes the configuration
                 file, this process adopts it, and then a second call updates the security group,
                 network security group rule, or firewall rule. Each cloud&rsquo;s result appears in
                 Settings under <strong>SSH access at the cloud</strong>. The push never launches or
@@ -472,7 +472,7 @@ export function HelpPage() {
               in the cloud, "Then, in Settings", one Optional line, and the links.
 
               Two rules that are easy to break here. FIELDS ARE NAMED BY THEIR SETTINGS LABEL,
-              not by their config key: the labels are declared in each provider package's
+              not by their config key: the labels are declared in each Provider package's
               `src/index.ts` and in core's `settings/inventory.ts`, and a reader following these
               steps is looking at the page, not at the file. And nothing assumes the reader has
               read another cloud's section, because they will not have.
@@ -492,7 +492,7 @@ export function HelpPage() {
                 blast radius, give Rocky Surf a project of its own: a Cloud API token has two
                 settings, Read and Read &amp; Write, and no per-resource scope of any kind, so the
                 project is the only boundary there is, and a project holding nothing but Rocky
-                Surf&rsquo;s servers is as close to least privilege as the Cloud API gets.
+                Surf&rsquo;s Servers is as close to least privilege as the Cloud API gets.
               </p>
               <p>
                 <strong>Before you start, in Hetzner:</strong>
@@ -506,7 +506,7 @@ export function HelpPage() {
                 <li>
                   In that project, open <strong>Security</strong> and create an API token with{' '}
                   <strong>Read &amp; Write</strong>. Hetzner shows the value once. Read-only passes
-                  startup and then fails at the first create, because a server and the SSH key
+                  startup and then fails at the first create, because a Server and the SSH key
                   object it needs are both writes.
                 </li>
                 <li>
@@ -548,7 +548,7 @@ export function HelpPage() {
               </ol>
               <p>
                 Optional: <strong>Console project id</strong> adds a link to the Hetzner Console on
-                each server&rsquo;s page. Take the number from the console address bar, because the
+                each Server&rsquo;s page. Take the number from the console address bar, because the
                 API never reveals which project a token belongs to.{' '}
                 <strong>Offered server types</strong> narrows the server types the New Server page
                 offers; the page shows it read-only, and it is edited in the configuration file.
@@ -976,19 +976,19 @@ export function HelpPage() {
           >
             <h2>Servers</h2>
             <p className="help-lead">
-              This section covers a server&rsquo;s whole life: creating one, watching the software
+              This section covers a Server&rsquo;s whole life: creating one, watching the software
               install, connecting to it, stopping and destroying it, and checking that what this page
               shows still matches your cloud account.
             </p>
 
             <section className="help-block" id="create">
-              <h3>Create a server</h3>
+              <h3>Create a Server</h3>
               <p>To launch a machine, follow these steps:</p>
               <ol className="help-steps">
                 <li>
                   Go to the <Link to="/servers/new">New Server</Link> page.
                 </li>
-                <li>Pick a provider and a Surge Pack.</li>
+                <li>Pick a Provider and a Surge Pack.</li>
                 <li>
                   Describe the machine you want, architecture included. arm64 is first-class, not a
                   fallback.
@@ -998,7 +998,7 @@ export function HelpPage() {
                   you type and says which token will be used, or that nothing matches yet.
                 </li>
                 <li>
-                  Create the server. Declared repository URLs are checked before any machine is
+                  Create the Server. Declared repository URLs are checked before any machine is
                   launched, with the same token the box would use, so a typo fails in seconds instead
                   of after a full boot on a box that then keeps billing. A refusal names the URL and
                   the token that was tried, and you can create anyway — the check is a prediction,
@@ -1010,7 +1010,7 @@ export function HelpPage() {
             <section className="help-block" id="boot">
               <h3>While it boots</h3>
               <p>
-                The server page shows the install as it happens: a step timeline fed by the box
+                The Server page shows the install as it happens: a step timeline fed by the box
                 itself and a live log tail. When the box reaches <em>running</em>, the pack&rsquo;s
                 own getting-started guide appears — written by the pack author, including anything
                 the install could not finish on your behalf, such as signing agents in. No credential
@@ -1020,10 +1020,10 @@ export function HelpPage() {
             </section>
 
             <section className="help-block" id="connect">
-              <h3>Connect to a server</h3>
-              <p>To get a shell on a running server, follow these steps:</p>
+              <h3>Connect to a Server</h3>
+              <p>To get a shell on a running Server, follow these steps:</p>
               <ol className="help-steps">
-                <li>Open the server&rsquo;s page.</li>
+                <li>Open the Server&rsquo;s page.</li>
                 <li>
                   Copy the SSH command it shows. If you pasted your own public key when you created
                   the box, that command uses it directly and there is no key file to manage.
@@ -1071,16 +1071,16 @@ export function HelpPage() {
               block is not gated by any of the notice's own localStorage keys.
             */}
             <section className="help-block" id="stale-servers">
-              <h3>Checking for stale servers</h3>
+              <h3>Checking for stale Servers</h3>
               <p>
-                Rocky Surf&rsquo;s dashboard shows what core last learned from each provider&rsquo;s
+                Rocky Surf&rsquo;s dashboard shows what core last learned from each Provider&rsquo;s
                 own API — polled on an interval and pushed over live events, but never a guaranteed,
-                up-to-the-second mirror of your cloud account. A server terminated from the cloud
+                up-to-the-second mirror of your cloud account. A Server terminated from the cloud
                 console between polls, a box created directly on the account outside Rocky Surf, or a
-                provider outage that delays a status update can all leave the dashboard saying
+                Provider outage that delays a status update can all leave the dashboard saying
                 something your cloud bill will not agree with. Treat this page as Rocky Surf&rsquo;s
                 best record, not as your account&rsquo;s source of truth, and check your cloud
-                provider&rsquo;s own console periodically for anything still running that this page
+                Provider&rsquo;s own console periodically for anything still running that this page
                 does not show.
               </p>
             </section>
@@ -1093,28 +1093,28 @@ export function HelpPage() {
             aria-labelledby="help-tab-packs"
             hidden={active !== 'packs'}
           >
-            <h2>Surge Packs and tools</h2>
+            <h2>Surge Packs and Tools</h2>
             <p className="help-lead">
               This section covers the software a box is created with: what a Surge Pack is, where
-              community packs and providers come from, and what to read before you install one.
+              community packs and Providers come from, and what to read before you install one.
             </p>
             <p>
-              A Surge Pack is written as YAML: a list of tools with idempotent, architecture-aware
+              A Surge Pack is written as YAML: a list of Tools with idempotent, architecture-aware
               install scripts, plus the author&rsquo;s post-boot guide. The{' '}
               <Link to="/admin/tools">Tools</Link> and <Link to="/packs">Surge Packs</Link> pages let
               you inspect and edit what this installation offers. Writing your own means satisfying
               a contract, and CI enforces the mechanical half of it. Start with{' '}
               <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
-                writing a surge pack
+                writing a Surge Pack
               </a>
               , the author guide; the file format field by field is{' '}
               <a href={repoDocUrl('docs/surge-pack-contract.md')} target="_blank" rel="noreferrer">
-                the surge pack contract
+                the Surge Pack contract
               </a>
               . You can also hand both to your agent with the <code>create-surge-pack</code> skill.
             </p>
             <p>
-              The <Link to="/shop">Rocky Surf Shop</Link> tab is where community packs and providers
+              The <Link to="/shop">Rocky Surf Shop</Link> tab is where community packs and Providers
               come from. Packs marked <em>official</em> shipped with the release you are running;
               everything else carries the label you gave its registry in your config file, and no
               registry can call itself official. Installing a pack takes effect immediately, with no
@@ -1130,8 +1130,8 @@ export function HelpPage() {
               box.
             </p>
             <p>
-              The same tab lists <strong>providers</strong> — the clouds Rocky Surf can create
-              servers on. Each card shows the version, what the provider will ask you to configure,
+              The same tab lists <strong>Providers</strong> — the clouds Rocky Surf can create
+              Servers on. Each card shows the version, what the Provider will ask you to configure,
               and what its machines can do, including whether a stopped machine still bills. Install
               fetches the package over https, checks its digest against the listing, unpacks it under
               the data directory&rsquo;s <code>providers</code> folder and writes two lines to the
@@ -1142,8 +1142,8 @@ export function HelpPage() {
               <a href={SHOP_PROVIDERS_URL} target="_blank" rel="noreferrer">
                 Rocky Surf Shop
               </a>
-              . Once a provider loads it gets its own panel on the Settings page, the same as a
-              provider that shipped with the release. A provider runs with Rocky Surf&rsquo;s full
+              . Once a Provider loads it gets its own panel on the Settings page, the same as a
+              Provider that shipped with the release. A Provider runs with Rocky Surf&rsquo;s full
               access — install ones you trust.
             </p>
           </section>
@@ -1171,7 +1171,7 @@ export function HelpPage() {
             <section className="help-block" id="git-auth">
               <h3>Git Auth</h3>
               <p>
-                The repositories you list when creating a server are cloned onto the box during
+                The repositories you list when creating a Server are cloned onto the box during
                 setup. Public repositories clone with no credential. Private ones need a GitHub
                 token, and there are two ways to give Rocky Surf one — a connected account, or a
                 token per repository. Both are set up on the <Link to="/settings">Settings</Link>{' '}
@@ -1225,7 +1225,7 @@ export function HelpPage() {
               <p>
                 The token is user-level: it can reach every repository your account can, it does not
                 expire, and it is stored encrypted rather than in the configuration file. It applies
-                immediately, and is used by the servers you create. <strong>Disconnect</strong> makes
+                immediately, and is used by the Servers you create. <strong>Disconnect</strong> makes
                 Rocky Surf forget it; revoking it at GitHub is a separate step, at{' '}
                 <a href="https://github.com/settings/applications" target="_blank" rel="noreferrer">
                   github.com/settings/applications
@@ -1250,7 +1250,7 @@ export function HelpPage() {
               </ol>
               <p>
                 The token is written into the configuration file, so treat that file as a credential.
-                It applies to the next server you create, with no restart. The configuration file
+                It applies to the next Server you create, with no restart. The configuration file
                 also accepts <code>{'${GITHUB_PAT}'}</code>-style references to environment variables
                 if you edit it by hand.
               </p>
@@ -1288,7 +1288,7 @@ export function HelpPage() {
             <h2>MCP &amp; Skills</h2>
             <p className="help-lead">
               This section covers the two things a coding agent uses. The MCP server lets an agent
-              create, inspect, stop, and destroy servers under the same server-side limits that
+              create, inspect, stop, and destroy Servers under the same server-side limits that
               apply to you. The Agent Skills teach an agent this project&rsquo;s own file formats,
               so it can write a Surge Pack or a Provider correctly the first time. Both work with
               any coding agent that supports the underlying standard — Claude Code and Codex CLI
@@ -1332,7 +1332,7 @@ export function HelpPage() {
                   <p>
                     <strong>User scope</strong> registers the server once for your account, so it
                     is available in every project you open. This is the recommended default,
-                    because Rocky Surf manages servers regardless of which repository you have
+                    because Rocky Surf manages Servers regardless of which repository you have
                     open:
                   </p>
                   <pre>
@@ -1374,7 +1374,7 @@ export function HelpPage() {
                 </li>
                 <li>Reconnect the MCP client so it starts the new server. Restart the session.</li>
                 <li>
-                  Ask the agent to list your servers. On the default scopes it holds ten tools, and
+                  Ask the agent to list your Servers. On the default scopes it holds ten tools, and
                   a refusal names what it needs.
                 </li>
               </ol>
@@ -1390,9 +1390,9 @@ export function HelpPage() {
               <p>
                 A token grants no permission by itself. <code>mcp.scopes</code> in your config file
                 decides which tools the MCP server offers, and it defaults to{' '}
-                <code>[read, stop]</code>. <code>stop</code> covers pausing a server and starting it
+                <code>[read, stop]</code>. <code>stop</code> covers pausing a Server and starting it
                 again. <code>create</code> and <code>terminate</code> are separate opt-ins, because
-                creating a server costs money and destroying one cannot be undone. A scope you have
+                creating a Server costs money and destroying one cannot be undone. A scope you have
                 not granted does not appear in the tool list at all, rather than appearing and then
                 refusing the call.
               </p>
@@ -1508,7 +1508,7 @@ export function HelpPage() {
               </p>
               <p className="help-note">
                 <strong>Rocky Surf is budget-capped, not sandboxed.</strong> A fully compromised MCP
-                client with every scope can destroy this installation&rsquo;s servers and spend up to
+                client with every scope can destroy this installation&rsquo;s Servers and spend up to
                 the configured cap. It cannot read a stored secret, obtain an SSH key, or exceed the
                 limits by any MCP-shaped route. For the full account, see{' '}
                 <a href={repoDocUrl('SECURITY.md')} target="_blank" rel="noreferrer">
@@ -1532,13 +1532,13 @@ export function HelpPage() {
               enforces before a machine is provisioned.
             </p>
             <p>
-              Every server row is priced at create from the provider&rsquo;s own quote, and the{' '}
+              Every Server row is priced at create from the Provider&rsquo;s own quote, and the{' '}
               <Link to="/costs">Costs</Link> page shows month-to-date and lifetime estimates — per
               currency, never summed across them, because that number would be fiction.
             </p>
             <p>Three limits are enforced server-side on the create path:</p>
             <ul className="help-list">
-              <li>Concurrent servers.</li>
+              <li>Concurrent Servers.</li>
               <li>Creates per hour.</li>
               <li>An optional monthly spend cap.</li>
             </ul>
@@ -1563,7 +1563,7 @@ export function HelpPage() {
             </p>
             <p>
               Settings is admin-only because it edits the config file — the document that holds
-              provider sections, limits, and what the MCP server is allowed to do. Token fields take
+              Provider sections, limits, and what the MCP server is allowed to do. Token fields take
               the <em>name</em> of an environment variable, never the secret itself, so credentials
               stay in your environment and out of the file.
             </p>
@@ -1586,7 +1586,7 @@ export function HelpPage() {
             <p className="help-lead">
               This section covers where your data lives, the two ways to copy it, and what makes a
               copy sensitive. Rocky Surf keeps everything it knows in one directory and there is no
-              hosted copy of any of it — back it up yourself, or a lost machine takes your server
+              hosted copy of any of it — back it up yourself, or a lost machine takes your Server
               records, your GitHub tokens, and your SSH keys with it. Your cloud credentials are
               never stored here.
             </p>
@@ -1604,7 +1604,7 @@ export function HelpPage() {
               <ol className="help-steps">
                 <li>
                   In <Link to="/settings?section=backup">Settings &rarr; Backup</Link>, download the
-                  backup. It is one JSON file: your records, packs, tools, and encrypted secrets as
+                  backup. It is one JSON file: your records, packs, Tools, and encrypted secrets as
                   ciphertext, with no key and no cleartext tokens in it.
                 </li>
                 <li>
@@ -1639,7 +1639,7 @@ export function HelpPage() {
               <p>Back up all of the following together:</p>
               <ul className="help-list">
                 <li>
-                  <code>rockysurf.db</code> — the SQLite database: every server row, pack, session,
+                  <code>rockysurf.db</code> — the SQLite database: every Server row, pack, session,
                   and encrypted secret.
                 </li>
                 <li>
@@ -1654,14 +1654,14 @@ export function HelpPage() {
                 </li>
                 <li>
                   <code>packs/</code>, if you keep your own pack files here — the software your
-                  servers are created with.
+                  Servers are created with.
                 </li>
               </ul>
               <p className="help-note">
                 <strong>This is sensitive.</strong> Together, <code>secret.key</code> and{' '}
-                <code>rockysurf.db</code> decrypt every managed server&rsquo;s SSH private key and any
+                <code>rockysurf.db</code> decrypt every managed Server&rsquo;s SSH private key and any
                 remote-desktop password Rocky Surf holds for you — a Connect-GitHub token lives there
-                too. Cloud provider credentials are not among them: Rocky Surf stores none. A backup
+                too. Cloud Provider credentials are not among them: Rocky Surf stores none. A backup
                 of the directory is that same secret material, copied. Keep{' '}
                 <code>secret.key</code> out of the backup entirely by setting{' '}
                 <code>ROCKYSURF_SECRET_KEY</code> instead of letting Rocky Surf write it to disk.
@@ -1696,7 +1696,7 @@ export function HelpPage() {
               <div className="help-glossary-row">
                 <dt>Provider</dt>
                 <dd>
-                  The cloud a server runs on. Rocky Surf ships four: Hetzner, AWS, Azure and
+                  The cloud a Server runs on. Rocky Surf ships four: Hetzner, AWS, Azure and
                   Google Cloud, and you can install more. Each is enabled independently and
                   translates create, start, stop, and terminate into that cloud&rsquo;s own API.
                 </dd>
@@ -1704,14 +1704,14 @@ export function HelpPage() {
               <div className="help-glossary-row">
                 <dt>Server</dt>
                 <dd>
-                  One managed machine, launched on a provider from a Surge Pack, tracked through its
+                  One managed machine, launched on a Provider from a Surge Pack, tracked through its
                   lifecycle — creating, running, stopped, terminated — until you remove it.
                 </dd>
               </div>
               <div className="help-glossary-row">
                 <dt>Surge Pack</dt>
                 <dd>
-                  The software a server is created with: a YAML file naming an ordered list of Tools
+                  The software a Server is created with: a YAML file naming an ordered list of Tools
                   to install, plus a getting-started guide the pack&rsquo;s author wrote for whatever
                   the install cannot finish on your behalf.
                 </dd>

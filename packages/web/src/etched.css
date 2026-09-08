@@ -266,7 +266,7 @@ body[data-rs-skin='etched'] {
 [data-rs-skin='etched'] .button.stop-action:hover:not(:disabled) {
   background-color: rgba(210, 153, 34, 0.12); color: #e3b341;
 }
-/* Creating a new resource — "New server", "New tool" — is cyan, kept distinct from green,
+/* Creating a new resource — "New Server", "New Tool" — is cyan, kept distinct from green,
    which acts on one that already exists ("Start"). Sits after `.primary` on purpose: a button
    carries both classes so the base skin still sees a primary, and the later rule wins here. */
 [data-rs-skin='etched'] button.new-action,

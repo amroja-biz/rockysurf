@@ -77,7 +77,7 @@ export function ServerDetailPage() {
       setError(null)
       return next
     } catch {
-      setError('Could not load this server')
+      setError('Could not load this Server')
       return null
     } finally {
       setLoading(false)
@@ -280,7 +280,7 @@ export function ServerDetailPage() {
 
   return (
     <AppShell title={server.name}>
-      {/* Not on a terminated row: "your server's address has changed" is a call to reconnect,
+      {/* Not on a terminated row: "your Server's address has changed" is a call to reconnect,
           and there is nothing to reconnect to. The move itself is still history, and the
           Address line below carries it. */}
       {!historical && server.previousIp && server.publicIp && server.ipChangedAt && (
@@ -310,12 +310,12 @@ export function ServerDetailPage() {
           Before the facts it qualifies: everything below — status, address, cost — is core's
           last KNOWN state when this is set, and a page that renders the numbers first and the
           caveat later has already been believed (rockysurf-gg9x). Core's message verbatim,
-          because the provider wrote the remedy into it.
+          because the Provider wrote the remedy into it.
         */}
         {server.syncError && (
           <SyncErrorNotice
             testId="sync-error"
-            lead="Could not refresh this server from its provider — showing its last known state."
+            lead="Could not refresh this Server from its Provider — showing its last known state."
             message={server.syncError}
           />
         )}
@@ -373,7 +373,7 @@ export function ServerDetailPage() {
                 <>
                   {' · '}
                   <a href={server.consoleUrl} target="_blank" rel="noopener noreferrer">
-                    Open in {providerName ?? 'provider'} console ↗
+                    Open in {providerName ?? 'Provider'} console ↗
                   </a>
                 </>
               )}
@@ -808,7 +808,7 @@ export function ServerDetailPage() {
       {confirming === 'stop' && (
         <ConfirmModal
           title={`Stop ${server.name}?`}
-          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped servers. If you are using another Provider, check their documentation."
+          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped Servers. If you are using another Provider, check their documentation."
           confirmLabel="Stop"
           onCancel={() => setConfirming(null)}
           onConfirm={() => void run('stop', () => stopServer(server.serverId), 'Stopping')}
@@ -931,9 +931,9 @@ function SshPathAdvisory({ report, providerName }: { report: SshPathReport; prov
           </p>
           <p>
             Find the address your SSH connection uses — run <code>curl http://portquiz.net:22/</code>, which answers
-            HTTP on any port and echoes back the source IP a server saw on port 22 — and add it to the SSH whitelist for{' '}
+            HTTP on any port and echoes back the source IP a Server saw on port 22 — and add it to the SSH whitelist for{' '}
             {cloud} in <Link to="/settings">Settings</Link>. Saving pushes the new rule to the cloud straight away; you
-            do not have to launch a server for it to take effect, and the addresses already in the list stay.
+            do not have to launch a Server for it to take effect, and the addresses already in the list stay.
           </p>
           <p>
             Use the port-22 address, not one a &ldquo;what is my IP&rdquo; page gives you. On some networks —

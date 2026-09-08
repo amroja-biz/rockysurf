@@ -22,7 +22,7 @@ test('clicking the stale-servers notice link lands on its section, not the top o
   await page.getByRole('link', { name: 'Why, and how to check' }).click()
 
   await expect(page).toHaveURL(/\/help#stale-servers$/)
-  await expect(page.getByRole('heading', { name: 'Checking for stale servers' })).toBeInViewport()
+  await expect(page.getByRole('heading', { name: 'Checking for stale Servers' })).toBeInViewport()
   // The fragment opened the panel that holds it, and only that panel.
   await expect(page.getByRole('tab', { name: 'Servers', selected: true })).toBeVisible()
   await expect(page.locator('#agents')).toBeHidden()
@@ -35,7 +35,7 @@ test('a directly typed URL with the fragment lands on the same section', async (
   // own scroll-on-load fires before the SPA has rendered `#stale-servers` into the DOM.
   await page.goto('/help#stale-servers')
 
-  await expect(page.getByRole('heading', { name: 'Checking for stale servers' })).toBeInViewport()
+  await expect(page.getByRole('heading', { name: 'Checking for stale Servers' })).toBeInViewport()
 })
 
 test('a different /help fragment link works the same way, unrelated to stale-servers', async ({ page }) => {
@@ -77,7 +77,7 @@ test('Start here walks the setup, one click per step (#441)', async ({ page }) =
 
   await expect(page).toHaveURL(/\/help#servers$/)
   await expect(page.getByRole('tab', { name: 'Servers', selected: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Create a server' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Create a Server' })).toBeVisible()
 })
 
 test('All documentation lists every audience the README groups documents by (#441)', async ({

@@ -249,7 +249,7 @@ function ProviderStep({
       <section>
         <h2>Choose your clouds</h2>
         <p data-testid="no-providers">
-          This installation reports no configurable providers, so there is nothing to choose
+          This installation reports no configurable Providers, so there is nothing to choose
           here. Add one in <code>rockysurf.config.yaml</code> and restart.
         </p>
         <button type="button" onClick={onContinue} data-testid="skip-step">
@@ -263,10 +263,10 @@ function ProviderStep({
     <section>
       <h2>Choose your clouds</h2>
       <p>
-        Pick the clouds Rocky Surf may create servers on, and switch them on. Your credentials
+        Pick the clouds Rocky Surf may create Servers on, and switch them on. Your credentials
         stay yours: each cloud authenticates through its own path, described below, and{' '}
         <strong>Rocky Surf stores no cloud credentials</strong> — there is nothing to paste on
-        this page. Nothing is created until you ask for a server.
+        this page. Nothing is created until you ask for a Server.
       </p>
 
       {detected && (
@@ -394,7 +394,7 @@ function DoneStep({ setup, onFinish }: { setup: SetupState | null; onFinish: () 
       <h2>{ready ? 'You are ready' : 'Almost there'}</h2>
 
       {ready ? (
-        <p>A cloud is on and ready. Create your first server whenever you like.</p>
+        <p>A cloud is on and ready. Create your first Server whenever you like.</p>
       ) : waiting.length > 0 ? (
         <>
           <p data-testid="pending-note">
@@ -404,14 +404,14 @@ function DoneStep({ setup, onFinish }: { setup: SetupState | null; onFinish: () 
             This page will say ready the next time you open it.
           </p>
           <p className="hint">
-            Rocky Surf never holds these credentials itself: a provider becomes usable when the
+            Rocky Surf never holds these credentials itself: a Provider becomes usable when the
             process that owns it starts with them in reach.
           </p>
         </>
       ) : (
         <p data-testid="no-provider-note">
           No cloud is switched on yet. You can still look around; turning one on from Settings,
-          or in <code>rockysurf.config.yaml</code>, is what makes creating a server possible.
+          or in <code>rockysurf.config.yaml</code>, is what makes creating a Server possible.
         </p>
       )}
 

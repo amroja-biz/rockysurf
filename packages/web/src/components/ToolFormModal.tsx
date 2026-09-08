@@ -77,16 +77,16 @@ export function ToolFormModal({
       await onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : 'Could not save this tool')
+      setError(err instanceof ApiError ? err.detail : 'Could not save this Tool')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `Edit ${tool.name}` : 'New tool'}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `Edit ${tool.name}` : 'New Tool'}>
       <div className="modal modal-wide">
-        <h3>{editing ? `Edit ${tool.name}` : 'New tool'}</h3>
+        <h3>{editing ? `Edit ${tool.name}` : 'New Tool'}</h3>
 
         <form onSubmit={onSubmit}>
           <label htmlFor="tool-name">Name</label>
@@ -154,14 +154,14 @@ export function ToolFormModal({
             <p>
               Ask: would you run this as yourself on your own laptop, or would you type <code>sudo</code> first?
               The first is <code>rocky</code>, the second is <code>root</code>. Most coding agents are the first
-              kind. A tool that needs both — packages as root, then per-user configuration — is two steps:
+              kind. A Tool that needs both — packages as root, then per-user configuration — is two steps:
               this install script as <code>root</code> and the setup script below, which runs as{' '}
               <code>rocky</code>.
             </p>
             <p>
               The agent dispatches privilege from this field before the script runs. A script that declares{' '}
               <code>rocky</code> and then calls <code>sudo</code> fails in the container CI uses, which has no
-              sudo at all. A <code>root</code> script that installs into <code>/root</code> leaves the tool where{' '}
+              sudo at all. A <code>root</code> script that installs into <code>/root</code> leaves the Tool where{' '}
               <code>rocky</code> can never reach it.
             </p>
           </details>
@@ -208,21 +208,21 @@ export function ToolFormModal({
           <details className="hint">
             <summary>What that means, and what it does not</summary>
             <p>
-              This tool is added to <strong>every</strong> server you create, whichever Surge Pack you
+              This Tool is added to <strong>every</strong> Server you create, whichever Surge Pack you
               pick and even if you pick none. It does not change any box that already exists: the
-              install plan is written when a server is created, so servers already running keep the
+              install plan is written when a Server is created, so Servers already running keep the
               plan they were built with.
             </p>
             <p>
               Because it runs everywhere, it has to stand on its own. Write it to depend on nothing a
               pack might not have installed, and give it an <code>installOrder</code> that puts it after
-              whatever it needs — a tool that assumes a runtime some pack does not install will fail on
-              those boxes, and <strong>a failed tool install terminates the machine</strong>. A
-              mis-ordered tool here breaks every new server you create, not one.
+              whatever it needs — a Tool that assumes a runtime some pack does not install will fail on
+              those boxes, and <strong>a failed Tool install terminates the machine</strong>. A
+              mis-ordered Tool here breaks every new Server you create, not one.
             </p>
             <p>
               It is not part of any pack, so a shared pack file will not carry it and neither will an
-              exported tool file. It is a setting on this installation.
+              exported Tool file. It is a setting on this installation.
             </p>
           </details>
 

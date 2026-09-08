@@ -31,7 +31,7 @@ const PROVIDER_ERROR_HEADLINE: Record<ProviderErrorCode, string> = {
   rate_limited: 'Rate limited by the cloud',
   conflict: 'Conflicts with another operation on the cloud',
   network: 'Could not reach the cloud',
-  unknown: 'The cloud provider reported an error',
+  unknown: 'The cloud Provider reported an error',
 }
 
 /**

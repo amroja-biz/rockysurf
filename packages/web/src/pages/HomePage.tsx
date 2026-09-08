@@ -81,10 +81,10 @@ export function HomePage() {
       </section>
 
       <section className="home-section">
-        <h2>Creating a server</h2>
+        <h2>Creating a Server</h2>
         <p>
           Pick a cloud you already have an account with — AWS, GCP, Azure, or Hetzner. You pick a{' '}
-          <strong>Surge Pack</strong>, which is a YAML file that names the tools to install:
+          <strong>Surge Pack</strong>, which is a YAML file that names the Tools to install:
           Claude Code, Codex, Amp, OpenCode, or whichever harness you actually run. You paste the
           GitHub repo you want on the box, public or private. Create.
         </p>
@@ -112,7 +112,7 @@ export function HomePage() {
           >
             create-surge-pack
           </a>{' '}
-          skill in this repository writes that file with you: the tools, the install scripts, the
+          skill in this repository writes that file with you: the Tools, the install scripts, the
           sign-in guide. You try it on a box of your own. If it works and other people might want
           it, you send it to the{' '}
           <a href={SHOP_URL} target="_blank" rel="noreferrer">
@@ -122,15 +122,15 @@ export function HomePage() {
         </p>
         <p>
           Official packs live in this project and ship with a release. A pack you wrote does not
-          have to wait on one. A new cloud is the same idea in the other direction: a provider
-          package against a frozen SDK, not a change to the control plane. You wire providers in
+          have to wait on one. A new cloud is the same idea in the other direction: a Provider
+          package against a frozen SDK, not a change to the control plane. You wire Providers in
           a config file and compose packs in YAML. The contracts are in{' '}
           <a href={repoDocUrl('docs/writing-a-surge-pack.md')} target="_blank" rel="noreferrer">
-            writing a surge pack
+            writing a Surge Pack
           </a>{' '}
           and{' '}
           <a href={repoDocUrl('docs/writing-a-provider.md')} target="_blank" rel="noreferrer">
-            writing a provider
+            writing a Provider
           </a>
           .
         </p>
@@ -156,7 +156,7 @@ export function HomePage() {
           GitHub
         </a>
         <Link to="/help">Help</Link>
-        <Link to="/servers/new">Create a server</Link>
+        <Link to="/servers/new">Create a Server</Link>
       </p>
     </AppShell>
   )
