@@ -115,8 +115,8 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 
 | # | Phase | Step id form | Notes |
 |---|---|---|---|
-| 1 | Runtime-guaranteed base tools | `tool:<toolId>` | `bootstrap: true` tools; reserved for the runtime |
-| 2 | Pack tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base tools before agents; that is a consequence of the numbers, not a second rule |
+| 1 | Runtime-guaranteed base Tools | `tool:<toolId>` | `bootstrap: true` Tools; reserved for the runtime |
+| 2 | Pack Tools, ascending `installOrder` | `tool:<toolId>` | The band convention (base 10–30, agents 40) puts base Tools before agents; that is a consequence of the numbers, not a second rule |
 | 3 | Repository clones | `repo:<basename>` | One step per repository the user chose |
 | 4 | `setupScript`s, same order as phase 2 | `tool-setup:<toolId>` | After clones, because a setup script may read `$REPOS`. The step body opens with a preamble that exports `$REPOS`, sets `GIT_TERMINAL_PROMPT=0`, and — under the clone step's own guard, when the box carries any token — wires the clone step's credential helper into git's `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` environment, so a git run by the script or by any program it starts authenticates the way the clone did (issue #142: `gt rig add` re-clones the repository itself and had no credentials). The environment dies with the step; nothing is written to any git config |
 | 5 | The user's own script | `user-script` | Only when the row carries one ([ADR-0011](adr/0011-user-script-at-create-time.md), issue #184). AFTER every step the pack contributes, because that is the box the user wrote it against; BEFORE phases 6-9, which are core's own finishing steps and all report `ready` — a report arriving after one of those is dropped in callback mode, where `ready` promotes the row out of `provisioning`. The body opens with the same preamble as phase 4 and is otherwise the user's text verbatim: no `set -euo pipefail` is imposed, so the step's exit status is the script's own. **OPTIONAL**: a failed user script is a warning on a running box, not a failed bootstrap — see [Failure semantics](#failure-semantics) |
@@ -125,7 +125,7 @@ ordering logic of its own. Core MUST render steps in exactly this sequence:
 | 8 | Remote desktop password | `rdp` | Only when the pack sets `requiresRdp` |
 | 9 | Retire core's own key | `supplied-key-only` | Only when the row carries a supplied public key ([ADR-0008](adr/0008-supplied-key-retires-managed-key.md), issue #92). LAST, after every step that needs SSH — removing the `authorized_keys` LINE mid-session does not close the SSH session already carrying this drive. REQUIRED, not optional: a failed guard fails the whole plan rather than silently leaving both keys. |
 
-**Ties MUST be broken deterministically.** Two tools with equal `installOrder` are ordered by
+**Ties MUST be broken deterministically.** Two Tools with equal `installOrder` are ordered by
 `toolId` ascending. A *rendered plan* cannot be non-deterministic: two renders of the same pack
 would otherwise produce two different step orders, and resume across a re-render would skip the
 wrong work. Determinism here is what makes the journal's ids meaningful.
@@ -203,8 +203,8 @@ Requirements:
   to an already-bootstrapped box reads the previous run's terminal status and reports success
   before the agent has started — and a retry of a *failed* bootstrap reports the old failure as
   the new result (ADR-0002 Decision 7, amendment `E6`). Reports from a superseded run SHOULD be
-  retained for forensics but MUST NOT move the server's recorded progress.
-- A push that finds the agent **already running for this server** MUST adopt the live run's id
+  retained for forensics but MUST NOT move the Server's recorded progress.
+- A push that finds the agent **already running for this Server** MUST adopt the live run's id
   rather than minting a new one. The agent reads `runId` from `plan.json` once, at launch, so a
   fresh id would be stamped by nobody: core would discard every update as a foreign run and
   watch a healthy install in silence until its stall timeout. This is the ordinary case after a
@@ -214,11 +214,11 @@ Requirements:
 ### Who starts a push
 
 **The provision ticker, not the create path.** Core sweeps push-mode rows in `provisioning` and
-starts a bootstrap for any that has no run in flight, which makes a newly created server and a
-server left mid-install by a restart the same case, handled by the same code. A create path that
+starts a bootstrap for any that has no run in flight, which makes a newly created Server and a
+Server left mid-install by a restart the same case, handled by the same code. A create path that
 started its own push would need a second, separate trigger for recovery, and the two would drift.
 
-A row therefore stays in `provisioning` until its own bootstrap reports `ready`. The provider
+A row therefore stays in `provisioning` until its own bootstrap reports `ready`. The Provider
 reporting `running` means the hypervisor has the machine; it does not mean the box is usable, and
 core MUST NOT promote on it — doing so closes the window in which progress reports are accepted
 and abandons the box mid-boot.
@@ -279,10 +279,10 @@ bootstrap path fired on exactly one cloud during the spike (ADR-0002 Decision 9,
 
 Because the plan itself is JSON, the one package the agent installs for its OWN use is `jq`
 (`ensure_jq` in `agent.sh`) — the bootstrap-the-bootstrapper hop, run before the plan can be
-parsed. `jq` is therefore a prerequisite of the *agent*, not a *pack* tool: it is deliberately
-absent from the tool registry, no pack defines it, and none should. The registry carries what a
+parsed. `jq` is therefore a prerequisite of the *agent*, not a *pack* Tool: it is deliberately
+absent from the Tool registry, no pack defines it, and none should. The registry carries what a
 pack installs; the agent's own runtime prerequisites live in `agent.sh`. (This is why grepping
-`packs/` for a `jq` tool finds nothing, by design.)
+`packs/` for a `jq` Tool finds nothing, by design.)
 
 Consequently the agent MUST:
 
@@ -407,7 +407,7 @@ sequenceDiagram
 Normative points specific to push:
 
 - Core MUST verify the host key on the **first** connection, against a key it minted before the
-  server existed. There is deliberately no trust-on-first-use path: the first connection is the
+  Server existed. There is deliberately no trust-on-first-use path: the first connection is the
   one carrying the secrets file.
 - A host-key mismatch MUST NOT be retried. Early **authentication** failures MUST be retried —
   sshd accepts connections before cloud-init has written `authorized_keys`, so a healthy box
@@ -505,9 +505,9 @@ Normative points specific to callback:
 - A terminal `failed` report SHOULD also carry `agentLog`: the agent log's last ~200 lines,
   bounded to 64 KiB (#168). Every step's output runs through `agent.log`, so this is the whole
   install's narrative — what ran, what it printed, what broke — where the failed step's own
-  `logTail` can be a single line. For a failed tool install the machine is about to be released
+  `logTail` can be a single line. For a failed Tool install the machine is about to be released
   (ADR-0010) and this report is the only copy core will ever get; core preserves it on the
-  server row (`bootstrapReport.agentLogTail`), where the server page shows it as the
+  Server row (`bootstrapReport.agentLogTail`), where the Server page shows it as the
   whole-setup install log.
 - Reports SHOULD carry `notice` whenever the journal does (#129, #205): the one line the
   timeline shows under the active step while it waits, or while it has written nothing for a
@@ -643,7 +643,7 @@ These are requirements, not recommendations. Each was learned from something tha
 3. **Two tokens, two lifetimes** (amendment `E8`). The plan token ships in user-data, which every
    process on the box can read from the instance metadata service forever, so its exposure window
    MUST be short. The status token authenticates recurring POSTs and therefore cannot be
-   single-use; its blast radius MUST stay bounded to writing progress strings on one server row.
+   single-use; its blast radius MUST stay bounded to writing progress strings on one Server row.
    **No route that returns anything secret may accept the status token.**
 4. **Every plan-token use after the first MUST be recorded.** It is the only evidence core ever
    gets that a box's user-data was read by someone else.
@@ -657,9 +657,9 @@ These are requirements, not recommendations. Each was learned from something tha
    exact bytes. (The two figures are separate measurements taken at different times, not a
    before-and-after on identical input: the agent grew between them. Read them as "verbatim does
    not fit" and "compressed fits, at 72%", not as a compression ratio.) Pair the renderer check
-   with `validateSpec()` (amendment `A7`, ADR-0003) so the provider owns its own limit. A growing
+   with `validateSpec()` (amendment `A7`, ADR-0003) so the Provider owns its own limit. A growing
    agent is a signal to move work out of user-data, not to raise the limit.
-6. **Host keys MUST be minted by core and pinned via pre-boot config where the provider supports
+6. **Host keys MUST be minted by core and pinned via pre-boot config where the Provider supports
    it**, so the first connection is verified rather than trusted. Where it is not supported, the
    fallback is trust-on-first-use and the interface MUST say so rather than leaving callers to
    discover it (amendment `E4`).
@@ -678,10 +678,10 @@ These are requirements, not recommendations. Each was learned from something tha
 
 | Situation | Agent | Core |
 |---|---|---|
-| Required step fails | records `failed`, attaches `logTail` (plan-level and on the step) and, in callback mode, the agent log's last ~200 lines (`agentLog`, #168), stops the plan, exits 1 | reads the step's whole log and the agent log's last ~200 lines off the box (push) or takes the agent's tails (callback), builds the `BootstrapReport` — the whole install log preserved on the row as `agentLogTail` (#168) — fails the server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
-| Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the server is not failed and, if the plan completes, comes up `running` with the warning visible |
-| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **the apt retry standard, ADR-0012**: the step gets a second and last attempt — **two attempts per step, no more, and every step has its own budget**. Before the retry the agent rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one — that swap happens **at most once per bootstrap**, since afterwards there is nothing left to swap — refreshes the lists, and re-runs the step and its check. When the sources already name the global mirror there is nothing to swap: the failure is then an archive index out of step with its pool (a `404` on one named `.deb`, #129, #188) or the global mirror itself sick, and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower per apt step that flaked on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead. On the second failure the report names the URL(s) apt could not fetch, says the mirror is at fault rather than the pack, and tells the user to test the URL and create the server again once it serves (`bootstrap/failure-report.ts`) |
-| Step fails with a held dpkg lock in its own output (an `E:` line: `Could not get lock`, `Unable to acquire the dpkg frontend lock`, `Unable to lock directory`, `Unable to lock the administration directory` — apt's `Waiting for cache lock:` progress line is not a verdict and does not count) | **the same two-attempts-per-step budget, no mirror swap** (issue #404, ADR-0012 amendment): the lock is the image's doing, not the step's or the mirror's. The agent posts a retry notice in the fetch case's shape (who held the lock, from apt's own line; the wait; the derived bound; the choice), waits for the lock again the way it did before the first step — bounded by `ROCKYSURF_APT_LOCK_WAIT_S` — and re-runs the step and its check once. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap has no journal to announce on and relies on `DPkg::Lock::Timeout` alone | sees one step, slower by at most the wait; `agent.log` says the lock was held, by whom, and how long the agent waited. On the second failure the report's cause is `apt-lock`: it names the holder, says this is timing on the box — the image's own first-boot updates — and not the pack or the settings, and says to create the server again (`bootstrap/failure-report.ts`). The generic `apt` cause, whose advice is "the pack needs fixing", is never used for a held lock |
+| Required step fails | records `failed`, attaches `logTail` (plan-level and on the step) and, in callback mode, the agent log's last ~200 lines (`agentLog`, #168), stops the plan, exits 1 | reads the step's whole log and the agent log's last ~200 lines off the box (push) or takes the agent's tails (callback), builds the `BootstrapReport` — the whole install log preserved on the row as `agentLogTail` (#168) — fails the Server with the summary as its reason — and, for a `tool:*` step under `bootstrap.onFailure: terminate`, **releases the instance first** (ADR-0010) |
+| Optional step fails | records `failed` with the step's own `logTail`, continues | records it as a **warning** on the row's report; the Server is not failed and, if the plan completes, comes up `running` with the warning visible |
+| Step fails with an apt fetch signature in its own output (`Failed to fetch`, `Unable to fetch some archives`, `Some index files failed to download`, `Mirror sync in progress`, `Hash Sum mismatch`) | **the apt retry standard, ADR-0012**: the step gets a second and last attempt — **two attempts per step, no more, and every step has its own budget**. Before the retry the agent rewrites any regional Ubuntu mirror in the apt sources (`*.archive.ubuntu.com`, `*.ports.ubuntu.com`) to the global one — that swap happens **at most once per bootstrap**, since afterwards there is nothing left to swap — refreshes the lists, and re-runs the step and its check. When the sources already name the global mirror there is nothing to swap: the failure is then an archive index out of step with its pool (a `404` on one named `.deb`, #129, #188) or the global mirror itself sick, and the agent **waits** `ROCKYSURF_APT_RETRY_WAIT_S` seconds (default 120; a box never sets it, tests do) before refreshing and retrying. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap gets the same treatment | sees one step, possibly slower — up to two minutes slower per apt step that flaked on a global-mirror box; `agent.log` says the fallback engaged, and which files it rewrote or that it waited instead. On the second failure the report names the URL(s) apt could not fetch, says the mirror is at fault rather than the pack, and tells the user to test the URL and create the Server again once it serves (`bootstrap/failure-report.ts`) |
+| Step fails with a held dpkg lock in its own output (an `E:` line: `Could not get lock`, `Unable to acquire the dpkg frontend lock`, `Unable to lock directory`, `Unable to lock the administration directory` — apt's `Waiting for cache lock:` progress line is not a verdict and does not count) | **the same two-attempts-per-step budget, no mirror swap** (issue #404, ADR-0012 amendment): the lock is the image's doing, not the step's or the mirror's. The agent posts a retry notice in the fetch case's shape (who held the lock, from apt's own line; the wait; the derived bound; the choice), waits for the lock again the way it did before the first step — bounded by `ROCKYSURF_APT_LOCK_WAIT_S` — and re-runs the step and its check once. A second failure is recorded as a required or optional failure above. The agent's own `jq` bootstrap has no journal to announce on and relies on `DPkg::Lock::Timeout` alone | sees one step, slower by at most the wait; `agent.log` says the lock was held, by whom, and how long the agent waited. On the second failure the report's cause is `apt-lock`: it names the holder, says this is timing on the box — the image's own first-boot updates — and not the pack or the settings, and says to create the Server again (`bootstrap/failure-report.ts`). The generic `apt` cause, whose advice is "the pack needs fixing", is never used for a held lock |
 | Step interrupted mid-flight | leaves the step `running` | re-runs that step on the next attempt |
 | Agent killed | nothing written | detects a dead launcher within two polls and reports it |
 | Journal stops advancing, agent alive | — | stall budget expires; reports a stall, not a crash |
@@ -689,11 +689,11 @@ These are requirements, not recommendations. Each was learned from something tha
 | Plan fetch gets 401/410 (callback) | stub stops; the box has no plan | sees no reports; the row stays un-advanced |
 
 The **user script** (phase 5) is an optional step by that table, and deliberately: ADR-0010's
-rule releases a machine only for a failed *tool* install, because a half-installed toolchain is
-worthless. A user script that exits non-zero is the opposite case — every tool is installed and
+rule releases a machine only for a failed *Tool* install, because a half-installed toolchain is
+worthless. A user script that exits non-zero is the opposite case — every Tool is installed and
 every repository is cloned, and the only thing that failed is text the user typed. Failing the
 plan would take away the box they need in order to fix it, so the step's whole log becomes a
-warning on a `running` server instead. See [ADR-0011](adr/0011-user-script-at-create-time.md).
+warning on a `running` Server instead. See [ADR-0011](adr/0011-user-script-at-create-time.md).
 
 A re-push against a partially bootstrapped box is the normal recovery action, not an
 exceptional one: it skips completed steps with their timestamps untouched and resumes the rest.
@@ -708,14 +708,14 @@ An implementation conforms when all of the following hold.
 
 - [ ] One plan schema and one agent serve both modes; the callback branch is inert without its
       config file.
-- [ ] Rendered plans are deterministic: `(installOrder, toolId)` ascending within the tool
+- [ ] Rendered plans are deterministic: `(installOrder, toolId)` ascending within the Tool
       phases, phases in the documented order, ids stable across re-renders.
 - [ ] The journal is written atomically and stamped with the run id before any step executes.
 - [ ] Core ignores journals and reports whose run id is not the current run, retaining them for
       forensics.
-- [ ] A push that finds the agent already running for this server adopts the live run's id
+- [ ] A push that finds the agent already running for this Server adopts the live run's id
       instead of minting one the agent will never stamp.
-- [ ] A server stays in `provisioning` until its own bootstrap reports `ready`; the provider
+- [ ] A Server stays in `provisioning` until its own bootstrap reports `ready`; the Provider
       reporting a booted VM never promotes it.
 - [ ] Only `done` steps are skipped on resume.
 - [ ] Any harness testing idempotency discards `state.json` between runs, so the second run
@@ -741,7 +741,7 @@ An implementation conforms when all of the following hold.
       `stepStatus` and that tail; core builds one `BootstrapReport` from either topology.
 - [ ] A failed `tool:*` step releases the instance before the row is failed, unless
       `bootstrap.onFailure` is `keep`; no other step's failure ever releases it (ADR-0010).
-- [ ] A `failed` row is never promoted to `terminated` by a provider reading; only the user's
+- [ ] A `failed` row is never promoted to `terminated` by a Provider reading; only the user's
       terminate moves it.
 - [ ] The agent runs under a transient unit with `Restart=on-failure`,
       `After=network-online.target`, and `--collect`, decoupled from the SSH session.
@@ -754,7 +754,7 @@ An implementation conforms when all of the following hold.
       `RDP_PASSWORD`; the values file is `rocky`-owned `0600` and byte-identical across a second
       run (issue #244; the pack smoke harness checks all of it).
 - [ ] User-data over the size threshold is `gz+b64`, and the renderer refuses a document that
-      exceeds the provider's ceiling.
+      exceeds the Provider's ceiling.
 - [ ] Callback: the plan is fetched only when absent, 4xx is never replayed, and every use of the
       plan token after the first is recorded.
 - [ ] Push: the host key is verified on the first connection; mismatches are never retried; early
@@ -787,10 +787,10 @@ for the same pack.
 
 | key | scoped to | source |
 |---|---|---|
-| `GITHUB_TOKEN` | the **user** — one token, reused across their servers | `secretsStore.getGithubToken(userId)`, else `github.pat` from the config file |
-| `RDP_PASSWORD` | the **server** — it is set on that box's own `rocky` account | `secretsStore.getRdpPassword(serverId)`, written at create time from the request's `rdpPassword` |
-| a pack's own `inputs` | the **server** — the answers its creator gave for the pack it was built with | the non-secret half off `servers.pack_inputs`; the secret half from `secretsStore.getPackInputSecrets(serverId)` (issue #189, [ADR-0013](adr/0013-packs-declare-their-inputs.md)) |
-| the creator's own **Environment** | the **server** — the `KEY=value` lines its creator typed at create time | the plain half off `servers.environment`; the `secret:` half from `secretsStore.getServerEnvironmentSecrets(serverId)` (issue #197, [ADR-0014](adr/0014-per-server-environment-at-create-time.md)) |
+| `GITHUB_TOKEN` | the **user** — one token, reused across their Servers | `secretsStore.getGithubToken(userId)`, else `github.pat` from the config file |
+| `RDP_PASSWORD` | the **Server** — it is set on that box's own `rocky` account | `secretsStore.getRdpPassword(serverId)`, written at create time from the request's `rdpPassword` |
+| a pack's own `inputs` | the **Server** — the answers its creator gave for the pack it was built with | the non-secret half off `servers.pack_inputs`; the secret half from `secretsStore.getPackInputSecrets(serverId)` (issue #189, [ADR-0013](adr/0013-packs-declare-their-inputs.md)) |
+| the creator's own **Environment** | the **Server** — the `KEY=value` lines its creator typed at create time | the plain half off `servers.environment`; the `secret:` half from `secretsStore.getServerEnvironmentSecrets(serverId)` (issue #197, [ADR-0014](adr/0014-per-server-environment-at-create-time.md)) |
 
 Rules that follow, and the reason each exists:
 
@@ -831,11 +831,11 @@ Rules that follow, and the reason each exists:
   every pack written against this one.
 - **`RDP_PASSWORD` is the value the user typed, stored under the SERVER id at create time**
   (`rockysurf-z0wf`). `POST /api/v1/servers` takes `rdpPassword` (minimum eight characters),
-  `lifecycle.create` writes it with `putRdpPassword` in the same step that mints the server's
+  `lifecycle.create` writes it with `putRdpPassword` in the same step that mints the Server's
   SSH identity, and nothing else ever writes it. Before that link existed the field was
   declared on the request schema, validated, and discarded: `getRdpPassword` had no writer, the
   key was correctly omitted from `secrets.env`, and the `rdp` step then refused to run — so a
-  `requiresRdp` server failed its LAST bootstrap step with `rocky`'s password still locked, and
+  `requiresRdp` Server failed its LAST bootstrap step with `rocky`'s password still locked, and
   the box answered RDP with "login failed for user rocky".
 - **Core does not generate it, and no route hands it back.** It is the user's own value, known
   to them because they chose it, which is what keeps the custody rule
@@ -856,7 +856,7 @@ Rules that follow, and the reason each exists:
   `GIT_CONFIG_*` (issue #142). The `ROCKYSURF_` prefix says whose they are. `GITHUB_TOKEN` remains the one name a
   pack should read, and it still carries the unscoped fallback and nothing else.
 - **The SET a box receives is narrowed to its own repositories** (`rockysurf-18lq`). The entries
-  written into one server's `secrets.env` are the ones its declared repositories select, run
+  written into one Server's `secrets.env` are the ones its declared repositories select, run
   through the same precedence rules the helper uses — so a box that declared nothing carries no
   scoped entries, and two boxes on one installation carry different tables. It cannot change any
   declared clone's outcome, because dropping entries that did not win for a URL leaves the winner

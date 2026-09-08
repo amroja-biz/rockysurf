@@ -35,7 +35,7 @@ the Rocky Surf shop.*
 5. It ends with the pull request URL and the sentence about a maintainer reading the scripts.
 
 **Then close the pull request and delete the branch.** The sample pack must never merge into the
-shop: it is a fixture, it installs a tool nobody asked for, and the registry is a document real
+shop: it is a fixture, it installs a Tool nobody asked for, and the registry is a document real
 control planes read. Deleting the fork afterwards is tidier still.
 
 **Where to point the pull request.** Base it on the fork's own `main`, so every workflow runs on

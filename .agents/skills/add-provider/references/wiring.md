@@ -1,11 +1,11 @@
-# Wiring a provider in
+# Wiring a Provider in
 
 `docs/writing-a-provider.md` says registration is "one row in `packages/rockysurf/src/compose.ts`",
-and the composition root's own docblock says "adding a provider is one row in the table below — no
+and the composition root's own docblock says "adding a Provider is one row in the table below — no
 core change, no new interface."
 
 **That is true of the composition root and false of the job.** It describes the *interface* cost,
-which really is one row, and it reads as the *total* cost, which is not. An in-tree provider
+which really is one row, and it reads as the *total* cost, which is not. An in-tree Provider
 touches around sixteen places. Several fail in ways that look like something else, and one of them
 — core's config section — makes fields silently unusable rather than merely undocumented.
 
@@ -35,24 +35,24 @@ Work down this list in order. Paths are from the repository root.
 | `factory` | the package's default export |
 | `section` | selects the raw section out of the parsed core config |
 | `credentialField` | the config key holding the secret, or `null`. `null` also disables the "enabled but no credential" skip, which is what you want for an ambient credential chain (AWS, Azure, GCP all use `null`) |
-| `input` | maps the raw section to the provider's own schema input. **Always strips `enabled`** |
+| `input` | maps the raw section to the Provider's own schema input. **Always strips `enabled`** |
 | `credentialHint` | the operator-facing sentence in the boot log and in the registry's `unavailableReason`. Write it as an instruction, not a noun phrase |
 
-**`enabled` is stripped because it is core's field** — orchestration, not provider configuration —
-and every provider schema is a `strictObject`, so passing it through is rejected outright. That
+**`enabled` is stripped because it is core's field** — orchestration, not Provider configuration —
+and every Provider schema is a `strictObject`, so passing it through is rejected outright. That
 rejection is the boundary working, not a bug.
 
 **Credentials resolve config-first, then the ENVIRONMENT — and nothing is ever stored** (issue
 #280; `compose.ts`, `resolveCredential`). A credential written in the config file — usually as
 `${MYCLOUD_TOKEN}`, the variable's NAME — is the one an operator can see, diff and roll back, so it
 wins. With the field empty, the composition root reads the variables `PROVIDER_CREDENTIAL_ENV` names
-for a shipped provider, or `factory.credentialEnv` for a personal one, and hands the value straight
+for a shipped Provider, or `factory.credentialEnv` for a personal one, and hands the value straight
 to `configSchema.parse` under `credentialField`. There is no wizard credential box and no
 `provider-token` secret kind — both were deleted in #280 so that "Rocky Surf stores no cloud
 credentials" is unconditionally true. A variable exported after boot takes effect at the **next
 restart**, because a variable cannot appear inside a running process.
 
-A provider that is enabled but cannot be built is **reported and skipped, never fatal** — the
+A Provider that is enabled but cannot be built is **reported and skipped, never fatal** — the
 control plane still starts, because the UI is where an operator fixes it.
 
 ### 2. The composition root's package.json
@@ -67,20 +67,20 @@ the lockfile.
 
 **This is the step the standard does not mention and the one that will waste the most time.** Core
 validates the operator's YAML with its *own* `strictObject`, separate from the schema in the
-provider package. The two describe the same section twice and can drift. The consequence:
+Provider package. The two describe the same section twice and can drift. The consequence:
 
-> A provider field missing from core's section is not merely undocumented — it is **unusable**. The
+> A Provider field missing from core's section is not merely undocumented — it is **unusable**. The
 > operator writes it, core rejects the whole file with "unrecognized key", and nothing points at
-> the provider.
+> the Provider.
 
-So mirror **every** field the provider's own schema accepts, as optional. This has already gone
+So mirror **every** field the Provider's own schema accepts, as optional. This has already gone
 wrong: `providers.aws.allowAllCidr` is documented in `SECURITY.md`, in `docs/providers/aws.md` and
 in the example config, and core's AWS section does not declare it, so the documented procedure for
 opening SSH deliberately cannot be expressed (`rockysurf-p5jr`). The GCP section declares all of
 its fields specifically so it would never have that shape.
 
 Recorded as friction in the schema itself: the natural fix is a `configSchema` exported by each
-provider and handed to core at registration time, which would delete this whole class of drift.
+Provider and handed to core at registration time, which would delete this whole class of drift.
 Until someone does that, mirror by hand and check both files. In tree, `settings-parity.test.ts`
 (in `packages/rockysurf`) fails when your declared settings and core's mirrored section disagree.
 
@@ -89,20 +89,20 @@ section. It is core's allowlist and core DOES consume it: `app.ts` applies it to
 before anything resolves against it, `config/schema.ts` cross-validates saved tier preferences
 against it, and the Settings page shows it read-only. (An earlier version of this page said the
 opposite and cited the very ticket, `rockysurf-j10e`, that made it consumed.) Compose strips it
-before the provider's own schema sees the section, along with `enabled`.
+before the Provider's own schema sees the section, along with `enabled`.
 
 ### 4. The dependency lint
 
 `scripts/check-core-deps.mjs`, in **four** places:
 
-- `FORBIDDEN['@rockysurf/core']` — core must not import your provider
-- a `'@rockysurf/provider-mycloud': ['@rockysurf/core']` row — your provider must not import core
+- `FORBIDDEN['@rockysurf/core']` — core must not import your Provider
+- a `'@rockysurf/provider-mycloud': ['@rockysurf/core']` row — your Provider must not import core
 - `FORBIDDEN['@rockysurf/provider-sdk']`
 - the composition-root required-dependency list, which fails the build if
   `packages/rockysurf/package.json` lacks your package: *"composition root is missing … — providers
   would not reach the registry"*
 
-That last list is hand-maintained and has drifted before — a provider wired in `compose.ts` and
+That last list is hand-maintained and has drifted before — a Provider wired in `compose.ts` and
 absent from it. Add yours; do not assume the list is complete.
 
 ## Needed for correct behaviour, and for the test suite to pass
@@ -110,32 +110,32 @@ absent from it. Add yours; do not assume the list is complete.
 ### 5. The wizard's display name
 
 `packages/core/src/setup/state.ts` — `DISPLAY_NAMES`. Without it the setup wizard shows the bare
-provider id, because the lookup falls back to `id`.
+Provider id, because the lookup falls back to `id`.
 
 ### 6. The credential environment variable
 
-`packages/core/src/setup/state.ts` — `PROVIDER_CREDENTIAL_ENV`, the variables a shipped provider's
+`packages/core/src/setup/state.ts` — `PROVIDER_CREDENTIAL_ENV`, the variables a shipped Provider's
 credential may arrive under. Two readers, kept agreeing by sharing the table: the composition root's
 fallback when the config field is empty (config wins, then env — never the other way round), and the
-wizard's "`MYCLOUD_TOKEN` detected" after the export-and-restart loop. A personal provider declares
+wizard's "`MYCLOUD_TOKEN` detected" after the export-and-restart loop. A personal Provider declares
 the same list on its factory as `credentialEnv`. There is nothing in `secrets/store.ts` about
-provider credentials any more, and nothing "refuses to persist over" an environment variable,
+Provider credentials any more, and nothing "refuses to persist over" an environment variable,
 because nothing persists.
 
-### 7. The settings inventory — and why a declared provider needs no rows in it
+### 7. The settings inventory — and why a declared Provider needs no rows in it
 
 `packages/core/src/settings/fields.ts` is the hand-written inventory of what the Settings page edits,
-and since ADR-0027 it is hand-written for CORE'S OWN sections. A provider declares its panel on its
+and since ADR-0027 it is hand-written for CORE'S OWN sections. A Provider declares its panel on its
 factory (`settings`: fields with kinds, labels and help, the machine-type vocabulary, advisories) and
-`settings/inventory.ts` turns that declaration into rows at request time. **No shipped provider has
+`settings/inventory.ts` turns that declaration into rows at request time. **No shipped Provider has
 rows in `fields.ts`** — issue #370 moved the last four — so there is no static block to copy and none
-to add. Copy a factory instead: Hetzner for a token cloud, GCP for a firewall cloud. No shipped provider
+to add. Copy a factory instead: Hetzner for a token cloud, GCP for a firewall cloud. No shipped Provider
 declares a `lists` entry; the SDK still carries the shape, and `settings/inventory.ts` draws it.
 
 What is still true: the settings API refuses to save any path not in the merged inventory (*"this
 settings page does not edit that field"*), so a field your declaration does not name is edited in the
 file; and a credential-named field must be declared `kind: 'secret'` — `fields.test.ts` names each
-declared provider in `DECLARED_BY_PROVIDER` and `settings-parity.test.ts` asserts the factory really
+declared Provider in `DECLARED_BY_PROVIDER` and `settings-parity.test.ts` asserts the factory really
 declares its credential secret. The two halves together are what stops `providers.digitalocean.token`
 from ever coming back in a JSON body.
 
@@ -146,12 +146,12 @@ The three touch points an earlier version of this page missed no longer exist at
 
 ### 8. The Settings page — nothing to do
 
-`packages/web/src/pages/SettingsPage.tsx` draws a declared provider's panel with no edit: labels and
+`packages/web/src/pages/SettingsPage.tsx` draws a declared Provider's panel with no edit: labels and
 placeholders from the declaration, the `sshCidrList` kind with the same CIDR control every shipped
 cloud now gets through that same kind, advisories at the panel's head. There is no hand-written
-provider block left in the file to imitate or to fall back on. There is no `SECTION_ORDER`; sections come from core in
-the order core sends them, and a declared provider's tab slots into the order the page has always
-had (Hetzner first, then AWS, Azure, GCP; personal providers after, in file order).
+Provider block left in the file to imitate or to fall back on. There is no `SECTION_ORDER`; sections come from core in
+the order core sends them, and a declared Provider's tab slots into the order the page has always
+had (Hetzner first, then AWS, Azure, GCP; personal Providers after, in file order).
 
 The only hand-written per-cloud code left in the SPA is the wizard's setup steps
 (`WizardPage.tsx`, the sanctioned exception, with a generic fallback for any id it does not know).
@@ -178,7 +178,7 @@ complete set of behavioural differences core can see.
 
 - `docs/providers/capability-matrix.md` — a column, **in the same pull request**, with a note on
   how each value was established. A value nobody has exercised must say so.
-- `docs/providers/mycloud.md` — if the provider has operator-facing consequences worth stating.
+- `docs/providers/mycloud.md` — if the Provider has operator-facing consequences worth stating.
 - `docs/self-hosting.md` — a table row.
 
 ### 12. Conditional checks
@@ -200,29 +200,29 @@ lifecycle that differ (which credential to read, what to preflight, how to build
 config that run boots on is validated on every pull request by `packages/rockysurf/src/e2e-config.test.ts`
 (#346), so extend that when you add config keys.
 
-**A nightly real-cloud leg is for OFFICIAL providers only** — the ones composed into
+**A nightly real-cloud leg is for OFFICIAL Providers only** — the ones composed into
 `packages/rockysurf/src/compose.ts`. This repository does not spend its money proving somebody
-else's package works, so a PERSONAL provider gets no leg: it ships a fully daggered column,
+else's package works, so a PERSONAL Provider gets no leg: it ships a fully daggered column,
 verified by its author and by whoever installs it, against their own account. The `digitalocean`
 column is the model for how that reads. Say it plainly in the README's "Verified" section and in the PR
 rather than letting the next reader discover it, and record what was actually run when someone
 runs it. (Owner ruling, 2026-09-05, on the reverted DigitalOcean leg.)
 
-For an official provider that has no leg yet, the same fully-daggered column applies until one
+For an official Provider that has no leg yet, the same fully-daggered column applies until one
 exists; the leg is separate, larger work than the package, and should be its own issue.
 
-## Tests that enumerate providers and will fail until updated
+## Tests that enumerate Providers and will fail until updated
 
 These do not indicate a mistake; they are the enumeration working. Update them:
 
-- `packages/core/src/setup/setup.test.ts` — asserts the exact sorted provider id list
+- `packages/core/src/setup/setup.test.ts` — asserts the exact sorted Provider id list
 - `packages/rockysurf/src/compose.test.ts`
 - `packages/core/src/config/config.test.ts`
 - `packages/core/src/settings/fields.test.ts`
 
-## Out of tree: a personal provider
+## Out of tree: a personal Provider
 
-An out-of-tree provider skips all of the above. Since ADR-0026 it does not build its own
+An out-of-tree Provider skips all of the above. Since ADR-0026 it does not build its own
 composition root either: the operator installs the package under `<dataDir>/providers` (or points
 at a path) and names it in their config file —
 
@@ -236,12 +236,12 @@ providers:
 
 — and Rocky Surf loads it at start, composes it beside the shipped five, and gives it a Settings
 panel with its Enabled switch. The trust model is one sentence and your README should carry it: **a
-provider runs with Rocky Surf's full access — install ones you trust.**
+Provider runs with Rocky Surf's full access — install ones you trust.**
 
 What still applies: the SDK contract, conformance, the trap checklist, and the honesty rules about
 capabilities and verification. What a personal package must add: a name it can actually publish
 under — `<your-scope>/rockysurf-provider-<id>`, or unscoped `rockysurf-provider-<id>`, since
-`@rockysurf` is this repository's scope and holds in-tree providers only; no runtime dependencies
+`@rockysurf` is this repository's scope and holds in-tree Providers only; no runtime dependencies
 at all, because the documented install unpacks a tarball and resolves nothing
 ([`docs/writing-a-provider.md`](../../../docs/writing-a-provider.md), "The artifact must be
 self-contained"); the default export IS the factory
@@ -249,13 +249,13 @@ and `factory.id` equals the config key (the bare `<id>`, not the package name); 
 fine); `credentialField` and `credentialEnv` on the factory say where a token lands and which
 variables may supply it; and errors are `ProviderError`s from your own SDK copy, which core's
 structural `isProviderError` accepts. The operator-facing side is `docs/self-hosting.md`, "Personal
-providers" (in the checkout).
+Providers" (in the checkout).
 
 Its Settings panel comes from `factory.settings` (ADR-0027): declare your fields with kinds, labels
 and help, the cloud's machine-type vocabulary, and any advisories, and the page is built from them —
 including the two-act SSH whitelist (`kind: 'sshCidrList'`, which requires `managesSshAccess`).
 Conformance parses every declared `example` through your `configSchema`. Items 7 and 8 above are
-therefore NOT needed for a declared provider, in tree or out: Hetzner has no rows in `fields.ts` and
+therefore NOT needed for a declared Provider, in tree or out: Hetzner has no rows in `fields.ts` and
 no block in `SettingsPage.tsx` for exactly this reason, and is the shape to copy. (This reference is
 refreshed in full by the skill's next revision; the standard is `docs/writing-a-provider.md`,
 "Declare your settings".)

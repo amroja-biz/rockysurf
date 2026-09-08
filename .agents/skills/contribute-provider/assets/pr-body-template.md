@@ -1,5 +1,5 @@
 <!--
-PULL REQUEST BODY TEMPLATE for a provider listed in amroja-biz/rockysurf-shop.
+PULL REQUEST BODY TEMPLATE for a Provider listed in amroja-biz/rockysurf-shop.
 
 Fill it in, delete every comment and every unused line, and pass it with `gh pr create
 --body-file`. Do not paste it through a quoted shell argument: it contains backticks and newlines.
@@ -11,7 +11,7 @@ is a day. A section with nothing to say gets one honest line, not deletion.
 ## Source
 
 <!-- The shop's CONTRIBUTING asks for this by name. Reading the source is the only review a
-     provider gets, so a listing that points at code nobody can read cannot be reviewed. -->
+     Provider gets, so a listing that points at code nobody can read cannot be reviewed. -->
 
 - Repository: https://github.com/<owner>/<repo> (public)
 - Release: https://github.com/<owner>/<repo>/releases/tag/<tag>
@@ -21,7 +21,7 @@ is a day. A section with nothing to say gets one honest line, not deletion.
 
 <!-- One short paragraph. The cloud, the API it calls, and where the credential comes from — the
      environment variable or config field, never a value. An operator's first question about a
-     new provider is what leaves their machine. -->
+     new Provider is what leaves their machine. -->
 
 ## What the operator is agreeing to
 
@@ -31,7 +31,7 @@ is a day. A section with nothing to say gets one honest line, not deletion.
 - `stop` — <what stopping actually does on this cloud, and whether the disk survives>.
 - `ipStableAcrossStop` — <does the public IP survive a stop>.
 - `billsWhileStopped` — <if true: a stopped machine still bills at the running rate>.
-- `managesSshAccess` — <if true: the provider owns a shared firewall object and converges it to
+- `managesSshAccess` — <if true: the Provider owns a shared firewall object and converges it to
   the operator's configured `sshAllowedCidr`>.
 
 ## How it was verified
@@ -49,11 +49,11 @@ is a day. A section with nothing to say gets one honest line, not deletion.
 
 ## Anything the checks do not cover
 
-<!-- Honest and short. Examples: a region the provider has never been pointed at; a size table
+<!-- Honest and short. Examples: a region the Provider has never been pointed at; a size table
      taken from vendor documentation rather than from the API; a capability value that is an
      inference. "Nothing beyond the usual" is an acceptable answer; silence is not. -->
 
 ---
 
-I understand a maintainer will read the provider's code before merging, because it runs inside an
+I understand a maintainer will read the Provider's code before merging, because it runs inside an
 operator's Rocky Surf process with that process's full access.

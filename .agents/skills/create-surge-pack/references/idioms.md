@@ -28,9 +28,9 @@ their own reference: `desktops-and-daemons.md`. Skip it for a headless pack.
 
 ## Where versions and checksums come from
 
-**First check whether you need any of this.** A tool served by a quota-free registry — npm, PyPI
+**First check whether you need any of this.** A Tool served by a quota-free registry — npm, PyPI
 via `pipx` — installs unversioned, so there is no version to look up and no digest to record.
-This section is for the other case: a tool that ships only as a GitHub release asset, which stays
+This section is for the other case: a Tool that ships only as a GitHub release asset, which stays
 pinned to a tag and verified against a `sha256`. See `docs/surge-pack-contract.md` § Which version to
 install for why the two are treated differently.
 
@@ -85,8 +85,8 @@ ln -sfn /usr/bin/fdfind /usr/local/bin/fd     # -f -n: convergent, safe to repea
 fd --version >/dev/null
 ```
 
-The stamp is shared by every apt tool in the plan, so the package list is refreshed exactly once
-per box no matter how many tools need it — and the stamp survives into the harness's second run,
+The stamp is shared by every apt Tool in the plan, so the package list is refreshed exactly once
+per box no matter how many Tools need it — and the stamp survives into the harness's second run,
 which is what makes that run a genuine no-op. The loader test requires the literal string
 `apt-updated` in any script containing `apt-get install`, so this is not optional.
 
@@ -94,7 +94,7 @@ which is what makes that run a genuine no-op. The loader test requires the liter
 
 ## An apt repository, keyring and all
 
-From the `gh` tool in `packs/claude-code.yaml`. The subtle part is the last block.
+From the `gh` Tool in `packs/claude-code.yaml`. The subtle part is the last block.
 
 ```bash
 set -euo pipefail
@@ -136,7 +136,7 @@ rather than writing a source list no mirror serves.
 
 ## A pinned release binary
 
-From the `dolt` tool in `packs/gas-town.yaml`. Upstream's own installer was `curl … | sudo bash`,
+From the `dolt` Tool in `packs/gas-town.yaml`. Upstream's own installer was `curl … | sudo bash`,
 which rule 4 rules out; this is that download without the sudo.
 
 ```bash
@@ -159,7 +159,7 @@ fi
 mytool version >/dev/null
 ```
 
-Version-guarding beats stamp-guarding whenever the tool can report its own version: the stamp can
+Version-guarding beats stamp-guarding whenever the Tool can report its own version: the stamp can
 disagree with the disk, the version cannot.
 
 Note the URL is the **release download CDN**, not `api.github.com`. Installers that ask the API
@@ -209,10 +209,10 @@ mytool --version >/dev/null
 Where you would rather not re-resolve the registry on every resumed install, guard on presence
 instead — `command -v mytool >/dev/null 2>&1 || npm install -g --no-fund --no-audit mytool`. The
 trade is that the box then keeps whatever it installed at boot, so say in the `guide` that moving
-forward is the tool's own updater.
+forward is the Tool's own updater.
 
 **`runAs: root`.** A global install writes into `/usr/lib/node_modules`, which is root's — the
-single most common rule-4 violation is a `runAs: rocky` tool that runs `sudo npm install -g`.
+single most common rule-4 violation is a `runAs: rocky` Tool that runs `sudo npm install -g`.
 Most npm packages that ship native binaries publish per-platform optional dependencies and need
 no `$ARCH` branch at all; the version check at the end is what proves npm picked an executable
 build.
@@ -231,7 +231,7 @@ if ! command -v mytool >/dev/null 2>&1; then
 fi
 ```
 
-`command -v` is the right guard when the tool ends up on PATH. When you cannot inspect the
+`command -v` is the right guard when the Tool ends up on PATH. When you cannot inspect the
 installer's idempotency at all, use an explicit stamp instead, so re-running the step is a no-op
 regardless of how the installer behaves:
 
@@ -243,14 +243,14 @@ if [ ! -f "$stamp" ]; then
 fi
 ```
 
-Ask PATH where a tool is rather than asserting where it ought to be. One upstream installer moved
+Ask PATH where a Tool is rather than asserting where it ought to be. One upstream installer moved
 from `~/.claude/bin` to `~/.local/bin` and the hardcoded verification path could no longer find a
 binary it had just successfully installed.
 
 ## PATH: three different problems
 
 Getting a binary "on PATH" means three unrelated things here, and confusing them is a common way
-to ship a pack that installs a tool nobody can run.
+to ship a pack that installs a Tool nobody can run.
 
 **1. Your own script's PATH.** Steps run under a plain `bash -c` — non-login and
 non-interactive — so **nothing sources `/etc/profile`, `/etc/profile.d/*` or `~/.bashrc`**. A
@@ -263,7 +263,7 @@ export PATH="$HOME/.local/bin:$HOME/go/bin:$PATH"
 
 Do this *before* invoking a third-party installer, not after: several of them finish by verifying
 their own work with a PATH lookup, and under this shell that lookup fails, the installer exits
-non-zero, and the step fails with the tool sitting installed on disk.
+non-zero, and the step fails with the Tool sitting installed on disk.
 
 **2. Every user's PATH, for a system-wide binary.** The temptation is `/etc/profile.d/mytool.sh`,
 and it is wrong twice over — nothing in the bootstrap reads it, and it does not help a script.
@@ -297,7 +297,7 @@ before and after the second run and requires them byte-identical. `grep -qF` (fi
 pattern) is what keeps them that way. The loader test requires the literal `grep -q` in any script
 containing `>>`, so an unguarded append never reaches Docker.
 
-Write this even if another tool in your pack writes the same line — a pack that took your tool
+Write this even if another Tool in your pack writes the same line — a pack that took your Tool
 without that one would otherwise get a binary its shell cannot find. Duplicate guarded appends
 cost nothing.
 
@@ -348,7 +348,7 @@ Rule 3, and the failure is nastier than it sounds: the wizard prints its briefin
 mytool onboard --non-interactive --accept-risk --auth-choice skip
 ```
 
-Find the tool's own non-interactive flags rather than trying to feed it input. Three things worth
+Find the Tool's own non-interactive flags rather than trying to feed it input. Three things worth
 knowing from the `open-claw` experience:
 
 - A `--non-interactive` flag often *requires* an acknowledgement flag alongside it. Taking that
@@ -357,7 +357,7 @@ knowing from the `open-claw` experience:
 - **No credential of the user's reaches the box at bootstrap**, so any "sign in" step must be
   skipped and handed to the `guide`. There is no version of this where the pack logs them in.
 - A closing health probe will wait for a service nothing started. Tools usually name their own
-  remedy (`--skip-health`); read the tool's failure output rather than adding a `sleep`.
+  remedy (`--skip-health`); read the Tool's failure output rather than adding a `sleep`.
 
 ## Anything that talks to systemd
 
@@ -388,7 +388,7 @@ for repo in $(echo "${REPOS:-}" | tr ',' ' '); do
 done
 ```
 
-Anything repo-shaped belongs in `setupScript`, which runs after every tool is installed.
+Anything repo-shaped belongs in `setupScript`, which runs after every Tool is installed.
 
 Beware the trap this hides: because the harness passes an empty repository list, a bug in this
 loop passes CI and breaks for every real user who selects a repository. If your pack does real
@@ -429,4 +429,4 @@ systemctl start x && sleep 60              # waits blind; use a bounded check
 
 The last one worth stating on its own: **do not put a root command in a `rocky` script because
 "it works on a real box"**. It does not work in CI, it does not work where `rocky` is not in
-`sudoers`, and the split into two tools costs four lines.
+`sudoers`, and the split into two Tools costs four lines.

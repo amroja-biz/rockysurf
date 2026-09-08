@@ -1,7 +1,7 @@
 # SSH access: the whitelist that has to reach the cloud
 
 Read this when the cloud has any firewall model at all. It is the part of the contract the skill
-used to leave out entirely, and the omission was the most consequential in the document: a provider
+used to leave out entirely, and the omission was the most consequential in the document: a Provider
 built without it reintroduces, for a fourth cloud, the defect ADR-0021 fixed for three.
 
 ## The defect, so you recognise it
@@ -21,13 +21,13 @@ list at the cloud without launching anything.
 
 Three pieces, and they are one claim checked in both directions by conformance:
 
-1. **`capabilities.managesSshAccess: true`** — the provider maintains a shared cloud object that
+1. **`capabilities.managesSshAccess: true`** — the Provider maintains a shared cloud object that
    decides which networks may reach SSH, and can bring it in line with its own `sshAllowedCidr`
    without provisioning. Absent means false — Hetzner has no whitelist object, and neither does a
-   provider that did not create the network its machines sit on.
+   Provider that did not create the network its machines sit on.
 2. **`syncSshAccess(options?): Promise<SshAccessSyncResult>`** — the one OPTIONAL method on the
    interface. REQUIRED when the flag is true, absent otherwise; `assertProviderShape` fails on
-   either mismatch. It takes **no CIDR list**: the provider reads its own config, which after a
+   either mismatch. It takes **no CIDR list**: the Provider reads its own config, which after a
    settings save is the one the operator approved. Handing it a list would be a second source of
    truth for the one value this exists to make authoritative. `options.revoke` is the only argument:
    extras the operator confirmed for removal at the keep-or-remove prompt (issue #309).
@@ -36,7 +36,7 @@ Three pieces, and they are one claim checked in both directions by conformance:
    `0.0.0.0/0` anywhere in it still requires `allowAllCidr: true`. Normalize with
    `normalizeSshCidrs` from the SDK (trim, drop blanks, fold EXACT duplicates only — overlapping
    ranges are deliberately never collapsed) and gate with `opensSshToTheInternet`. Both helpers
-   are in the SDK precisely so every provider agrees character for character.
+   are in the SDK precisely so every Provider agrees character for character.
 
 `SshAccessSyncResult` is `{ status, applied, reported, removable?, detail }`:
 
@@ -45,11 +45,11 @@ Three pieces, and they are one claim checked in both directions by conformance:
   (nothing attempted, `detail` says why — the shared object does not exist yet, or a config reload
   did not take), `failed` (the cloud refused; `detail` carries the remediation).
 - `applied`: the CIDRs the cloud allows now. Empty on `skipped`/`failed`.
-- `reported`: ranges on the object the provider deliberately did NOT touch — anything it cannot prove
+- `reported`: ranges on the object the Provider deliberately did NOT touch — anything it cannot prove
   it created, surfaced with the command that removes it by hand.
-- `removable`: the subset of `reported` the provider CAN revoke if the operator confirms — the
+- `removable`: the subset of `reported` the Provider CAN revoke if the operator confirms — the
   stamped extras a keep-or-remove prompt offers, DEFAULT KEEP.
-- `detail`: one or two plain sentences for a human. Never a raw provider error.
+- `detail`: one or two plain sentences for a human. Never a raw Provider error.
 
 ## The rules every implementation follows
 
@@ -68,7 +68,7 @@ Three pieces, and they are one claim checked in both directions by conformance:
   hang the caller; return `failed` with "I do not know" rather than "applied".
 - **Skip when the file and the process disagree** — core does this for you at the route
   (`network/routes.ts`): if the config file says one list and this process is running another, the
-  provider was built from the older one and a push would undo the operator's last save at the
+  Provider was built from the older one and a push would undo the operator's last save at the
   firewall.
 
 ## Proof of authorship: two shapes, and which one your cloud is
@@ -104,7 +104,7 @@ anti-lockout anywhere else.
   shape the unit of proof is the whole object, so everything on it is Rocky Surf's, and the write
   converges to exactly the configured list whether or not `options.revoke` names anything.
   **`options.revoke` is therefore not load-bearing here**: there is nothing to offer the
-  keep-or-remove prompt (`reported` and `removable` are always empty), so a whole-object provider
+  keep-or-remove prompt (`reported` and `removable` are always empty), so a whole-object Provider
   may ignore the argument. Say that in a comment where `syncSshAccess()` accepts it, so the next
   reader does not take the empty implementation for an oversight.
 - *Authorize before revoke* — the ordering exists so a sync that dies half-way leaves more access
@@ -143,7 +143,7 @@ Declare the field as `kind: 'sshCidrList'` in `settings` (ADR-0027). That one ki
 guard: the page draws the list with its Add box, the last-entry lock, the `0.0.0.0/0` confirmation
 and the `allowAllCidr` checkbox that appears only once the dangerous value is in the list. Do not
 declare `allowAllCidr` yourself — the list implies it. Conformance refuses an `sshCidrList` on a
-provider without `managesSshAccess`, because a firewall editor whose saves land in a file and
+Provider without `managesSshAccess`, because a firewall editor whose saves land in a file and
 nowhere else is the defect at the top of this page, with a nicer control on it.
 
 After a save, core reports which clouds are now stale (`networkSyncNeeded`) and the SPA calls the

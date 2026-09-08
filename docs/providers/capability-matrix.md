@@ -2,8 +2,8 @@
 
 *For operators.*
 
-What each provider declares in `ProviderCapabilities`, and the evidence behind it. Four of the
-columns are the providers this distribution ships; `digitalocean` is a PERSONAL provider
+What each Provider declares in `ProviderCapabilities`, and the evidence behind it. Four of the
+columns are the Providers this distribution ships; `digitalocean` is a PERSONAL Provider
 ([ADR-0026](../adr/0026-personal-providers.md)) that lives in this repository, is built and tested
 by CI, and is installed rather than composed — it is in the table because core branches on these
 values whoever wrote the package.
@@ -31,7 +31,7 @@ and the two real-cloud capstone transcripts beside it.
 | `simulatedInstances` | absent | absent | absent | absent | absent |
 | `billsWhileStopped` | absent | absent | absent | absent | **`true`** † |
 
-`aws` and `hetzner` values are measured — both providers were built and run end to end against
+`aws` and `hetzner` values are measured — both Providers were built and run end to end against
 real infrastructure — **except where a dagger says otherwise**: `hetzner`'s `ipStableAcrossStop`
 was never actually observed, and carrying it as measured because the rest of the column was is
 exactly the drift the daggers exist to prevent (`rockysurf-eanp`).
@@ -48,7 +48,7 @@ what happened to `gcp`.
 **`managesSshAccess` is daggered in all three columns that declare it**, and it will stay that
 way until a real-cloud run pushes a CIDR. It arrived with issue #304 and **no part of it has
 touched real cloud infrastructure**: no security group was described, no NSG rule was PUT, and no
-firewall rule was patched outside the test doubles. The flag itself is a claim about the provider
+firewall rule was patched outside the test doubles. The flag itself is a claim about the Provider
 (does it maintain a whitelist Rocky Surf can bring into line?) rather than about the cloud, so it
 is not the kind of value a run could contradict — but the calls behind it are exactly the kind, and
 GCP's `firewalls.patch` is a permission nobody has yet exercised under the published role. Carrying
@@ -115,7 +115,7 @@ in full.
 documentation and its public OpenAPI description, read on 2026-09-04, and tested against a fake of
 that API. The first time a token was pointed at it (the owner's UAT, #373, 2026-09-05) the launch
 failed at the firewall — `tag managed-by:rockysurf does not exist` — because a DigitalOcean firewall
-may only target a tag that already exists and only a droplet create makes one; the provider now
+may only target a tag that already exists and only a droplet create makes one; the Provider now
 creates the tag first (#403), and with it present the same firewall request answered `202`. That
 is the one measured value; **no droplet has been created**. Every other value above is an
 inference from a vendor document, and the ones a run would most plausibly contradict are worth
@@ -136,13 +136,13 @@ naming:
   DigitalOcean's own pricing page: "You are still billed for bundled-plan CPU Droplets that are
   powered off because the compute resources stay reserved on the hypervisor… To end billing,
   destroy the Droplet." There is no `deallocate`-shaped call to choose instead, so unlike Azure the
-  provider cannot avoid the charge by picking a different action.
+  Provider cannot avoid the charge by picking a different action.
 - **`managesSshAccess`** is the row without a dagger: the `rockysurf-ssh` firewall exists on a
-  real team, created by the provider's exact `POST /v2/firewalls` body, targeting
+  real team, created by the Provider's exact `POST /v2/firewalls` body, targeting
   `managed-by:rockysurf` (#403). DigitalOcean is the first WHOLE-OBJECT-authorship cloud after
   Azure ([ADR-0021](../adr/0021-ssh-access-sync.md)'s amendment), because an inbound rule is
   `{ protocol, ports, sources }` with no name and no description to stamp. What a live run has
-  NOT yet confirmed is the converge: that a `PUT /v2/firewalls/{id}` from this provider replaces
+  NOT yet confirmed is the converge: that a `PUT /v2/firewalls/{id}` from this Provider replaces
   the object the way the documentation says it does.
 
 `packages/provider-digitalocean/README.md` carries a "How to verify live" section naming the calls
@@ -151,15 +151,15 @@ that settle the cheap half of this column.
 #### What removes these daggers
 
 **A person does, by hand, against their own DigitalOcean account — not a nightly.** DigitalOcean
-is a PERSONAL provider
+is a PERSONAL Provider
 ([ADR-0026](../adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)): nothing in
 this repository imports it, it is not composed into `packages/rockysurf/src/compose.ts`, and this
-repository does not spend money proving somebody else's provider works. A nightly real-cloud leg exists for the
-OFFICIAL providers only. A personal provider ships a fully daggered column, and its author and
+repository does not spend money proving somebody else's Provider works. A nightly real-cloud leg exists for the
+OFFICIAL Providers only. A personal Provider ships a fully daggered column, and its author and
 whoever installs it are the ones who verify it.
 
-For this column that is issues #372 (build the provider through the `add-provider` skill and
-install it as a personal provider) and #373 (create, stop, start, SSH into and terminate a real
+For this column that is issues #372 (build the Provider through the `add-provider` skill and
+install it as a personal Provider) and #373 (create, stop, start, SSH into and terminate a real
 droplet through Rocky Surf). A dagger comes off when somebody records what they ran and what came
 back, in this file, the way every other column's evidence is recorded. `userDataMaxBytes` needs a
 deliberately over-sized create and `billsWhileStopped` needs an invoice; neither is settled by a
@@ -169,13 +169,13 @@ lifecycle run, and no green tick is evidence for a claim the run never made.
 
 ### `stop` — can the instance be stopped and restarted with its disk intact?
 
-All four shipped clouds can, and so can DigitalOcean. A provider that cannot — one whose machines
+All four shipped clouds can, and so can DigitalOcean. A Provider that cannot — one whose machines
 core does not own the power state of — declares `stop: false` and throws
 `unsupportedOperationError`, and core returns 501 rather than pretending
 ([ADR-0003](../adr/0003-provider-sdk-shape-and-exclusions.md), amendment A2).
 
 **DigitalOcean can stop and it does not save you anything**, which is a combination no shipped
-provider has: the disk survives a `shutdown`/`power_on` pair and the meter never pauses. That is
+Provider has: the disk survives a `shutdown`/`power_on` pair and the meter never pauses. That is
 `billsWhileStopped` below, and it is the reason `stop: true` is honest here rather than generous.
 Its own vocabulary trap is the mirror of GCE's: `off` means "powered off, disk intact,
 restartable", which is the SDK's `stopped`, and mapping it to the SDK's `terminated` would tell
@@ -189,21 +189,21 @@ test rather than by an observation.
 
 **Azure's `stop` is `deallocate`, not `powerOff`,** and the distinction is the whole value of the
 flag. Both preserve the disk; only one stops the bill. An Azure VM that is merely powered off is
-charged the full compute rate for doing nothing, so a provider that implemented `stop` as
+charged the full compute rate for doing nothing, so a Provider that implemented `stop` as
 `powerOff` would report `stop: true` while delivering none of what core uses it for — idle
 auto-stop is v0.1's cost lever. The disk and the public address keep billing either way, which is
 the honest cost of a box you can start again.
 
-**A word of warning on GCE's vocabulary**, because it is the trap this provider was written
+**A word of warning on GCE's vocabulary**, because it is the trap this Provider was written
 around: Compute Engine reports a *stopped* instance with the status `TERMINATED`, which means
 "stopped, disk intact, restartable" and NOT what the SDK's identically-spelled `terminated`
-means. The provider maps it to `stopped`; GCE's word for a real teardown is `DEPROVISIONING`.
+means. The Provider maps it to `stopped`; GCE's word for a real teardown is `DEPROVISIONING`.
 Getting that backwards would tell core a live, billing disk was gone. Azure has the mirror image
 of the same trap — two off states where the SDK has one, and `deallocated` reading like "gone" —
-so both providers pin their mapping with a test rather than a comment.
+so both Providers pin their mapping with a test rather than a comment.
 
 This flag is the single source of truth (ADR-0003, A2). `stop()` and `start()` are **required
-methods on every provider**, and a provider that cannot stop implements both as
+methods on every Provider**, and a Provider that cannot stop implements both as
 `throw unsupportedOperationError(this.id, 'stop')`. Core checks the flag and never
 `typeof provider.stop === 'function'`, because two ways to ask the same question is how they
 drift apart.
@@ -216,7 +216,7 @@ tag, and reap, and one more orphan class.
 
 **Azure: yes**, and it is a property of the ADDRESS rather than of the machine. Basic-SKU public
 IPs — the only kind that could be Dynamic — were retired on 2025-09-30, so every address this
-provider allocates is Standard, and Standard is always `Static`. A static address is released
+Provider allocates is Standard, and Standard is always `Static`. A static address is released
 only when the address resource itself is deleted, so it survives deallocate/start. There is no
 Dynamic-Standard combination to guard against. Reasoned from Microsoft's documentation, not yet
 measured.
@@ -228,10 +228,10 @@ measured.** AWS's identical claim has a transcript behind it showing the address
 real-GCE run never stopped a box, so nobody has watched this one happen.
 
 **Hetzner: yes †.** The primary IPv4 survives a poweroff/poweron — a Hetzner Cloud primary IP is
-allocated to the server and released only when the server is deleted. **Reasoned from Hetzner's
+allocated to the Server and released only when the Server is deleted. **Reasoned from Hetzner's
 documentation, not measured** (`rockysurf-eanp`), which is a correction: this row read as measured
 for months on the strength of the rest of the column being measured. It was not. The committed
-transcript stops and starts the server and never re-reads the address, and the spike capstone says
+transcript stops and starts the Server and never re-reads the address, and the spike capstone says
 in as many words that neither box was stopped.
 
 `scripts/e2e/lifecycle.mjs` now asserts it — the address is captured before the stop and compared
@@ -239,7 +239,7 @@ after the start, for both readings of the flag — so the next nightly that comp
 stop/start cycle will settle this row. **The dagger comes off when a run has carried it**, not
 when the assertion was written.
 
-This is what drives the `previousIp` / `ipChangedAt` UX: on a provider where the address moves,
+This is what drives the `previousIp` / `ipChangedAt` UX: on a Provider where the address moves,
 core must re-read it after every start and tell the user their SSH config is stale.
 
 ### `canInjectHostKeys` — can the box come up already presenting a host key core minted?
@@ -247,7 +247,7 @@ core must re-read it after every start and tell the user their SSH config is sta
 Renamed from `canPinHostKey` (ADR-0003, E4) because the old name hid what it decides. This is a
 **security posture**, not a feature toggle:
 
-- **`true` (AWS and Hetzner)** — core generates an ed25519 host key before the server exists,
+- **`true` (AWS and Hetzner)** — core generates an ed25519 host key before the Server exists,
   ships the private half in `#cloud-config` `ssh_keys:`, and verifies it on the very first
   connection. There is no trust-on-first-use window, which matters because the first connection is
   the one carrying the secrets file. **Verified on real infrastructure for both clouds**: the
@@ -268,19 +268,19 @@ Renamed from `canPinHostKey` (ADR-0003, E4) because the old name hid what it dec
   architectures. The specific failure this row was written to be honest about did not happen:
   GCE's guest agent does not regenerate the host key out from under a `ssh_keys:` block, so the
   value stays `true` and it is now an observation. GCP has no trust-on-first-use window either.
-- **`false`** — no shipped provider declares it, and the SDK allows it: with no user-data there
+- **`false`** — no shipped Provider declares it, and the SDK allows it: with no user-data there
   is no way to place a key before first contact, so the key has to be learned instead — recorded
   on first connection, refused on any change afterwards, and said plainly in the UI.
 
   **Where that trust decision lives is the part worth knowing.** It is not in core. Such a
-  provider connects to the box before core ever does — it must, in order to install the account
+  Provider connects to the box before core ever does — it must, in order to install the account
   and authorized keys that cloud-init installs elsewhere — so it does the trusting, pins the
   result, and reports the fingerprint to core through `InstanceView.hostKeyFingerprint`
-  (ADR-0003, amendment E12). Core folds it onto the server row and then verifies **strictly**, the
+  (ADR-0003, amendment E12). Core folds it onto the Server row and then verifies **strictly**, the
   same way it does for a cloud box. Core has no trust-on-first-use path and does not grow one;
   what it receives is a pin, not permission to trust.
 
-Strictly this is a property of the image's cloud-init rather than of the provider API — it works
+Strictly this is a property of the image's cloud-init rather than of the Provider API — it works
 because cloud-init honours `ssh_keys:` and neither cloud strips user-data. It lives in
 capabilities because core has nowhere else to ask.
 
@@ -289,7 +289,7 @@ capabilities because core has nowhere else to ask.
 AWS's 16,384-byte limit is the binding one; Hetzner's 32,768 has never been approached, and
 GCP's 262,144 — Google's documented ceiling on a single metadata *value*, inside a 512 KB total
 across all entries — is sixteen times AWS's and could not be reached by anything core renders.
-A provider with no pre-boot hook at all declares `0`. DigitalOcean's 65,536 is its create
+A Provider with no pre-boot hook at all declares `0`. DigitalOcean's 65,536 is its create
 endpoint's documented `user_data` ceiling — "plain text and may not exceed 64 KiB in size" — and
 because it is plain text there is no encoding step to read the number two ways, which is what makes
 it a straight transcription rather than Azure's judgement call below.
@@ -311,10 +311,10 @@ In push mode the rendered document is **~2.1KB and constant** no matter how much
 install plan adds (2130B on AWS, 2138B on Hetzner in the capstone), because installation moved
 out of user-data entirely. That is the main reason the ceiling stops being a design constraint.
 
-Enforced in two places: core checks when rendering, and `validateSpec()` lets the provider
+Enforced in two places: core checks when rendering, and `validateSpec()` lets the Provider
 reject a spec before anything is created (ADR-0003, A7).
 
-### `generatesUserData` — does the provider deliver user-data at all?
+### `generatesUserData` — does the Provider deliver user-data at all?
 
 All four clouds do. AWS and Hetzner are measured: the capstone verified the document arrives
 **byte-for-byte**, matching `/var/lib/cloud/instance/user-data.txt` on the box exactly, on both.
@@ -329,16 +329,16 @@ the row above: a box cannot present a host key core minted unless cloud-init con
 document carrying it. Note the difference in strength, though — AWS and Hetzner were compared
 byte-for-byte against the file on the box, and no GCP run has done that.
 
-A provider that declares `false` renders no document, and bootstrap is SSH push only — which is
+A Provider that declares `false` renders no document, and bootstrap is SSH push only — which is
 the same push path every cloud already uses after first boot, so it is a subset rather than a
 separate mechanism. Note the dependency: `generatesUserData: false` forces
-`canInjectHostKeys: false`. What cloud-init would have done before boot, such a provider does over
+`canInjectHostKeys: false`. What cloud-init would have done before boot, such a Provider does over
 SSH in `provision()`: create the account core connects as, write `authorized_keys`, and grant
 passwordless sudo, which the bootstrap agent needs to install anything. Everything after that
 point is the ordinary push bootstrap, and `scripts/e2e/fixtures/bootstrap-target` is the worked
 example — test-only, and the harness that keeps the path covered.
 
-### `managesSshAccess` — does the provider own a whitelist Rocky Surf can push to?
+### `managesSshAccess` — does the Provider own a whitelist Rocky Surf can push to?
 
 **`true` on `aws`, `azure`, `gcp` and `digitalocean`; absent — which is the answer `false` — on
 `hetzner`.** Optional, added by issue #304 and recorded in
@@ -352,7 +352,7 @@ shape, one cloud firewall named for Rocky Surf and targeting its `managed-by` ta
 after a save that changed a list, from the Settings page's `Push SSH access to the clouds` button,
 or from `rockysurf network sync` — instead of only at the next launch. The button is not
 redundant with the save: a cloud can drift while the file does not, which is the state GCP has
-been in for every installation, and no save would catch it. What each provider then does with the list differs and the flag deliberately does not say:
+been in for every installation, and no save would catch it. What each Provider then does with the list differs and the flag deliberately does not say:
 Azure and DigitalOcean rewrite their object whole, because neither cloud's rule carries a
 description or a name to stamp — ADR-0021's "clouds whose rules carry no authorship" amendment,
 which makes `reported` and `removable` always empty and makes removing a CIDR take effect in one
@@ -361,40 +361,40 @@ step; AWS and GCP widen additively and then CONVERGE on confirmation
 page, and remove is a confirmed, itemized revoke (authorize-before-revoke), while a range Rocky Surf
 cannot prove it created is reported with the command that removes it by hand.
 
-`hetzner` declares nothing because it has no whitelist at all: a Hetzner server is reachable the
+`hetzner` declares nothing because it has no whitelist at all: a Hetzner Server is reachable the
 moment it boots, there is no firewall object to create or adopt, and there is no `sshAllowedCidr`
-setting on that provider to push. It is therefore **absent from the sync report**, not reported as
-a failure — there is nothing there to be wrong. So does any provider that did not create the
+setting on that Provider to push. It is therefore **absent from the sync report**, not reported as
+a failure — there is nothing there to be wrong. So does any Provider that did not create the
 network its machines sit on.
 
 **This is the first OPTIONAL method on the interface**, and the flag is what makes it safe:
-`syncSshAccess()` exists only on the providers that set this, and core calls it through
+`syncSshAccess()` exists only on the Providers that set this, and core calls it through
 `capabilities.managesSshAccess` and never `typeof provider.syncSshAccess === 'function'`. That is
 ADR-0003 A2's rule — core branches on flags, never on shape — kept intact while departing from
 A2's other half, the required-and-throwing method. The reasoning for the departure is in ADR-0021:
-a required method is a breaking change for a provider written outside this repository, and a
+a required method is a breaking change for a Provider written outside this repository, and a
 capability nobody declares costs them nothing.
 
-### `simulatedInstances` — is there a machine at the address this provider reports?
+### `simulatedInstances` — is there a machine at the address this Provider reports?
 
 **Absent on all four, which is the answer `false`.** It is optional (ADR-0003, amendment E15) and
-no shipped provider sets it: every one of them creates or claims real hardware.
+no shipped Provider sets it: every one of them creates or claims real hardware.
 
-The only thing that does is the in-memory provider, and only in one of its two roles. As the CI
+The only thing that does is the in-memory Provider, and only in one of its two roles. As the CI
 test double it declares nothing, because tests drive bootstrap progress themselves. As the
 no-cloud trial run — what `composeRegistry` registers when nothing else loads, so that
 `npx rockysurf` works without a cloud account — it declares `true`, and core responds by driving
-that server's install plan **in-process** instead of over SSH.
+that Server's install plan **in-process** instead of over SSH.
 
-Everything else about such a server is ordinary. The plan is the one the resolver rendered from
+Everything else about such a Server is ordinary. The plan is the one the resolver rendered from
 the real packs, progress is recorded by `recordProgress`, the promotion to `running` is the same
 `recordProgress('ready')` bootstrap always owned (`rockysurf-55fx.13`), and the uptime ticker
 bills it like any other running row. Only the transport is simulated, and no install script is
 ever executed — a trial run must not install software on the machine somebody is evaluating Rocky
 Surf from.
 
-**A provider must not set this while reporting addresses that resolve to real hosts.** Core takes
-it as permission to skip the SSH drive entirely, so a provider that lied here would report a box
+**A Provider must not set this while reporting addresses that resolve to real hosts.** Core takes
+it as permission to skip the SSH drive entirely, so a Provider that lied here would report a box
 as installed with nothing on it.
 
 ### `billsWhileStopped`
@@ -407,7 +407,7 @@ core's meter keeps running through `stopped` on the strength of it.
 The four shipped clouds say nothing, which means `false`, and the evidence is per cloud: AWS stops
 compute charges at `stopped` (the EBS volume keeps costing, which core has never priced — see
 `BILLING_INSTANCE_STATES`); GCP and Hetzner likewise; **Azure** has both a billing off-state
-(`powerOff`, Stopped/Allocated) and a non-billing one (`deallocate`), and the shipped provider
+(`powerOff`, Stopped/Allocated) and a non-billing one (`deallocate`), and the shipped Provider
 chooses `deallocate` — confirmed on the real-cloud run of 2026-08-26 — which is why it leaves the
 flag absent rather than setting it.
 
@@ -423,7 +423,7 @@ exist yet, which is an ADR question rather than an approximation.
 ## Differences this table cannot express
 
 Not every divergence between clouds is a capability. These are real, and they live in the types
-or in provider configuration instead — recorded here so nobody looks for a flag that should not
+or in Provider configuration instead — recorded here so nobody looks for a flag that should not
 exist:
 
 - **Stock availability, and availability that is not about stock.** Hetzner had zero arm64 stock
@@ -432,14 +432,14 @@ exist:
   its arm64 family (Tau T2A) is offered in exactly eight zones and is *permanently* absent
   everywhere else, which is published and stable rather than an afternoon's stock level. Both
   belong on `Offering.available`; neither is a capability, because both vary per offering rather
-  than per provider.
-- **Terminal-state latency.** EC2 sits in `terminating` for 30-120s; Hetzner drops the server
+  than per Provider.
+- **Terminal-state latency.** EC2 sits in `terminating` for 30-120s; Hetzner drops the Server
   almost immediately. Expressed by the `terminating` state itself.
 - **Secondary resources, and how many of them there are.** Hetzner's API will not take raw key
-  material inline, so its provider creates first-class SSH Key objects it then owns; AWS needs no
+  material inline, so its Provider creates first-class SSH Key objects it then owns; AWS needs no
   such thing but keeps one shared security group. **Azure is the extreme case**: a running box is
   four resources — the VM, its OS disk, its network interface and its public IP — and Azure
-  PERSISTS all of them when the VM is deleted, so the provider sets `deleteOption: 'Delete'` in
+  PERSISTS all of them when the VM is deleted, so the Provider sets `deleteOption: 'Delete'` in
   three places at create time to make one delete cascade. All of this is expressed by
   `ManagedResource.ownership` and by what `terminate()` reaps; none of it needs a capability,
   because core never has to know how many resources a machine is made of.
@@ -447,34 +447,34 @@ exist:
   creates from an image, and ARM's own tag filter does not return tags on the resources it
   matches. So Azure's `listManaged()` lists a whole resource group rather than filtering by tag,
   and attributes a stray disk through `managedBy`. This is the D4 orphan class — a volume that
-  survives its instance and is invisible to any audit that walks instances — solved per provider,
+  survives its instance and is invisible to any audit that walks instances — solved per Provider,
   which is where it belongs.
 - **Network prerequisites and default exposure.** AWS needs a VPC, subnet, and security group
   before an instance can exist; Azure needs a virtual network, a subnet, a security group AND a
-  public IP, and unlike AWS it has no default VPC to fall back on, so the provider creates them
-  and adopts them thereafter; Hetzner needs none and a server is SSH-reachable the moment it
+  public IP, and unlike AWS it has no default VPC to fall back on, so the Provider creates them
+  and adopts them thereafter; Hetzner needs none and a Server is SSH-reachable the moment it
   boots. The clouds therefore have **different default exposure**, which ADR-0003 leaves
   deliberately unresolved as a product decision rather than an interface one. Azure is the
   strictest of the three by default: a Standard-SKU public IP is closed to inbound traffic until
   a security rule opens it, so a missing `sshAllowedCidr` fails loudly rather than quietly.
-- **The management console URL.** Every provider's console has its own URL shape, and one of
+- **The management console URL.** Every Provider's console has its own URL shape, and one of
   them needs a value its API does not expose: a Hetzner console link contains the numeric
   PROJECT id, which no Cloud API response carries, so it comes from
   `providers.hetzner.consoleProjectId` and there is no link without it. AWS needs nothing extra —
   region plus instance id. Azure needs nothing extra either — an ARM resource id already contains
   the subscription, the group and the name, and the portal resolves one without being told the
-  tenant — and GCP likewise, since the project, zone and instance name are all things its provider
-  already holds. The in-memory provider has no console at all, and neither does any provider that
+  tenant — and GCP likewise, since the project, zone and instance name are all things its Provider
+  already holds. The in-memory Provider has no console at all, and neither does any Provider that
   did not create the machine. This is
   per-instance rather than per-provider, so it is expressed by `InstanceView.consoleUrl`
-  (ADR-0003, amendment E16), which is absent when the provider cannot construct one honestly.
+  (ADR-0003, amendment E16), which is absent when the Provider cannot construct one honestly.
 - **Base image contents.** All three clouds run "Ubuntu 24.04" and they are not the same image —
   Hetzner's ships without `jq`. Nothing in `Offering` or `ProviderCapabilities` describes image
   contents and nothing reasonably could; the obligation belongs to the agent, which must
   bootstrap anything it needs before it can parse its own plan.
 
-## Adding a provider
+## Adding a Provider
 
-Fill in a column here in the same PR that adds the provider, with a note on how each value was
+Fill in a column here in the same PR that adds the Provider, with a note on how each value was
 established. A value nobody has exercised should say so, the way the daggers in the
 `digitalocean` column do.

@@ -8,13 +8,13 @@ exists rather than starting from `assets/surge-pack-template.yaml`.
 ## The worked example: deriving from `claude-code.yaml`
 
 The request: "give me the Claude Code pack, plus OMP and an MCP server the agents can use to
-coordinate with each other." Two tools, on top of a base that already ships.
+coordinate with each other." Two Tools, on top of a base that already ships.
 
 **1. Read the base.** `packs/claude-code.yaml` — `packId: claude-code`, `displayOrder:
 1`, `requiresRepos: true`, `requiresRdp: false`, no `desktop`, no `webPort`. Its `pack.tools` is
 fourteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
 `python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`,
-`claude-code`. Nothing about the two new tools changes any of `requiresRepos`,
+`claude-code`. Nothing about the two new Tools changes any of `requiresRepos`,
 `requiresRdp`, `desktop` or `webPort` — neither is a GUI app or a loopback web server — so those
 flags carry over unchanged.
 
@@ -44,7 +44,7 @@ tools:
   - mcp-agent-mail
 ```
 
-**4. The two added tools, looked up rather than invented.** This is the pedagogical pair the
+**4. The two added Tools, looked up rather than invented.** This is the pedagogical pair the
 authoring rules ask for: one on a registry (unversioned), one that is neither on a registry nor
 a single pinnable binary and needs an honest script rather than a copy of the vendor's installer.
 
@@ -133,7 +133,7 @@ already in the base toolchain — does the job:
 ```
 
 **5. `installOrder`: 30 and 40 are gaps, not the base's own values.** Nothing under
-`claude-code.yaml`'s fifteen tools was renumbered.
+`claude-code.yaml`'s fifteen Tools was renumbered.
 
 **6. `guide`: append, don't replace.** Everything in the base pack's guide is still true, so it
 stays; two new blocks go after it:
@@ -160,23 +160,23 @@ Step 4 run on `omp-agent-mail` exactly as they would on a from-scratch pack.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `toolId "X" is already defined in <base>.yaml` | you copied a tool's definition instead of just referencing its id | delete the definition from your file, keep the id in `pack.tools` |
+| `toolId "X" is already defined in <base>.yaml` | you copied a Tool's definition instead of just referencing its id | delete the definition from your file, keep the id in `pack.tools` |
 | `pack "Y" references unknown tool "X"` | a typo in the id, or the base file failed to parse | check the base file parses on its own first — a broken base cascades into every pack that references it |
 | `[duplicate-tool]` from `pack lint` | same root cause as the first row, caught out-of-tree | same fix |
-| import says `Tools not found: …` | the target instance does not ship the base pack you derived from | define the missing tools yourself under namespaced ids, or import the base pack first |
-| smoke run 2 says `.bashrc` changed | your added tool's install script appends to `.bashrc` without a guard | guard it with `grep -qF`, the idiom in `references/idioms.md` |
+| import says `Tools not found: …` | the target instance does not ship the base pack you derived from | define the missing Tools yourself under namespaced ids, or import the base pack first |
+| smoke run 2 says `.bashrc` changed | your added Tool's install script appends to `.bashrc` without a guard | guard it with `grep -qF`, the idiom in `references/idioms.md` |
 | derived pack passes lint but the picker is empty after a restart | the base file got edited too and something in it broke | `git status packs/` — a derive modifies nothing; if it shows the base as modified, you amended by accident |
 
 ## The amend path
 
 Amending changes the base file itself, so it is right only when the base pack is yours and every
-existing user of it should get the new tool too. Add the tool's definition under `tools:` and its
+existing user of it should get the new Tool too. Add the Tool's definition under `tools:` and its
 id to `pack.tools` in the base file — same four authoring rules, same `installOrder` bands as any
-other tool — then re-run Step 3 and Step 4 **on the amended pack**, not a derived one.
+other Tool — then re-run Step 3 and Step 4 **on the amended pack**, not a derived one.
 
 **If the file is `packs/claude-code.yaml`, this is the shared base toolchain for every pack
 in the repository.** A validation failure in it is not contained to one pack — a pack file that
-fails to parse is skipped entirely at boot, and because every other pack references its tool ids,
+fails to parse is skipped entirely at boot, and because every other pack references its Tool ids,
 that takes all of them out of the picker until the file is fixed. Re-smoke everything after an
 amend to this file: `node scripts/pack-smoke.mjs` with no `--pack` argument runs the whole
 matrix, not just the one pack you touched.
@@ -188,7 +188,7 @@ through the admin UI or by re-importing the updated file.
 ## Extending without a checkout
 
 The derived file above is also what you would hand to `pack import` on someone's own running
-instance — import resolves tool ids that already exist on that instance the same way the
+instance — import resolves Tool ids that already exist on that instance the same way the
 in-tree loader does. Three things differ from working inside the repository:
 
 - **Verify with the published CLI, not the repo scripts:**
@@ -197,18 +197,18 @@ in-tree loader does. Three things differ from working inside the repository:
   that only references base ids resolves with no flag at all.
 - **The packId-matches-filename rule is dropped on import** — the repository's loader enforces
   it, the import path does not.
-- **Do not use Export as a "fork this pack" button.** Export inlines every tool the pack
+- **Do not use Export as a "fork this pack" button.** Export inlines every Tool the pack
   references, including the ones it only pointed at — so exporting `omp-agent-mail` would embed
-  full copies of all fifteen base tools too. Importing that back in redefines every one of those
+  full copies of all fifteen base Tools too. Importing that back in redefines every one of those
   ids, which the in-tree loader rejects outright and which, on another instance, silently
-  overwrites its shipped tool rows. Deriving by hand from the base pack's `pack.tools` list, the
+  overwrites its shipped Tool rows. Deriving by hand from the base pack's `pack.tools` list, the
   way this file just did, is the supported way to fork a pack; Export is for handing someone a
   pack's complete, self-contained bundle, not for basing a new one on it.
 
 ## What v0.1 deliberately does not have
 
 No `extends:` key or any other inheritance field in the schema — the format is frozen at v0.1
-(ADR-0004), and referencing tool ids across files already buys everything an `extends:` key
-would, at no format cost. No tool library owned by no pack, either: every tool still belongs to
+(ADR-0004), and referencing Tool ids across files already buys everything an `extends:` key
+would, at no format cost. No Tool library owned by no pack, either: every Tool still belongs to
 exactly one pack file. That gap is real but out of scope here — it is filed as `rockysurf-37pa`
 for v0.2. Don't re-propose either one against this file; propose it against that issue instead.

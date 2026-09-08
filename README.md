@@ -35,7 +35,7 @@ npx -y rockysurf
 It prints an admin password **once** on first boot — save it. Open <http://127.0.0.1:3000> and
 sign in with it. It listens on `127.0.0.1` only.
 
-With no cloud configured it runs an in-memory provider, so you can create a server, watch it boot
+With no cloud configured it runs an in-memory Provider, so you can create a Server, watch it boot
 and terminate it before pasting a real token.
 
 Docker Compose instead:
@@ -74,7 +74,7 @@ a role scoped to it. Full per-cloud setup, including the least-privilege roles:
 
 ### 3. Configure MCP
 
-`rockysurf mcp` exposes the server lifecycle as MCP tools. Rocky Surf itself must already be
+`rockysurf mcp` exposes the Server lifecycle as MCP tools. Rocky Surf itself must already be
 running; the MCP server talks to it over HTTP.
 
 Mint a token — it is printed once:
@@ -86,7 +86,7 @@ npx -y rockysurf token
 Point your client at it. Any MCP client wants the same `command`, `args`, and `env` — Claude Code
 and Codex CLI are given here as the two representative examples; the shapes below carry over to
 another client. Each has a user (or global) scope, the recommended default for a tool that
-manages servers regardless of which repo you're in, and a project scope for a team that wants the
+manages Servers regardless of which repo you're in, and a project scope for a team that wants the
 server checked into the repo.
 
 **Claude Code**, user scope:
@@ -169,13 +169,13 @@ pool your API keys, or hold your code, and features that would need it to get re
 
 ## Rocky Surf Principles
 
-1. **Make it as easy as possible to create and manage cloud servers for agentic coding.**
-2. **Make it as easy as possible to add a new cloud provider.**
+1. **Make it as easy as possible to create and manage cloud Servers for agentic coding.**
+2. **Make it as easy as possible to add a new cloud Provider.**
 3. **Make it as easy as possible to create Surge Packs.**
 4. **Make Rocky Surf easy to extend via modular components.**
 5. **Make it easy to combine components without coding.**
 
-## Creating a server
+## Creating a Server
 
 **A create can fail because your cloud login expired.** AWS, Azure and GCP use the same
 credentials as the rest of your tooling, and for most people those expire: `aws sso login`,
@@ -191,7 +191,7 @@ pack:  { packId: rust-dev, name: Rust, tools: [build-essential, git, rustup] }
 tools: [ … ]
 ```
 
-It's just a list of tools and install scripts. You can read the whole file in a pull request
+It's just a list of Tools and install scripts. You can read the whole file in a pull request
 before trusting it, and you watch the install feed while your box is built from it. Eleven ship
 in [`packs/`](packs/), covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others.
 
@@ -222,14 +222,14 @@ two ways:
 
 Packs read the token as `$GITHUB_TOKEN`, kept out of `ps` output and `.git/config`.
 
-## Where your servers and settings are kept
+## Where your Servers and settings are kept
 
 One directory holds everything: `~/.rockysurf`, `/data` in the container, `server.dataDir` in
 general. Created owner-only on first boot.
 
 | File | What it is |
 |---|---|
-| `rockysurf.db` | SQLite: your servers, packs, sessions and encrypted secrets |
+| `rockysurf.db` | SQLite: your Servers, packs, sessions and encrypted secrets |
 | `secret.key` | The master key those secrets are encrypted with |
 | `rockysurf.config.yaml` | Your configuration |
 | `packs/` | Your own pack files, if you keep any |
@@ -249,7 +249,7 @@ docker run --rm -v rockysurf-data:/data -v "$PWD":/backup alpine \
 If you can't stop it, use SQLite's online backup (`sqlite3 rockysurf.db ".backup out.db"`) and
 copy `secret.key` alongside. Restoring is putting the directory back; migrations run on boot.
 
-**The backup holds every provider credential and every server's private key**, next to the key
+**The backup holds every Provider credential and every Server's private key**, next to the key
 that decrypts them. Encrypt it, or keep `secret.key` outside the filesystem with
 `ROCKYSURF_SECRET_KEY`. And **`docker compose down -v` destroys the volume**, taking the SSH keys
 for boxes that may still be running and billing.
@@ -269,8 +269,8 @@ limits:
 ```
 
 Set them, but don't stop there. The spend cap is an estimate from bundled price data, and an
-offering your provider quotes no price for spends money the cap can't see. Hitting the cap blocks
-new servers without stopping running ones - a budget cap, not a sandbox.
+offering your Provider quotes no price for spends money the cap can't see. Hitting the cap blocks
+new Servers without stopping running ones - a budget cap, not a sandbox.
 
 Set limits at the cloud too, where the numbers come from your actual bill:
 
@@ -281,14 +281,14 @@ Set limits at the cloud too, where the numbers come from your actual bill:
   Hetzner project, and a mistake costs you that project and nothing else.
 - **A credential that can only do this job.** The AWS role in
   [`deploy/aws/iam-role.yaml`](deploy/aws/iam-role.yaml), and the least-privilege roles in the
-  provider docs.
+  Provider docs.
 - **An occasional look at the console.** Rocky Surf flags disagreements between its records and
   the cloud's, but it only knows about resources it created.
 
 ## Security
 
 Rocky Surf listens on `127.0.0.1` only, behind one password and no TLS, and it holds your cloud
-credentials and an SSH key per server. If you widen `server.host`, put a proxy or firewall in
+credentials and an SSH key per Server. If you widen `server.host`, put a proxy or firewall in
 front. Detail: [`SECURITY.md`](SECURITY.md).
 
 ## More
@@ -300,9 +300,9 @@ Every document below opens with the audience it was written for.
 | [`docs/agent-quickstart.md`](docs/agent-quickstart.md) | Your coding agent | Installing and configuring Rocky Surf on your behalf, end to end |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Operators | Install paths, data, upgrades, backup and restore |
 | [`SECURITY.md`](SECURITY.md) | Operators | Credential custody, SSH trust, the MCP threat model |
-| [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each provider can do, and the evidence for it |
-| [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) | Surge pack authors | Writing a surge pack - how one runs, the four rules, a worked example, the checklist |
-| [`docs/surge-pack-contract.md`](docs/surge-pack-contract.md) | Surge pack authors | The normative half - file format, rules in full, environment, the CI smoke test |
+| [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each Provider can do, and the evidence for it |
+| [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) | Surge Pack authors | Writing a Surge Pack - how one runs, the four rules, a worked example, the checklist |
+| [`docs/surge-pack-contract.md`](docs/surge-pack-contract.md) | Surge Pack authors | The normative half - file format, rules in full, environment, the CI smoke test |
 | [`docs/adr/llms.txt`](docs/adr/llms.txt) | Contributors | The architecture decisions - start here for the design |
 | [`docs/writing-a-provider.md`](docs/writing-a-provider.md) | Contributors | Adding a cloud against the frozen SDK |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributors | Development setup, gates, conventions |

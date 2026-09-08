@@ -18,13 +18,13 @@ packages/provider-<id>/
 Out of tree, the same shape with your own package name. Nothing here requires the package to live
 in the Rocky Surf repository.
 
-**In a checkout**, copy the freshest in-tree provider rather than starting from a blank file:
+**In a checkout**, copy the freshest in-tree Provider rather than starting from a blank file:
 `packages/provider-gcp` and `packages/provider-azure` are the most recent REST-shaped examples and
 carry the most current reasoning in their comments; `packages/provider-hetzner` is the smallest
 complete one and the best to read end to end; `scripts/e2e/fixtures/bootstrap-target` (test-only)
-is the minimal model for a provider that does not generate user-data.
+is the minimal model for a Provider that does not generate user-data.
 
-**Out of tree you have none of those.** The published provider packages ship built JavaScript and
+**Out of tree you have none of those.** The published Provider packages ship built JavaScript and
 their README, not the commented sources, and you should not need them. What you do have, inside the
 packages you installed, is the authoritative contract:
 `node_modules/@rockysurf/provider-sdk/README.md` and the fully commented type definitions in
@@ -57,14 +57,14 @@ packages you installed, is the authoritative contract:
 }
 ```
 
-- **The name.** `@rockysurf/provider-<id>` is for providers that live in this repository; nobody
-  else can publish into that scope. A personal provider is `<your-scope>/rockysurf-provider-<id>`
-  or, unscoped, `rockysurf-provider-<id>`. The package name is not the provider id: `factory.id`
+- **The name.** `@rockysurf/provider-<id>` is for Providers that live in this repository; nobody
+  else can publish into that scope. A personal Provider is `<your-scope>/rockysurf-provider-<id>`
+  or, unscoped, `rockysurf-provider-<id>`. The package name is not the Provider id: `factory.id`
   is the bare `<id>` and it is the key of the config section either way.
-- **A personal provider takes NO runtime dependencies.** The documented install is `tar -xzf` into
+- **A personal Provider takes NO runtime dependencies.** The documented install is `tar -xzf` into
   `<dataDir>/providers` — no `npm install`, nothing of yours executed — so a dependency the
   manifest names and the operator does not already have is an import that throws at their next
-  start, and the provider is simply not there
+  start, and the Provider is simply not there
   ([`docs/writing-a-provider.md`](../../../docs/writing-a-provider.md), "The artifact must be
   self-contained"). That is why `zod` above is bracketed as in-tree only: out of tree, either
   hand-write the config parser against the structural `ConfigSchema` contract or bundle what you
@@ -72,7 +72,7 @@ packages you installed, is the authoritative contract:
   manifest's `dependencies`.
 - **`files` must list `README.md`**, and the README is the page npm shows.
 - **Never a dependency on `@rockysurf/core`.** In tree, CI enforces it in both directions; out of
-  tree it is still wrong, because core is the thing your provider is decoupled from.
+  tree it is still wrong, because core is the thing your Provider is decoupled from.
 - `@rockysurf/provider-conformance` is a **devDependency**, never a runtime one.
 - **In tree, two lines differ**: the two `@rockysurf/*` specifiers become `"workspace:*"`, and the
   build script becomes `node ../../scripts/build-package.mjs`. That script compiles into a scratch
@@ -127,11 +127,11 @@ export type MycloudProviderConfig = z.infer<typeof mycloudConfigSchema>
 Write rejection messages as **instructions**. The operator sees this text and it is the whole of
 their debugging experience.
 
-Zod lives in the provider's dependencies, never in the SDK's. Any validator with a throwing `parse`
+Zod lives in the Provider's dependencies, never in the SDK's. Any validator with a throwing `parse`
 works — the SDK's `ConfigSchema<T>` is structurally `{ parse(input: unknown): T }` precisely so the
 SDK can keep zero runtime dependencies.
 
-**A personal provider has nowhere to put zod**, for the reason above: its install resolves no
+**A personal Provider has nowhere to put zod**, for the reason above: its install resolves no
 dependencies. Write the parser by hand against the same structural contract — an object with a
 throwing `parse` — and keep the two refines and their instructional messages exactly as they are
 here. The messages are the part that matters, and hand-writing them is if anything easier than
@@ -140,7 +140,7 @@ bending a library's generic errors into instructions.
 ## index.ts
 
 The default export is the factory. `createProvider` must be **synchronous and side-effect free** —
-no network, no filesystem, no credential check — so core can load a provider, show its identity and
+no network, no filesystem, no credential check — so core can load a Provider, show its identity and
 validate its configuration before holding a live instance of it. Credentials are proven separately
 by `validateCredentials()`.
 
@@ -184,7 +184,7 @@ export default mycloudProviderFactory
 
 Re-export the package's public surface from here too — the api client, the config schema and type,
 the error helpers. **Do not re-export the conformance assertions**: they are test-only, and a
-provider package should not make its consumers carry a test helper.
+Provider package should not make its consumers carry a test helper.
 
 ## errors.ts
 
@@ -225,7 +225,7 @@ path, and wiring it late means writing the read path twice.
 
 And add this one as soon as `provision()` exists, against the fake described in the next section.
 It is required, not optional, and it is the test that would have caught the first live failure of
-a provider built with this skill:
+a Provider built with this skill:
 
 ```ts
 import { emptyCloud, fakeFetch } from './fake-cloud.js'
@@ -272,7 +272,7 @@ One more assertion belongs on the same test, and it is one line:
 
 `ProvisionSpec` carries two names and they are not interchangeable: `name` is Rocky Surf's display
 name, chosen by a human and free to contain spaces, punctuation and unicode; `serverId` is core's
-id, which the provider asserts is hostname-safe (trap 3) precisely so it can be the name the cloud
+id, which the Provider asserts is hostname-safe (trap 3) precisely so it can be the name the cloud
 sees. Sending `spec.name` fails at the cloud — a real create was refused with
 *"Only valid hostname characters are allowed"* — and it fails only on the live run, because a fake
 that stores whatever string it is given accepts it happily. Give the spec in your tests a display
@@ -282,7 +282,7 @@ same check ([shipping.md](shipping.md)).
 
 ## A fake for the cloud, not a mock of your own code
 
-Every in-tree provider tests against a fake of the *cloud's API* — a `fetch` route table or an
+Every in-tree Provider tests against a fake of the *cloud's API* — a `fetch` route table or an
 in-memory resource map — rather than by mocking its own methods. That is what lets the tests assert
 real behaviour: that `stop()` reaches the state the cloud actually reports, that a replayed create
 resolves to the original instance, that `describe()` spends its grace.
@@ -299,7 +299,7 @@ vocabulary instead would hide exactly the bug the mapping test exists to catch.
 
 ### The fake starts empty, and refuses what nobody created
 
-Two rules about the fake, both written after a provider passed seventy-four tests and failed on
+Two rules about the fake, both written after a Provider passed seventy-four tests and failed on
 its first real create:
 
 1. **`emptyCloud()` holds what a brand-new account holds** — sizes, regions and images, because

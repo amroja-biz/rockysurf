@@ -12,9 +12,9 @@ That means the operational surface is small, and this page is most of it: how to
 the data lives, what to back up, how to upgrade, and the handful of behaviours that surprise
 people.
 
-**Before you start, decide which cloud it will drive.** Every provider is disabled until you
+**Before you start, decide which cloud it will drive.** Every Provider is disabled until you
 enable it, so a fresh install cannot spend money by accident, and with none enabled it comes up
-on an in-memory provider — enough to create a fake server, watch it boot and terminate it before
+on an in-memory Provider — enough to create a fake Server, watch it boot and terminate it before
 you point it at a real cloud account. Rocky Surf stores no cloud credentials — each cloud
 authenticates through your own auth path, described in its row below.
 
@@ -24,7 +24,7 @@ authenticates through your own auth path, described in its row below.
 | **AWS** | Uses the standard credential chain, never a key in the config file. Needs an IAM policy and an explicit `sshAllowedCidr` — [`providers/aws.md`](providers/aws.md). |
 | **Azure** | Credentials from your environment, a managed identity, or `az login` — never from the config file. Needs a resource group you create, a least-privilege role and an explicit `sshAllowedCidr` — [`providers/azure.md`](providers/azure.md). |
 | **GCP** | Uses Application Default Credentials — `gcloud auth application-default login`, a key file, or the metadata server — never a key in the config file. Needs a project and an explicit `sshAllowedCidr` — [`providers/gcp.md`](providers/gcp.md). |
-| **A cloud not listed here** | A provider you install yourself, written against the provider SDK — [Personal providers](#personal-providers). |
+| **A cloud not listed here** | A Provider you install yourself, written against the Provider SDK — [Personal Providers](#personal-providers). |
 
 There are two ways to run it. Both give you the same thing: one process, one port, one data
 directory.
@@ -59,7 +59,7 @@ Everything that must outlive the container is in the `rockysurf-data` volume, mo
 | File | What it is |
 |---|---|
 | `rockysurf.config.yaml` | Your configuration. Seeded from the image on first start, yours from then on. |
-| `rockysurf.db` | The SQLite database: servers, packs, sessions, encrypted secrets. |
+| `rockysurf.db` | The SQLite database: Servers, packs, sessions, encrypted secrets. |
 | `secret.key` | The master key those secrets are encrypted with. **Back this up.** |
 | `packs/` | Your own pack files, if you keep any. Takes precedence over the ones the release ships. |
 
@@ -128,7 +128,7 @@ npx -y rockysurf
 
 Requires Node 24 or newer; the binary checks and says so if not. Nothing else: with no config
 file anywhere it starts on defaults, says where a config file would go, and offers the
-in-memory provider — so you can create a server, watch it boot and terminate it before
+in-memory Provider — so you can create a Server, watch it boot and terminate it before
 deciding whether to point it at a real cloud account.
 
 ### The commands
@@ -187,7 +187,7 @@ Data goes to `~/.rockysurf` by default (`server.dataDir`), which holds the same 
 **It listens on `127.0.0.1` only.** Nothing outside the machine can reach it until you set
 `server.host` to `0.0.0.0` (or a specific address) in the config file. Do that behind a reverse
 proxy or a firewall — the UI has one password in front of it and no TLS of its own, and the
-process holds your cloud credentials and the SSH key for every server it manages.
+process holds your cloud credentials and the SSH key for every Server it manages.
 
 **The AWS SDK is not in the control plane's dependency closure.** It arrives only with
 `@rockysurf/provider-aws`, which the composition root imports — enforced by
@@ -199,7 +199,7 @@ into the CLI by any other route.
 Whichever way you started it, the web UI edits that same config file — the one an editor would
 open, comments and all — one section at a time: a column of tabs beside the form where the
 window is wide enough for one, the same tabs as a strip above it where it is not. The tabs are
-the file's own blocks — Server, GitHub access tokens, SSH public keys, one per cloud provider,
+the file's own blocks — Server, GitHub access tokens, SSH public keys, one per cloud Provider,
 Your own machines, Limits, Preferences, MCP — and the open one is in the URL, so
 `/settings?section=providers.aws`
 is a link straight to the AWS settings and a reload comes back to the section you were on.
@@ -272,7 +272,7 @@ Three things worth knowing about them:
   longer sold, Rocky Surf creates the cheapest machine meeting the floor instead — and says
   which and why, on the New Server page and in the API response, rather than substituting in
   silence. An architecture you ask for explicitly also wins over a saved type of the other one.
-- **It applies immediately**, to the next server you create — as almost everything in this file
+- **It applies immediately**, to the next Server you create — as almost everything in this file
   now does. `preferences` was the first block Rocky Surf re-read while running, and it is read
   straight from the file at create time rather than through the settings page, so it applies
   whether or not anybody saved it from the browser.
@@ -299,27 +299,27 @@ a warning rather than a refusal, since an operator may have deliberate reasons.
 Two of the things in it deserve separate thought:
 
 - **`secret.key`** is the master key for every stored secret — per-server SSH private keys,
-  remote-desktop passwords, the Connect-GitHub token (cloud provider credentials are not among
+  remote-desktop passwords, the Connect-GitHub token (cloud Provider credentials are not among
   them: Rocky Surf stores none, issue #280). Lose it and every one of them is unrecoverable and
-  every server has to be recreated. Obtain it, and all of them decrypt. It is written `0600` and
+  every Server has to be recreated. Obtain it, and all of them decrypt. It is written `0600` and
   the process refuses to start if its permissions are looser than that. You can hold it outside
   the filesystem entirely by setting `ROCKYSURF_SECRET_KEY` (base64, exactly 32 bytes decoded),
   in which case nothing is written to disk.
 - **`rockysurf.db`** is SQLite in WAL mode, so recent writes live in `rockysurf.db-wal` until a
   checkpoint folds them in. This matters for backups — see below.
 
-### Terminating a server does not delete its row
+### Terminating a Server does not delete its row
 
-**Nothing in Rocky Surf ever deletes a server row.** Terminating a box — or dismissing a failed
+**Nothing in Rocky Surf ever deletes a Server row.** Terminating a box — or dismissing a failed
 one — destroys the machine and its disk at the cloud, and moves the row to `terminated`. The row
 itself stays in `rockysurf.db` for good, and it is the only place the configuration of a box that
 no longer exists survives.
 
 The Servers page turns that into something you can read. Its **Recent activity** list is derived
 from the rows' own timestamps — created, started, stopped, terminated — and **every entry is a
-link to that server's page**. Open one for a box that is gone and the page reports instead of
+link to that Server's page**. Open one for a box that is gone and the page reports instead of
 controlling: which cloud and region it was placed in, its size, machine type and architecture,
-the Surge Pack and tools it was built with, the repositories it was created for, when it was
+the Surge Pack and Tools it was built with, the repositories it was created for, when it was
 created and when it was terminated, its total uptime and final estimated cost, and the bootstrap
 report if its install had anything to say. Stop, Start, Terminate, the SSH command, the key
 download, the provider-console link and the rename are all absent — every one of them needs a
@@ -327,11 +327,11 @@ machine that is not there.
 
 Two limits worth knowing, because the page cannot invent what the row never held:
 
-- **A row records what Rocky Surf knew.** A server created by a version older than the one that
+- **A row records what Rocky Surf knew.** A Server created by a version older than the one that
   introduced a column has nothing in it — placement, for one, was only stamped onto new rows from
   the release that added this page — and a fact that was never captured is shown as absent rather
   than guessed.
-- **Secrets are not part of the record.** A terminated server's SSH private key and any
+- **Secrets are not part of the record.** A terminated Server's SSH private key and any
   remote-desktop password are of no further use, and the record does not offer them.
 
 There is no pruning job and no retention setting. Rows are small — a few hundred bytes plus the
@@ -343,7 +343,7 @@ with the process stopped.
 
 **What to back up: the whole data directory.** `secret.key` and `rockysurf.db` are useless
 without each other. A database without its key is undecryptable ciphertext; a key without its
-database knows nothing about your servers.
+database knows nothing about your Servers.
 
 **Stop the process first.** A clean shutdown checkpoints the WAL with `wal_checkpoint(TRUNCATE)`
 before closing, which empties and removes the WAL file rather than leaving it beside the
@@ -370,13 +370,13 @@ recorded, so an older database opened by a newer version is upgraded in place; t
 not supported.
 
 A restore does not un-terminate anything. What survives is Rocky Surf's *knowledge* — which
-servers exist, their keys, your credentials. If a box was destroyed at the cloud while your
+Servers exist, their keys, your credentials. If a box was destroyed at the cloud while your
 backup was cold, the reconciler notices the difference and reports it rather than resurrecting
 anything.
 
-**Treat the backup like the key it contains.** It holds every managed server's private key and
+**Treat the backup like the key it contains.** It holds every managed Server's private key and
 your Connect-GitHub token in encrypted form, with the key to decrypt them in the same archive —
-and the configuration file, cleartext pasted tokens included. (Cloud provider credentials are
+and the configuration file, cleartext pasted tokens included. (Cloud Provider credentials are
 not in it, because Rocky Surf stores none — issue #280.) Encrypt it, or store `secret.key`
 separately via `ROCKYSURF_SECRET_KEY` and back up only the database.
 
@@ -399,10 +399,10 @@ What makes the artifact safe to put wherever you keep files:
   restore report lists the redacted tokens by name so you know exactly which to paste back in.
 
 Restore is a **merge, never a replace**: everything in the file is added, skipped because it
-already exists, or refused with a reason (a pack or tool id your new release ships file-backed
+already exists, or refused with a reason (a pack or Tool id your new release ships file-backed
 is refused, ADR-0018's rule), and re-running the same restore is a no-op. The new machine's
 own `server.port`, `server.host`, `server.dataDir` and `auth.mode` are kept. Your cloud
-machines are untouched either way — they live in your cloud accounts; a restored server row is
+machines are untouched either way — they live in your cloud accounts; a restored Server row is
 a record, and the reconciler then reports any machine that no longer answers, exactly as it
 does after a laptop was closed for a week. An artifact from an older Rocky Surf restores into
 a newer one (the format carries a version and is upgraded on read); the reverse is refused
@@ -441,22 +441,22 @@ republishes to GitHub Pages daily:
 https://amroja-biz.github.io/rockysurf/prices/v1/{index,aws,azure,gcp}.json
 ```
 
-Your installation fetches its provider's document at runtime and caches it (`pricing.refreshHours`,
+Your installation fetches its Provider's document at runtime and caches it (`pricing.refreshHours`,
 default 6), so a price a cloud changes today reaches you on the next publish plus one cache
 refresh — no upgrade involved. Every estimate in the UI carries the feed's own "as of" stamp.
 
 Six things worth knowing:
 
-- **A stopped server stops costing on every cloud that ships here — and not on every cloud.** The
-  estimate follows what the provider says a stopped machine costs: on a cloud whose provider
+- **A stopped Server stops costing on every cloud that ships here — and not on every cloud.** The
+  estimate follows what the Provider says a stopped machine costs: on a cloud whose Provider
   declares that a stopped machine still bills at the running rate
   ([ADR-0025](adr/0025-billing-while-stopped-is-a-capability.md)), the meter keeps running through
-  `stopped`, the server page says "Stopped, and still billing", and only terminating ends the
-  charge. None of the four shipped providers is such a cloud; DigitalOcean is.
+  `stopped`, the Server page says "Stopped, and still billing", and only terminating ends the
+  charge. None of the four shipped Providers is such a cloud; DigitalOcean is.
 - **If the feed is unreachable, prices show as unavailable — and nothing else changes.** There
-  is deliberately no stale bundled fallback: creating, stopping and terminating servers all
+  is deliberately no stale bundled fallback: creating, stopping and terminating Servers all
   work, the create form says prices are unavailable, and the spend cap reports the affected
-  servers in its `unpricedServers` count instead of silently miscounting.
+  Servers in its `unpricedServers` count instead of silently miscounting.
 - **A document that fails validation is treated as a missing one, whole.** Your installation
   checks every price in the document it fetched and rejects the entire thing if even one is not
   a positive number, because the spend cap must degrade to *unpriced* rather than to *wrong*. So
@@ -477,16 +477,16 @@ Six things worth knowing:
   the feed buys is the fix path: correcting a transcribed number reaches you on the next publish
   instead of the next release.
 
-## Personal providers
+## Personal Providers
 
-The four providers above ship with Rocky Surf. A cloud that is not among them can still be driven
-by an installation you run, without a change to this repository: a **personal provider** is an
+The four Providers above ship with Rocky Surf. A cloud that is not among them can still be driven
+by an installation you run, without a change to this repository: a **personal Provider** is an
 npm package written against
 [`@rockysurf/provider-sdk`](../packages/provider-sdk/README.md) — yours, or somebody else's — that
 you install and name in the config file
 ([ADR-0026](adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)).
 
-**A provider runs with Rocky Surf's full access — install ones you trust.** It is software running
+**A Provider runs with Rocky Surf's full access — install ones you trust.** It is software running
 inside the same process as your database, your master key and every cloud credential in your
 environment. Nothing fences it, on purpose; the decision is yours, made when you install it.
 
@@ -494,7 +494,7 @@ There are two ways to install one: **from the Rocky Surf Shop tab** in the app, 
 everything below for you, or **by hand**, which is what the tab does
 ([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issues #394 and
 #426). Either way the app owns the configuration afterwards: once a package loads, its section gets
-a Settings panel like any provider that shipped with the release. The tab is described in
+a Settings panel like any Provider that shipped with the release. The tab is described in
 [Providers in the shop](#providers-in-the-shop); the rest of this section is the manual path, and it
 is worth reading either way, because it is what ends up on disk. Providers other people have
 published are also listed, with the same steps, in the [providers section of the Rocky Surf
@@ -512,7 +512,7 @@ npm install @someone/rockysurf-provider-digitalocean
 ```
 
 In the container the folder is `/data/providers`, on the volume. Then add a section to the config
-file, keyed by the provider's id, naming the package:
+file, keyed by the Provider's id, naming the package:
 
 ```yaml
 providers:
@@ -523,39 +523,39 @@ providers:
     region: nyc3
 ```
 
-`package` may also be a path to a built package directory or file — the shape for a provider you
+`package` may also be a path to a built package directory or file — the shape for a Provider you
 are developing in a checkout beside this one. Everything else in the section belongs to the
-provider and is validated by the provider's own schema when Rocky Surf starts; `sizes` is the
-same allowlist every provider gets.
+Provider and is validated by the Provider's own schema when Rocky Surf starts; `sizes` is the
+same allowlist every Provider gets.
 
 What to expect:
 
 - **Packages load when Rocky Surf starts.** Adding a section, or changing which package it names,
   takes effect at the next restart. Enabling or disabling one takes effect on save, like every
-  other provider — the package is loaded whether or not the section is enabled.
+  other Provider — the package is loaded whether or not the section is enabled.
 - **A package that cannot load never stops Rocky Surf starting.** Not installed, fails on import,
-  not a provider factory, an id that does not match the section key: each is reported on the New
+  not a Provider factory, an id that does not match the section key: each is reported on the New
   Server page and in the boot log, in a sentence naming the section, and everything else keeps
   working.
 - **The Settings page shows the section**, with its Enabled switch and the package it loads from —
-  and, when the provider declares its settings
+  and, when the Provider declares its settings
   ([ADR-0027](adr/0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md)), its
   own fields too: a token box that takes a variable name, its regions and options, the SSH
   whitelist if it has one, saved machine types under Preferences, and any notes its author wrote
-  for you. A value under a personal section that the provider has not declared is masked on that
+  for you. A value under a personal section that the Provider has not declared is masked on that
   page, never shown, because it could be a credential; edit it in the file.
 - **Credentials work the way they do for Hetzner.** A token named in the file as `${VAR}` is read
-  from your environment; a provider may also name the variable itself, so the first-run wizard
+  from your environment; a Provider may also name the variable itself, so the first-run wizard
   can say when it has been detected. Rocky Surf stores none of it.
-- **A misspelled shipped provider is still caught.** `providers.hetzer:` is refused with "did you
+- **A misspelled shipped Provider is still caught.** `providers.hetzer:` is refused with "did you
   mean hetzner?", not with advice to install a package.
 
-### DigitalOcean, the one this repository ships as a personal provider
+### DigitalOcean, the one this repository ships as a personal Provider
 
-`@rockysurf/provider-digitalocean` is a real, complete provider that is deliberately NOT wired into
+`@rockysurf/provider-digitalocean` is a real, complete Provider that is deliberately NOT wired into
 Rocky Surf's composition root: it lives in this repository at `packages/provider-digitalocean`, is
-built and tested by CI like any other package, and is installed the way any personal provider is
-(issue #368). It is what a personal provider looks like when it is finished, and it is the one to
+built and tested by CI like any other package, and is installed the way any personal Provider is
+(issue #368). It is what a personal Provider looks like when it is finished, and it is the one to
 copy.
 
 ```bash
@@ -576,7 +576,7 @@ providers:
 ```
 
 **It installs without a package manager too**, which matters because it is the artifact the
-provider shop hands you and because an air-gapped or npm-less install is a real one:
+Provider shop hands you and because an air-gapped or npm-less install is a real one:
 
 ```bash
 mkdir -p ~/.rockysurf/providers/node_modules/@rockysurf/provider-digitalocean
@@ -586,7 +586,7 @@ tar -xzf rockysurf-provider-digitalocean-0.1.0.tgz \
 
 That works because the package declares no runtime dependencies at all — the SDK helpers it uses
 are compiled into its `dist/` — so there is nothing left to resolve once the files are on disk. A
-personal provider that needs `npm install` to be usable is one an installer cannot check, and this
+personal Provider that needs `npm install` to be usable is one an installer cannot check, and this
 one is the worked example of the other shape. `packages/rockysurf/src/personal-provider-tarball.test.ts`
 packs, extracts and boots it on every CI run, so the property is asserted rather than remembered.
 
@@ -595,7 +595,7 @@ That is not a coincidence and not only an air-gap convenience: it is the require
 installer never runs a package manager either. It refuses an artifact whose declared runtime
 dependencies are not already present, and names them.
 
-Two things about DigitalOcean itself the provider's README says at more length, and which are the
+Two things about DigitalOcean itself the Provider's README says at more length, and which are the
 reason it exists: **a powered-off droplet keeps billing at the full rate** — only destroying it
 ends the charge, and Rocky Surf's meter and the New Server page both say so — and **removing a
 network from `sshAllowedCidr` takes effect in one step**, because a DigitalOcean firewall rule
@@ -604,7 +604,7 @@ carries no record of who wrote it and Rocky Surf therefore owns the whole firewa
 Writing one is described in [`docs/writing-a-provider.md`](writing-a-provider.md), and the
 `add-provider` skill in `.agents/skills/` walks an agent through it.
 
-## SSH access on a new server
+## SSH access on a new Server
 
 ### Saving the keys you reuse
 
@@ -617,7 +617,7 @@ preselecting one would authorize a key you had not looked at.
 **Pasting still works, and nothing about it changed.** "Paste a different public key…" is always
 in the list, it is the default whenever there is more than one saved key, and an installation
 that has saved none never sees a picker at all. What goes on the wire is the same either way:
-the key itself, never the name it was chosen by, so a server is answerable to the key it actually
+the key itself, never the name it was chosen by, so a Server is answerable to the key it actually
 authorized and editing the list later cannot rewrite the history of a box.
 
 **Public halves only, and this is enforced rather than requested.** Both the settings save and
@@ -649,11 +649,11 @@ exactly how the pasted key is parsed and appended.
 
 That is where it used to end: both keys, forever. It no longer does. Once bootstrap finishes, the
 plan's last step removes Rocky Surf's own key from the box and core retires the private half it
-had stored — your supplied key becomes the only one on it. The server page's Connect panel
-reflects this live: while bootstrap is still running (or on a server created before this
+had stored — your supplied key becomes the only one on it. The Server page's Connect panel
+reflects this live: while bootstrap is still running (or on a Server created before this
 existed), it leads with your key and keeps the generated `.pem` reachable as a disclosed recovery
 path; once retirement is confirmed, that disclosure and every `.pem`-based command disappear, and
-there is nothing left to download. If you ever lose your own key on a server whose bootstrap
+there is nothing left to download. If you ever lose your own key on a Server whose bootstrap
 finished, there is no generated key left to fall back to — that trade is the point.
 
 ### When a box reads as filtered but its network is already in the list
@@ -848,7 +848,7 @@ a substitute, so if you configure only `tokens`, a pack that shells out to `gh` 
 — which is the honest answer, since none of them is the general-purpose one.
 
 **A box is given only the tokens its own repositories need.** The list above describes the whole
-installation; an individual server receives the entries that its declared repositories actually
+installation; an individual Server receives the entries that its declared repositories actually
 select, and nothing else. A box created for `acme/widgets` gets the `acme/widgets` token; it does
 not get `${ENTERPRISE_PAT}`, and a box created for nothing in particular gets no scoped token at
 all. This is what makes it worth writing one entry per repository rather than one broad one: the
@@ -859,8 +859,8 @@ credential rather than a repository's — see the note above about `$GITHUB_TOKE
 
 The trade is worth knowing before you meet it: **there is no way to add a token to a running
 box.** `secrets.env` is written once. If you later clone a private repository nobody declared when
-the server was created, the box has only what `pat` covers, and the options are to terminate and
-recreate with that repository declared, or to authenticate that one clone by hand. Each server's
+the Server was created, the box has only what `pat` covers, and the options are to terminate and
+recreate with that repository declared, or to authenticate that one clone by hand. Each Server's
 detail page lists the scopes it carries and says the same thing.
 
 **The create form shows you all of this as you type.** Each repository URL is resolved live
@@ -956,7 +956,7 @@ entry of `tokens` alike:
   running process cannot be handed a new environment. Boxes already provisioned keep the tokens
   they were built with — `secrets.env` is on the box. A connected account behaves the same way:
   that token lives in the encrypted store, read at the moment a box is created.
-- **Every token in this file is instance-wide, so scope each one like it.** Every server created
+- **Every token in this file is instance-wide, so scope each one like it.** Every Server created
   on this installation gets all of them, whoever created it — a repo-scoped entry narrows which
   repository a token is *used for*, not which people receive it. On a single-admin install that
   is exactly what you want; on an installation where other people can hold accounts, understand
@@ -969,7 +969,7 @@ entry of `tokens` alike:
   `ROCKYSURF_ADMIN_PASSWORD` are, along with `ROCKYSURF_PUBLIC_DIR`, the only variables core
   reads directly.)
 
-If a clone still fails, the bootstrap log for that server carries git's own message. The fastest
+If a clone still fails, the bootstrap log for that Server carries git's own message. The fastest
 way to tell the two causes apart is to SSH to the box and look at
 `/var/lib/rockysurf/secrets.env`: no `GITHUB_TOKEN` line means core had no token to send, so the
 problem is on this end; a line that is there while the clone still 403s means the token itself
@@ -981,11 +981,11 @@ plumbing for the credential helper, not something a pack should read; `$GITHUB_T
 name packs are promised.)
 
 The set in that file is this box's, not the installation's, so a scope you expected and cannot
-find usually means the repository was not declared when the server was created — the server's
+find usually means the repository was not declared when the Server was created — the Server's
 detail page lists what it carries, and the answer is the same either way: recreate with the
 repository declared, or authenticate that clone by hand.
 
-## Your own startup script on a new server
+## Your own startup script on a new Server
 
 The create form's **Startup script** field takes a shell script that the box runs once, during
 setup, before it is handed to you. It is Rocky Surf's answer to
@@ -1001,11 +1001,11 @@ instruction to your own box.
 
 | | |
 |---|---|
-| **When it runs** | Once, near the end of setup: after every tool in the pack is installed, after your repositories are cloned, and after each tool's setup script. Before the login banner, the desktop password and the SSH-key retirement, which are Rocky Surf's own last steps. |
+| **When it runs** | Once, near the end of setup: after every Tool in the pack is installed, after your repositories are cloned, and after each Tool's setup script. Before the login banner, the desktop password and the SSH-key retirement, which are Rocky Surf's own last steps. |
 | **As whom** | `root` or `rocky`, as you chose. Rocky Surf drops privilege for you; do not write `sudo -u rocky` wrappers of your own. |
 | **What it gets** | The same environment a pack script gets: `$ARCH`, `$HOME` (of whoever is running it), `$REPOS` (comma-separated clone URLs, possibly empty), `DEBIAN_FRONTEND=noninteractive`, `$GITHUB_TOKEN` and `$RDP_PASSWORD` when they are configured, and git's credential environment so a `git clone` of a private repository authenticates the way the plan's own clones did. |
 | **How it is run** | With `bash`. Nothing is added to your script except that environment — in particular **no `set -e`**: the step's exit status is your script's own, exactly as with EC2 user data. Write `set -euo pipefail` at the top yourself if that is what you want. |
-| **If it fails** | The server still comes up. A failed script is recorded as a **warning**, with its whole log, on the server's page — the same treatment a repository that would not clone gets, and for the same reason ([ADR-0010](adr/0010-failed-tool-install-terminates-the-box.md)): everything you actually ordered is on the box, and you need the box in order to fix the script. Only a failed *tool install* releases a machine. |
+| **If it fails** | The Server still comes up. A failed script is recorded as a **warning**, with its whole log, on the Server's page — the same treatment a repository that would not clone gets, and for the same reason ([ADR-0010](adr/0010-failed-tool-install-terminates-the-box.md)): everything you actually ordered is on the box, and you need the box in order to fix the script. Only a failed *Tool install* releases a machine. |
 | **How long it may take** | 30 minutes, after which the step is killed and recorded as a warning. |
 | **How big it may be** | 16 KiB, the same ceiling EC2 puts on user data. Anything larger belongs in a repository the box clones — have the script run *that*. |
 | **Run once, or every boot?** | Once, during setup, and never again. It is a step in the install plan, not a boot hook. If you want something to run on every boot, have the script install a systemd unit that does. |
@@ -1050,17 +1050,17 @@ can read back through the app.
 
 | | |
 |---|---|
-| **An ordinary value** | Stored on the server's row and shown on its page, so "what was this box built with" has an answer after the create screen is gone. |
-| **A value the pack marked secret** | Stored encrypted, beside the desktop password, and returned by **no** route — not the server page, not the API, not the list. Rocky Surf will not show it back to you, so keep your own copy. (The box has it: it is in `rocky`'s shell and in `~/.config/rockysurf/environment` there. What refuses to hand it back is the control plane, not the machine you put it on.) |
+| **An ordinary value** | Stored on the Server's row and shown on its page, so "what was this box built with" has an answer after the create screen is gone. |
+| **A value the pack marked secret** | Stored encrypted, beside the desktop password, and returned by **no** route — not the Server page, not the API, not the list. Rocky Surf will not show it back to you, so keep your own copy. (The box has it: it is in `rocky`'s shell and in `~/.config/rockysurf/environment` there. What refuses to hand it back is the control plane, not the machine you put it on.) |
 | **Either** | Never written into the install plan, which is stored in the clear and quoted in failure reports. |
 
 **A required setting with nothing in it refuses the create**, before a machine is launched. That
 is deliberate: the alternative is a box that boots, installs everything, and then fails the
 pack's own step — minutes later, and billed by the hour.
 
-**Changing a pack after a server exists changes nothing about that server.** The values are the
+**Changing a pack after a Server exists changes nothing about that Server.** The values are the
 ones its creator gave, kept on its row; if the pack later adds a setting, an existing box simply
-does not have it, and if the pack drops one, the box keeps it. Only new servers are asked the new
+does not have it, and if the pack drops one, the box keeps it. Only new Servers are asked the new
 questions.
 
 From the CLI, one flag per value, or a file:
@@ -1114,10 +1114,10 @@ directory in the clear: this is your box, the same value was already handed to e
 step, and `rocky` has `sudo` regardless — but it is worth knowing before you back the home
 directory up somewhere else.
 
-**A line starting with `secret:` is stored encrypted** and returned by no route: not the server
+**A line starting with `secret:` is stored encrypted** and returned by no route: not the Server
 page, not the API, not the list. Rocky Surf will not show it back to you, so keep your own copy —
 the box will, in the file above, to anyone who can open a shell on it. A line
-without the marker is stored in the clear and shown on the server's page, so you can answer "what
+without the marker is stored in the clear and shown on the Server's page, so you can answer "what
 was this box built with" months later.
 
 A few rules, and why:
@@ -1144,7 +1144,7 @@ history file. Put it in the file instead.
 
 ## Surge Packs, and what happens when one breaks
 
-Surge Packs are the software bundles a server is created with, loaded from YAML files in `packs/`
+Surge Packs are the software bundles a Server is created with, loaded from YAML files in `packs/`
 and synced into the database on boot. The files are the source of truth; the database is a cache
 and edit layer. (The product says "Surge Pack"; the directory, the `packId` key and the code all
 say `pack`. Both spellings are load-bearing and neither is changing.)
@@ -1162,30 +1162,30 @@ longer validates keep installing software indefinitely, with the divergence invi
 installable should exist that cannot validate.
 
 **The part that surprises people: a broken file can take other packs down with it.** Packs share
-tool definitions by referencing ids across files, and a reference to a tool that is not defined
+Tool definitions by referencing ids across files, and a reference to a Tool that is not defined
 anywhere is itself a validation issue — charged to the file doing the *referencing*. So breaking
-a file that defines shared tools invalidates every file that depends on it.
+a file that defines shared Tools invalidates every file that depends on it.
 
 That is not hypothetical with the shipped set. `claude-code.yaml` defines the 16-tool base
-toolchain, and the other five packs reference 15 to 18 tools apiece that are defined outside
+toolchain, and the other five packs reference 15 to 18 Tools apiece that are defined outside
 themselves — `amp-agents`, `codex-cli`, `open-claw` and `open-code` each pull 15 from
 `claude-code`, and `gas-town` pulls 18 from three different files. A syntax error in
 `claude-code.yaml` alone therefore invalidates every shipped pack, and the boot log will
 name all six files rather than the one you edited. **Read the log from the top: the first file
 listed is usually the one to fix.**
 
-### When a server's setup fails
+### When a Server's setup fails
 
-A server is only `running` once every required step of its install plan has finished. When a
-**tool install** fails — a package mirror down, a script that exits non-zero — Rocky Surf
-**terminates the machine** and fails the server with a complete report: which tool, why (in words,
+A Server is only `running` once every required step of its install plan has finished. When a
+**Tool install** fails — a package mirror down, a script that exits non-zero — Rocky Surf
+**terminates the machine** and fails the Server with a complete report: which Tool, why (in words,
 with the decisive lines from the log), the whole log of that step, and what happened to the
 machine. Nothing the user made exists on a box before it is ready, so there is nothing to keep, and
-a half-installed box would only bill. The failed server stays on the dashboard with its report
+a half-installed box would only bill. The failed Server stays on the dashboard with its report
 until you dismiss it, and is not billing.
 
 When a **repository fails to clone**, the box is delivered anyway — that is a warning on the
-running server, naming the repository and the reason, not a failure. Other finishing steps that
+running Server, naming the repository and the reason, not a failure. Other finishing steps that
 fail (the login banner, the remote-desktop password) keep the machine up with the still-billing
 notice, as before.
 
@@ -1245,7 +1245,7 @@ Packs also come from a **registry** — a separate repository of pack files plus
 `index.json`. The default is
 [`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop). Browsing it and
 installing from it happen in the admin UI, on the **Rocky Surf Shop** tab (`/shop`) — which lists
-the registry's packs and its providers together — and on the Community sub-tab of Surge Packs,
+the registry's packs and its Providers together — and on the Community sub-tab of Surge Packs,
 which keeps its own catalogue and links to the Shop tab. An installed pack appears in the picker
 immediately: no restart.
 
@@ -1286,21 +1286,21 @@ third of these; the second is a config-file thing, not a button on this page.
    and reinstallable, where a one-time fetch of the same URL was neither.
 3. **Start from an existing pack.** New Surge Pack's third choice: pick any pack already on this
    installation — official, community or personal — and the same create form as **Start from
-   scratch** opens, seeded with a new `packId` and name and the source's own tools already
-   checked. This is also what happens when you add one of your tools to an official pack from the
+   scratch** opens, seeded with a new `packId` and name and the source's own Tools already
+   checked. This is also what happens when you add one of your Tools to an official pack from the
    Tools page: **an official pack is never changed, it is copied.** The copy remembers what it
    started from, keeps that pack's mark with a small bright **∆** on it, and appears on Personal —
    while the official pack stays on Official, unchanged and still selectable. **Only your copy
    gets the ∆**: it is the one that was modified, and it is wearing artwork that belongs to the
    official pack, so the ∆ is what says so. The official pack gets a different and quieter mark in
    the opposite corner — a small outlined **⧉** — meaning "a personal version of this exists",
-   never "this was changed". Rest on either mark to see which pack it means. Nothing syncs between them: the copy's list of tools is yours from that moment, though
-   the tools themselves stay up to date, because a pack references tools rather than containing
+   never "this was changed". Rest on either mark to see which pack it means. Nothing syncs between them: the copy's list of Tools is yours from that moment, though
+   the Tools themselves stay up to date, because a pack references Tools rather than containing
    them. A copy you **export** carries no mark and no borrowed artwork — the person you send it to
-   has not forked anything, so official-looking art on their installation would be a lie. Deliberately not `Export`'s output: Export inlines a full definition for every tool
+   has not forked anything, so official-looking art on their installation would be a lie. Deliberately not `Export`'s output: Export inlines a full definition for every Tool
    the pack references, and importing that back would redefine — not reference — every one of
-   them, up to and including the shared base tools other packs depend on. This seeds from the
-   pack's tool **ids** instead, the same as picking them by hand, which is the UI version of
+   them, up to and including the shared base Tools other packs depend on. This seeds from the
+   pack's Tool **ids** instead, the same as picking them by hand, which is the UI version of
    `docs/surge-pack-contract.md` § "Building on an existing pack".
 
 A source's URL says what shape it is. **Ending in `.yaml` or `.yml`, the URL is the pack** — one
@@ -1365,25 +1365,25 @@ from; the Rocky Surf Shop tab shows what each registry lists, installed or not.
 
 ### Providers in the shop
 
-A registry distributes **providers** as well as packs
+A registry distributes **Providers** as well as packs
 ([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issues #394 and
 #426). They are listed in a separate file, `providers.json`, beside `index.json` and served by the
 same sources — so the same `registry.sources` list, the same trust label you wrote, and the same
 rule that nothing is fetched until you open the tab. A source whose URL is a single `.yaml` file is
-one pack and publishes no providers; that shelf says so.
+one pack and publishes no Providers; that shelf says so.
 
 **Rocky Surf Shop** (`/shop`) → **Providers** is where they are listed and installed. Providers are
-not on the Surge Packs page, and a provider is configured on the **Settings** page once it loads
+not on the Surge Packs page, and a Provider is configured on the **Settings** page once it loads
 (issue #394); the Shop tab is only where one is found and installed (issue #426). Before you
 install anything, each entry shows:
 
-- what the provider is called and what it does, its version, and the npm package that would land
+- what the Provider is called and what it does, its version, and the npm package that would land
   on this machine;
 - **what it will ask you to configure** — the fields it declares, with credentials marked as such;
 - **its capability answers** — whether machines can be stopped, whether a stopped one still bills,
   whether the address survives a stop, whether it manages the SSH whitelist, and whether it takes
   a start-up script;
-- and one sentence, on every entry, that never varies: **a provider runs with Rocky Surf's full
+- and one sentence, on every entry, that never varies: **a Provider runs with Rocky Surf's full
   access — install ones you trust.**
 
 That sentence is Rocky Surf's, not the registry's. There is no field for it in `providers.json`
@@ -1401,7 +1401,7 @@ about trustworthiness written by the party being trusted is worth nothing.
 4. checks the package is the one the listing named, and that its entry point resolves the way the
    loader will resolve it at startup;
 5. refuses a package that declares any runtime dependency, naming them — **Rocky Surf never runs
-   npm**, so a provider published to the shop has to carry everything it needs;
+   npm**, so a Provider published to the shop has to carry everything it needs;
 6. writes it under `<dataDir>/providers`, exactly where the manual instructions above put it;
 7. adds `providers.<id>.package` and `enabled: true` to your config file, through the same write
    the Settings page uses — comments and everything else in the file are left alone;
@@ -1411,9 +1411,9 @@ A refusal at any step writes nothing: a listing with a stale `sha256`, or one wh
 `http` address, is refused in a sentence and nothing appears under `<dataDir>/providers`.
 
 **Nothing from the package runs at any point in that list.** A `package.json` `scripts` block is
-read and ignored. The provider's code runs when you restart Rocky Surf and its loader imports the
+read and ignored. The Provider's code runs when you restart Rocky Surf and its loader imports the
 package — which is the moment you chose. After the restart the card on the Shop tab reads as
-installed, and the provider is configured on the Settings page, on its own tab, exactly like AWS or
+installed, and the Provider is configured on the Settings page, on its own tab, exactly like AWS or
 Hetzner: the fields it declares, its credentials as credentials, its SSH whitelist if it has one,
 and whatever notes its author wrote for you.
 
@@ -1422,12 +1422,12 @@ of the old version survives. The version shown as installed is read from the pac
 it is right even if you have since installed something there by hand.
 
 **Remove** deletes the package and the whole `providers.<id>` section — including anything you
-configured in it — after asking. It is **refused while servers created with that provider still
-exist**, because a provider whose package is gone cannot describe, stop or terminate them.
-Terminate those first. Removing also needs a restart to take the provider out of the running
+configured in it — after asking. It is **refused while Servers created with that Provider still
+exist**, because a Provider whose package is gone cannot describe, stop or terminate them.
+Terminate those first. Removing also needs a restart to take the Provider out of the running
 process.
 
-The command-line steps in [Personal providers](#personal-providers) above remain the manual
+The command-line steps in [Personal Providers](#personal-providers) above remain the manual
 alternative, and the [providers section of the Rocky Surf
 Shop](https://github.com/amroja-biz/rockysurf-shop#providers) lists the same entries for a person
 reading the repository directly.
@@ -1461,18 +1461,18 @@ was changed. A copy that has itself been copied shows both, which is why they si
 corners. They are marks and nothing more — they filter nothing and disable nothing, and no
 official pack is ever written to.
 
-**Putting one tool on every box.** A tool reaches a box only through a Surge Pack, so registering
+**Putting one Tool on every box.** A Tool reaches a box only through a Surge Pack, so registering
 one installs nothing by itself; the Tools page's **Add to a pack…** is how it gets somewhere. It
-adds the tool to a pack of your own outright, and offers to copy an official one for you. Beside
+adds the Tool to a pack of your own outright, and offers to copy an official one for you. Beside
 those is the other option — **install it on every box you create from now on** — which is one
 setting rather than an edit to every pack, so a pack you make next month gets it too. It is asked
-for explicitly, because the blast radius is every server you create afterwards: a tool set this way
-must not depend on anything a particular pack installs, since **a tool that fails to install
-terminates the box**, and one that is wrong here breaks every new server rather than one. Servers
-that already exist never change — a server's install plan is written when it is created. The New
+for explicitly, because the blast radius is every Server you create afterwards: a Tool set this way
+must not depend on anything a particular pack installs, since **a Tool that fails to install
+terminates the box**, and one that is wrong here breaks every new Server rather than one. Servers
+that already exist never change — a Server's install plan is written when it is created. The New
 Server page lists these under the pack chooser so what you are about to install is on the screen
 before you install it, and deleting such a tool warns you, because the guard that refuses to delete
-a tool a pack is using cannot see this one: no pack lists it.
+a Tool a pack is using cannot see this one: no pack lists it.
 
 Community carries a fixed caption naming where its catalogue comes from — *Community packs from
 Rocky Surf Shop* — and a filter — **All** / **Installed** / **Not installed**, defaulting to
@@ -1484,7 +1484,7 @@ one-off import, the URL it was fetched from. There is no install button anywhere
 those scripts.
 
 Resting on **any** pack's card for a second opens what it installs, with a button to create a
-server with it and one to export its file. Every pack's own page also shows that file in full,
+Server with it and one to export its file. Every pack's own page also shows that file in full,
 read-only, with **Export** beside it as a file to drop into `packs/` and commit — for an official
 pack because it shipped in your release and there is nothing in it you cannot already read in
 `packs/`, and for a pack you created or installed from a registry because the same route already
@@ -1520,7 +1520,7 @@ because making a box costs money and destroying one costs work that does not com
 Every one of them is deliberately small, because an MCP result is paid for on every call and
 truncated by the client when it is not (issues #415, #416):
 
-- `list_servers` lists the servers you **have**. Terminated ones are history and are left out
+- `list_servers` lists the Servers you **have**. Terminated ones are history and are left out
   unless the agent passes `include_terminated`. Each row is the fleet view — status, address,
   size, hourly cost, and the bootstrap step while a box is building — not the whole record;
   `get_server` returns that, including the environment a box was built with, the repositories
@@ -1531,7 +1531,7 @@ truncated by the client when it is not (issues #415, #416):
 - `list_offerings` is where the machine types and prices live, up to 100 per call; when there
   are more, the result carries a `nextCursor` to pass back. Types the cloud is out of right now
   are listed with `available: false` unless the agent asks for `available_only`. Types your
-  configured region does not sell are not there at all — a provider reports the catalogue for
+  configured region does not sell are not there at all — a Provider reports the catalogue for
   the region it is configured for.
 
 Nothing is withheld from an agent by any of this. It is a size decision, and every field left

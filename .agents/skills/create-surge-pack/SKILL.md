@@ -5,7 +5,7 @@ description: Author a Surge Pack for Rocky Surf — the single YAML file that de
 
 # Create a Surge Pack
 
-A Surge Pack is a bundle of tools Rocky Surf installs on a fresh cloud box. It is **one YAML
+A Surge Pack is a bundle of Tools Rocky Surf installs on a fresh cloud box. It is **one YAML
 file**: data rather than code, so adding one needs no change to the application.
 
 Your job in this skill is to take the user from "I want a box with X on it" to a pack file that
@@ -36,7 +36,7 @@ Ubuntu, the `nvm` note, the emulation the second architecture needs, and what to
 these is missing.
 
 None of this is about the box the pack builds. The `apt-get install` and `npm install -g` lines you
-will write into an `installScript` run on the Rocky Surf server, which starts empty by design.
+will write into an `installScript` run on the Rocky Surf Server, which starts empty by design.
 
 ## Before you write anything
 
@@ -79,18 +79,18 @@ exists get modified, or does it stay exactly as it is?**
 | The user wants | Mode | What changes on disk |
 |---|---|---|
 | their own variant — extra tooling on top of a pack that already works; the original stays in the picker, untouched | **Derive** (the default) | exactly one new file, `packs/<new-id>.yaml` |
-| everyone who already uses pack X to get the new tool too, and X is theirs to change | **Amend** | the one existing `packs/X.yaml` |
-| a new tool that several packs should share | one definition in whichever file owns it, referenced from each pack's `tools:` list | the owning file, plus each pack's `tools:` list |
+| everyone who already uses pack X to get the new Tool too, and X is theirs to change | **Amend** | the one existing `packs/X.yaml` |
+| a new Tool that several packs should share | one definition in whichever file owns it, referenced from each pack's `tools:` list | the owning file, plus each pack's `tools:` list |
 
-**Adding one tool that several packs should share?** The tool itself — the interview, the script,
+**Adding one Tool that several packs should share?** The Tool itself — the interview, the script,
 proving it, and exporting it as a file you can send someone — is
 [`register-a-tool`](../register-a-tool/SKILL.md). Come back here to define it in whichever pack
-file owns it and reference it from each pack's `tools:` list. A tool reaches a box only through a
+file owns it and reference it from each pack's `tools:` list. A Tool reaches a box only through a
 pack, so that second half is not optional.
 
 **Default to derive.** A derived pack cannot break anybody else's pack; an amend to a base file
 like `packs/claude-code.yaml` empties the entire pack picker at boot if it goes wrong (see
-`references/shipping.md`). If the user is only adding tools on top of something that already
+`references/shipping.md`). If the user is only adding Tools on top of something that already
 works — "add X on top of the Y pack" — that is a derive, and it is what Step 1E below covers. A
 pack with nothing existing to build on falls through to Step 1 unchanged.
 
@@ -99,22 +99,22 @@ pack with nothing existing to build on falls through to Step 1 unchanged.
 Ask before you write. These are the questions whose answers change the file; do not ask anything
 else, and infer what you reasonably can from what the user already said.
 
-- **What goes on the box?** Get a concrete list of tools with versions where they care. For each
+- **What goes on the box?** Get a concrete list of Tools with versions where they care. For each
   one you will need: how it installs on Ubuntu 24.04 (apt / npm -g / a release tarball / an
   upstream `install.sh`), and its home page URL, which the format requires.
 - **Whose software is it?** A system package is root's. A per-user CLI that lives in `$HOME` is
-  `rocky`'s. If a tool is both, it is two tools. This is rule 4 and it is the second most common
+  `rocky`'s. If a Tool is both, it is two Tools. This is rule 4 and it is the second most common
   way a pack fails.
 - **Do they want repositories cloned?** If yes the pack sets `requiresRepos: true` and the user
   picks repositories at create time. The install plan clones them for you — you write no clone
   code — and `$REPOS` reaches your scripts so you can do extra work per repository. A `git`
-  your setup script runs against one of those URLs, itself or through a tool that clones on its
+  your setup script runs against one of those URLs, itself or through a Tool that clones on its
   own (`gt rig add` does), authenticates the way the clone did: the bootstrap hands the step the
   clone's credential helper through `GIT_CONFIG_*`. Write no credential code.
 - **How much of the shared base toolchain do they want?** See below. This is the highest-leverage
   question in the whole file and the easiest one to skip: it decides both what the box can do and
   how long every smoke run takes.
-- **Where does each tool come from — a registry, or GitHub releases?** It decides the version
+- **Where does each Tool come from — a registry, or GitHub releases?** It decides the version
   question for you. Anything on a quota-free registry (npm, PyPI via `pipx`) installs
   **unversioned**, so there is no pin and nothing to bump. Anything that ships only as a GitHub
   release asset is pinned to a tag and checked against a `sha256`, and that pin needs bump
@@ -134,7 +134,7 @@ else, and infer what you reasonably can from what the user already said.
   with other people. See `references/shipping.md`; the short version is in step 6.
 
 **If you cannot reach the user**, do not stall — these defaults are defensible, and say which ones
-you took: install registry-served tools unversioned, pin what comes from GitHub releases and note
+you took: install registry-served Tools unversioned, pin what comes from GitHub releases and note
 where a bump comes from; take the base subset
 your pack's purpose actually implies (below); `requiresRepos: true` for a pack aimed at working on
 code and `false` for a pack that is a workstation; headless unless a GUI was named; and assume the
@@ -148,11 +148,11 @@ new pack needs is usually already there.
 
 **Take the subset you need.** The shipped packs list the full set because they are
 general-purpose AI-coding boxes, not because the format requires it. A narrower pack should say so
-with its tool list — a terminal-first box has no use for Chromium, and dropping `playwright` and
+with its Tool list — a terminal-first box has no use for Chromium, and dropping `playwright` and
 `playwright-deps` roughly halves every smoke run you are about to do.
 
 Trimming is safe only if you know what the survivors need. Ordering does not install anything, so
-if you drop a tool that another one depends on, the dependent breaks:
+if you drop a Tool that another one depends on, the dependent breaks:
 
 | Tool | Order | Needs |
 |---|---|---|
@@ -166,14 +166,14 @@ if you drop a tool that another one depends on, the dependent breaks:
 | `claude-code` | 40 | `curl` only — **not** `nodejs`; its installer ships its own runtime |
 
 Anything you add yourself follows the same rule, so state its needs in a comment. Say out loud
-which base tools you dropped and why, so the user can push back.
+which base Tools you dropped and why, so the user can push back.
 
 ## Step 1E — Extending an existing pack
 
 Skip this step for a from-scratch pack. Read it when the user is deriving from, or amending, a
 pack that already ships — `packs/gas-town.yaml` is the in-repo proof this pattern already works:
 it lists the shared base toolchain plus three other packs' agents (`claude-code`, `amp`,
-`codex`) plus its own three tools. No format change is involved anywhere below; `pack.tools` is
+`codex`) plus its own three Tools. No format change is involved anywhere below; `pack.tools` is
 just a list of ids, and it already resolves across files.
 
 **The derive workflow:**
@@ -192,20 +192,20 @@ just a list of ids, and it already resolves across files.
    breaks every npm-installed agent that needs it.
 4. **Carry the base's behaviour flags** (`requiresRepos`, `requiresRdp`, `desktop`, `webPort`,
    `inputs`) unless something you are adding changes the answer — a loopback web UI needs
-   `webPort`, a GUI app needs `desktop: xfce` and `requiresRdp: true`, and a tool that cannot
+   `webPort`, a GUI app needs `desktop: xfce` and `requiresRdp: true`, and a Tool that cannot
    install without a key of the user's needs an `inputs` entry. Carrying an `inputs` entry whose
-   tool you dropped means asking for a value nothing reads: drop it too.
-5. **Add only new ids to `pack.tools`, and define only those new tools under `tools:`.** Never
-   redefine a tool the base owns: the loader rejects a `toolId` defined in two files, `pack lint`
+   Tool you dropped means asking for a value nothing reads: drop it too.
+5. **Add only new ids to `pack.tools`, and define only those new Tools under `tools:`.** Never
+   redefine a Tool the base owns: the loader rejects a `toolId` defined in two files, `pack lint`
    fires `duplicate-tool`, and on import a redefinition silently overwrites the shipped row for
-   every pack on that instance. A base tool that needs to behave differently gets your own id
+   every pack on that instance. A base Tool that needs to behave differently gets your own id
    instead (`acme-curl`), not the base's.
-6. **`installOrder` for the tools you add uses the gaps — never renumber the base's tools.** An
+6. **`installOrder` for the Tools you add uses the gaps — never renumber the base's Tools.** An
    add-on that needs `nodejs` (band 20) sits at 40; one that needs an agent already installed sits
    at 50. The bands are in the dependency table above and in `docs/surge-pack-contract.md`; `pack lint`
    rejects anything outside 10–60.
-7. **`guide`: start from the base's guide and append — do not replace it.** Every tool the base
-   installed is still on the box, so its instructions are all still true. Add one block per tool
+7. **`guide`: start from the base's guide and append — do not replace it.** Every Tool the base
+   installed is still on the box, so its instructions are all still true. Add one block per Tool
    you added.
 
 **Then verify as if it were a brand-new pack, because to the harness it is one.** Step 3
@@ -223,12 +223,12 @@ git status --porcelain packs/         # a derive shows exactly one new file, not
 If that shows `packs/<base>.yaml` as modified, the user is amending, not deriving — see below,
 and re-smoke that file specifically.
 
-**The amend path, when the base pack really is being changed:** add the tool under `tools:` and
-its id to `pack.tools`, same four rules and bands as any other tool, then re-run Step 3 and Step
+**The amend path, when the base pack really is being changed:** add the Tool under `tools:` and
+its id to `pack.tools`, same four rules and bands as any other Tool, then re-run Step 3 and Step
 4 **on the amended pack**. If the file is `packs/claude-code.yaml`, that is the shared base
 toolchain for every pack in the repository — re-smoke everything (`node scripts/pack-smoke.mjs`
 with no `--pack`), because a pack file that fails validation is skipped at boot, taking every
-pack that references its tools out of the picker with it. On a running instance, a file-backed
+pack that references its Tools out of the picker with it. On a running instance, a file-backed
 pack needs a restart to pick up the edit — there is no watcher — and an imported pack is edited
 in the admin UI or re-imported.
 
@@ -251,11 +251,11 @@ repository**, not just the base file, and `packId` and `displayOrder` are worth 
 grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u
 ```
 
-That also tells you when something close to your tool already exists, and — just as usefully —
+That also tells you when something close to your Tool already exists, and — just as usefully —
 when it does not. **Do not assume a compiler is available**: a pack that genuinely needs a
 toolchain defines its own, under its own id, and says in the file what needs it.
 
-**The base file is not the only place tool ids come from.** The agents themselves are defined
+**The base file is not the only place Tool ids come from.** The agents themselves are defined
 across `packs/amp-agents.yaml` (`amp`), `packs/codex-cli.yaml` (`codex`), `packs/open-code.yaml`
 (`opencode`), `packs/claude-code.yaml` (`claude-code`) and `packs/gas-town.yaml` (`gas-town`,
 `dolt`) — every one of them referenceable by id from your pack, and none of
@@ -264,14 +264,14 @@ so take it if you take them. If the user asked for a named agent, go and read th
 defines it before writing anything.
 
 Then open the closest worked example beside it and follow its shape. `packs/open-code.yaml` is
-the smallest: one new tool, everything else referenced from the base file. Pick from
+the smallest: one new Tool, everything else referenced from the base file. Pick from
 these by what you are doing:
 
 | You are | Read |
 |---|---|
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
-| adding an apt repository (keyring + source list) | the `gh` tool in `packs/claude-code.yaml` |
-| downloading a pinned release binary | the `dolt` tool in `packs/gas-town.yaml`, and `beads` in `packs/claude-code.yaml` for a checksummed one |
+| adding an apt repository (keyring + source list) | the `gh` Tool in `packs/claude-code.yaml` |
+| downloading a pinned release binary | the `dolt` Tool in `packs/gas-town.yaml`, and `beads` in `packs/claude-code.yaml` for a checksummed one |
 | tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of installing one instead of compiling, and why |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
@@ -288,9 +288,9 @@ Four things to get right while writing, in the order they bite:
   whole files rather than appending to them where you can.
 - **Self-containment.** A step may not assume another step ran. `installOrder` is ordering, and
   equal values break ties by `toolId` — that is a determinism guarantee so an interrupted install
-  resumes against the same plan, **not** a dependency mechanism. If your tool needs `curl`, either
-  give it a higher `installOrder` than the `curl` tool *and* accept that ordering is all you get,
-  or install `curl` yourself. The `gh` tool installs its own `curl` for exactly this reason.
+  resumes against the same plan, **not** a dependency mechanism. If your Tool needs `curl`, either
+  give it a higher `installOrder` than the `curl` Tool *and* accept that ordering is all you get,
+  or install `curl` yourself. The `gh` Tool installs its own `curl` for exactly this reason.
 - **`$ARCH`.** Never hardcode an architecture in a download URL: read `$ARCH` (already normalised
   to `amd64`/`arm64`) and `case` on it, with an explicit `exit 1` on anything else. Upstream
   labels often disagree with that spelling — `x86_64`, `aarch64`, `linux-x64` — and using their
@@ -302,10 +302,10 @@ Four things to get right while writing, in the order they bite:
   out. Verify **the name the user will type**: `apt-get install -y fd-find` gives them a binary
   called `fdfind`, and a script that checks `fdfind --version` passes while `fd` does not exist.
 
-Get the version question right, and say in a comment which of the two rules you are under. A tool
+Get the version question right, and say in a comment which of the two rules you are under. A Tool
 on a quota-free registry (npm, PyPI via `pipx`) installs **unversioned** — users expect the current
 agent and most agents update themselves anyway, so a pin bought staleness for a reproducibility it
-could not keep. A tool that ships only as a GitHub release asset stays **pinned to a tag with a
+could not keep. A Tool that ships only as a GitHub release asset stays **pinned to a tag with a
 `sha256`**, because the only way to ask GitHub for "latest" is the rate-limited API, and a pack
 that calls it breaks for everyone the moment the quota runs out. Neither rule licenses piping a
 vendor's `install.sh` to `bash`. Full
@@ -343,10 +343,10 @@ and the second one enforces things the first does not. Together they parse every
 that are checkable by reading: hardcoded architectures, `apt-get install` without `-y`, `npx`
 without `--yes`, `sudo` inside a `runAs: rocky` script (the whole body, comments included — your
 `guide` is not scanned), unguarded `>>` appends, cache-busted URLs, `apt-get install` without the
-shared apt-update stamp, `installOrder` outside 10–60, and any reference to a tool that does not
+shared apt-update stamp, `installOrder` outside 10–60, and any reference to a Tool that does not
 exist.
 
-Failures name the tool and the script: `zz-thing.installScript: expected … to contain '$ARCH'`.
+Failures name the Tool and the script: `zz-thing.installScript: expected … to contain '$ARCH'`.
 Fix everything here before you start a container — this loop is a thousand times faster than the
 one in step 4, and it catches most of what a first draft gets wrong.
 
@@ -392,7 +392,7 @@ yourself afterwards (`docker rm -f <name>`).
 
 The plan also contains steps your pack did not declare — a repository clone per selected
 repository, a `branding` step, an `rdp` step for a pack that asks for one — so the step count
-exceeding your tool count is normal.
+exceeding your Tool count is normal.
 
 A pass requires every one of these, and you should read them off the output rather than assuming:
 
@@ -415,11 +415,11 @@ maps the failures you will actually hit to their fixes, including the ones that 
 bugs and are not (`sudo: not available to install scripts on a Rocky Surf box` means rule 4, and
 the harness is right). Add `--keep` to leave the container up and go look around inside it.
 
-**Check whose step failed before you change anything.** The plan contains every tool your pack
-references, including the shared ones you did not write. If the failing step id names a tool
+**Check whose step failed before you change anything.** The plan contains every Tool your pack
+references, including the shared ones you did not write. If the failing step id names a Tool
 defined in another file, your pack may be fine and the problem is upstream of you. Isolate it
 before touching your own file — `references/verifying.md` has a recipe that runs one script
-standalone in a container — and then report it as *blocked by a shared tool*, naming the tool and
+standalone in a container — and then report it as *blocked by a shared Tool*, naming the Tool and
 the evidence, rather than editing a file that has nothing wrong with it.
 
 **About `amd64`.** On a non-x86 machine this leg either refuses to start (`exec format error`, in
@@ -440,8 +440,8 @@ minutes per run — and editing the pack afterwards means paying for it twice.
 ## Step 5 — Write the `guide`
 
 The pack installs software. It does not authenticate it: no credential of the user's reaches the
-box during bootstrap, so a freshly built server is a pile of CLIs that all want a login. `guide`
-is where you tell them how, and it is shown on the server's page as **plain text** — no markdown,
+box during bootstrap, so a freshly built Server is a pile of CLIs that all want a login. `guide`
+is where you tell them how, and it is shown on the Server's page as **plain text** — no markdown,
 no HTML. Short imperative lines, literal commands, indentation as the only structure. Copy the
 shape from `packs/open-code.yaml`.
 
@@ -471,18 +471,18 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
 - **Pull request against `packs/`** in this repository — for a pack that is going to ship *inside*
   Rocky Surf, which is what "official" means and is not what a contribution becomes (ADR-0006).
   It gets the pack smoke-tested on both architectures by CI forever. Reference the shared base
-  tool ids; do not redefine them. Work through the checklist at the end of `docs/writing-a-surge-pack.md`
+  Tool ids; do not redefine them. Work through the checklist at the end of `docs/writing-a-surge-pack.md`
   first.
 - **Upload it into their own running instance** — Surge Packs (`/packs`) → Personal → New Surge
   Pack → Upload a pack file. An imported pack becomes a database row that boot never overwrites
   and never restores. A pack published at a URL goes in by **adding it as a pack source**, below,
   which remembers and can refetch it; there is no one-off import-from-a-URL button.
 - **Start from an existing pack, in the same page** — New Surge Pack's third choice seeds the
-  create form with a new id and the source pack's own tools already checked, referencing them
+  create form with a new id and the source pack's own Tools already checked, referencing them
   the same way deriving by hand does (Step 1E). **Do not use Export as a "fork this pack"
-  button** for this instead — Export inlines every referenced tool, so reimporting its output
+  button** for this instead — Export inlines every referenced Tool, so reimporting its output
   redefines the shared base ids, which the loader rejects in-tree and which overwrites the
-  shipped tool rows instance-wide on import.
+  shipped Tool rows instance-wide on import.
 - **Publish it at an https URL and add it as a pack source** — the one to suggest when the user
   is still editing the pack, or wants somebody else to be able to subscribe to it. A line in
   `registry.sources` (`name`, `url`, `trust`), or the **Pack sources** tab of the admin Settings
@@ -493,7 +493,7 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
   shell), admin-only to add, and it applies at the next restart.
 - **Drop the file into `packs/`** in their own deployment — loaded at **boot only**, there is no
   watcher, so it needs a restart. Warn them about the cascade: a broken pack file is skipped, and
-  because tool definitions are shared, breaking `claude-code.yaml` takes every pack that
+  because Tool definitions are shared, breaking `claude-code.yaml` takes every pack that
   references it out of the picker until it is fixed.
 
 Finally, tell the user what was actually proven — which architectures ran, what CI will still
@@ -515,7 +515,7 @@ check, and anything the guide admits the box cannot do. That honesty is the whol
 - `references/desktops-and-daemons.md` — only for a pack that ships `desktop: xfce`, a background
   service, or an installer that wants a TTY. Skip it otherwise.
 - `references/shipping.md` — only when you are publishing the pack for someone else: the
-  destinations in detail, the SSRF guard's real rules, and what import does to shared tool
+  destinations in detail, the SSRF guard's real rules, and what import does to shared Tool
   definitions. Step 6 above is enough for a pack that stays on the user's own instance.
 - `references/extending.md` — only when you are deriving from or amending a pack that already
   exists: a worked derive example end to end, a symptom→fix table for what goes wrong, and the

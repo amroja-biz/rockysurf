@@ -24,7 +24,7 @@
 
 # Rocky Surf — design system
 
-Rocky Surf is an open-source control plane for **cloud servers for agentic engineering**. You run
+Rocky Surf is an open-source control plane for **cloud Servers for agentic engineering**. You run
 one process on your own machine; it creates a Linux box on your own cloud account, installs your
 coding agents on it from a **Surge Pack**, and hands you an SSH command. No SaaS, no accounts, no
 telemetry, no phone-home. AWS, Azure, GCP and Hetzner are supported, and you can install more.
@@ -61,22 +61,22 @@ is flat, specific, and slightly grim about money and credentials.
 - **Second person, always.** "Your AWS account, your Hetzner project." "Rocky Surf holds the
   credential and calls the API. The resources and the bill are yours." Never "we", never
   "users".
-- **Sentence case everywhere.** Buttons: "New server", "Download dev-box.pem", "Sign out".
-  Headings: "Where your servers and settings are kept". The only uppercase is `BYOC`, `SSH`,
+- **Sentence case everywhere.** Buttons: "New Server", "Download dev-box.pem", "Sign out".
+  Headings: "Where your Servers and settings are kept". The only uppercase is `BYOC`, `SSH`,
   `MCP`, `YAML`, and an occasional bolded lead-in.
 - **Name the fix inside the error.** Core's message is passed through verbatim rather than
-  replaced: "server is still stopping; try again in a moment" beats "Could not stop dev-box".
+  replaced: "Server is still stopping; try again in a moment" beats "Could not stop dev-box".
   A UI that rewrites an error throws away the remedy.
 - **State the consequence in the user's terms.** Stop: "The disk is kept, so you can start it
   again later. You are not billed for a stopped instance's compute." Terminate: "This destroys
-  the server and its disk. It cannot be undone." Never "Are you sure?".
+  the Server and its disk. It cannot be undone." Never "Are you sure?".
 - **Say what the product will not do.** "Rocky Surf will not show it to you." "There is no way
   to add a token to a running box." "Rocky Surf resells nothing and sits in the middle of
   nothing." Refusals are features here and are written as such.
 - **Numbers carry their caveat.** Every cost is followed by "Estimate. Rounds down: uptime
-  accrues on a timer, so a running server has cost slightly more than shown." A missing value is
+  accrues on a timer, so a running Server has cost slightly more than shown." A missing value is
   an em dash with the reason in its `title`, never a zero.
-- **Empty and pending states are a fact plus one action.** "No servers yet. Create one to get
+- **Empty and pending states are a fact plus one action.** "No Servers yet. Create one to get
   started." "Stopping…" — the ellipsis is the spinner.
 - **No emoji.** Not one, anywhere in the source. Do not introduce any.
 - **Lowercase monospace for anything the user types or copies**: `~/.rockysurf`,
@@ -91,7 +91,7 @@ purple appears exactly once (the agents callout). A notice body is its accent at
 the page, bordered in the accent at full strength.
 
 A sixth accent, cyan (`--rs-cyan` `#39c5cf`), is reserved for buttons that create a new
-resource — "New server" — distinct from green, which covers acting on an existing one
+resource — "New Server" — distinct from green, which covers acting on an existing one
 ("Start"). Buttons carry the etched skin's dimensional treatment (radius, top-highlight,
 drop shadow, press state) rather than the flat cut-outline default; see `css/etched.css`.
 
@@ -130,7 +130,7 @@ inward.
 
 **Layout rules.** One fixed element: the header, a surface bar with one hairline under it, which
 every authenticated page goes through. Content is a single centred column — no sidebar anywhere.
-Grids auto-fill: server cards at 320px minimum, pack cards at 260px. Below 768px, everything
+Grids auto-fill: Server cards at 320px minimum, pack cards at 260px. Below 768px, everything
 collapses to one column and page padding drops to 1.25rem.
 
 **Imagery.** Cool, dark, high-contrast. The logo is an engraved cross-hatch painting of a
@@ -169,7 +169,7 @@ must look the same on every reload.
 | `guidelines/` | 17 specimen cards — colours, type, spacing, radii, motion, iconography, pack marks, the logo |
 | `components/` | The reusable primitives, below |
 | `ui_kits/rockysurf-app/` | The click-through control plane, as the app looked when this was read. `README.md` maps each screen to its source file |
-| `ui_kits/etched/` | The two screens the etched skin landed on: the dashboard built from the parts, and the create form plus server detail |
+| `ui_kits/etched/` | The two screens the etched skin landed on: the dashboard built from the parts, and the create form plus Server detail |
 | `thumbnail.html` | The homepage tile |
 | `handoff/` | Dropping the etched skin into `packages/web`: `etched.css`, `etched.tsx.txt`, and a README with the rollout order and the upstream delta |
 | `SKILL.md` | Agent Skills front matter, for using this system in a coding agent |
@@ -216,7 +216,7 @@ Buttons within the skin are dimensional (radius, top-highlight, drop shadow, a p
 a deliberate departure from the base system's flat/no-shadow rule, scoped to this skin's
 controls. Two button-level accents beyond the five status meanings: yellow (`.stop-action`) for
 a reversible pause ("Stop"), and cyan (`.new-action`, `--rs-cyan` `#39c5cf`) for creating a new
-resource ("New server"), kept distinct from green's "act on an existing one" ("Start").
+resource ("New Server"), kept distinct from green's "act on an existing one" ("Start").
 
 | Part | What it replaces | Why that mark |
 |---|---|---|
@@ -232,7 +232,7 @@ resource ("New server"), kept distinct from green's "act on an existing one" ("S
 Two honest caveats. **The line art is drawn geometry, not illustration** — competent, consistent,
 and no substitute for a real engraver's hand; `Lamp` and `Shore` in particular deserve drawn
 assets if this becomes the product's face. And `Waterline` deliberately does not appear on a
-server card: there is no room there to name the cap, and a level without its ceiling is a
+Server card: there is no room there to name the cap, and a level without its ceiling is a
 decoration.
 
 Every part needs `<EtchedDefs />` mounted once per page for its hatch pattern; without it the

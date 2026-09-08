@@ -7,11 +7,11 @@ and the SSH key objects a create has to reference; it reaps what it created. It 
 DigitalOcean projects, load balancers, volumes, reserved IPs or databases, and it will not create
 its firewall from a settings save.
 
-**A provider runs with Rocky Surf's full access — install ones you trust.**
+**A Provider runs with Rocky Surf's full access — install ones you trust.**
 
 ## How you get it
 
-This is a *personal* provider: it is not shipped inside the `rockysurf` CLI, and installing it is
+This is a *personal* Provider: it is not shipped inside the `rockysurf` CLI, and installing it is
 two steps — put the package under your data directory, then name it in your config file.
 
 Either install it with npm:
@@ -49,13 +49,13 @@ providers:
 ```
 
 The data directory is `~/.rockysurf` by default and `/data` in the container, so `npx
-rockysurf@latest`, a `git pull`, and a Docker image rebuild all leave the installed provider where
+rockysurf@latest`, a `git pull`, and a Docker image rebuild all leave the installed Provider where
 it is.
 
 ## Configuration
 
 Every field the section accepts, from `src/config.ts` — which is the schema that actually parses
-it. `enabled`, `package` and `sizes` are Rocky Surf's own fields and belong to every provider
+it. `enabled`, `package` and `sizes` are Rocky Surf's own fields and belong to every Provider
 section.
 
 | field | required | default | what it is |
@@ -65,7 +65,7 @@ section.
 | `sshAllowedCidr` | yes | — | The networks allowed to reach port 22, as a list of IPv4 CIDRs. A bare string is read as a list of one |
 | `allowAllCidr` | no | `false` | The second act required before `0.0.0.0/0` is accepted anywhere in that list |
 | `image` | no | `ubuntu-24-04-x64` | The image slug droplets boot from. It has to be a cloud-init image |
-| `firewallName` | no | `rockysurf-ssh` | The name of the one cloud firewall this provider owns and rewrites |
+| `firewallName` | no | `rockysurf-ssh` | The name of the one cloud firewall this Provider owns and rewrites |
 | `managedBy` | no | `rockysurf` | The `managed-by` tag value it stamps on everything and refuses to disagree with |
 | `vpcUuid` | no | — | The VPC new droplets join. Left out, they join the region's default VPC |
 
@@ -86,22 +86,22 @@ scope. A read-only token authenticates and then fails at the first create.
 - A region that sells the sizes you want. `validateCredentials()` fails with the list of real
   region slugs if the configured one does not exist, and reports `capacity` if it exists and is
   closed to new droplets.
-- Nothing else pre-created. The provider makes its own firewall at the first launch and its own SSH
-  key objects per server. It also makes the `managed-by:rockysurf` tag the firewall targets
+- Nothing else pre-created. The Provider makes its own firewall at the first launch and its own SSH
+  key objects per Server. It also makes the `managed-by:rockysurf` tag the firewall targets
   (`POST /v2/tags`, free) before the firewall is written: DigitalOcean creates a tag only when a
   droplet is created with it, and a firewall may only target a tag that already exists — on a fresh
   team the first launch used to fail with `tag managed-by:rockysurf does not exist` (#403). Deleting
   that tag in the control panel is safe; the next launch or settings save recreates it.
 
-Two documented DigitalOcean limits are worth knowing before you scale up, because this provider
+Two documented DigitalOcean limits are worth knowing before you scale up, because this Provider
 does not work around either:
 
 - **A firewall holds up to 50 rules in total, and a rule's `Sources` field up to 1,000 entries.**
-  This provider writes exactly one inbound rule, so the CIDR list is bounded by the second number.
+  This Provider writes exactly one inbound rule, so the CIDR list is bounded by the second number.
 - **"You can have a maximum of 10 Droplets per firewall and 5 tags per firewall."** The firewall
   targets the `managed-by` tag rather than individual droplets, which is one tag; the droplet
   figure is DigitalOcean's and an installation that outgrows it needs a second firewall this
-  provider will not create for you.
+  Provider will not create for you.
 
 ## Capabilities
 
@@ -112,12 +112,12 @@ real API** — see Verified.
 | capability | value | what it means here |
 |---|---|---|
 | `stop` | `true` | `shutdown` and `power_on` droplet actions, disk intact |
-| `billsWhileStopped` | `true` | **A powered-off droplet still costs the full hourly rate.** "You are still billed for bundled-plan CPU Droplets that are powered off because the compute resources stay reserved on the hypervisor… To end billing, destroy the Droplet." Rocky Surf's meter keeps running through `stopped`, the server page says so, and the New Server page warns before the machine exists |
+| `billsWhileStopped` | `true` | **A powered-off droplet still costs the full hourly rate.** "You are still billed for bundled-plan CPU Droplets that are powered off because the compute resources stay reserved on the hypervisor… To end billing, destroy the Droplet." Rocky Surf's meter keeps running through `stopped`, the Server page says so, and the New Server page warns before the machine exists |
 | `ipStableAcrossStop` | `true` | "The IPv4 and IPv6 addresses assigned to a Droplet remain static for the life of the Droplet." Stop and start, and the address you had is the address you have |
 | `canInjectHostKeys` | `true` | The box comes up presenting a host key Rocky Surf minted, carried in cloud-init user data, so the first connection — the one holding the secrets file — is verified rather than trusted on sight |
 | `userDataMaxBytes` | `65536` | DigitalOcean's create endpoint documents `user_data` as "plain text and may not exceed 64 KiB in size". Plain text, so that ceiling is on the rendered document with no encoding step to allow for |
 | `generatesUserData` | `true` | cloud-init on the official Ubuntu images |
-| `managesSshAccess` | `true` | One cloud firewall, named by `firewallName`, that a settings save pushes your CIDR list at without launching anything. **Verified live 2026-09-05**: `POST /v2/firewalls` with this provider's exact body — one SSH inbound rule, the three outbound rules, `tags: ["managed-by:rockysurf"]` — answered `202` once the tag existed, and `422 tag managed-by:rockysurf does not exist` before it did (#403) |
+| `managesSshAccess` | `true` | One cloud firewall, named by `firewallName`, that a settings save pushes your CIDR list at without launching anything. **Verified live 2026-09-05**: `POST /v2/firewalls` with this Provider's exact body — one SSH inbound rule, the three outbound rules, `tags: ["managed-by:rockysurf"]` — answered `202` once the tag existed, and `422 tag managed-by:rockysurf does not exist` before it did (#403) |
 
 ### Who can reach SSH
 
@@ -160,7 +160,7 @@ ARM" and "this size is sold out" stay different answers.
 
 **One value in this package has met the real DigitalOcean API; the rest have not.** It was written
 from DigitalOcean's published documentation and its public OpenAPI description, read on 2026-09-04,
-and tested against a fake of that API. A fake asserts that the provider does what its author
+and tested against a fake of that API. A fake asserts that the Provider does what its author
 believed; only real infrastructure asserts that the belief was right — and the first time this code
 met the real API (#373) it proved the point by failing at the firewall, see below.
 
@@ -173,7 +173,7 @@ What has been measured, by whom, and when:
   precondition the research protocol missed and that `ensureTag()` now satisfies before every
   firewall write (#403).
 - **`POST /v2/tags` on a tag that already exists answered `201`**, with the tag, on 2026-09-05 —
-  the documentation describes a `422` for that case, so the provider accepts either and confirms a
+  the documentation describes a `422` for that case, so the Provider accepts either and confirms a
   refusal with `GET /v2/tags/{name}` before believing it.
 - **The `key:value` tag charset round-trips**: `managed-by:rockysurf` was created and read back
   by name, colon included.
@@ -214,14 +214,14 @@ dry-run on that endpoint. Do it only if you are willing to pay for and destroy t
 
 The rest — that `off` really is a restartable droplet, that the address survives a power cycle,
 and that cloud-init honours an injected host key — needs one droplet run through a full lifecycle
-rather than a curl. **That run is yours to make, not Rocky Surf's.** This is a personal provider,
+rather than a curl. **That run is yours to make, not Rocky Surf's.** This is a personal Provider,
 so no nightly in the Rocky Surf repository drives it; a nightly real-cloud leg there covers the
-official providers, the ones composed into `packages/rockysurf/src/compose.ts`. Whoever writes or
+official Providers, the ones composed into `packages/rockysurf/src/compose.ts`. Whoever writes or
 installs this package is the one who verifies its column, and records what they ran. Whether a
 powered-off droplet keeps billing is not on that list and cannot be: no API call answers it. Read
 an invoice.
 
-## Writing your own provider
+## Writing your own Provider
 
 The contract is `@rockysurf/provider-sdk`: its README ships inside the tarball, and the type
 definitions carry the reasoning behind every field. The workflow standard is

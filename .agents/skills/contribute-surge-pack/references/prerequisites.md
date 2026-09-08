@@ -6,7 +6,7 @@ a skill that installs a package manager on somebody's laptop to get past its own
 exceeded what anyone asked it to do.
 
 None of this is about the box the pack builds. The `apt-get install` lines inside an
-`installScript` run on the Rocky Surf server, which starts empty by design.
+`installScript` run on the Rocky Surf Server, which starts empty by design.
 
 | Tool | macOS | Ubuntu |
 |---|---|---|

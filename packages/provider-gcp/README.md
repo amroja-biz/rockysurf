@@ -28,11 +28,11 @@ providers:
 | field | default | what it is |
 |---|---|---|
 | `projectId` | **none — required** | The project every resource lives in. Nothing is inferred: a Google credential can be valid for many projects and names none of them. |
-| `zone` | `us-central1-a` | The single zone this provider manages. One zone per provider; two zones means two providers. |
+| `zone` | `us-central1-a` | The single zone this Provider manages. One zone per Provider; two zones means two Providers. |
 | `sshAllowedCidr` | **none — required** | Who may reach SSH. No default, deliberately. |
 | `allowAllCidr` | `false` | Required alongside `sshAllowedCidr: 0.0.0.0/0`. Opening SSH to the internet is two decisions. |
 | `keyFile` | unset | Path to a service-account key file. Omit for the ambient credential chain. |
-| `managedBy` | `rockysurf` | The `managed-by` label this provider reconciles, and the prefix of every instance name. |
+| `managedBy` | `rockysurf` | The `managed-by` label this Provider reconciles, and the prefix of every instance name. |
 | `firewallRuleName` | `rockysurf-ssh` | The shared SSH rule, which doubles as the network tag it matches on. |
 | `network` | `default` | The VPC network instances join. |
 | `bootDiskGb` | `20` | Boot disk size. Billed separately from the instance. |
@@ -80,7 +80,7 @@ Two things worth knowing before the first launch:
 
 - **Your default VPC probably already allows SSH from anywhere.** Google's auto-created
   `default-allow-ssh` rule opens port 22 to `0.0.0.0/0` for every instance in the network. This
-  provider never touches that rule, and never widens anything — but it is worth a look.
+  Provider never touches that rule, and never widens anything — but it is worth a look.
 - **The boxes carry no Google Cloud identity.** No service account is attached, so they cannot
   read any Google API and need no permission to.
 
@@ -134,7 +134,7 @@ rather than watched.
 
 See [the status block in `docs/providers/gcp.md`](../../docs/providers/gcp.md#status-proven-on-real-google-cloud-except-stopstart).
 
-## Writing your own provider
+## Writing your own Provider
 
 The contract is `@rockysurf/provider-sdk`; the workflow is
 [`docs/writing-a-provider.md`](../../docs/writing-a-provider.md).

@@ -8,7 +8,7 @@ at the step that needs it.
 
 ## Node.js 24 or newer, with npm
 
-**Why:** a provider is a Node package. The scaffold declares `engines.node` as `>=24`, Rocky Surf
+**Why:** a Provider is a Node package. The scaffold declares `engines.node` as `>=24`, Rocky Surf
 itself refuses to start on less, and `npm` is how the SDK and the conformance suite reach your
 package:
 
@@ -33,7 +33,7 @@ the package pins, and is how a build starts disagreeing with CI.
 ## Git and pnpm — for work in a checkout only
 
 **Why:** the in-tree route. `pnpm install && pnpm -r build`, and `pnpm run check` before the pull
-request. A personal provider needs none of this: the SDK and the conformance package install from
+request. A personal Provider needs none of this: the SDK and the conformance package install from
 the registry.
 
 **Check:** `git --version`, `pnpm --version`
@@ -46,7 +46,7 @@ version is pinned in the root `package.json` `packageManager` field.
 ## A cloud CLI — only on the credential routes that use one
 
 Rocky Surf never shells out to a cloud CLI. It reads each cloud's own credential chain in process,
-so every provider has at least one route that needs nothing installed: an environment variable, or a
+so every Provider has at least one route that needs nothing installed: an environment variable, or a
 role attached to the machine it runs on. A CLI appears in the Configure instructions only because it
 is the usual way an operator gets a credential onto the machine in the first place.
 
@@ -64,10 +64,10 @@ The alternatives, when the user does not want a CLI on the machine: Azure takes
 ## What is not a prerequisite
 
 - **Docker**, unless the user runs Rocky Surf from the container image. Nothing in authoring a
-  provider needs it; the conformance suite is unit tests.
+  Provider needs it; the conformance suite is unit tests.
 - **`curl`**, beyond the one convenience in `configuring.md` for reading your own public address.
   It ships with macOS and with Ubuntu.
-- **A checkout**, for a personal provider. The SDK's README and its `.d.ts` files travel inside the
+- **A checkout**, for a personal Provider. The SDK's README and its `.d.ts` files travel inside the
   installed package and are the authoritative contract.
 
 ## When one is missing

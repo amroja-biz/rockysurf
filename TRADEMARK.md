@@ -11,11 +11,11 @@ this repository builds.
 ## What you may do without asking
 
 - Use, modify, run and redistribute the software, commercially or not, under the MIT license.
-- **Say what your thing is.** "Built on Rocky Surf", "a Rocky Surf provider", "compatible with
+- **Say what your thing is.** "Built on Rocky Surf", "a Rocky Surf Provider", "compatible with
   Rocky Surf", "a fork of Rocky Surf" — accurate, descriptive references are fine and always
   will be.
 - Use the name in articles, talks, tutorials, comparisons and reviews.
-- Publish a plugin, provider or pack and name it for what it does: `rockysurf-provider-fly` is
+- Publish a plugin, Provider or pack and name it for what it does: `rockysurf-provider-fly` is
   fine.
 
 ## What needs permission

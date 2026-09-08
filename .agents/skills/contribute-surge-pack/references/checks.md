@@ -68,7 +68,7 @@ means a mistyped path, and that is a message worth getting.
 From CONTRIBUTING's "Your pack defines its own tools", which is the thing people get backwards on
 first contact:
 
-- **A pack may install anything.** A tool is an id you choose, a description and a shell script
+- **A pack may install anything.** A Tool is an id you choose, a description and a shell script
   you wrote. There is no approved list, nothing has to be added to Rocky Surf first, and no
   maintainer has to have heard of it. A pack introducing software this project knows nothing
   about is the *normal* case.
@@ -123,7 +123,7 @@ can only run one of them, say exactly that in the pull request body rather than 
 | `sources.list.d` not byte-identical | an apt repository or key written unconditionally. Write it only when absent |
 | exit non-zero on run 2, fine on run 1 | the script assumes something the first run created and the second run cannot recreate — a directory it makes with `mkdir` rather than `mkdir -p`, a `git clone` into a path that now exists |
 | a step failed with "command not found" | the box is stock: it has nothing you did not install or reference. `curl` is a base id to list, not an assumption |
-| a `runAs: rocky` step failed on permission | it wanted root. That is two tools, not a `sudo` — the container has none, and neither does a real box |
+| a `runAs: rocky` step failed on permission | it wanted root. That is two Tools, not a `sudo` — the container has none, and neither does a real box |
 | "nothing was skipped as already-done" absent | the journal was not discarded and the run proved nothing. It is checked; you should not see this |
 
 Anything deeper than this table is `create-surge-pack`'s `references/verifying.md` — the pack is

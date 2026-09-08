@@ -53,5 +53,5 @@ that had to be filled in.
 | `src/lib/events.ts` | SSE client and the message vocabulary core actually emits |
 | `src/contexts/AuthContext.tsx` | Session state for single-admin login |
 | `src/contexts/EventsContext.tsx` | One stream per session; `{ connectionStatus, subscribe }` |
-| `src/hooks/useServerUpdates.ts` | Subscribe to events for all servers or one |
+| `src/hooks/useServerUpdates.ts` | Subscribe to events for all Servers or one |
 | `src/pages/placeholders.tsx` | Stand-ins. Every real page is its own later task |

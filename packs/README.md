@@ -1,6 +1,6 @@
 # `packs/`
 
-Surge Packs are the software bundles a Rocky Surf server can be created with — one YAML file
+Surge Packs are the software bundles a Rocky Surf Server can be created with — one YAML file
 per pack, PR-able by anyone. "Surge Pack" is what the product calls them; `pack`, `packId` and
 this directory are the spelling in code and in the file format, and neither is going to change
 to match the other.
@@ -20,7 +20,7 @@ pack:  { … }      # required; exactly one SurgePack
 tools: [ … ]      # required; the Tool records this file introduces
 ```
 
-`pack.tools` lists tool **ids**, which may be defined in this file or in any other pack file
+`pack.tools` lists Tool **ids**, which may be defined in this file or in any other pack file
 here — that is how several packs share one `claude-code` definition. Defining the same
 `toolId` twice is an error and CI rejects it.
 
@@ -50,8 +50,8 @@ Python bits, tmux, git, the GitHub CLI and so on — that the other packs refere
 pack, list those ids in your `pack.tools` rather than redefining them; the loader rejects a
 `toolId` defined in two files.
 
-That is the only thing a pack may not do with tools. **Everything else it installs, it defines
-itself** — a tool is an id, a description and a script, and nothing needs registering anywhere
+That is the only thing a pack may not do with Tools. **Everything else it installs, it defines
+itself** — a Tool is an id, a description and a script, and nothing needs registering anywhere
 first. A pack introducing software this project has never heard of is the normal case, not an
 exception, and it is what the community registry at
 [`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop) exists for.

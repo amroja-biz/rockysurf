@@ -1,7 +1,7 @@
 # Fork, branch, edit, validate, pull request
 
 Read this at step 5 of `SKILL.md`, once the release exists and the digest round trip in
-`references/release.md` came back matching. Nothing here should be reached by a provider that
+`references/release.md` came back matching. Nothing here should be reached by a Provider that
 failed one of those: the value of this skill is that the pull request does not exist until the
 mechanical questions are answered.
 
@@ -26,7 +26,7 @@ git push origin main
 ```
 
 Branch from an up-to-date `main`, not from whatever the fork happens to hold. `providers.json` is
-a single file that every provider contribution edits, so a stale base is how a pull request
+a single file that every Provider contribution edits, so a stale base is how a pull request
 silently proposes deleting somebody else's entry.
 
 ```bash
@@ -51,7 +51,7 @@ fs.writeFileSync("providers.json", JSON.stringify(listing, null, 2) + "\n")
 ' /path/to/entry.json
 ```
 
-**Updating an existing entry** rather than adding one — a new version of a provider already listed
+**Updating an existing entry** rather than adding one — a new version of a Provider already listed
 — is the same thing with `push` replaced by finding the entry with the same `providerId` and
 replacing it whole. Replacing it whole, not patching `version`, `tarball` and `sha256`: the
 settings summary and the capabilities may have moved too, and the generated entry is what the
@@ -116,15 +116,15 @@ gh pr create --repo amroja-biz/rockysurf-shop --base main \
 ### What the body owes a reviewer
 
 The shop's CONTRIBUTING asks for one thing by name — **the link to the source repository** —
-because reading that source is the only review a provider gets. The template asks for four more,
+because reading that source is the only review a Provider gets. The template asks for four more,
 each because a maintainer would otherwise have to, and each round trip is a day:
 
 1. **Where the source is**, and at which commit the conformance suite passed.
-2. **What the provider talks to**, and with what credential: the cloud, the API, and where the
-   token comes from. An operator's first question about a new provider is what leaves their
+2. **What the Provider talks to**, and with what credential: the cloud, the API, and where the
+   token comes from. An operator's first question about a new Provider is what leaves their
    machine.
 3. **What was verified, and how.** The suite that ran, whether it has been pointed at real
-   infrastructure and when, and what the checks could not cover. A provider nobody has run against
+   infrastructure and when, and what the checks could not cover. A Provider nobody has run against
    the real cloud says exactly that; it is not disqualifying, and pretending otherwise is.
 4. **The capability answers worth flagging** — chiefly `billsWhileStopped`, which is how somebody
    learns before installing that a stopped machine on that cloud still costs money.
@@ -148,7 +148,7 @@ Push fixes to the same branch; the job re-runs.
 
 ## What happens after
 
-A maintainer reads every provider pull request before it merges, and reads the provider's source,
+A maintainer reads every Provider pull request before it merges, and reads the Provider's source,
 because it runs inside an operator's control plane with that process's database, master key and
 every cloud credential in its environment. There is no build and no index step: on merge the entry
 is live, and operators take `package`, `tarball` and `sha256` from it and follow the shop README's

@@ -19,8 +19,8 @@ what anyone asked it to do.
 it must name a logged-in account. Then there are two separate things this procedure asks that
 account to do:
 
-1. **Create a release on the provider's repository** (step 3). This needs write access to that
-   repository. If the user does not have it — the provider lives under somebody else's
+1. **Create a release on the Provider's repository** (step 3). This needs write access to that
+   repository. If the user does not have it — the Provider lives under somebody else's
    organisation, say — the release is theirs to create, and this skill stops there rather than
    inventing a URL for an asset that does not exist. A failure looks like
    `HTTP 403: Resource not accessible by integration` from `gh release create`.
@@ -36,7 +36,7 @@ have that access, and the procedure would be a lie.
 ## Where `rockysurf-shop-entry` comes from
 
 The generator is a bin of `@rockysurf/provider-sdk`, which is on the public npm registry. A
-provider that depends on the SDK already has it under `node_modules/.bin`, so
+Provider that depends on the SDK already has it under `node_modules/.bin`, so
 `npx rockysurf-shop-entry` finds it with nothing else installed.
 
 If the session is inside a Rocky Surf checkout and you want the unreleased generator instead,
@@ -46,9 +46,9 @@ shop clone.
 
 ## What is *not* needed
 
-- **Docker.** A provider's acceptance suite is unit tests. Nothing in this procedure starts a
+- **Docker.** A Provider's acceptance suite is unit tests. Nothing in this procedure starts a
   container. (`contribute-surge-pack` does need it; a pack is verified by running it.)
-- **A checkout of Rocky Surf.** The generator travels inside the SDK package the provider already
+- **A checkout of Rocky Surf.** The generator travels inside the SDK package the Provider already
   depends on, and that package is on the registry.
 - **A write bit on `amroja-biz/rockysurf-shop`.** The whole procedure runs on a fork.
 - **An npm publish.** The tarball can be hosted on a GitHub release, on npm, or on any static host

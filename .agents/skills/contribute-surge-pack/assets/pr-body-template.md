@@ -11,7 +11,7 @@ trip is a day. A section with nothing to say gets one honest line, not deletion.
 
 ## What this pack installs
 
-<!-- One line per tool the pack DEFINES. Then the base ids it borrows, on one line. -->
+<!-- One line per Tool the pack DEFINES. Then the base ids it borrows, on one line. -->
 
 **Defines**
 
@@ -21,7 +21,7 @@ trip is a day. A section with nothing to say gets one honest line, not deletion.
 
 `build-essential`, `curl`, `git`, …
 
-<!-- If any tool's script is adapted from a base pack's script under a new id, say so here and
+<!-- If any Tool's script is adapted from a base pack's script under a new id, say so here and
 say why. It is mechanically legal and it is the first thing a reviewer asks about. -->
 
 ## What its scripts fetch
@@ -29,7 +29,7 @@ say why. It is mechanically legal and it is the first thing a reviewer asks abou
 <!-- Paste the "URLs these scripts fetch" section from:
        rockysurf pack describe packs --pack <packId> --markdown
      KEEP the caveat below verbatim — CI posts the same one, and a body that sounds more certain
-     than the tool is worse than no body. -->
+     than the Tool is worse than no body. -->
 
 - https://…
 
@@ -38,7 +38,7 @@ say why. It is mechanically legal and it is the first thing a reviewer asks abou
 
 ## Which version, and why
 
-<!-- CONTRIBUTING's "Review" section says a maintainer will ask. One line per tool:
+<!-- CONTRIBUTING's "Review" section says a maintainer will ask. One line per Tool:
      - a quota-free registry (npm, PyPI via pipx) -> UNVERSIONED, no pin to bump
      - a GitHub release asset -> PINNED to a tag and checked against a sha256, and say where a
        bump comes from
@@ -58,7 +58,7 @@ say why. It is mechanically legal and it is the first thing a reviewer asks abou
 
 ## Anything the checks do not cover
 
-<!-- Honest and short. Examples: a tool that needs an API key before it does anything; a first
+<!-- Honest and short. Examples: a Tool that needs an API key before it does anything; a first
      run that downloads several gigabytes; a vendor URL that has moved before. "Nothing beyond
      the usual" is an acceptable answer; silence is not. -->
 
@@ -66,4 +66,4 @@ say why. It is mechanically legal and it is the first thing a reviewer asks abou
 
 The `guide` tells the user how to authenticate everything this pack installs; every step declares
 `runAs` honestly. I understand a maintainer will read the scripts before merging, because they
-run as root on an operator's server.
+run as root on an operator's Server.

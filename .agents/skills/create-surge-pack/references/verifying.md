@@ -47,7 +47,7 @@ checks it against the frozen schema plus the mechanically checkable half of the 
 | `installOrder respects the documented bands` | Outside 10–60 inclusive. Values between the bands (`25`, `36`) are fine |
 | `<pack> round-trips` | The file survives export→import byte-identically |
 
-Failures name the tool and script: `zz-thing.installScript: expected … to contain '$ARCH'`.
+Failures name the Tool and script: `zz-thing.installScript: expected … to contain '$ARCH'`.
 
 Two things it deliberately does not tell you: whether the script *works*, and whether it is
 *genuinely* idempotent. `grep -q` being present is not `grep -q` being correct. Do not report a
@@ -158,7 +158,7 @@ your scripts.
 
 ## When the failing step is not yours
 
-Check this **before** you change your file. The resolved plan contains every tool your pack
+Check this **before** you change your file. The resolved plan contains every Tool your pack
 references, and most of those you did not write — the shared base toolchain lives in
 `packs/claude-code.yaml`, and a pack that lists `claude-code` or `nodejs` is running somebody
 else's script inside its own smoke run.
@@ -168,9 +168,9 @@ not defined in the file you wrote:
 
 1. **Isolate it** with the recipe below, running the shipped script on its own in a fresh
    container with nothing of yours present.
-2. If it fails there too, your pack is not the problem. Report it as **blocked by a shared tool**,
-   naming the tool, its defining file, the exact error, and the isolation evidence.
-3. Only then consider whether your pack should avoid that tool at all — and say so as a
+2. If it fails there too, your pack is not the problem. Report it as **blocked by a shared Tool**,
+   naming the Tool, its defining file, the exact error, and the isolation evidence.
+3. Only then consider whether your pack should avoid that Tool at all — and say so as a
    trade-off, not as a fix.
 
 Editing your own file to work around somebody else's broken step wastes your time and hides a
@@ -179,7 +179,7 @@ real bug from the people who can fix it.
 ## Isolating one script
 
 Useful in two situations: iterating on a script you are writing, and proving that a failure
-belongs to a tool you did not write. It takes about a minute and needs no plan and no agent.
+belongs to a Tool you did not write. It takes about a minute and needs no plan and no agent.
 
 ```bash
 docker run --rm -it --platform linux/arm64 -v "$PWD:/work" ubuntu:24.04 bash
@@ -208,18 +208,18 @@ that nothing else is in the container to confuse the result.
 | What you see | What it is |
 |---|---|
 | the failing step names a `toolId` you did not define | Not your bug until proven otherwise. See "When the failing step is not yours" |
-| `sudo: not available to install scripts on a Rocky Surf box` | Rule 4. Split the tool, or declare `runAs: root` |
+| `sudo: not available to install scripts on a Rocky Surf box` | Rule 4. Split the Tool, or declare `runAs: root` |
 | `Unable to locate package <x>` | No apt-update stamp before `apt-get install`, or the package name is not in Ubuntu 24.04 |
 | `cannot execute binary file: Exec format error` | Rule 2. A hardcoded architecture downloaded the wrong build |
 | the step hangs until it times out | Rule 3. Something is prompting — `debconf`, `tzdata`, an installer's "Continue?" |
-| `command not found` for something a previous tool installed | You assumed ordering means dependency, or you expected `.bashrc`/`/etc/profile.d` to be read — nothing sources them. `export PATH=…` at the top of the script |
-| `command not found` for a tool whose install step passed | apt landed it under a different name (`fd-find` → `fdfind`). Symlink it into `/usr/local/bin` and verify the name the user will type |
+| `command not found` for something a previous Tool installed | You assumed ordering means dependency, or you expected `.bashrc`/`/etc/profile.d` to be read — nothing sources them. `export PATH=…` at the top of the script |
+| `command not found` for a Tool whose install step passed | apt landed it under a different name (`fd-find` → `fdfind`). Symlink it into `/usr/local/bin` and verify the name the user will type |
 | a segfault, `qemu: uncaught target signal 11`, or an illegal instruction, only on amd64 | Almost certainly the emulator running an x86 prebuilt binary, not your pack. See the amd64 section |
 | passes run 1, fails `run 2 changed nothing` with a `.bashrc` line in the diff | An unguarded append. Use `grep -qF` |
 | passes run 1, fails `run 2 changed nothing` with a `sources.list.d` path in the diff | The source list is rewritten unconditionally. Compare content before writing |
 | `found preexisting installation` / `already exists` on run 2 | An installer with no update mode. Guard with `command -v`, a version check, or a stamp |
 | `Systemd user services are unavailable` | There is no login session for `rocky`. See the linger idiom |
-| `Gateway did not become reachable` / a health probe times out | The tool is waiting for a service nothing started. Use the tool's own skip flag |
+| `Gateway did not become reachable` / a health probe times out | The Tool is waiting for a service nothing started. Use the Tool's own skip flag |
 | a step that only fails sometimes, on a download from GitHub | The unauthenticated `api.github.com` quota. Fetch the release asset from the CDN download URL instead |
 | `packs/ does not validate — fix that before smoke-testing it` (exit 2) | Loop 1 would have told you this in two seconds |
 | `@rockysurf/core is not built` (exit 2) | `pnpm -r build` |
@@ -258,7 +258,7 @@ segfaults under emulation is doing its job; deleting it ships a pack that cannot
 install from a half-installed one on real hardware.
 
 Either way, the useful thing to notice is that an emulated run still exercises **your**
-architecture-dependent lines: if your tools all reached `done` on amd64 and only a shared tool
+architecture-dependent lines: if your Tools all reached `done` on amd64 and only a shared Tool
 crashed, your `$ARCH` branches and your amd64 checksums are genuinely proven, and you should say
 exactly that rather than either claiming a green run or throwing the leg away.
 
@@ -268,7 +268,7 @@ A claim of "verified on both architectures" that rests on nothing is worse than 
 
 Report what actually ran. A useful summary names: which architectures were exercised and which
 were not, the step count and both run durations, whether run 2 re-executed everything and left
-the hashed files byte-identical, any step that failed and **whose tool it belongs to**, and
+the hashed files byte-identical, any step that failed and **whose Tool it belongs to**, and
 anything the pack deliberately does not do (an unpinned version and why, a daemon that cannot
 install at bootstrap, a per-repository path the harness cannot reach because it passes an empty
 repository list). Everything in that list has been a real surprise to a real user of this project

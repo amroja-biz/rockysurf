@@ -19,7 +19,7 @@ exists. A maintainer's review round spent on a missing `index.json` is a round n
 **You are not writing the pack here.** If the user does not have a working pack file yet, or
 wants one changed, that is [`create-surge-pack`](../create-surge-pack/SKILL.md) — the authoring
 contract, the four rules, and the smoke harness. Come back when there is a file. If they want to
-contribute a *provider* (a package of code that runs inside Rocky Surf, not a YAML file), that is
+contribute a *Provider* (a package of code that runs inside Rocky Surf, not a YAML file), that is
 [`add-provider`](../add-provider/SKILL.md) and a completely different procedure in the shop's
 `CONTRIBUTING.md`.
 
@@ -51,7 +51,7 @@ macOS and Ubuntu, what a `gh auth status` without fork rights looks like, and wh
 something is missing.
 
 Everything above is about *this* machine. The `apt-get install` lines inside the pack's
-`installScript` run on a Rocky Surf server that starts empty; nothing here installs them locally.
+`installScript` run on a Rocky Surf Server that starts empty; nothing here installs them locally.
 
 ## Step 1 — Get the file, and the harness that judges it
 
@@ -75,7 +75,7 @@ everywhere below. That is what the shop's `.github/actions/pack-harness` builds,
 how you check a pack against an unreleased change.
 
 **Do not pass `--base-packs`.** A built harness carries the packs its own release ships, so the
-shared base tool ids a community pack references — `curl`, `git`, `gh`, `nodejs`, `tmux`,
+shared base Tool ids a community pack references — `curl`, `git`, `gh`, `nodejs`, `tmux`,
 `build-essential` — resolve out of the binary with no flag at all. Naming the flag *replaces*
 that default rather than adding to it, which is how a pack that was fine starts failing on a
 dangling reference.
@@ -84,7 +84,7 @@ dangling reference.
 
 The order matters: each check is cheaper than the one after it, and a failure in an early one
 usually explains a failure in a later one. **A pack that fails any of these does not get a pull
-request.** Tell the user which rule failed and where — the file, the tool id, the line — and fix
+request.** Tell the user which rule failed and where — the file, the Tool id, the line — and fix
 it (or hand it back to `create-surge-pack`) rather than opening a pull request that CI will
 refuse in public.
 
@@ -103,7 +103,7 @@ command below sees exactly what CI will see.
    file: it is the check that catches a duplicate `toolId` or a dangling reference, which a
    per-pack check by construction cannot see.
 3. **The tool-definition rules**, from CONTRIBUTING's "Your pack defines its own tools". A pack
-   may define any tool it likes — a brand-new tool id nothing has ever heard of is the normal
+   may define any Tool it likes — a brand-new Tool id nothing has ever heard of is the normal
    case, and nothing needs adding to Rocky Surf first. What it may not do is *redefine* a shared
    base id; those are referenced by id from `pack.tools`. `pack lint` refuses a duplicate, so
    this is mostly lint's job — but read the diff yourself for a script copied out of
@@ -154,13 +154,13 @@ that also touches a workflow or the README is a different review.
 [`assets/pr-body-template.md`](assets/pr-body-template.md) is the body to fill in. It says four
 things, because they are the four things a maintainer would otherwise have to ask for:
 
-- **What the pack installs** — the tools it defines, and the base ids it borrows.
+- **What the pack installs** — the Tools it defines, and the base ids it borrows.
 - **Every URL its scripts fetch**, taken from `pack describe --markdown`, with that command's own
   caveat kept: the list is read out of the scripts, so a URL built from a variable does not
   appear in it, and **the scripts are the ground truth**.
 - **How it was tested** — which architectures `pack check` ran on, on what date, and anything the
   checks could not cover.
-- **Where the tools come from**, if any of them is a GitHub release asset pinned to a tag — the
+- **Where the Tools come from**, if any of them is a GitHub release asset pinned to a tag — the
   version question CONTRIBUTING's "Review" section says a maintainer will ask about.
 
 ```bash
@@ -192,7 +192,7 @@ cannot have caused, say so plainly to the user rather than pushing an empty comm
 End with the pull request URL and this, in one sentence, not softened:
 
 > A maintainer will still read the scripts before merging, because they run as root on an
-> operator's server.
+> operator's Server.
 
 That is the whole point of the review the pull request is entering. `pack lint` and `pack check`
 prove a pack is well-formed and survives a resume; neither can decide whether an install script

@@ -14,7 +14,7 @@ Set `desktop: xfce` on the pack, and almost certainly `requiresRdp: true` so Roc
 user for a remote-desktop password at create time and delivers it as `$RDP_PASSWORD`. Do not
 special-case your `packId` in the application — these fields exist so a pack describes itself.
 
-`packs/open-claw.yaml` is the worked example, and its `desktop-environment` tool at
+`packs/open-claw.yaml` is the worked example, and its `desktop-environment` Tool at
 `installOrder: 35` is the one to copy. Three things in it are load-bearing:
 
 - **Whole-file writes with a `changed` flag.** Session config files (`.xsession`,
@@ -43,8 +43,8 @@ and an empty value would pass a naive check and then set an empty desktop passwo
 **lingering**: it starts `user@<uid>.service` without a session, at boot, and keeps it running
 after the user logs out — which is exactly the lifetime a background assistant wants.
 
-Enabling linger for another user is root's job, so this is two tools, or the two halves of one
-tool at different `installOrder` values.
+Enabling linger for another user is root's job, so this is two Tools, or the two halves of one
+Tool at different `installOrder` values.
 
 ```bash
 # runAs: root, the lower installOrder
@@ -75,23 +75,23 @@ else
 fi
 ```
 
-Note the chicken-and-egg this resolves: tools that would run `loginctl enable-linger` themselves
+Note the chicken-and-egg this resolves: Tools that would run `loginctl enable-linger` themselves
 typically do it only *after* deciding user services are available, which is the very thing that
-cannot be true until linger has run. Root breaks the cycle, and after that the tool's own
+cannot be true until linger has run. Root breaks the cycle, and after that the Tool's own
 machinery works unmodified.
 
 Two details worth checking by reading the installed package rather than guessing: **what the unit
 is actually called** (a guide naming `mytool.service` when the installer writes
 `mytool-gateway.service` ships three commands that all answer "Unit could not be found"), and
-whether the tool infers the session variables itself. The exports above are usually for *your*
-script's benefit — a bare `systemctl --user` you run — rather than the tool's.
+whether the Tool infers the session variables itself. The exports above are usually for *your*
+script's benefit — a bare `systemctl --user` you run — rather than the Tool's.
 
 ## Nothing here is fatal
 
 This is the part most likely to be got wrong. **A daemon that will not install is not worth
 failing the box for.** No systemd, an unreachable logind, a bus that never appears, an
 `--install-daemon` that exits non-zero: each should fall back to an installed-but-not-running
-tool, with a warning in the step log. The steps after yours may include the desktop the user
+Tool, with a warning in the step log. The steps after yours may include the desktop the user
 would need in order to fix it, and failing to insist on a daemon leaves them with nothing.
 
 ## Tell the box's own story

@@ -64,7 +64,7 @@ interface SshAccessSyncResult {
 }
 ```
 
-`syncSshAccess()` takes NO CIDR list — the provider reads its own config. The rules it must follow
+`syncSshAccess()` takes NO CIDR list — the Provider reads its own config. The rules it must follow
 are in [ssh-access.md](ssh-access.md).
 
 **Who calls `validateSpec`:** core calls it before `provision()`, and **`provision()` must not
@@ -118,7 +118,7 @@ documentation or CLI uses it; a name you invented is a name nobody's shell has.
 
 ## `ProviderSettings`
 
-What the Settings page draws for your provider (ADR-0027). A DECLARATION beside the schema, not the
+What the Settings page draws for your Provider (ADR-0027). A DECLARATION beside the schema, not the
 schema: it carries what a page needs and a validator cannot say — labels, sentences, that a `token`
 box takes the NAME of a variable, that the SSH whitelist is one control over two fields.
 
@@ -199,12 +199,12 @@ Five obligations hide in there:
   `@rockysurf/provider-conformance`).
 - **Assert `serverId`, do not sanitize it.** Call `assertHostnameSafeId(spec.serverId)` from
   `validateSpec`. Sanitizing would need an injective map and cannot have one — two different
-  logical servers would collide onto one cloud resource.
+  logical Servers would collide onto one cloud resource.
 - **`sshPublicKeys` exists because some APIs will not take raw key material inline.** Core is the
-  sole owner of key material. On a cloud-init provider these keys also reach the box through
+  sole owner of key material. On a cloud-init Provider these keys also reach the box through
   `userData`, so the field is near-redundant and you merely assert they appear; on Hetzner it is
   load-bearing, because the create call must reference first-class SSH Key objects — which the
-  provider then *owns and must reap* (this is where trap 3's `server-owned` resources come from).
+  Provider then *owns and must reap* (this is where trap 3's `server-owned` resources come from).
 - **Pass `userData` through unchanged** — base64-encode it if the API demands that, but never
   append to it.
 - **Refuse a spec whose `managed-by` tag disagrees with your configured prefix.** An instance
@@ -212,7 +212,7 @@ Five obligations hide in there:
   the moment it is created. This is the same incident as trap 3.
 
 `idempotencyKey` maps onto whatever the cloud offers: AWS passes it straight through as an EC2
-`ClientToken`; Hetzner has no such concept and dedupes on the derived server name. The key includes
+`ClientToken`; Hetzner has no such concept and dedupes on the derived Server name. The key includes
 a generation component, so terminating `dev-box` and recreating it with identical settings does not
 collide with the dead row forever.
 
@@ -252,7 +252,7 @@ matters — it is free text for humans and **nothing branches on it** — so car
 words on `unknown` misleads nobody and helps whoever has to read the state your map could not
 place.)
 
-The last three are for providers that adopt machines they did not create. If
+The last three are for Providers that adopt machines they did not create. If
 `canInjectHostKeys` is `true`, core minted the host key and shipped it in user-data, so it already
 knows the answer and those fields stay absent.
 
@@ -286,7 +286,7 @@ interface ManagedResource {
 
 `kind` is free-form on purpose — the set of kinds a cloud has is not something the SDK can
 enumerate — and core does not branch on it. A `server-owned` resource with no `serverId` is legal
-and is a finding: it cannot be safely reaped by server.
+and is a finding: it cannot be safely reaped by Server.
 
 ## `Offering` and `Price`
 
@@ -346,21 +346,21 @@ new ProviderError(code, message, { providerCode, cause })
   that the operator reading the message needs back.
 - **`isProviderError(err)` is the narrowing helper for `catch` blocks**, which receive `unknown`.
   It is STRUCTURAL (the name `ProviderError` plus one of the nine codes), not `instanceof`: a
-  personal provider carries its own copy of the SDK, so its `ProviderError` is a different class
+  personal Provider carries its own copy of the SDK, so its `ProviderError` is a different class
   from core's. Do not rely on `instanceof` across that boundary in your own code either.
 - `unsupportedOperationError(providerId, 'stop')` builds the `invalid_spec` error a
-  `capabilities.stop: false` provider throws from `stop`/`start`.
+  `capabilities.stop: false` Provider throws from `stop`/`start`.
 
 ## Where the "seen running" memory lives
 
 Trap 2's third sub-rule needs `describe()` to know whether this instance has ever been observed
 running. That state cannot live in `ProviderData` — `describe()` receives the handle and cannot
-write back to it — so it lives **in memory on the provider instance**, typically a `Set` of native
+write back to it — so it lives **in memory on the Provider instance**, typically a `Set` of native
 ids captured in the closure that `makeMycloudProvider` returns.
 
 Two consequences worth building for rather than discovering:
 
-- **It is lost on restart**, and providers are constructed at boot. After a restart, an instance
+- **It is lost on restart**, and Providers are constructed at boot. After a restart, an instance
   mid-teardown pays the full grace once more. That is the safe direction to fail — slower, never
   wrong — but it means the optimisation holds within a process lifetime, not forever.
 - **Record the intent before the call that acts on it.** GCP adds the id to its

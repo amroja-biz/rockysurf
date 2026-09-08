@@ -1,9 +1,9 @@
-# Write a compute provider
+# Write a compute Provider
 
 *For contributors.*
 
-A provider is the only part of Rocky Surf that knows what a cloud is. Core knows how to boot a
-box, install software on it, watch it, bill it and reap it; a provider knows how to make one
+A Provider is the only part of Rocky Surf that knows what a cloud is. Core knows how to boot a
+box, install software on it, watch it, bill it and reap it; a Provider knows how to make one
 exist.
 
 This page is the **workflow**: what to build, in what order, and what has to be true before it
@@ -18,7 +18,7 @@ to core.
 ## What you build
 
 A package that default-exports a `ProviderFactory`: an id, a display name, a config schema, and
-a synchronous `createProvider(config)` that does no I/O. The provider it creates implements
+a synchronous `createProvider(config)` that does no I/O. The Provider it creates implements
 **nine methods** (plus the optional `syncSshAccess()`, ADR-0021) and declares five capabilities,
 with three optional ones it declares only when true.
 
@@ -44,7 +44,7 @@ liability, which in practice means auth, and for nothing else.
 
 The numbers behind that default, from the npm registry when `@rockysurf/provider-gcp` made the
 call: `@google-cloud/compute@7.1.0` is **110,039,229 bytes** unpacked, a generated GAPIC client
-over protobuf. `google-auth-library@11.0.2` is **601,781 bytes**. Roughly 180 to 1. That provider
+over protobuf. `google-auth-library@11.0.2` is **601,781 bytes**. Roughly 180 to 1. That Provider
 declined the first and took the second, for Application Default Credentials only.
 
 Apply the test in this order:
@@ -108,10 +108,10 @@ Four of those have bitten someone already, which is why the SDK README calls the
    billing instance dead and orphans it. `DESCRIBE_ABSENCE_GRACE` (4 attempts, 2s apart) is the
    floor. Lengthen it if your cloud needs it, and never skip it.
 2. **`terminate()` is idempotent.** Reconcilers retry.
-3. **`listManaged()` reports secondary resources**, correctly tagged. Hetzner's provider owns the
-   SSH Key objects it creates; AWS's shares one security group across every server. Getting the
+3. **`listManaged()` reports secondary resources**, correctly tagged. Hetzner's Provider owns the
+   SSH Key objects it creates; AWS's shares one security group across every Server. Getting the
    tag wrong means either an orphan that bills forever or a reaper that deletes something another
-   server is using.
+   Server is using.
 4. **`stop` and `start` exist even when unsupported.** Throw
    `unsupportedOperationError(this.id, 'stop')` and set `capabilities.stop = false`. Core branches
    on the capability flag and never on `typeof provider.stop === 'function'`, because two ways to
@@ -139,11 +139,11 @@ const capabilities: ProviderCapabilities = {
 ```
 
 `billsWhileStopped` is the one that decides money. With it, core's meter keeps running through
-`stopped` and the server page says so. It means the RUNNING rate: a cloud that charges a reduced
+`stopped` and the Server page says so. It means the RUNNING rate: a cloud that charges a reduced
 rate while stopped must not set it, and there's no capability for that case.
 
 `simulatedInstances` says there's no reachable machine, so core drives the instance in-process
-instead of over SSH. A provider must not set it while returning addresses that resolve to real
+instead of over SSH. A Provider must not set it while returning addresses that resolve to real
 hosts, because core takes it as permission to skip the SSH drive entirely.
 
 The conformance suite checks one dependency between them: `canInjectHostKeys` requires
@@ -152,12 +152,12 @@ The conformance suite checks one dependency between them: `canInjectHostKeys` re
 `canInjectHostKeys` is a **security posture**, not a feature toggle. `true` means there's no
 trust-on-first-use window, and the first connection, the one carrying the secrets file, is
 verified against a key core generated itself. If you set it `false`, say plainly in your
-provider's docs what the operator is trusting instead: which key is recorded, when it is
+Provider's docs what the operator is trusting instead: which key is recorded, when it is
 recorded, and what a later change to it does.
 
 ## Declare your settings
 
-A provider's config schema validates the file; it can't draw a Settings panel. The panel comes from
+A Provider's config schema validates the file; it can't draw a Settings panel. The panel comes from
 `factory.settings` ([ADR-0027](adr/0027-a-provider-declares-its-settings-and-the-page-is-built-from-them.md)),
 a declaration beside the schema. Conformance holds the two together by parsing every declared
 `example` through `configSchema`:
@@ -188,19 +188,19 @@ file. Don't declare `enabled`, `package` or `sizes`: those are the installation'
 gets them. Use `advisories` for what only the human needs to know, such as a quirk or a caveat.
 Anything core has to COMPUTE with is a capability, never a sentence.
 
-Two more knobs on `offering` are optional, and both are for providers whose panel doesn't read
-like a proper noun. Use `label` for how the provider is named inside a sentence ("whenever you ask
+Two more knobs on `offering` are optional, and both are for Providers whose panel doesn't read
+like a proper noun. Use `label` for how the Provider is named inside a sentence ("whenever you ask
 *your own metal* for a small box") when that isn't the `title` over its panel. Set
-`allowlist: false` when this provider has no `sizes` allowlist at all, because its catalogue is
-already the operator's own list. No shipped provider sets either. A list's item fields may also
+`allowlist: false` when this Provider has no `sizes` allowlist at all, because its catalogue is
+already the operator's own list. No shipped Provider sets either. A list's item fields may also
 carry their own `help`; the list's sentence covers them all when they don't.
 
-Every shipped provider is a worked example. Hetzner (`packages/provider-hetzner/src/index.ts`) is
+Every shipped Provider is a worked example. Hetzner (`packages/provider-hetzner/src/index.ts`) is
 the token shape, and GCP, AWS and Azure are the firewall shape with no credential field at all.
-No shipped provider declares a `lists` entry today; the shape is there for a provider whose
-configuration is genuinely a repeated sub-object. No provider rows remain in
+No shipped Provider declares a `lists` entry today; the shape is there for a Provider whose
+configuration is genuinely a repeated sub-object. No Provider rows remain in
 `packages/core/src/settings/fields.ts` — it's core's own sections and nothing else — so a new
-provider adds none.
+Provider adds none.
 
 ## Prices and currency
 
@@ -218,7 +218,7 @@ USD added together is a fiction.
 
 `@rockysurf/provider-conformance` is the shared suite. It's test-only and never a runtime
 dependency. Inside this workspace it resolves **from source** rather than through `dist/`, so a
-provider's tests never wait on it being built. The published tarball points at `dist/` instead,
+Provider's tests never wait on it being built. The published tarball points at `dist/` instead,
 which is a `publishConfig` override and the one place a tarball manifest differs from the one in
 the repository. Out of tree, run `npm install --save-dev @rockysurf/provider-conformance`, or
 install a tarball from `pnpm pack` if the package isn't on the registry.
@@ -245,7 +245,7 @@ what you said it does.
 ## Wire it in
 
 Add one row in `packages/rockysurf/src/compose.ts`, the composition root and the only file in the
-repository allowed to import both core and a provider:
+repository allowed to import both core and a Provider:
 
 ```ts
 {
@@ -259,8 +259,8 @@ repository allowed to import both core and a provider:
 
 That row encodes three things:
 
-- **`enabled` is stripped.** It's core's field — orchestration, not provider configuration — and
-  every provider schema is a `strictObject`, so passing it through is rejected outright. That
+- **`enabled` is stripped.** It's core's field — orchestration, not Provider configuration — and
+  every Provider schema is a `strictObject`, so passing it through is rejected outright. That
   rejection is the boundary doing its job.
 - **Credentials resolve config-first, then the environment** (issue #280). A credential written in
   the config file is the one an operator can see, diff and roll back, so it wins. With the field
@@ -270,60 +270,60 @@ That row encodes three things:
 - **Composition runs again when the config file changes** (issue #264). Providers are still
   constructed all at once, from one config, and the registry every route holds takes the new set in
   place, so an operator who fixes a region or switches a cloud on gets working clients without a
-  restart. Nothing on a provider is closed when it's replaced: the SDK deliberately gives a
-  provider no lifecycle, and a client still inside an in-flight call keeps serving that call to the
+  restart. Nothing on a Provider is closed when it's replaced: the SDK deliberately gives a
+  Provider no lifecycle, and a client still inside an in-flight call keeps serving that call to the
   end. A credential arriving through an environment variable is the exception, because a variable
   can't appear inside a running process. It takes effect at the **next restart**, which is when
   composition sees it.
 
-A provider that's enabled but can't be built is **reported and skipped**, never fatal. The control
+A Provider that's enabled but can't be built is **reported and skipped**, never fatal. The control
 plane still starts, because the UI is where an operator fixes it.
 
 ## The package README
 
 Your `README.md` is in the `files` allowlist in `package.json`, so it's the page npm shows and the
-first thing a stranger reads about your provider. Write it for the operator deciding whether this
-provider gives them what they need, not for the person maintaining it. Development commands, design
+first thing a stranger reads about your Provider. Write it for the operator deciding whether this
+Provider gives them what they need, not for the person maintaining it. Development commands, design
 history and issue ids belong in this repository, not on the package page.
 
-Every shipped provider uses the same section order, so an operator comparing two clouds can compare
+Every shipped Provider uses the same section order, so an operator comparing two clouds can compare
 two documents:
 
 | Section | What belongs in it |
 |---|---|
-| Title and one paragraph | Which cloud, what the provider talks to it with, and what it won't do |
-| **How you get it** | Providers in this repository ship inside the `rockysurf` CLI and are switched on in configuration; an out-of-tree provider says how it's installed and registered instead |
+| Title and one paragraph | Which cloud, what the Provider talks to it with, and what it won't do |
+| **How you get it** | Providers in this repository ship inside the `rockysurf` CLI and are switched on in configuration; an out-of-tree Provider says how it's installed and registered instead |
 | **Configuration** | The YAML an operator can paste, then every field with its default. Take both from your own `config.ts` — that schema is what actually parses the section |
 | **Credentials** | Where the credential comes from and where it isn't kept. A token named in the config file is written `${VAR}`, an environment reference rather than a literal |
 | **What it needs in your account** | Permissions, network prerequisites, host preparation. Link the IaC when the repository ships some |
 | **Capabilities** | The five `ProviderCapabilities` values and what each one costs the operator |
 | **Prices** | Live, bundled with a `fetchedAt`, or `null`. Say which, and say the currency |
 | **Verified** | What has been run against real infrastructure, and when |
-| **Writing your own provider** | One line pointing at the SDK README and this page |
+| **Writing your own Provider** | One line pointing at the SDK README and this page |
 
-Drop a section your provider has nothing true to put in; don't reorder the ones you keep.
+Drop a section your Provider has nothing true to put in; don't reorder the ones you keep.
 
 Two of them carry rules rather than conventions.
 
 **Copy capabilities, don't summarise them.** Print the same five values the source declares, and
 check them against your `ProviderCapabilities` constant when you edit either. A README that
 disagrees with the constant is worse than one that omits the section: core branches on the
-constant, so the reader is being told the wrong thing about how their servers will behave.
+constant, so the reader is being told the wrong thing about how their Servers will behave.
 
 **A verification section states what has been run and nothing more.** Name the machine type, the
 region, the date and where the evidence lives. If a nightly job re-runs it, say so, because a
-lifecycle proved once is a lifecycle that was true once. A provider whose values are mostly still
+lifecycle proved once is a lifecycle that was true once. A Provider whose values are mostly still
 inferences says exactly that:
 [`@rockysurf/provider-digitalocean`](../packages/provider-digitalocean/README.md#verified) is the
 worked example — it names the three calls a token has actually met, with dates, and states in its
 first sentence that the rest have not — and the status block in
-[`docs/providers/aws.md`](providers/aws.md#the-iam-policy) is the model for a provider that has
+[`docs/providers/aws.md`](providers/aws.md#the-iam-policy) is the model for a Provider that has
 been run end to end.
 
 ## Before it merges
 
 - [ ] Nine methods implemented; `stop` and `start` throw rather than being absent if unsupported.
-- [ ] `factory.settings` declared, so the provider has a Settings panel; `credentialField` and
+- [ ] `factory.settings` declared, so the Provider has a Settings panel; `credentialField` and
       `credentialEnv` declared if it takes a token.
 - [ ] Conformance suite passes (it checks the declaration against the schema).
 - [ ] A column in [`docs/providers/capability-matrix.md`](providers/capability-matrix.md), filled
@@ -331,24 +331,24 @@ been run end to end.
       nobody has exercised must say so, the way the `digitalocean` column does.
 - [ ] A package `README.md` in the preceding section order, with its capability values matching the
       source and its verification section claiming only what has been run.
-- [ ] A page under `docs/providers/` if the provider has operator-facing consequences worth
+- [ ] A page under `docs/providers/` if the Provider has operator-facing consequences worth
       stating: what claiming a host does to it, what a minimal IAM policy looks like, what
       `terminate` deliberately doesn't do.
 - [ ] `pnpm run check` green, including the dependency lint.
-- [ ] Know which kind of verification your provider gets. **A nightly real-cloud leg is for
-      OFFICIAL providers**, the ones composed into `packages/rockysurf/src/compose.ts`. A
-      **personal provider gets none**: it ships a fully daggered column, verified by its author and
+- [ ] Know which kind of verification your Provider gets. **A nightly real-cloud leg is for
+      OFFICIAL Providers**, the ones composed into `packages/rockysurf/src/compose.ts`. A
+      **personal Provider gets none**: it ships a fully daggered column, verified by its author and
       by whoever installs it against their own account, the way the `digitalocean` column reads.
       Don't file a nightly leg for one, and don't promise a nightly in its README.
 - [ ] If your package pulls in a vendor SDK, confirm it didn't land in the `npx` install closure
       (`scripts/check-npx-closure.mjs`), and that you took it for the reason
       [Vendor SDKs](#vendor-sdks) allows. Core's cold start is a feature.
 
-## Out of tree: a personal provider
+## Out of tree: a personal Provider
 
-Nothing here requires your provider to live in this repository, and since
+Nothing here requires your Provider to live in this repository, and since
 [ADR-0026](adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md) nothing requires
-a fork to run it either. `@rockysurf/provider-sdk` is published precisely so a provider doesn't
+a fork to run it either. `@rockysurf/provider-sdk` is published precisely so a Provider doesn't
 have to be here: depend on it, implement the factory, publish or build the package, and an operator
 names it in their config file.
 
@@ -363,19 +363,19 @@ providers:
 Rocky Surf loads it at start, composes it beside the shipped five, and gives it a Settings panel
 with its Enabled switch.
 
-> **Warning:** A provider runs with Rocky Surf's full access. Install ones you trust. That's the
+> **Warning:** A Provider runs with Rocky Surf's full access. Install ones you trust. That's the
 > whole trust model, and your README should say it too.
 
-**The worked example is `packages/provider-digitalocean`** (issue #368): a complete provider that
+**The worked example is `packages/provider-digitalocean`** (issue #368): a complete Provider that
 lives in this repository, is built and tested by CI, and is deliberately not wired into
-`compose.ts`. It's installed the way any personal provider is. Read it rather than starting from a
+`compose.ts`. It's installed the way any personal Provider is. Read it rather than starting from a
 blank file.
 
 **Nobody here will verify it for you.** The nightly real-cloud workflow drives the official
-providers, the ones composed into `packages/rockysurf/src/compose.ts`. A personal provider ships a
+Providers, the ones composed into `packages/rockysurf/src/compose.ts`. A personal Provider ships a
 fully daggered capability column and is verified by its author and by whoever installs it, against
 their own cloud account. The `digitalocean` column is the model for what that looks like written
-down — it is the column of the provider named just above, and every dagger still standing in it is
+down — it is the column of the Provider named just above, and every dagger still standing in it is
 a value nobody has run yet.
 Record what you ran, on what date, against which region: that record is the evidence, and it's the
 only thing that takes a dagger off. (Owner ruling, 2026-09-05.)
@@ -384,7 +384,7 @@ The cheap half of that verification is the live dry run in the `add-provider` sk
 ([`.agents/skills/add-provider/references/dry-run.md`](../.agents/skills/add-provider/references/dry-run.md)):
 `provision()` against the real account under an intercepted `fetch`, every write refused unless
 allowed and the instance create refused by name, every request logged with the cloud's answer. It
-exists because the first personal provider passed its whole unit suite and failed on its first real
+exists because the first personal Provider passed its whole unit suite and failed on its first real
 create, on a precondition the fake didn't model (#405). Run it before publishing. The fake it sits
 behind must start empty and refuse references to objects nobody created, with one test that
 provisions the whole chain from nothing (the skill's `scaffold.md`).
@@ -394,7 +394,7 @@ Five things a personal package has to get right that an in-tree one gets for fre
 - **The default export is the factory**, and `factory.id` equals the config key the operator will
   use. A mismatch is reported as "rename the section to providers.<id>".
 - **Your manifest's entry must resolve.** Use `exports` (import-only is fine, and every shipped
-  provider is import-only), `module`, or `main`. Rocky Surf reads your manifest rather than asking
+  Provider is import-only), `module`, or `main`. Rocky Surf reads your manifest rather than asking
   `require` to resolve you.
 - **Credentials.** Declare `credentialField` (the config key your schema expects, such as
   `'token'`) and `credentialEnv` (the variables it may arrive under) on the factory. A value in the
@@ -406,7 +406,7 @@ Five things a personal package has to get right that an in-tree one gets for fre
   so this works. Don't rely on `instanceof` across the boundary in your own code either.
 - **Prefer a package that installs with no package manager.** An operator who runs `npm install` in
   `<dataDir>/providers` gets your dependencies resolved for them. An installer that only extracts a
-  tarball, which is the shape a provider shop takes, doesn't, and it refuses an install whose
+  tarball, which is the shape a Provider shop takes, doesn't, and it refuses an install whose
   manifest names a dependency it can't resolve. `@rockysurf/provider-digitalocean` declares **no
   runtime dependencies at all**: its config schema is hand-written rather than zod (the SDK's
   `ConfigSchema<T>` is structurally `{ parse }` precisely so that's allowed), and
@@ -415,19 +415,19 @@ Five things a personal package has to get right that an in-tree one gets for fre
   own and no export whose meaning depends on object identity.
 
 The SDK has **zero runtime dependencies**, which is deliberate, because anything it depended on
-would be inherited by every provider and every consumer. It also has no export whose meaning
+would be inherited by every Provider and every consumer. It also has no export whose meaning
 depends on object identity, for the reason just given.
 
 `@rockysurf/provider-conformance` is published for the same reason, so the preceding acceptance bar
 is one you can actually run rather than one you have to take on trust. It depends only on the SDK.
 
-A personal provider doesn't get a Settings panel for its **own** fields until it declares them.
+A personal Provider doesn't get a Settings panel for its **own** fields until it declares them.
 Until then they're edited in the file, and the panel says so. The operator-facing side is in
-[`docs/self-hosting.md`, "Personal providers"](self-hosting.md#personal-providers).
+[`docs/self-hosting.md`, "Personal Providers"](self-hosting.md#personal-providers).
 
 ## Publish to the shop
 
-A personal provider that would help other people can be listed in a Rocky Surf registry, the same
+A personal Provider that would help other people can be listed in a Rocky Surf registry, the same
 `amroja-biz/rockysurf-shop` that distributes Surge Packs
 ([ADR-0028](adr/0028-providers-are-distributed-through-the-shop.md), amended by issues #394
 and #426). What you publish is an **npm-style tarball** plus a **listing entry** that points
@@ -445,7 +445,7 @@ and presses Install. Rocky Surf fetches the tarball over https, checks the diges
 `<dataDir>/providers`, writes the two config lines, and says a restart is needed. Nothing from your
 package runs until that restart, when the loader imports it and the Settings page draws its panel.
 The command-line install in [`docs/self-hosting.md`,
-"Personal providers"](self-hosting.md#personal-providers) does the same steps by hand and remains
+"Personal Providers"](self-hosting.md#personal-providers) does the same steps by hand and remains
 the alternative. Either way, everything that follows about keeping the entry accurate is about what
 the installer, or a person, will do with it.
 
@@ -536,14 +536,14 @@ Where each value came from, because you're still the one signing the pull reques
 | Field | Read from |
 |---|---|
 | `providerId` | `factory.id`. It's also the config section key the operator ends up with, so it's what your `package:` line will sit under |
-| `name` | `settings.title`, the heading over these very fields once the provider is installed; `displayName` when nothing is declared |
+| `name` | `settings.title`, the heading over these very fields once the Provider is installed; `displayName` when nothing is declared |
 | `description` | **You**, on the command line. The one line a person reads before installing |
 | `version` | Your manifest's `version` |
 | `package` | Your manifest's `name`. It's what the operator writes on the `package:` line |
 | `tarball` | **You**, on the command line. https only |
 | `sha256` | The digest of the bytes it just read — the file you're about to host, not a file like it |
 | `settings` | Your declared fields, in declared order, reduced to name, label and kind. It's a summary, so an operator can decide before installing; the real panel is built from the declaration that arrives with the package (ADR-0027) |
-| `capabilities` | The provider `createProvider()` returns, constructed from your declared fields' own `example` values. This is where an operator learns that a stopped machine still bills before they install, rather than after |
+| `capabilities` | The Provider `createProvider()` returns, constructed from your declared fields' own `example` values. This is where an operator learns that a stopped machine still bills before they install, rather than after |
 
 Two of those are worth saying out loud. **The command reads the settings summary and the capability
 struct out of the artifact rather than transcribing them**, so they can't drift from the package the
@@ -553,7 +553,7 @@ upload that same file.
 
 There's deliberately **no trust or tier field**, and the format refuses one. Every listing already
 carries, from Rocky Surf rather than from the registry, the sentence this document opened with: *a
-provider runs with Rocky Surf's full access, so install ones you trust.* Nothing you write can
+Provider runs with Rocky Surf's full access, so install ones you trust.* Nothing you write can
 soften it, and nothing you write has to repeat it.
 
 ### Publish a new version
@@ -577,5 +577,5 @@ configuring one of the five that ship, and authoring a new one. It carries the p
 describes, the trap checklist, and the full registration list, which is longer than
 [Wire it in](#wire-it-in) suggests.
 
-`.agents/skills/contribute-provider/` picks up where it ends: a provider that builds and passes
+`.agents/skills/contribute-provider/` picks up where it ends: a Provider that builds and passes
 conformance, through the release and the digest round trip, to a pull request on the shop.

@@ -49,7 +49,7 @@ password.
 |---|---|---|---|
 | `packId` | string | yes | Unique across the repository, and must match the filename. Lowercase alphanumeric with single hyphens |
 | `name` | string | yes | Display name |
-| `tools` | string[] | yes | Tool **ids**, at least one, in any order — `installOrder` decides execution. May name tools defined in this file or in any other pack file |
+| `tools` | string[] | yes | Tool **ids**, at least one, in any order — `installOrder` decides execution. May name Tools defined in this file or in any other pack file |
 | `displayOrder` | number | yes | Position in the UI's pack list, ascending |
 | `enabled` | boolean | yes | `false` hides it from the UI. CI still smoke-tests it |
 | `imageUrl` | string | no | Card image; relative path or absolute URL |
@@ -80,13 +80,13 @@ find yourself wanting the application to special-case your `packId`, that is a b
       secret: true                 # password field; stored encrypted; returned by no route
 ```
 
-- **Prefix your names**, always: one environment is shared by every tool on the box.
+- **Prefix your names**, always: one environment is shared by every Tool on the box.
 - **Refused at validation**: anything Rocky Surf exports (`ARCH`, `HOME`, `REPOS`, `GITHUB_TOKEN`,
   `RDP_PASSWORD`, `GIT_TERMINAL_PROMPT`, `GIT_CONFIG_COUNT`, `PATH`, …), plus the `ROCKYSURF_`,
   `GIT_CONFIG_KEY_` and `GIT_CONFIG_VALUE_` prefixes, which are generated with an index. Any
   other `GIT_` name is yours (issue #197).
 - **You are not the only contributor to that environment**: since issue #197 the person creating
-  the server can set their own `KEY=value` lines too. You cannot see them and must not plan around
+  the Server can set their own `KEY=value` lines too. You cannot see them and must not plan around
   them — and they cannot shadow you, because a name your pack declares is refused in that field.
 - **A `secret` input may not have a `default`** — a credential in a file everyone can read is not
   a secret.
@@ -94,7 +94,7 @@ find yourself wanting the application to special-case your `packId`, that is a b
 
 What the four rules imply for `inputs`:
 
-- **Idempotent** — the values are identical on every re-run (they are stored on the server), so
+- **Idempotent** — the values are identical on every re-run (they are stored on the Server), so
   never use one to decide whether work has already been done. Use a stamp.
 - **`$ARCH`-aware** — never ask for the architecture. `$ARCH` knows, and a user can get it wrong.
 - **Non-interactive** — this is the *only* sanctioned way to ask a question, and it happens before
@@ -103,7 +103,7 @@ What the four rules imply for `inputs`:
   narrow with privilege.
 
 Ask for as little as possible: an input that could have had a `default` is a question that did not
-need asking, and a credential the tool's own `login` command can collect belongs in your `guide`.
+need asking, and a credential the Tool's own `login` command can collect belongs in your `guide`.
 
 ### Tool
 
@@ -113,12 +113,12 @@ need asking, and a credential the tool's own `login` command can collect belongs
 | `name` | string | yes | Human-readable name shown in the UI |
 | `description` | string | yes | One line, shown next to the name |
 | `category` | `'agent'` \| `'base'` | yes | `agent` for the AI coding agents a pack exists to deliver; `base` for supporting software |
-| `url` | string | yes | The tool's home page, so a user can see what they are installing |
+| `url` | string | yes | The Tool's home page, so a user can see what they are installing |
 | `installScript` | string | yes | Shell. Installs the software. Must satisfy all four rules |
-| `setupScript` | string | no | Shell. Per-server configuration, run after every tool's `installScript`. Same `runAs`, same four rules |
-| `enabled` | boolean | yes | `false` hides the tool from the UI without deleting it |
+| `setupScript` | string | no | Shell. Per-server configuration, run after every Tool's `installScript`. Same `runAs`, same four rules |
+| `enabled` | boolean | yes | `false` hides the Tool from the UI without deleting it |
 | `installOrder` | number | yes | Ascending, in the bands below |
-| `bootstrap` | boolean | yes | Set `false`. Reserved for tools the runtime guarantees before any plan runs |
+| `bootstrap` | boolean | yes | Set `false`. Reserved for Tools the runtime guarantees before any plan runs |
 | `runAs` | `'root'` \| `'rocky'` | yes | The user the step runs as |
 
 ### `installOrder`, and the gaps-of-10 convention
@@ -128,14 +128,14 @@ not a whitelist.
 
 | Order | For |
 |---|---|
-| `0` | Runtime-guaranteed base tools. Reserved — a pack tool using it is rejected |
+| `0` | Runtime-guaranteed base Tools. Reserved — a pack Tool using it is rejected |
 | `10` | System packages from apt with no dependencies of their own |
 | `20` | Language runtimes — Node, Python, Go, Rust |
 | `30` | Anything that needs a runtime from band 20 |
 | `40` | The agents themselves |
 | `50` | Anything that needs an agent to already be installed |
 
-Leave gaps of 10 so someone can insert a step later without renumbering the repository. A tool
+Leave gaps of 10 so someone can insert a step later without renumbering the repository. A Tool
 that belongs between two bands takes the gap, and that is the convention working as intended
 rather than a violation of it — the desktop sits at `35`, `dolt` at `36`.
 
@@ -145,7 +145,7 @@ so a snapshotted plan renders identically every time — an interrupted install 
 against a different order would skip the wrong work. It is a determinism guarantee, not a
 scheduling tool, and a pack that leans on it is one rename away from breaking.
 
-Higher `installOrder` is still only *ordering*. It does not make the earlier tool present: the
+Higher `installOrder` is still only *ordering*. It does not make the earlier Tool present: the
 user's pack might not include it. Where the cost is low, install what you need yourself.
 
 ## The four rules
@@ -187,7 +187,7 @@ without it, and the harness drops privilege with `runuser`); a **root step writi
 **`$HOME` differs** — `/root` for root steps, `/home/rocky` for `rocky` steps, so `~/.bashrc`
 means two different files.
 
-If one tool genuinely needs both privilege levels, that is two tools, or an `installScript` and a
+If one Tool genuinely needs both privilege levels, that is two Tools, or an `installScript` and a
 `setupScript` split. Global `npm install -g` is root's. A per-user CLI that installs into `$HOME`
 is `rocky`'s.
 
@@ -195,7 +195,7 @@ is `rocky`'s.
 
 The most expensive lesson in this project: **"Ubuntu 24.04" is not a contract about installed
 packages.** Two clouds both advertising Ubuntu 24.04 shipped materially different images — one
-had `jq` preinstalled and the other did not, so a code path fired on exactly one provider and
+had `jq` preinstalled and the other did not, so a code path fired on exactly one Provider and
 looked fine everywhere it was tested. If your pack needs it, your pack installs it.
 
 | Don't assume | Why not | What to do |
@@ -210,7 +210,7 @@ looked fine everywhere it was tested. If your pack needs it, your pack installs 
 | A login session for `rocky` — `systemctl --user`, `$XDG_RUNTIME_DIR`, a per-user D-Bus | The agent drops privilege without a PAM session, so no user systemd instance exists. True on a real cloud box, not only in a container | From a `runAs: root` step, `loginctl enable-linger rocky` and wait for `/run/user/<uid>/bus`. Guard both halves on `[ -d /run/systemd/system ]` |
 | That anything sources `.bashrc`, `/etc/profile` or `/etc/profile.d` | Steps run under a plain `bash -c` — non-login and non-interactive — so none of those files is ever read during a bootstrap | `export PATH=…` at the top of each script that needs it, and put system-wide binaries somewhere already on the default PATH |
 | A particular Node, Python, Go or Rust version | Only what you install. Ubuntu's apt package is often well behind the current release | Install and pin what you need |
-| That another tool has already run | Ordering comes from `installOrder` and nothing else | Give the dependent tool a higher `installOrder`, and install cheap prerequisites yourself |
+| That another Tool has already run | Ordering comes from `installOrder` and nothing else | Give the dependent Tool a higher `installOrder`, and install cheap prerequisites yourself |
 | A network mirror, proxy, or registry beyond what your script fetches | The box has ordinary outbound internet and nothing more | Fetch from stable public URLs |
 | That a file a package *says* it installs is there | The `ubuntu:24.04` Docker image ships `/etc/dpkg/dpkg.cfg.d/excludes` with `path-exclude=/usr/share/doc/*`, so documentation, examples and shell-completion snippets under `/usr/share/doc` are absent in the smoke container while present on a real cloud image. `dpkg -L` lists them either way | Guard on `[ -f "$path" ]` and degrade, rather than either failing the step or silently doing half the job — and say in the step log which branch you took |
 | The unauthenticated GitHub API | `api.github.com` allows 60 requests an hour **per source IP**, and a bootstrapping box holds no token. Several installers begin by asking it which release is latest, and fail confusingly when refused | Fetch release assets from the CDN download URL directly, pinned, rather than through an installer that queries the API |
@@ -219,7 +219,7 @@ Two more:
 
 - **Which version you install depends on where it comes from.** A quota-free registry (npm, PyPI
   via `pipx`) serves any version on demand, so install **unversioned** and let the user have the
-  current release — a bare name takes the registry's stable channel, not a prerelease. A tool
+  current release — a bare name takes the registry's stable channel, not a prerelease. A Tool
   that ships only as a GitHub release asset stays **pinned to a tag with a `sha256`**, because
   the only endpoint that answers "what is latest" is the rate-limited one above. Say in a comment
   which rule you are under. Separately, and regardless of version: never pipe a vendor's

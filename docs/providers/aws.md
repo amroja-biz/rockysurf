@@ -37,7 +37,7 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 # or nothing at all, if you run core on an EC2 instance with an instance role
 ```
 
-Point the provider at a profile in your config if you use more than one:
+Point the Provider at a profile in your config if you use more than one:
 
 ```yaml
 providers:
@@ -184,7 +184,7 @@ the tag conditions to match.
 > nothing tagged the ENI; every first launch under the previously published version failed with
 > `UnauthorizedOperation`. See [the note below](#three-things-that-trip-people-up).
 >
-> **The policy has since been tightened further** (`rockysurf-b14y`): the provider now tags the
+> **The policy has since been tightened further** (`rockysurf-b14y`): the Provider now tags the
 > ENI at launch, so that ARN sits under the tag condition in the RunInstances statement AND in
 > `TagOnCreate` — it takes both halves, and the first shipped without the second, which failed
 > every real launch for five nightlies while every in-repo check stayed green. **Measured** on
@@ -192,17 +192,17 @@ the tag conditions to match.
 > both architectures. Everything above stands as proved.
 >
 > **The verification is continuous, not dated.** A policy proved once is a policy that was true
-> once: add an API call to the provider and this document silently becomes wrong, every
+> once: add an API call to the Provider and this document silently becomes wrong, every
 > self-hoster's next launch fails with `UnauthorizedOperation`, and CI stays green. So the
 > nightly real-cloud job runs the same lifecycle under this same policy — its AWS credentials
 > chain into the role deployed from `deploy/aws/iam-role.yaml`, and it asserts that is the
-> identity actually in force before it launches anything. A provider call this document does not
+> identity actually in force before it launches anything. A Provider call this document does not
 > cover fails the nightly the first morning after it lands (`rockysurf-evo1`;
 > `.github/workflows/nightly-real-cloud.yml` carries the setup, and the assertion is what stops
 > a wider role being substituted).
 >
 > One part of that run deliberately does *not* use this policy: the zero-orphan audit reads
-> volumes with `ec2:DescribeVolumes`, which the provider never calls and this document therefore
+> volumes with `ec2:DescribeVolumes`, which the Provider never calls and this document therefore
 > never grants. The audit runs as a separate, stronger principal instead, and the run refuses to
 > start if it cannot prove the two are different identities — an orphan the credentials under test
 > cannot see would be an orphan the audit reports as clean. If a future nightly fails there, the
@@ -274,19 +274,19 @@ published policy quietly stops being the policy anyone has tested.
 
 ## What each statement is for
 
-The provider makes **fifteen** distinct API calls. Here is every one of them and why.
+The Provider makes **fifteen** distinct API calls. Here is every one of them and why.
 
 | Call | Statement | Why it is needed |
 |---|---|---|
 | `ec2:DescribeAccountAttributes` | ReadOnlyDiscovery | The cheapest authenticated call there is. `validateCredentials()` uses it to prove your credentials and region work before anything is created. |
-| `ec2:DescribeInstances` | ReadOnlyDiscovery | Reading a server's state, and listing everything tagged `managed-by` for the reconciler. |
+| `ec2:DescribeInstances` | ReadOnlyDiscovery | Reading a Server's state, and listing everything tagged `managed-by` for the reconciler. |
 | `ec2:DescribeImages` | ReadOnlyDiscovery | Reading the AMI's **root device name**. See the note below — this is not optional. |
 | `ec2:DescribeVpcs`, `ec2:DescribeSubnets` | ReadOnlyDiscovery | Finding your default VPC and a default subnet. Rocky Surf does not create networking. |
 | `ec2:DescribeSecurityGroups` | ReadOnlyDiscovery | Finding the shared SSH group, and reporting it to the reconciler. |
 | `ec2:DescribeInstanceTypeOfferings` | ReadOnlyDiscovery | Picking a default subnet in an Availability Zone that actually offers the instance type you asked for. See [the note below](#your-default-subnet-may-be-in-the-wrong-zone). |
 | `ssm:GetParameter` | ResolveUbuntuAmiFromPublicSsm | Resolving the current Ubuntu 24.04 AMI for the requested architecture. |
 | `ec2:RunInstances` | LaunchTaggedInstances + LaunchUsingExistingNetworkAndImage | Creating the box. Split into two statements — see below. |
-| `ec2:CreateTags` | TagOnCreate | Required even though the provider never calls it directly. See below. |
+| `ec2:CreateTags` | TagOnCreate | Required even though the Provider never calls it directly. See below. |
 | `ec2:TerminateInstances`, `ec2:StopInstances`, `ec2:StartInstances` | ManageOwnInstancesOnly | Destroying and power-cycling boxes Rocky Surf created. |
 | `ec2:CreateSecurityGroup` | CreateTheSharedSshGroup | Creating the one shared SSH group, on first launch only. |
 | `ec2:AuthorizeSecurityGroupIngress` | AuthorizeSshOnOwnGroupOnly | Adding the SSH rule to that group. |
@@ -317,7 +317,7 @@ the ENI, so `aws:RequestTag/managed-by` did not exist for it, the tag-conditione
 matched nothing, and every launch failed with `UnauthorizedOperation` on `network-interface/*`.
 That is worth stating as a rule, because it is the trap: **"created by the call" and "tagged by
 the call" are not the same set, and only the second can carry a `RequestTag` condition.** The
-restricted-principal run refused to create a single server until the ARN was moved out to the
+restricted-principal run refused to create a single Server until the ARN was moved out to the
 unconditioned statement.
 
 Moving it out was the right fix for the symptom and the wrong one for the cause. `RunInstances`
@@ -439,7 +439,7 @@ accident is the difference between a dev box and an incident, so it cannot arriv
 
 Until issue #304, the only thing that ever wrote your CIDR to EC2 was `provision()` — so editing
 the setting fixed your file and left the security group exactly as it was, and the way to fix
-your SSH was to launch a server you did not want. Worse, the authorize call sat behind a latch
+your SSH was to launch a Server you did not want. Worse, the authorize call sat behind a latch
 set for the lifetime of the process, so a corrected CIDR did not reach EC2 **even on the next
 launch**; it took a restart. The latch is gone, and provision now authorizes every configured
 CIDR on every provision.
@@ -505,7 +505,7 @@ have today. See [the note above](#your-default-subnet-may-be-in-the-wrong-zone).
 Established sessions survive — a security group is evaluated on connection setup — and the boxes
 keep running. This is reachability, not data.
 
-Rocky Surf does **not** create EC2 key pairs. SSH keys are generated per server, the public half
+Rocky Surf does **not** create EC2 key pairs. SSH keys are generated per Server, the public half
 is injected through cloud-init, and the private half stays encrypted in Rocky Surf's own store.
 There is no key pair in your account to manage or leak.
 
@@ -523,7 +523,7 @@ From a checkout you have run `pnpm -r build` in, `node packages/rockysurf/dist/b
 identical binary and takes the same environment. The Docker Compose path in the
 [README](../../README.md#quick-start) works too.
 
-`validateCredentials()` runs during the first provider call and fails with a plain message if
+`validateCredentials()` runs during the first Provider call and fails with a plain message if
 the credentials or region are wrong. Saving the AWS section in Settings with **Enabled** on runs
 it too, and the answer appears on that page under **Credentials at the cloud** — verified, or
 AWS's own error. The check never blocks the save, and never runs for a Provider that is switched
@@ -542,9 +542,9 @@ aws iam simulate-principal-policy \
 
 Every row should read `allowed`. Note that `simulate-principal-policy` does not evaluate
 `aws:RequestTag` conditions the way a real call does, so a green simulation is necessary but
-not sufficient — the honest test is creating one server and destroying it.
+not sufficient — the honest test is creating one Server and destroying it.
 
-The end-to-end check is simply: create a server in the UI, wait for it to reach ready, SSH in,
+The end-to-end check is simply: create a Server in the UI, wait for it to reach ready, SSH in,
 then terminate it. If the policy is short something, the failure surfaces as a
 `ProviderError` with `providerCode: UnauthorizedOperation`, and the message names the action
 that was refused.
@@ -566,7 +566,7 @@ before — the shared SSH group already exists, so nothing calls `CreateSecurity
 `AuthorizeSecurityGroupIngress`, which are exactly the calls a *first* launch makes. The script
 covers those with EC2 `--dry-run` probes, which perform the full authorization evaluation and
 stop before any side effect. It probes in the deny direction too: `ec2:DescribeVolumes` must be
-refused (the provider never calls it), and `ec2:CreateTags` on an existing resource must be
+refused (the Provider never calls it), and `ec2:CreateTags` on an existing resource must be
 refused (the `ec2:CreateAction` condition is supposed to confine tagging to creation). A
 condition that matches nothing and a condition that is absent look identical from a passing
 run — only a call that is supposed to fail tells them apart.
@@ -599,7 +599,7 @@ page](azure.md#the-nightly-real-cloud-run-maintainers) for its subscription. The
 after each leg is deliberately narrow — it terminates only the instance ids the run itself
 recorded, and merely *reports* everything else tagged `managed-by=rockysurf` — but that narrowness
 is the second line of defence. The first is that nothing anybody cares about is in the account at
-all. On 2026-08-12 the Hetzner leg destroyed the owner's own live server, launched from their
+all. On 2026-08-12 the Hetzner leg destroyed the owner's own live Server, launched from their
 laptop against the same project 37 seconds earlier, and reported it as a leak it had helpfully
 cleaned up. A self-hoster's production box and this nightly can share one AWS account far more
 easily than one Hetzner project.
@@ -672,7 +672,7 @@ Defaults are overridable: `--repo`, `--branch`, `--region`, `--stack-region`, `-
 The run signs in as the entry role and then *becomes* the role under test, so every EC2 call the
 lifecycle makes runs under exactly the permissions this page publishes. The zero-orphan audit and
 the terminate sweep stay on the **first** role, because `ec2:DescribeVolumes` is a call the
-provider never makes and this page therefore never grants — an orphan the credentials under test
+Provider never makes and this page therefore never grants — an orphan the credentials under test
 cannot see would be an orphan the audit reports as clean, and a sweep wired through the identity
 being tested goes blind at exactly the moment that identity is what broke (`rockysurf-ufwn`).
 
@@ -688,7 +688,7 @@ made back with the one command the script prints.
 ## What is deliberately absent
 
 **No `cloudformation:*`.** Rocky Surf creates instances with plain `RunInstances`. An earlier
-design wrapped every server in its own CloudFormation stack; that existed only so the box could
+design wrapped every Server in its own CloudFormation stack; that existed only so the box could
 read DynamoDB and Secrets Manager through a per-server IAM role, and the current bootstrap
 removed that need entirely.
 
@@ -744,13 +744,13 @@ instance in `ap-south-1` or `eu-north-1` — Rocky Surf does not restrict `regio
 but every offering's `hourly` comes back `null`, which the SDK defines as "unknown, never free"
 rather than reusing another region's number. That has one binding consequence worth stating
 plainly: **the spend cap cannot see those boxes.** `hourlyCostAmount` is null for an unpriced
-offering, so a server in an uncovered region counts toward nobody's spend total — it is real,
+offering, so a Server in an uncovered region counts toward nobody's spend total — it is real,
 billing, and invisible to the one feature meant to bound cost. If you run in a region not in the
-table above, budget for it the way you would for a provider Rocky Surf could not price at all.
+table above, budget for it the way you would for a Provider Rocky Surf could not price at all.
 
 **When the feed is unreachable, prices are unavailable — deliberately.** There is no bundled
 fallback (ADR-0009): every offering lists with `hourly: null`, the create form shows one
-"prices are currently unavailable" notice, and creating servers keeps working. If your
+"prices are currently unavailable" notice, and creating Servers keeps working. If your
 installation cannot reach a public GitHub Pages URL, either its internet is gone or GitHub is
 down; a stale price pretending to be current was judged worse than an honest "unavailable".
 Air-gapped? Set `pricing.enabled: false`, or point `pricing.feedUrl` at your own mirror.

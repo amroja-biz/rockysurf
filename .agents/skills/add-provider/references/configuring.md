@@ -1,15 +1,15 @@
-# Configuring a provider Rocky Surf already ships
+# Configuring a Provider Rocky Surf already ships
 
-Four providers ship in the distribution: `hetzner`, `aws`, `azure` and `gcp`. **Every one is
+Four Providers ship in the distribution: `hetzner`, `aws`, `azure` and `gcp`. **Every one is
 disabled until switched on**, so a fresh install cannot spend money by accident. At least one has to
-be enabled before a server can be created.
+be enabled before a Server can be created.
 
 There are three routes, and they are not equivalent.
 
 | route | what it can do | when to use it |
 |---|---|---|
 | the config file | everything | the default answer, and the only route for GCP |
-| the setup wizard | enable a provider, and tell you which variable to export for its credential | first run |
+| the setup wizard | enable a Provider, and tell you which variable to export for its credential | first run |
 | the Settings page | edit the fields in the settings inventory | a running install, for the fields it knows |
 
 ## The config file is the source of truth
@@ -54,17 +54,17 @@ as one.
    variable's NAME — is the one an operator can see, diff and roll back. Silently preferring an
    ambient variable would mean a file that lies.
 2. **Then the environment.** With the field empty, the composition root reads the variables the
-   provider names (`HETZNER_TOKEN` or `HCLOUD_TOKEN` for Hetzner) — the path the first-run wizard
+   Provider names (`HETZNER_TOKEN` or `HCLOUD_TOKEN` for Hetzner) — the path the first-run wizard
    steers a token cloud to: enable the cloud, export the variable, restart, come back.
 3. **Nothing else.** There is no stored copy anywhere — no wizard credential box, no secret kind;
    both were deleted in issue #280 so that "Rocky Surf stores no cloud credentials" is
    unconditionally true.
 
 **A variable exported after Rocky Surf started takes effect at the next restart**, because a
-variable cannot appear inside a running process. Everything else about a provider's configuration
+variable cannot appear inside a running process. Everything else about a Provider's configuration
 applies on save (ADR-0017). This surprises people; say it before they ask.
 
-Three providers take **no credential from the config file at all**, by design — there is nowhere to
+Three Providers take **no credential from the config file at all**, by design — there is nowhere to
 put one:
 
 - **AWS**: the standard SDK chain. `AWS_PROFILE`, environment variables, or an instance role.
@@ -82,7 +82,7 @@ CLI at all — the environment variables above — so check what is installed be
 
 ## `sshAllowedCidr` is required, and has no default
 
-For `aws`, `azure` and `gcp`, enabling the provider without `sshAllowedCidr` means the provider
+For `aws`, `azure` and `gcp`, enabling the Provider without `sshAllowedCidr` means the Provider
 refuses its own section and is dropped at startup. There is no default on purpose: a firewall rule
 is a security decision and Rocky Surf will not infer one from whatever address the operator happens
 to have today.
@@ -109,33 +109,33 @@ Hetzner has no security-group model and takes neither field.
 
 ## What "enabled but not working" looks like
 
-A provider that is enabled and cannot be built is **reported and skipped, never fatal**. The
+A Provider that is enabled and cannot be built is **reported and skipped, never fatal**. The
 control plane still starts, because the UI is where an operator fixes it. So the symptom is a
-provider that is simply absent rather than an error at startup.
+Provider that is simply absent rather than an error at startup.
 
 Where to look, in order:
 
-1. **The boot log** — one line per provider: `disabled in config`, `no credential found — <hint>`,
+1. **The boot log** — one line per Provider: `disabled in config`, `no credential found — <hint>`,
    or `not loaded — <the rejection, as a sentence>`.
-2. **The New Server page and `/api/v1/setup`** — an unavailable provider carries its reason.
+2. **The New Server page and `/api/v1/setup`** — an unavailable Provider carries its reason.
 3. **A restart** — if the credential was pasted in the wizard.
 
 The common causes, in the order they actually occur: `enabled: false` still set; a missing
 `sshAllowedCidr`; an environment variable named in the config but absent from the environment; and
 a credential pasted in the wizard without a restart since.
 
-## The Settings page covers every shipped provider, and a personal one too
+## The Settings page covers every shipped Provider, and a personal one too
 
 Every shipped cloud has a panel: its Enabled switch, its fields, its SSH whitelist where it has one,
 and a read-only view of its `sizes` allowlist (edited in the file). Hetzner's panel is built from
 the factory's own declaration (ADR-0027); the other four are still hand-written in core's inventory
-and look the same. A personal provider (ADR-0026) gets a panel too — a full one if its author
+and look the same. A personal Provider (ADR-0026) gets a panel too — a full one if its author
 declared its settings, a minimal one (Enabled, and the package it loads from) if not, in which case
 its own fields are edited in the file and any undeclared value is masked on the page.
 
 The API refuses to save any path not in the inventory — *"this settings page does not edit that
 field"* — so a field with no control is a field to edit in the file, not a bug to report. Two routes
-still need the file or a restart: adding a personal provider section (its package loads at start),
+still need the file or a restart: adding a personal Provider section (its package loads at start),
 and any credential that arrives through an environment variable.
 
 ## Provider-specific notes worth volunteering
@@ -160,4 +160,4 @@ under `deploy/{aws,gcp,azure}`, and the per-provider pages under `docs/providers
 minimal policy. Point operators at those rather than letting them start from an administrator
 credential — and note that CI has checks (`scripts/check-iam-policy.mjs`,
 `scripts/check-azure-role.mjs`, `scripts/check-gcp-role.mjs`) asserting the published roles stay in
-step with what the providers actually call.
+step with what the Providers actually call.
