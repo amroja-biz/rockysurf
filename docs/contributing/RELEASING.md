@@ -125,7 +125,7 @@ git fetch origin && git tag -a v0.2.0 -m "v0.2.0" origin/main && git push origin
 # 3. Approve. Actions → "Release to npm" → Review deployments → npm → Approve.
 ```
 
-`.github/workflows/release.yml` then runs, on the tagged commit: `pnpm run check`, `pnpm -r build`
+`.github/workflows/release.yml` then runs, on the tagged commit: `pnpm -r build`, `pnpm run check`
 (the whole workspace, never `--filter` — see the warning below), `scripts/verify-tarballs.mjs`,
 `pnpm publish -r --access public --provenance`, and finally `npx rockysurf@0.2.0 --version` from
 an empty directory against the real registry. `pnpm publish -r` skips `private: true` packages,

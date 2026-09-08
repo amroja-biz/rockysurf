@@ -26,7 +26,7 @@
  * Usage: node scripts/npm-bootstrap-trust.mjs [--dry-run] [--only <name>]
  */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -50,9 +50,16 @@ function run(cmd, cmdArgs, { input, quiet } = {}) {
     return ''
   }
   if (!quiet) console.log(`  $ ${shown}`)
-  const result = spawnSync(cmd, cmdArgs, { encoding: 'utf8', stdio: input === undefined ? ['inherit', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'], input })
+  // `npm deprecate`, `npm trust` and `npm access` are write operations behind 2FA. npm only offers
+  // its browser one-time-password flow when it owns the terminal; with stdout piped it fails at
+  // once with EOTP. So hand the whole terminal over unless a caller needs the output parsed.
+  const result = spawnSync(cmd, cmdArgs, {
+    encoding: 'utf8',
+    stdio: input === undefined ? 'inherit' : ['pipe', 'pipe', 'pipe'],
+    input,
+  })
   if (result.status !== 0) {
-    const err = new Error(`${shown} exited ${result.status}\n${result.stderr}`)
+    const err = new Error(`${shown} exited ${result.status}\n${result.stderr ?? ''}`)
     err.stderr = result.stderr
     err.status = result.status
     throw err
@@ -86,11 +93,60 @@ function publishablePackages() {
   return found.sort((x, y) => x.manifest.name.localeCompare(y.manifest.name))
 }
 
+/**
+ * The registry's read path lags a first publish by minutes (observed: ~4 min for @rockysurf/core on
+ * 2026-09-07). `npm deprecate` and `npm trust` read that path, so calling either straight after
+ * `npm publish` fails with E404. Poll until the package is readable, then carry on.
+ */
+function waitUntilOnRegistry(name, maxSeconds = 600) {
+  const started = Date.now()
+  let announced = false
+  while (!readableOnRegistry(name)) {
+    if ((Date.now() - started) / 1000 > maxSeconds) {
+      throw new Error(`${name} was published but is still not readable on the registry after ${maxSeconds}s; rerun this script later`)
+    }
+    if (!announced) {
+      console.log(`  waiting for the registry to show ${name} (a fresh publish takes a few minutes to propagate)`)
+      announced = true
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000)
+  }
+  if (announced) console.log(`  ${name} is readable after ${Math.round((Date.now() - started) / 1000)}s`)
+}
+
+/**
+ * Does the package exist at all? Asks the authenticated write path first (`npm access get status`
+ * answers "public" the instant a publish lands, "private" for a name nobody has published), because
+ * the anonymous read path that `npm view` uses lags a first publish by minutes and would make this
+ * script try to publish a placeholder twice.
+ */
 function existsOnRegistry(name) {
+  const status = spawnSync('npm', ['access', 'get', 'status', name], { encoding: 'utf8' })
+  if (status.status === 0 && /:\s*public\s*$/m.test(status.stdout)) return true
+  return readableOnRegistry(name)
+}
+
+/** Is the package visible on the read path `npm view`, `npm deprecate` and `npm trust` use? */
+function readableOnRegistry(name) {
   const result = spawnSync('npm', ['view', name, 'name', '--json'], { encoding: 'utf8' })
   if (result.status === 0) return true
   if (/E404|404 Not Found/.test(result.stderr + result.stdout)) return false
   throw new Error(`npm view ${name} failed:\n${result.stderr}`)
+}
+
+/** `npm deprecate` uses the write endpoint, which can lag the read path by a further few seconds. */
+function deprecatePlaceholder(name) {
+  const message = `Placeholder that reserved the name. Real versions are published by ${REPO}'s release workflow; install one of those.`
+  for (let attempt = 1; ; attempt++) {
+    try {
+      run('npm', ['deprecate', `${name}@${PLACEHOLDER_VERSION}`, message])
+      return
+    } catch (err) {
+      if (attempt >= 12) throw err
+      console.log(`  deprecate not accepted yet (attempt ${attempt}); waiting 15 s and retrying`)
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15_000)
+    }
+  }
 }
 
 function publishPlaceholder({ dir, manifest }) {
@@ -124,23 +180,40 @@ function publishPlaceholder({ dir, manifest }) {
     if (!dryRun) {
       const result = spawnSync('npm', ['publish', '--access', 'public'], { cwd: tmp, stdio: 'inherit' })
       if (result.status !== 0) throw new Error(`npm publish of the ${manifest.name} placeholder exited ${result.status}`)
+      waitUntilOnRegistry(manifest.name)
     }
-    run('npm', ['deprecate', `${manifest.name}@${PLACEHOLDER_VERSION}`, `Placeholder that reserved the name. Real versions are published by ${REPO}'s release workflow; install one of those.`])
+    deprecatePlaceholder(manifest.name)
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
 }
 
-function trustAlreadyConfigured(name) {
-  const result = spawnSync('npm', ['trust', 'list', name, '--json'], { encoding: 'utf8' })
+/** True when the only published version is the placeholder and it has not been deprecated yet. */
+function placeholderNeedsDeprecating(name) {
+  const result = spawnSync('npm', ['view', `${name}@${PLACEHOLDER_VERSION}`, 'version', 'deprecated', '--json'], { encoding: 'utf8' })
   if (result.status !== 0) return false
   try {
     const parsed = JSON.parse(result.stdout)
-    const entries = Array.isArray(parsed) ? parsed : parsed.trustedPublishers ?? parsed.publishers ?? []
-    return entries.some((e) => JSON.stringify(e).includes(WORKFLOW) && JSON.stringify(e).includes(REPO))
+    // npm prints a bare string when only `version` has a value, an object once `deprecated` does.
+    if (typeof parsed === 'string') return parsed === PLACEHOLDER_VERSION
+    return parsed.version === PLACEHOLDER_VERSION && !parsed.deprecated
   } catch {
-    return /release\.yml/.test(result.stdout) && result.stdout.includes(REPO)
+    return false
   }
+}
+
+/** Ask a yes/no question on the terminal; the human at the keyboard can read npm's output, this script cannot. */
+function confirm(question) {
+  if (dryRun) return true
+  process.stdout.write(question)
+  const buf = Buffer.alloc(64)
+  let n = 0
+  try {
+    n = readSync(0, buf, 0, 64)
+  } catch {
+    return false
+  }
+  return /^y/i.test(buf.toString('utf8', 0, n).trim())
 }
 
 function main() {
@@ -170,17 +243,26 @@ function main() {
     const exists = existsOnRegistry(name)
     if (exists) {
       console.log('  exists on the registry')
+      // A previous run may have published the placeholder and then failed before deprecating it
+      // (the registry's read path lags a fresh publish by minutes). Finish that job here.
+      waitUntilOnRegistry(name)
+      if (placeholderNeedsDeprecating(name)) {
+        deprecatePlaceholder(name)
+      }
     } else {
       console.log('  not on the registry: a placeholder is needed before a trusted publisher can be attached')
       publishPlaceholder(pkg)
     }
 
-    if (trustAlreadyConfigured(name)) {
-      console.log(`  trusted publisher for ${REPO}/${WORKFLOW} already present; leaving it`)
-    } else {
+    // No pre-check: `npm trust list` is behind 2FA and npm only shows its browser prompt when its
+    // stdout IS the terminal, so nothing whose output this script captures can authenticate.
+    // Attempt the trust with the whole terminal; a 409 means it is already configured.
+    try {
       run('npm', ['trust', 'github', name, '--file', WORKFLOW, '--repo', REPO, '--env', ENVIRONMENT, '--allow-publish', '--yes'])
+    } catch (err) {
+      if (!confirm(`  If npm printed "409 Conflict" above, the trusted publisher already exists and that is fine. Continue? [y/N] `)) throw err
+      console.log('  trusted publisher already present; leaving it')
     }
-
     run('npm', ['access', 'set', 'mfa=publish', name])
     summary.push({ name, placeholder: !exists })
   }
