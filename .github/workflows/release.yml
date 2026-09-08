@@ -131,10 +131,13 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           dir=$(mktemp -d)
           cd "$dir"
-          for i in 1 2 3 4 5 6; do
+          # A fresh version takes minutes to reach the registry's read path (v0.1.0 on
+          # 2026-09-07: all nine packages published, and this step still timed out at two
+          # minutes; they were installable a few minutes later). Wait up to fifteen.
+          for i in $(seq 1 30); do
             if npx -y "rockysurf@${ver}" --version; then exit 0; fi
-            echo "not visible yet (attempt $i), waiting for the registry"
-            sleep 20
+            echo "not visible yet (attempt $i of 30), waiting for the registry"
+            sleep 30
           done
-          echo "::error::rockysurf@${ver} did not become installable within two minutes"
+          echo "::error::rockysurf@${ver} did not become installable within fifteen minutes"
           exit 1
