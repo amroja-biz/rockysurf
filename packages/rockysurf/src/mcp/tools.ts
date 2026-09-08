@@ -168,7 +168,7 @@ async function costContext(client: CoreClient): Promise<Record<string, unknown>>
             }
           : { cap: null }),
         note:
-          'Estimates from bundled price data, not a bill. Unpriced servers are real spend this ' +
+          'Estimates from bundled price data, not a bill. Unpriced Servers are real spend this ' +
           'figure cannot see.',
       },
     }
@@ -286,17 +286,17 @@ function fleetRow(row: unknown): unknown {
 /* ------------------------------------------------------------------------------- tools */
 
 const serverIdSchema = z.strictObject({
-  server_id: z.string().min(1).describe('The server id, e.g. srv-9f2c1d3b4a5e'),
+  server_id: z.string().min(1).describe('The Server id, e.g. srv-9f2c1d3b4a5e'),
 })
 
 export const MCP_TOOLS: McpToolDefinition[] = [
   {
     name: 'list_servers',
-    title: 'List servers',
+    title: 'List Servers',
     description:
-      'List the servers you own, with status, address, size and hourly cost — the fleet view, ' +
-      'one short row each. Terminated servers are left out unless include_terminated is passed. ' +
-      'Call get_server for one server in full: the environment it was built with, the ' +
+      'List the Servers you own, with status, address, size and hourly cost — the fleet view, ' +
+      'one short row each. Terminated Servers are left out unless include_terminated is passed. ' +
+      'Call get_server for one Server in full: the environment it was built with, the ' +
       'repositories it cloned, and the whole bootstrap report of a box that failed. Includes ' +
       'month-to-date spend and the configured cap.',
     scope: 'read',
@@ -305,7 +305,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         .boolean()
         .default(false)
         .describe(
-          'Include servers already terminated — history, not fleet. They cost nothing and ' +
+          'Include Servers already terminated — history, not fleet. They cost nothing and ' +
             'cannot be acted on; the default leaves them out.',
         ),
     }),
@@ -337,14 +337,14 @@ export const MCP_TOOLS: McpToolDefinition[] = [
      * id rather than a secret.
      */
     name: 'list_providers',
-    title: 'List configured cloud providers',
+    title: 'List configured cloud Providers',
     description:
       'Every cloud this installation is configured for, with what it can do (capabilities: ' +
       'whether it supports stop/start, keeps the same IP address across a stop, whether a ' +
-      'stopped server still bills at the running rate (billsWhileStopped), and so on), any ' +
+      'stopped Server still bills at the running rate (billsWhileStopped), and so on), any ' +
       'saved size preference, and HOW MANY machine types it sells — not the types themselves. ' +
       'Use it to check what a cloud supports before calling stop_server or start_server on a ' +
-      'server there — on a cloud with billsWhileStopped, stopping saves nothing and only ' +
+      'Server there — on a cloud with billsWhileStopped, stopping saves nothing and only ' +
       'terminate_server ends the charge. Call list_offerings for the machine types and prices ' +
       'themselves, which is what create_server needs.',
     scope: 'read',
@@ -357,7 +357,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
      * sizes, most of them types it does not sell in the configured region — in a response an
      * agent pays for on every call and its client then truncates. The truncation is the worst
      * part: the capabilities this tool exists to report are at the END of each provider object,
-     * so the answer to "can this cloud stop a server" was the part that got cut.
+     * so the answer to "can this cloud stop a Server" was the part that got cut.
      *
      * WHAT SURVIVES IS WHAT THE TOOL IS FOR: identity, capabilities, the saved size
      * preferences, the provider's own create-time advisories, and — instead of the catalogue —
@@ -398,14 +398,14 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'get_provider',
-    title: 'Get one cloud provider',
+    title: 'Get one cloud Provider',
     description:
       'Full detail for one configured cloud: everything list_providers summarises for it, plus ' +
       'the machine types it sells in full — one cloud, so the answer stays small. Refused, ' +
       'naming the configured clouds, if the id is not one of them.',
     scope: 'read',
     inputSchema: z.strictObject({
-      provider: z.string().min(1).describe('The provider id, as list_providers names it.'),
+      provider: z.string().min(1).describe('The Provider id, as list_providers names it.'),
     }),
     run: async (args, { client }) => {
       const wanted = String(args['provider'])
@@ -572,14 +572,14 @@ export const MCP_TOOLS: McpToolDefinition[] = [
      * that make a create fail if they are not read first.
      */
     name: 'list_packs',
-    title: 'List the surge packs that can be installed on a new server',
+    title: 'List the Surge Packs that can be installed on a new Server',
     description:
-      'The surge packs this installation offers, with what each one installs. Use it to pick a ' +
+      'The Surge Packs this installation offers, with what each one installs. Use it to pick a ' +
       'pack_id for create_server. Three fields decide whether a create will be refused, and ' +
       'reading them first is the point of this tool: requiresRdp means create_server needs an ' +
       'rdp_password, so ask the human for one BEFORE creating rather than learning it from the ' +
       'refusal; requiresRepos means the box expects at least one repository; and a pack that ' +
-      'lists inputs is asking whoever creates the server for those values — create_server ' +
+      'lists inputs is asking whoever creates the Server for those values — create_server ' +
       'cannot send them, so a pack with a required input has to be created from the web UI. ' +
       'Anything absent from this list cannot be installed.',
     scope: 'read',
@@ -666,8 +666,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'get_server',
-    title: 'Get a server',
-    description: 'Full detail for one server, including provisioning progress and cost so far.',
+    title: 'Get a Server',
+    description: 'Full detail for one Server, including provisioning progress and cost so far.',
     scope: 'read',
     inputSchema: serverIdSchema,
     run: async (args, { client }) => {
@@ -678,9 +678,9 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'get_ssh_command',
-    title: 'Get the SSH command for a server',
+    title: 'Get the SSH command for a Server',
     description:
-      'The ssh command to reach a running server. Returns the COMMAND only — the private key ' +
+      'The ssh command to reach a running Server. Returns the COMMAND only — the private key ' +
       'is never returned and must be downloaded by a human from the web UI.',
     scope: 'read',
     inputSchema: serverIdSchema,
@@ -717,9 +717,9 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'stop_server',
-    title: 'Stop a server',
+    title: 'Stop a Server',
     description:
-      'Stop a running server, preserving its disk. Reversible — start_server brings it back as ' +
+      'Stop a running Server, preserving its disk. Reversible — start_server brings it back as ' +
       'it was, and so does the web UI. Stopping is the cheap way to pause spend without losing ' +
       'work.',
     scope: 'stop',
@@ -757,13 +757,13 @@ export const MCP_TOOLS: McpToolDefinition[] = [
      * its cap can see that it is; it is not refused by one.
      */
     name: 'start_server',
-    title: 'Start a stopped server',
+    title: 'Start a stopped Server',
     description:
-      'Start a server that was stopped, with its disk exactly as it was left — the other half ' +
+      'Start a Server that was stopped, with its disk exactly as it was left — the other half ' +
       'of stop_server, so a box paused to save money can be resumed without waking a human. ' +
-      'Hourly billing resumes. Refused, with a reason, unless the server is stopped: a box ' +
+      'Hourly billing resumes. Refused, with a reason, unless the Server is stopped: a box ' +
       'that is still stopping, or already coming up, has to settle first. Starting does not ' +
-      'create anything, so it cannot exceed the server limit — but note that the monthly spend ' +
+      'create anything, so it cannot exceed the Server limit — but note that the monthly spend ' +
       'cap refuses creates, not starts, so check the spend context on this result rather than ' +
       'assuming a cap will stop you.',
     scope: 'stop',
@@ -776,9 +776,9 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'create_server',
-    title: 'Create a server',
+    title: 'Create a Server',
     description:
-      'Create a new dev box. Subject to the configured limits — maximum servers, creates per ' +
+      'Create a new dev box. Subject to the configured limits — maximum Servers, creates per ' +
       'hour, and the monthly spend cap — all enforced by the control plane, which will refuse ' +
       'with a reason rather than silently succeeding. To authorize the human\'s own SSH key on ' +
       'the box, pass ssh_key_name (a key they saved by name — list_ssh_keys enumerates them) or ' +
@@ -786,7 +786,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       'managed key, which a human downloads from the web UI to log in.',
     scope: 'create',
     inputSchema: z.strictObject({
-      name: z.string().min(1).optional().describe('A name for the server. One is generated if omitted.'),
+      name: z.string().min(1).optional().describe('A name for the Server. One is generated if omitted.'),
       size: z
         .enum(['small', 'medium', 'large'])
         .optional()
@@ -837,7 +837,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
             'one you want. Overrides size. The create is refused if this installation does not ' +
             'offer it.',
         ),
-      pack_id: z.string().min(1).optional().describe('Which surge pack to install.'),
+      pack_id: z.string().min(1).optional().describe('Which Surge Pack to install.'),
       repositories: z
         .array(z.string().min(1))
         .optional()
@@ -1049,11 +1049,11 @@ export const MCP_TOOLS: McpToolDefinition[] = [
 
   {
     name: 'terminate_server',
-    title: 'Terminate a server',
+    title: 'Terminate a Server',
     description:
-      'Destroy a server and its disk. IRREVERSIBLE — anything not committed and pushed is ' +
+      'Destroy a Server and its disk. IRREVERSIBLE — anything not committed and pushed is ' +
       'lost. Requires a scope granted separately from create. Safe to retry: terminating a ' +
-      'server that is already terminated succeeds rather than reporting a conflict.',
+      'Server that is already terminated succeeds rather than reporting a conflict.',
     scope: 'terminate',
     inputSchema: serverIdSchema,
     run: async (args, { client }) => {

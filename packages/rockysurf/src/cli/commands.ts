@@ -77,7 +77,7 @@ export async function listCommand(deps: CliDeps): Promise<number> {
   const servers = unwrap<ServerSummary[]>(await deps.client.get('/api/v1/servers'), 'servers')
 
   if (servers.length === 0) {
-    deps.out('No servers. Create one with `rockysurf create`.')
+    deps.out('No Servers. Create one with `rockysurf create`.')
     return 0
   }
 
@@ -288,7 +288,7 @@ export function readUserScript(args: CreateArgs): { script?: string; refusal?: s
     return {
       refusal:
         `--user-script ${args.userScriptPath} is larger than ${USER_SCRIPT_MAX_BYTES} bytes, which is all a ` +
-        'server will take. Put it in a repository the box clones and run that instead.',
+        'Server will take. Put it in a repository the box clones and run that instead.',
     }
   }
   if (!text.trim()) return { refusal: `--user-script ${args.userScriptPath} is empty` }
@@ -804,7 +804,7 @@ async function resolve(deps: CliDeps, nameOrId: string): Promise<ServerSummary |
 
   if (!found) {
     deps.err(
-      `No server called "${nameOrId}". ` +
+      `No Server called "${nameOrId}". ` +
         (servers.length ? `You have: ${servers.map((s) => s.name).join(', ')}.` : 'You have none yet.'),
     )
   }

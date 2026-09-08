@@ -491,7 +491,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     writable: true,
     appliesAt: 'save',
     help:
-      'The most servers that may exist at once. Enforced server-side, which is what makes it safe to ' +
+      'The most Servers that may exist at once. Enforced server-side, which is what makes it safe to ' +
       'let an agent create its own boxes through the MCP server.',
   },
   {
@@ -499,7 +499,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     kind: 'number',
     writable: true,
     appliesAt: 'save',
-    help: 'The most servers that may be created per hour. Blunts terminate-and-recreate loops.',
+    help: 'The most Servers that may be created per hour. Blunts terminate-and-recreate loops.',
   },
   /** Written and removed as a whole — half a spend cap is not a smaller spend cap. */
   {
@@ -523,7 +523,7 @@ export const SETTINGS_FIELDS: readonly FieldSpec[] = [
     kind: 'string',
     writable: true,
     appliesAt: 'save',
-    help: 'An ISO 4217 code — providers do not all quote in USD.',
+    help: 'An ISO 4217 code — Providers do not all quote in USD.',
   },
 
   /* ------------------------------------------------------------------------ registry */

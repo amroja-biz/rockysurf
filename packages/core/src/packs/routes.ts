@@ -344,7 +344,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     const body = c.req.valid('json')
     const id = body.toolId ?? slugify(body.name)
     if (!id) return badRequest(c, 'toolId could not be derived from name; supply one explicitly')
-    if (getTool(db, id)) return conflict(c, 'A tool with this ID already exists')
+    if (getTool(db, id)) return conflict(c, 'A Tool with this ID already exists')
 
     return created(
       c,
@@ -475,7 +475,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     if (!file || issues.length > 0) {
       return badRequest(
         c,
-        'Invalid tool file',
+        'Invalid Tool file',
         issues.map((i) => ({ path: i.file, message: i.message })),
       )
     }
@@ -562,7 +562,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
     const body = c.req.valid('json')
     const id = body.packId ?? slugify(body.name)
     if (!id) return badRequest(c, 'packId could not be derived from name; supply one explicitly')
-    if (getPack(db, id)) return conflict(c, 'A surge pack with this ID already exists')
+    if (getPack(db, id)) return conflict(c, 'A Surge Pack with this ID already exists')
     const problem = checkTools(body.tools)
     if (problem) return badRequest(c, problem)
     /**
@@ -607,12 +607,12 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
 
   routes.get('/api/v1/admin/surge-packs/:packId', (c) => {
     const pack = getPack(db, c.req.param('packId'))
-    return pack ? success(c, adminPack(pack)) : notFound(c, 'Surge pack not found')
+    return pack ? success(c, adminPack(pack)) : notFound(c, 'Surge Pack not found')
   })
 
   routes.put('/api/v1/admin/surge-packs/:packId', validate('json', updatePackBody), (c) => {
     const existing = getPack(db, c.req.param('packId'))
-    if (!existing) return notFound(c, 'Surge pack not found')
+    if (!existing) return notFound(c, 'Surge Pack not found')
     const body = c.req.valid('json')
     const nextTools = body.tools ?? existing.tools
     const problem = checkTools(nextTools)
@@ -652,7 +652,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
 
   routes.delete('/api/v1/admin/surge-packs/:packId', (c) => {
     const id = c.req.param('packId')
-    if (!getPack(db, id)) return notFound(c, 'Surge pack not found')
+    if (!getPack(db, id)) return notFound(c, 'Surge Pack not found')
     deletePack(db, id)
     return noContent(c)
   })
@@ -670,7 +670,7 @@ export function createPackRoutes(deps: PackRoutesDeps): Hono<AppEnv> {
    */
   routes.get('/api/v1/admin/surge-packs/:packId/export', (c) => {
     const pack = getPack(db, c.req.param('packId'))
-    if (!pack) return notFound(c, 'Surge pack not found')
+    if (!pack) return notFound(c, 'Surge Pack not found')
     const byId = new Map(listTools(db).map((t) => [t.id, t]))
     const missing = pack.tools.filter((id) => !byId.has(id))
     if (missing.length > 0) return badRequest(c, `Cannot export: unknown tools ${missing.join(', ')}`)

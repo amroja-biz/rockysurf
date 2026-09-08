@@ -203,7 +203,7 @@ export function parseToolFile(fileName: string, text: string): { file?: ToolFile
       issues: [
         {
           file: fileName,
-          message: 'this is a pack file, not a tool file — import it under Surge Packs instead',
+          message: 'this is a pack file, not a Tool file — import it under Surge Packs instead',
         },
       ],
     }

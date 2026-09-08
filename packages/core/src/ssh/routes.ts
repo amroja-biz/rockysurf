@@ -54,7 +54,7 @@ export function createSshKeyRoutes(deps: SshRoutesDeps): Hono<AppEnv> {
 
     const material = getServerKeyMaterial(secrets, server.id)
     if (!material) {
-      return notFound(c, 'No SSH key material is stored for this server')
+      return notFound(c, 'No SSH key material is stored for this Server')
     }
     // Retired, not merely absent (ADR-0008, issue #92): a supplied-key box's bootstrap removed
     // core's key from `authorized_keys` and `retireManagedUserKey` cleared the private half
@@ -134,7 +134,7 @@ export function createSshKeyRoutes(deps: SshRoutesDeps): Hono<AppEnv> {
     }
 
     const material = getServerKeyMaterial(secrets, server.id)
-    if (!material) return notFound(c, 'No SSH key material is stored for this server')
+    if (!material) return notFound(c, 'No SSH key material is stored for this Server')
 
     if (server.hostKeyFingerprint !== material.hostKeyFingerprint) {
       // The box's own key, if core has it and it still hashes to the pin.

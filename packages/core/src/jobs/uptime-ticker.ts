@@ -112,7 +112,7 @@ export function createUptimeTick(deps: UptimeTickerDeps): () => Promise<UptimeTi
       const spent = snapshot.byCurrency[snapshot.cap.currency] ?? 0
       log(
         `[spend-cap] estimated ${spent.toFixed(2)} ${snapshot.cap.currency} this month, at or over the ` +
-          `${snapshot.cap.amount} ${snapshot.cap.currency} cap. New servers are blocked; running servers ` +
+          `${snapshot.cap.amount} ${snapshot.cap.currency} cap. New Servers are blocked; running Servers ` +
           'are left alone.',
       )
       // Tell every open stream, not just the one that happens to create next. This is the only
@@ -124,7 +124,7 @@ export function createUptimeTick(deps: UptimeTickerDeps): () => Promise<UptimeTi
           spent,
           cap: snapshot.cap,
           unpricedServers: snapshot.unpricedServers,
-          message: 'New servers are blocked until spend falls below the cap. Running servers are unaffected.',
+          message: 'New Servers are blocked until spend falls below the cap. Running Servers are unaffected.',
         })
       }
     }

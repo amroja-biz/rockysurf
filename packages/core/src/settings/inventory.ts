@@ -100,7 +100,7 @@ function packageField(id: string): FieldSpec {
     writable: true,
     appliesAt: 'restart',
     restartReason:
-      'A provider package is loaded when Rocky Surf starts. Changing which package this section ' +
+      'A Provider package is loaded when Rocky Surf starts. Changing which package this section ' +
       'names, or adding a new section, takes effect at the next restart.',
     help:
       'The npm package that implements this provider, installed under the data directory\'s ' +

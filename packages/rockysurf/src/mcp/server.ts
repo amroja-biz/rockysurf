@@ -157,7 +157,7 @@ export async function runMcpServer(options: RunMcpServerOptions): Promise<number
   log(
     `rockysurf mcp → ${baseUrl} (scopes: ${options.scopes.join(', ') || 'none'})` +
       ' — requires rockysurf serve listening there' +
-      (options.scopes.includes('terminate') ? '  ⚠ terminate is GRANTED — this agent can destroy servers' : ''),
+      (options.scopes.includes('terminate') ? '  ⚠ terminate is GRANTED — this agent can destroy Servers' : ''),
   )
 
   await server.connect(new StdioServerTransport())

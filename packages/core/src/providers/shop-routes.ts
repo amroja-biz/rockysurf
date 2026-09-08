@@ -65,7 +65,7 @@ export interface ProviderShopRoutesDeps {
 const noShop = () => ({ enabled: false, sources: [], shelves: [], trustSentence: PERSONAL_PROVIDER_TRUST_SENTENCE })
 
 const NO_CONFIG_FILE =
-  'This Rocky Surf has no config file, so there is nowhere to record a provider. Start it with ' +
+  'This Rocky Surf has no config file, so there is nowhere to record a Provider. Start it with ' +
   '--config <path>, or create ~/.rockysurf/config.yaml, and try again.'
 
 export function createProviderShopRoutes(deps: ProviderShopRoutesDeps): Hono<AppEnv> {
@@ -155,7 +155,7 @@ export function createProviderShopRoutes(deps: ProviderShopRoutesDeps): Hono<App
        */
       restartRequired: true,
       restartReason:
-        'A provider package is loaded when Rocky Surf starts. Restart it to load ' +
+        'A Provider package is loaded when Rocky Surf starts. Restart it to load ' +
         `${result.installed.name}, then configure ${entry.providerId} on the Settings page.`,
       ...(written.blocked ? { reloadBlocked: written.blocked } : {}),
     })
@@ -181,7 +181,7 @@ export function createProviderShopRoutes(deps: ProviderShopRoutesDeps): Hono<App
         c,
         `${live} server(s) on this installation were created with ${providerId}. Removing the provider ` +
           'would leave nothing able to describe, stop or terminate them. Terminate them first, then ' +
-          'remove the provider.',
+          'remove the Provider.',
       )
     }
 
