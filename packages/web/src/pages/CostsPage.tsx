@@ -31,7 +31,7 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
     return (
       <p data-testid="no-cap">
         No spend cap configured. Set <code>limits.spendCap</code> in your config file to have core
-        refuse new servers past a monthly amount.
+        refuse new Servers past a monthly amount.
       </p>
     )
   }
@@ -78,7 +78,7 @@ function CapMeter({ costs }: { costs: CostsResponse }) {
         </div>
       </div>
       <p style={{ fontSize: '0.875rem', marginBottom: 0 }}>
-        Max servers: <strong>{costs.limits.maxServers}</strong>. Both limits are read-only here —
+        Max Servers: <strong>{costs.limits.maxServers}</strong>. Both limits are read-only here —
         they come from your config file.
       </p>
     </Plate>
@@ -169,8 +169,8 @@ export function CostsPage() {
         )}
         {costs.monthToDate.unpricedServers > 0 && (
           <p data-testid="unpriced-warning">
-            {costs.monthToDate.unpricedServers} server
-            {costs.monthToDate.unpricedServers === 1 ? '' : 's'} had no price quoted by the provider.
+            {costs.monthToDate.unpricedServers} Server
+            {costs.monthToDate.unpricedServers === 1 ? '' : 's'} had no price quoted by the Provider.
             Their cost is real but is not counted above, or against the cap.
           </p>
         )}
@@ -179,9 +179,9 @@ export function CostsPage() {
       <CapMeter costs={costs} />
 
       <section>
-        <h2>Per server</h2>
+        <h2>Per Server</h2>
         {costs.servers.length === 0 ? (
-          <p data-testid="no-servers">No servers yet.</p>
+          <p data-testid="no-servers">No Servers yet.</p>
         ) : (
           <table>
             <thead>

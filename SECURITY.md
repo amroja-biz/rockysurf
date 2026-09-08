@@ -1,6 +1,6 @@
 # Security
 
-Rocky Surf is a control plane you run on your own machine. It creates and manages servers on
+Rocky Surf is a control plane you run on your own machine. It creates and manages Servers on
 your cloud accounts, connects to them over SSH, and — through its MCP server — lets a coding
 agent spend money within limits you configure. This document states exactly what it stores,
 what it never stores, what protects each boundary, and where to report a problem.
@@ -16,11 +16,11 @@ replaced rather than accumulated:
 
 | Kind | Contents | Scope | Lifecycle |
 |---|---|---|---|
-| `server-ssh-key` | The SSH private key core mints for one server, and the host key it pinned | per server | Created before the instance exists; the private half is cleared when a user-supplied key takes over after bootstrap (ADR-0008) |
+| `server-ssh-key` | The SSH private key core mints for one Server, and the host key it pinned | per Server | Created before the instance exists; the private half is cleared when a user-supplied key takes over after bootstrap (ADR-0008) |
 | `github-token` | The OAuth token obtained by Connect GitHub | per user | Written by the device flow; deleted on Disconnect (not revoked at GitHub — see below) |
-| `rdp-password` | The remote-desktop password for a pack that asked for one | per server | Chosen by the creator; read once, into that box's `secrets.env` |
-| `pack-inputs` | Pack inputs the pack declared `secret: true`, as one JSON object | per server | Written at create; read once into `secrets.env` |
-| `server-environment` | The secret half of the environment the creator typed (ADR-0014) | per server | Written at create; read once into `secrets.env` |
+| `rdp-password` | The remote-desktop password for a pack that asked for one | per Server | Chosen by the creator; read once, into that box's `secrets.env` |
+| `pack-inputs` | Pack inputs the pack declared `secret: true`, as one JSON object | per Server | Written at create; read once into `secrets.env` |
+| `server-environment` | The secret half of the environment the creator typed (ADR-0014) | per Server | Written at create; read once into `secrets.env` |
 | `session-signing-key` | Signs session cookies | instance | One row, generated on first use |
 
 That is the complete list. The following are **never stored** — and in most cases the code
@@ -72,7 +72,7 @@ Four boundaries matter, and the rest of this document is organised around them.
    is a single-admin application with no privilege separation inside it.
 2. **The HTTP API** requires a session for everything under `/api/v1` except login. Exactly one
    route returns decrypted secret material: an audited, owner-checked download.
-3. **The servers themselves** run agent-authored code and are treated as untrusted: core
+3. **The Servers themselves** run agent-authored code and are treated as untrusted: core
    authenticates to them with a pinned host key, and the metadata service on them is locked
    down.
 4. **The MCP server** is a translation layer with no privileges of its own. It reaches core
@@ -89,7 +89,7 @@ the same authentication failure, and the error message never quotes the cipherte
 the associated data.
 
 Each row's identity is bound into the GCM associated data as `keyId kind ownerId`. Copying the
-`server-ssh-key` blob from server A onto server B does not yield A's key under B's name; it
+`server-ssh-key` blob from Server A onto Server B does not yield A's key under B's name; it
 fails to decrypt. Rotation is not implemented in v0.1, but every row carries a `keyId` so it can
 be.
 
@@ -109,7 +109,7 @@ Three properties:
   the box can read makes every secret in the adjacent database readable too. The check is
   skipped on Windows, where POSIX mode bits do not describe the real ACL.
 - **First boot prints a back-it-up banner.** Losing the key means every stored secret is
-  unrecoverable and every server has to be recreated; obtaining it means decrypting all of
+  unrecoverable and every Server has to be recreated; obtaining it means decrypting all of
   them. Back up the file, or set `ROCKYSURF_SECRET_KEY` and hold the key elsewhere.
 - **Generation cannot clobber.** The file is written with the `wx` flag, so a race between the
   existence check and the write fails rather than overwriting a key that would render every
@@ -124,8 +124,8 @@ if an exemption names a file that no longer exists or no longer defines routes.
 
 There is exactly one exemption, an allowlist entry with a stated reason:
 `packages/core/src/ssh/routes.ts`, the private-key download. An operator has to be able to get
-the key for a server they own. That route authenticates, checks ownership (returning the same
-404 for "no such server" and "not yours", so server ids cannot be probed), and appends an
+the key for a Server they own. That route authenticates, checks ownership (returning the same
+404 for "no such server" and "not yours", so Server ids cannot be probed), and appends an
 `ssh_key.downloaded` audit event before writing the body. Re-downloads are allowed deliberately:
 the same key remains in the box's `authorized_keys` and in core's database, so download counting
 buys little, while a transfer that fails halfway would strand the operator.
@@ -190,26 +190,26 @@ A credential supplied through the environment is configuration, not data: it is 
 process starts and written nowhere, so rotating it is an edit to your environment plus a
 restart, with no stored copy to diverge from it.
 
-### Personal providers
+### Personal Providers
 
-A provider Rocky Surf did not ship — an npm package you install under the data directory and name
+A Provider Rocky Surf did not ship — an npm package you install under the data directory and name
 as `providers.<id>.package` in the config file
 ([ADR-0026](docs/adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)) — is
 software that runs inside this process, with everything this process can reach: the database, the
 master key, and every cloud credential in the environment. There is no sandbox and no second
-process, deliberately; a fence a provider could not do its job behind would be theatre. **A provider
+process, deliberately; a fence a Provider could not do its job behind would be theatre. **A Provider
 runs with Rocky Surf's full access — install ones you trust.** Its credential follows the same rule
-as every shipped cloud's: named in the config file as `${VAR}` or read from a variable the provider
+as every shipped cloud's: named in the config file as `${VAR}` or read from a variable the Provider
 declares, and stored nowhere.
 
-### Installing a provider from the shop
+### Installing a Provider from the shop
 
-A provider can also be installed from a registry — the same `amroja-biz/rockysurf-shop` that
+A Provider can also be installed from a registry — the same `amroja-biz/rockysurf-shop` that
 distributes Surge Packs — on the Rocky Surf Shop tab
 ([ADR-0028](docs/adr/0028-providers-are-distributed-through-the-shop.md), amended by issues #394
-and #426: providers are configured on Settings, not on the Surge Packs page, and since #426 they
+and #426: Providers are configured on Settings, not on the Surge Packs page, and since #426 they
 are installed in the app again, on a tab of their own). The trust model is the one stated
-immediately above and is not softened by the shop: an installed provider runs with this process's
+immediately above and is not softened by the shop: an installed Provider runs with this process's
 full access, and the sentence appears on every listing — served by Rocky Surf as a constant, with
 no field for it in the registry's own document and a strict schema that refuses one, so no registry
 can reword it or leave it out.
@@ -217,7 +217,7 @@ can reword it or leave it out.
 What the install does, and does not do:
 
 - **The artifact URL is `https` only.** Refused by the listing format and again by the installer,
-  because a provider is code and over plain http both the artifact and the digest meant to catch a
+  because a Provider is code and over plain http both the artifact and the digest meant to catch a
   change to it are rewritable in transit.
 - **The fetch goes through the same guard as pack import** (§ Server-side fetch policy): every
   resolved address must be publicly routable, every redirect is re-screened, and the body is
@@ -235,8 +235,8 @@ What the install does, and does not do:
 - **Nothing from the package is executed.** No `npm install`, no lifecycle scripts, no import.
   A `scripts` block in a fetched `package.json` is read and ignored. The package's code first runs
   at the restart the operator performs afterwards, when the personal-provider loader imports it —
-  which is why the install always says a restart is required rather than implying the provider is
-  already live. A provider published to the shop must therefore be self-contained: a package that
+  which is why the install always says a restart is required rather than implying the Provider is
+  already live. A Provider published to the shop must therefore be self-contained: a package that
   declares any runtime dependency is refused, naming them.
 - **The config write is the settings write.** The two lines it adds go through the same
   comment-preserving document edit, the same schema validation and the same atomic write (mode
@@ -246,7 +246,7 @@ What the install does, and does not do:
   they were.
 
 Removal deletes the package and the whole `providers.<id>` section after a confirmation naming
-both, and is refused while any non-terminated server row still names that provider.
+both, and is refused while any non-terminated Server row still names that Provider.
 
 The command-line install — download, check the digest, unpack under `<dataDir>/providers`, write
 the section, restart — remains available and is documented in `docs/self-hosting.md`; it is the
@@ -269,7 +269,7 @@ host and path on stdin and picks the most specific match, falling back to `githu
 is never offered to a host no entry named.
 
 **A box receives only the tokens its own repositories need** (`rockysurf-18lq`). At create, the
-repositories a server declares are run through the box's own selection rules, and the entries
+repositories a Server declares are run through the box's own selection rules, and the entries
 that win are the only scoped entries written into that box's `secrets.env` — a token for
 `acme/widgets` does not land on a machine nobody told about `acme/widgets`. The blast radius of
 one compromised box is the repositories it was built to clone, not every private repository the
@@ -316,7 +316,7 @@ want the file to carry nothing.
 **There is no way to add a token to a running box**: `secrets.env` is written once, and core
 never pushes to a machine afterwards. A private repository cloned by hand later, that nobody
 declared at create, has only whatever the `pat` covers. The remedy is to terminate and recreate
-with the repository declared, or to authenticate that clone by hand; the server's detail page
+with the repository declared, or to authenticate that clone by hand; the Server's detail page
 says so, and lists the scopes that box actually carries.
 
 A `github-token` row in the encrypted store takes precedence over the config value for that
@@ -366,11 +366,11 @@ metadata. Push bootstrap, the default, uses none of this.
 
 ## SSH trust
 
-### Managed servers: pinned, with no trust-on-first-use window
+### Managed Servers: pinned, with no trust-on-first-use window
 
 For AWS and Hetzner, core mints both keypairs before the instance exists
 (`packages/core/src/ssh/server-keys.ts`), injects the **host** keypair through cloud-init, and
-records the host fingerprint on the server row. The first connection is therefore verified
+records the host fingerprint on the Server row. The first connection is therefore verified
 against a key core generated itself. That matters because the first connection is the one
 carrying secrets.
 
@@ -428,7 +428,7 @@ a Provider in that position gets.
 runs on. Widening it to `0.0.0.0` is a one-line, deliberate change, and it should be paired
 with a reverse proxy or a firewall: the UI is a single-password admin surface with no TLS of
 its own, and the process behind it can reach your cloud with your own credentials and holds
-every managed server's private key.
+every managed Server's private key.
 
 The container is the one place the value is `0.0.0.0` by default, because a container's
 loopback is its own and the published port would otherwise reach nothing. The boundary moves
@@ -441,8 +441,8 @@ One shared security group per region (`rockysurf-ssh`), created on first provisi
 Its only ingress rules are **TCP 22 from the CIDRs you specify**. Two guards make that deliberate
 (`packages/provider-aws/src/config.ts`):
 
-- `sshAllowedCidr` has **no default**, and the AWS provider refuses to load without it — the
-  rest of the installation comes up, AWS is reported as not loaded with the provider's own
+- `sshAllowedCidr` has **no default**, and the AWS Provider refuses to load without it — the
+  rest of the installation comes up, AWS is reported as not loaded with the Provider's own
   message, and no instance is ever created against an unstated rule. A firewall rule is a
   security decision, so the operator states it rather than inheriting it from whatever network
   they happened to be on. Core never looks up the caller's own address to build the rule: that
@@ -473,7 +473,7 @@ travels to the box in the pushed secrets file and reaches `chpasswd` on stdin, n
 where every unprivileged step running on the same box could read it out of `ps`.
 
 **The password is the user's own value and core never gives it back.** It is chosen by whoever
-creates the server, stored encrypted under the server id — one box, one password, unlike the
+creates the Server, stored encrypted under the Server id — one box, one password, unlike the
 git token which belongs to a user across all of theirs — and read exactly once, by the loader
 that builds that box's `secrets.env`. No route returns it, which is what keeps the custody rule
 at its single exemption. Core deliberately does **not** generate a password, because a
@@ -496,7 +496,7 @@ before calling, so a short password is a refusal rather than a round trip.
 
 ### Hetzner
 
-No cloud firewall is attached in v0.1. Hetzner servers get a public IP with SSH reachable from
+No cloud firewall is attached in v0.1. Hetzner Servers get a public IP with SSH reachable from
 anywhere, protected by key-only authentication and the pinned host key rather than by a network
 rule. If you need the AWS-equivalent restriction, apply a Hetzner firewall to the project
 yourself. This asymmetry is listed again under residual risks because it is easy to miss.
@@ -531,9 +531,9 @@ the community shop alone): each fetch of an `index.json` and of a pack file goes
 configured — including an internal registry on an RFC1918 address, because vouching for a host
 is a decision with its own design rather than a default to fall into. Nothing is fetched at
 boot, only when an admin opens the Rocky Surf Shop tab or the Community sub-tab of Surge Packs.
-The same sources also serve the provider listing (`providers.json`) and the provider artifacts it
+The same sources also serve the Provider listing (`providers.json`) and the Provider artifacts it
 names — same guard, same admin-only, same nothing-at-boot, and the extra rules that apply to code
-rather than to a pack file are in § Installing a provider from the shop.
+rather than to a pack file are in § Installing a Provider from the shop.
 
 **A source URL must be `https`,** stricter than the import guard's `http`-or-`https` on
 purpose: a source is fetched again and again, and the digest that pins a pack to
@@ -570,7 +570,7 @@ informed choice rather than a hidden one.
 ## The MCP server: threat model
 
 The MCP server (`rockysurf mcp`) lets a coding agent create, inspect, stop, start and destroy
-servers that cost real money. It is the highest-blast-radius feature in v0.1. The accurate claim is
+Servers that cost real money. It is the highest-blast-radius feature in v0.1. The accurate claim is
 "budget-capped", **not** "sandboxed".
 
 ### Setting it up, and where the security decision actually is
@@ -615,18 +615,18 @@ token may *do* is decided by the file above. [The scope split](#the-scope-split)
 directory and port respectively — so a `${VAR}` elsewhere in the file that this environment
 does not set is left alone rather than refused. That matters because the client launches the
 server with the `env` block above and nothing else: requiring every variable the file names
-would mean copying each of your provider and repository tokens into a JSON file in a project
+would mean copying each of your Provider and repository tokens into a JSON file in a project
 directory, to satisfy a check for values the command never reads. Starting the control plane
 itself is unchanged and still requires all of them.
 
 ### Blast radius
 
 **In the worst case — a fully compromised or fully injected MCP client, with every scope
-granted — an attacker can destroy every server in this installation and spend up to the
+granted — an attacker can destroy every Server in this installation and spend up to the
 configured monthly cap creating new ones, at no more than `createRatePerHour` per hour. It
 cannot read any stored secret, cannot obtain an SSH private key, cannot reach a cloud account
-beyond what the configured provider credential allows, and cannot exceed those limits by any
-MCP-shaped route.** With the default scopes (`read`, `stop`), it can list servers, stop them —
+beyond what the configured Provider credential allows, and cannot exceed those limits by any
+MCP-shaped route.** With the default scopes (`read`, `stop`), it can list Servers, stop them —
 reversible, disk preserved — and start them again, and nothing else.
 
 **What `start` adds to the default scopes, stated plainly (#278).** An agent holding `read` and
@@ -661,7 +661,7 @@ row is written — so a rejected create has provisioned nothing:
 
 | Limit | Config | Default | Refusal code |
 |---|---|---|---|
-| Concurrent servers | `limits.maxServers` | 5 | `max_servers` |
+| Concurrent Servers | `limits.maxServers` | 5 | `max_servers` |
 | Creates per hour, per user | `limits.createRatePerHour` | 4 | `create_rate` |
 | Estimated month-to-date spend | `limits.spendCap` (`{amount, currency}`) | none | `spend_cap` |
 
@@ -752,7 +752,7 @@ The cost is stated rather than hidden: **a password an agent passes has been thr
 agent's context and is in its transcript.** That direction is the safer one — nothing gives the
 value back, so a compromised or injected client can only set a password on a box it was already
 allowed to create, not read one from a box it was not — but the transcript is real. A user who
-does not want a desktop password in a transcript should create that server from the web UI or
+does not want a desktop password in a transcript should create that Server from the web UI or
 `rockysurf create`, where the value never leaves their own machine. An agent should ask its
 human which password to use rather than inventing one, because the human is the only party who
 will ever see it again.
@@ -811,10 +811,10 @@ about.
   by design — revocation already requires a lookup — but the consequence is that anyone who can
   write the `sessions` table can mint a session.
 - **The spend cap is an estimate, not a bill.** It is computed from bundled price data stamped
-  with when it was read, and a provider that quotes no price for an offering contributes real
-  spend the cap cannot see. The count of such servers rides along in every MCP result and in
+  with when it was read, and a Provider that quotes no price for an offering contributes real
+  spend the cap cannot see. The count of such Servers rides along in every MCP result and in
   the costs API rather than being hidden.
-- **Reaching the cap blocks new servers; it does not stop running ones.** Auto-stopping on the
+- **Reaching the cap blocks new Servers; it does not stop running ones.** Auto-stopping on the
   strength of a possibly-stale estimate would kill an agent mid-task on a box someone depends
   on. A wrong estimate that blocks a create costs a click; a wrong estimate that stops running
   work costs the work.
@@ -830,8 +830,8 @@ about.
   the traffic does not leave the machine. Setting `server.host` to `0.0.0.0` puts the login
   form and the `/internal` callback routes on your network in cleartext — do that only behind a
   reverse proxy that terminates TLS, or a firewall.
-- **Hetzner servers have no network firewall.** See [Hetzner](#hetzner) above.
+- **Hetzner Servers have no network firewall.** See [Hetzner](#hetzner) above.
 - **Key rotation is not implemented.** Rows carry a `keyId` so it can be added, but there is no
-  re-key path today. Rotating the master key means recreating servers.
+  re-key path today. Rotating the master key means recreating Servers.
 - **The control plane is single-admin, with no privilege separation.** Anyone who can read its
   data directory or its process environment has the master key and therefore every secret.

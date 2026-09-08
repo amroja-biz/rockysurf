@@ -773,7 +773,7 @@ export function createServerRoutes(deps: ServerRoutesDeps): Hono<AppEnv> {
     const ids = registry.ids()
     const providerId = body.provider ?? deps.defaultProvider ?? (ids.length === 1 ? ids[0] : undefined)
     if (!providerId) {
-      if (ids.length === 0) return badRequest(c, 'no compute provider is configured')
+      if (ids.length === 0) return badRequest(c, 'no compute Provider is configured')
       return badRequest(
         c,
         `more than one provider is configured, so which one to create on is not implied: name it in "provider". Configured: ${ids.join(', ')}`,

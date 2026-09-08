@@ -5,16 +5,16 @@ project's contracts — what a file must satisfy, how it is verified, and how it
 can do the job correctly the first time instead of rediscovering the rules from the source.
 
 They are written for **users of Rocky Surf**, not only for contributors to it. Extensibility is the
-point of this project: a pack and a provider are both things an outsider is meant to be able to
+point of this project: a pack and a Provider are both things an outsider is meant to be able to
 add, and a skill is how their own agent learns to do it properly.
 
 | Skill | Use it when |
 |---|---|
-| [`create-surge-pack`](create-surge-pack/) | You want a Rocky Surf box with your own tools on it, and need a Surge Pack that passes the smoke harness |
-| [`register-a-tool`](register-a-tool/) | You want to register ONE tool — reusable across packs, exportable as a file you can send someone — rather than author a whole pack |
+| [`create-surge-pack`](create-surge-pack/) | You want a Rocky Surf box with your own Tools on it, and need a Surge Pack that passes the smoke harness |
+| [`register-a-tool`](register-a-tool/) | You want to register ONE Tool — reusable across packs, exportable as a file you can send someone — rather than author a whole pack |
 | [`contribute-surge-pack`](contribute-surge-pack/) | You have a working pack and want it in the community shop (`amroja-biz/rockysurf-shop`) — runs that repository's own gate locally (lint, the run-twice check on both architectures, the naming rule, the index regeneration the pull request must carry) and refuses to open the pull request until each passes |
-| [`contribute-provider`](contribute-provider/) | You have a working provider and want it listed in the shop (`amroja-biz/rockysurf-shop`) — packs it, checks the tarball carries `dist/` and resolves nothing at install, releases it under a tag that stays true in a monorepo, downloads the asset back to compare the digest, generates the listing entry from the artifact rather than composing one, and refuses the pull request on a runtime dependency or a digest mismatch |
-| [`add-provider`](add-provider/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet — as a personal provider installed into your own Rocky Surf, or one shipped here. Carries the research protocol (the fixed question list about a cloud, each answer mapped to a capability or setting) and the hard rule: an answer that fits nothing means stop and file the ADR question, never approximate |
+| [`contribute-provider`](contribute-provider/) | You have a working Provider and want it listed in the shop (`amroja-biz/rockysurf-shop`) — packs it, checks the tarball carries `dist/` and resolves nothing at install, releases it under a tag that stays true in a monorepo, downloads the asset back to compare the digest, generates the listing entry from the artifact rather than composing one, and refuses the pull request on a runtime dependency or a digest mismatch |
+| [`add-provider`](add-provider/) | You want to switch on or configure a cloud, or add support for one Rocky Surf does not have yet — as a personal Provider installed into your own Rocky Surf, or one shipped here. Carries the research protocol (the fixed question list about a cloud, each answer mapped to a capability or setting) and the hard rule: an answer that fits nothing means stop and file the ADR question, never approximate |
 | [`rockysurf-design`](rockysurf-design/) | You are changing the web UI, or making a mock, slide, or asset that should look like Rocky Surf — the tokens, the voice rules, every component's props contract, the specimen cards, a click-through of the app and the two etched screens (`ui_kits/`), and the etched skin's rollout order (`handoff/README.md`), and the designer's rendered guide to the applied system (`design-guide.html.txt`) |
 
 ## Using them
@@ -46,10 +46,10 @@ substitute of their own, so they will ask for a checkout with `pnpm install && p
 once — Node.js 24 or newer and pnpm, as `CONTRIBUTING.md` requires. `create-surge-pack` and
 `register-a-tool` also need Docker, for the run-twice smoke test; `contribute-surge-pack` needs
 Docker for the same reason and `gh`, logged in as an account that may fork a public repository.
-`contribute-provider` needs no Docker — a provider's acceptance suite is unit tests — but it does
-need `gh` logged in as an account that may both create a release on the provider's own repository
+`contribute-provider` needs no Docker — a Provider's acceptance suite is unit tests — but it does
+need `gh` logged in as an account that may both create a release on the Provider's own repository
 and fork a public one. `add-provider` needs neither
-Docker nor, for a personal provider, a checkout; a couple of its credential routes name a cloud CLI,
+Docker nor, for a personal Provider, a checkout; a couple of its credential routes name a cloud CLI,
 and it says which ones do not. `rockysurf-design` needs nothing installed unless the change lands in
 `packages/web`. Any of them can write the file without the missing piece; none can then tell you it
 works, and all are written to say so rather than guess.
@@ -58,8 +58,8 @@ works, and all are written to say so rather than guess.
 command that checks each one — and a `references/prerequisites.md` beside it with the install page
 for macOS and Ubuntu. A skill names what is missing and hands the user the vendor's install page;
 **no skill installs a tool on the user's machine.** The install commands inside a pack's
-`installScript` are a different machine: they run on the Rocky Surf server the pack builds, where
-installing the tools is the entire job.
+`installScript` are a different machine: they run on the Rocky Surf Server the pack builds, where
+installing the Tools is the entire job.
 
 ## Adding a skill here
 
@@ -85,7 +85,7 @@ Two rules that are the reason these are worth shipping at all:
 - **Never fork a normative document.** A reference file summarises the real doc and says which one
   wins, or the two drift and the skill starts teaching a contract CI no longer enforces.
 - **Drive the real verifier.** Whatever this repository's actual gate is —
-  `scripts/pack-smoke.mjs`, the provider conformance suite — the skill runs *that*, with the real
+  `scripts/pack-smoke.mjs`, the Provider conformance suite — the skill runs *that*, with the real
   flags, and reads the real output. A skill that ships a gentler check of its own is worse than no
   skill.
 

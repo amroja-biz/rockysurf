@@ -58,7 +58,7 @@ export function AdminToolsPage() {
       setPreviewPackId((current) => current || (nextPacks[0]?.packId ?? ''))
       setError(null)
     } catch {
-      setError('Could not load tools')
+      setError('Could not load Tools')
     } finally {
       setLoading(false)
     }
@@ -129,7 +129,7 @@ export function AdminToolsPage() {
     toast.success(
       imported.length === 1
         ? `Imported ${imported[0]!.toolId}. Add it to a pack to put it on a box.`
-        : `Imported ${imported.length} tools. Add them to a pack to put them on a box.`,
+        : `Imported ${imported.length} Tools. Add them to a pack to put them on a box.`,
     )
   }
 
@@ -176,8 +176,8 @@ export function AdminToolsPage() {
         {rows.length === 0 ? (
           <p>
             {heading === 'Personal'
-              ? 'No tools of your own yet. New tool writes one; Import a tool file takes one somebody sent you.'
-              : 'No tools loaded from files.'}
+              ? 'No Tools of your own yet. New Tool writes one; Import a Tool file takes one somebody sent you.'
+              : 'No Tools loaded from files.'}
           </p>
         ) : (
           <table className="tools-table">
@@ -235,7 +235,7 @@ export function AdminToolsPage() {
                       Export
                     </button>
                     {/* OFFERED ON EVERY ROW, file-backed included (issue #295). Where a tool
-                        gets installed is not part of its file — an official tool can be added
+                        gets installed is not part of its file — an official Tool can be added
                         to a pack of yours, and can be set to install everywhere, without any of
                         that touching the YAML the next boot reloads. */}
                     <button
@@ -271,10 +271,10 @@ export function AdminToolsPage() {
     <AppShell title="Tools">
       <div className="admin-actions">
         <button className="button primary new-action" onClick={() => setEditing('new')}>
-          New tool
+          New Tool
         </button>
         <label className="button" htmlFor="import-tool-file">
-          Import a tool file
+          Import a Tool file
         </label>
         <input
           id="import-tool-file"
@@ -343,7 +343,7 @@ export function AdminToolsPage() {
       <footer>
         <p style={{ fontSize: '0.875rem' }}>
           The preview is resolved here rather than by core — there is no endpoint that will order a
-          hypothetical pack, only the plan snapshotted when a server is created. Drag-to-reorder is not
+          hypothetical pack, only the plan snapshotted when a Server is created. Drag-to-reorder is not
           wired either; set <code>installOrder</code> directly, in gaps of 10.
         </p>
       </footer>
@@ -373,10 +373,10 @@ export function AdminToolsPage() {
                delete goes through. The warning is the only thing standing between the operator
                and quietly ending an install they set up deliberately. */
             deleting.alwaysInstall
-              ? `${deleting.name} is installed on every box you create. Deleting it stops that: servers you create afterwards will not have it. Servers that already exist are not affected.`
+              ? `${deleting.name} is installed on every box you create. Deleting it stops that: Servers you create afterwards will not have it. Servers that already exist are not affected.`
               : deleting.sourceFile
-                ? `This tool comes from packs/${deleting.sourceFile}. Deleting it here removes the row until the next restart, which loads it back from the file.`
-                : 'This removes the tool. Packs still using it will refuse to delete it.'
+                ? `This Tool comes from packs/${deleting.sourceFile}. Deleting it here removes the row until the next restart, which loads it back from the file.`
+                : 'This removes the Tool. Packs still using it will refuse to delete it.'
           }
           confirmLabel="Delete"
           isDestructive

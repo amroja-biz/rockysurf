@@ -158,7 +158,7 @@ export function restoreDatabase(deps: RestoreDatabaseDeps, artifact: BackupArtif
       if (existing?.sourceFile) {
         // ADR-0018's import rule, for the same reason: the boot reconcile owns file-backed
         // rows, so a restore that "won" would be silently undone at the next restart.
-        report.tools.refused.push({ id: entry.id, reason: 'a tool with this id comes from a pack file here' })
+        report.tools.refused.push({ id: entry.id, reason: 'a Tool with this id comes from a pack file here' })
         continue
       }
       if (existing) {
@@ -358,7 +358,7 @@ export function restoreDatabase(deps: RestoreDatabaseDeps, artifact: BackupArtif
         typeof ownerId === 'string' &&
         (insertedServerIds.has(ownerId) || tx.select().from(servers).where(eq(servers.id, ownerId)).get() !== undefined)
       if (!ownerPresent) {
-        report.secrets.dropped.push({ id: entry.kind, reason: 'its server was not restored' })
+        report.secrets.dropped.push({ id: entry.kind, reason: 'its Server was not restored' })
         continue
       }
       const pairExists = tx

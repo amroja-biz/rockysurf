@@ -1,14 +1,14 @@
 # The live dry run
 
 Read this after the unit suite is green and before the package is published or installed. It is
-the verification step a personal provider gets instead of a nightly leg: `provision()` against
+the verification step a personal Provider gets instead of a nightly leg: `provision()` against
 the real account, with the billable create refused before it leaves the machine, and every
-request the provider made logged with the cloud's answer.
+request the Provider made logged with the cloud's answer.
 
 ## Why a green suite is not enough
 
-The unit suite runs against a fake of the cloud. A fake asserts that the provider does what its
-author believed the cloud does; it cannot know when the belief is wrong. The first provider built
+The unit suite runs against a fake of the cloud. A fake asserts that the Provider does what its
+author believed the cloud does; it cannot know when the belief is wrong. The first Provider built
 with this skill went live with seventy-four green tests and failed on its first create, because a
 firewall it wrote named a tag nobody had created — the cloud creates that tag implicitly on an
 instance create and not on a firewall create, the documentation did not say so, and the fake
@@ -23,7 +23,7 @@ that needs nothing but the built package and the credential in the environment:
 
 1. Replaces `globalThis.fetch` with an interceptor **before importing the package**, so a
    transport that binds `fetch` at import time and one that takes it at construction time both go
-   through it. This is why it works for any provider written against `@rockysurf/provider-sdk`
+   through it. This is why it works for any Provider written against `@rockysurf/provider-sdk`
    over `fetch` without a per-provider seam — `createProvider(config)` is one-argument and has
    nowhere to hang a `fetchImpl`, and the test-only constructor option differs by package.
 2. Drives the factory the way Rocky Surf's composition root does: `configSchema.parse` with the
@@ -36,7 +36,7 @@ that needs nothing but the built package and the credential in the environment:
    rejected as an argument.
 4. Prints each request in order with its status, the body of every write, and the cloud's own
    words on every write and every failed read; then a summary of what the cloud accepted (paired
-   with the later `DELETE` that reaped it, when the provider did), what it rejected, and what was
+   with the later `DELETE` that reaped it, when the Provider did), what it rejected, and what was
    refused; then a verdict and an exit code.
 
 | exit | meaning |
@@ -70,7 +70,7 @@ Then allow the non-billable objects one collection at a time — the firewall, t
 again, until the chain reaches the instance create. **Name the instance create with `--refuse`
 from the first run**, so that reaching it is deliberate and the verdict can say so; the
 policy's default already refuses it, but a default is not a decision. Allowing the `DELETE` of a
-key the provider makes lets the provider reap it after the refused create, which is what it does
+key the Provider makes lets the Provider reap it after the refused create, which is what it does
 in production and what the summary pairs up.
 
 ```sh

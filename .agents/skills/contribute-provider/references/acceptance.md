@@ -1,6 +1,6 @@
 # How this skill is verified
 
-Read this only if you are changing this skill. It is not part of contributing a provider.
+Read this only if you are changing this skill. It is not part of contributing a Provider.
 
 Every serious defect in the skills that came before this one was found the same way, and none of
 them was visible by re-reading: give a fresh agent the skill and *nothing else*, deny it the rest
@@ -11,9 +11,9 @@ you whether it is coherent; a run tells you whether it is true.
 ## The live run — what the owner runs
 
 **Preconditions.** A fresh agent session, outside any Rocky Surf checkout, given exactly two
-things: a copy of `.agents/skills/contribute-provider/` and a provider package that builds and
+things: a copy of `.agents/skills/contribute-provider/` and a Provider package that builds and
 passes conformance. `packages/provider-digitalocean` copied out of a checkout is the fixture to
-use — it is a complete personal provider with zero runtime dependencies, which is the shape the
+use — it is a complete personal Provider with zero runtime dependencies, which is the shape the
 procedure assumes. The agent gets no other file from this repository, and it must not read one:
 the whole point is to find out what the skill fails to say.
 
@@ -22,7 +22,7 @@ on the repository holding the fixture** and **fork a public repository**. Those 
 permissions; a run that only has the second one cannot exercise step 3, which is the step this
 skill exists for.
 
-**The instruction to the agent** is one sentence, in the user's voice: *contribute this provider to
+**The instruction to the agent** is one sentence, in the user's voice: *contribute this Provider to
 the Rocky Surf shop.*
 
 **What a pass looks like.**

@@ -11,8 +11,8 @@ so there is nothing to clone and nothing to build. Cloning the repository is opt
 for extending Rocky Surf with your own Surge Packs or Providers — see
 [After the install: what a checkout is for](#after-the-install-what-a-checkout-is-for).
 
-Rocky Surf is one process that a person runs on their own computer. It creates a Linux server in
-a cloud account that belongs to them, installs coding agents on that server, and hands them an
+Rocky Surf is one process that a person runs on their own computer. It creates a Linux Server in
+a cloud account that belongs to them, installs coding agents on that Server, and hands them an
 SSH command. It has a web UI, an HTTP API and one SQLite file. There is nothing hosted, no
 account to sign up for, and no telemetry.
 
@@ -20,9 +20,9 @@ Three terms are used throughout, and each one means something specific here:
 
 - A **Provider** is Rocky Surf's connection to one cloud account. Four ship with it: Hetzner
   Cloud, AWS, Azure and Google Cloud. Every Provider is off until someone switches it on.
-- A **Surge Pack** is the software bundle installed on a new server, defined in a YAML file.
-- **MCP** is the Model Context Protocol. Rocky Surf serves its server lifecycle as MCP tools, so
-  a coding agent can list, create, stop and destroy servers.
+- A **Surge Pack** is the software bundle installed on a new Server, defined in a YAML file.
+- **MCP** is the Model Context Protocol. Rocky Surf serves its Server lifecycle as MCP tools, so
+  a coding agent can list, create, stop and destroy Servers.
 
 Your job has six parts, in this order:
 
@@ -43,9 +43,9 @@ These rules hold for every step. Follow them even when the user asks you not to.
   `gcloud auth application-default login` are the user's to run. Print the exact command, say
   what it does, and wait.
 - **Never create, modify or destroy a machine** by any route, Rocky Surf's own API and MCP tools
-  included. Installing Rocky Surf does not include creating a server with it.
+  included. Installing Rocky Surf does not include creating a Server with it.
 - **One thing you may change at the cloud, and only through Rocky Surf.** Saving an SSH
-  allow-list is how the product opens SSH on the servers it creates, and Rocky Surf pushes that
+  allow-list is how the product opens SSH on the Servers it creates, and Rocky Surf pushes that
   rule to the cloud itself. You may make that call, because it is Rocky Surf acting rather than
   you, and it touches a firewall rule and nothing else. Tell the user exactly which networks it
   will allow before you make it. See [Write the settings](#write-the-settings).
@@ -65,7 +65,7 @@ These rules hold for every step. Follow them even when the user asks you not to.
   credential, so do not run it to find out whether it works. If you are reconfiguring an
   installation and hold no token, mint one and tell the user you did.
 - **Never set `0.0.0.0/0` in an SSH allow-list**, and never set `allowAllCidr`. That opens SSH on
-  the user's servers to the whole internet.
+  the user's Servers to the whole internet.
 - **Never change `server.host`.** Rocky Surf listens on `127.0.0.1` on purpose.
 
 If you cannot finish a step without breaking one of these rules, stop and tell the user what you
@@ -95,9 +95,9 @@ is not consent to use it.
 
 1. **Which cloud do you want Rocky Surf to use?** The choices are Hetzner Cloud, AWS, Azure and
    Google Cloud. You can pick more than one, or none — with no cloud configured, Rocky Surf runs
-   an in-memory Provider, so you can create a fake server, watch it boot and destroy it before
+   an in-memory Provider, so you can create a fake Server, watch it boot and destroy it before
    pointing it at a real account. Hetzner is the quickest to set up.
-2. **Which region do you want servers created in?** The field is called Location for Hetzner and
+2. **Which region do you want Servers created in?** The field is called Location for Hetzner and
    Azure, Region for AWS, and Zone for Google Cloud.
 3. **Which account, project or subscription should Rocky Surf use?** Azure needs two answers: the
    subscription id, which `az account show --query id -o tsv` prints, and the name of the
@@ -110,34 +110,34 @@ is not consent to use it.
    profile, or nothing to use the default credential chain. For Azure and Google Cloud, nothing:
    both read the credential from the sign-in you already have. Ask for the *name*, never the
    value.
-5. **Which public network should be allowed to reach SSH on your servers?** AWS, Azure and Google
+5. **Which public network should be allowed to reach SSH on your Servers?** AWS, Azure and Google
    Cloud each require this and have no default; Hetzner has no such setting. Offer to find the
    address for them with the two commands under
    [Find the SSH address](#find-the-ssh-address), then show what you found and ask them to
    confirm it before you write it. Ask whether they work from more than one network, and take a
    list if so.
-6. **Do you want to save an SSH public key, so that servers authorize it?** If yes, ask for the
+6. **Do you want to save an SSH public key, so that Servers authorize it?** If yes, ask for the
    path to the `.pub` file and a short name for it, such as `laptop`. Read only the `.pub` file.
-7. **What limits do you want?** The three are the number of servers that may exist at once, the
+7. **What limits do you want?** The three are the number of Servers that may exist at once, the
    number of creates allowed per hour, and an optional monthly spend cap with a currency. All
    three are enforced before a machine is provisioned, for every caller.
-8. **Do you need to clone private repositories onto your servers?** Public repositories need
+8. **Do you need to clone private repositories onto your Servers?** Public repositories need
    nothing. Private ones need a GitHub token, which the user adds themselves on the Settings
    page. Say so and move on: do not ask for a token.
 9. **What may a connected agent do?** The default grant is `[read, stop]`, which lets an agent
-   list servers and pause or resume them. `create` lets an agent create servers, which spends
+   list Servers and pause or resume them. `create` lets an agent create Servers, which spends
    money. `terminate` lets an agent destroy them, which cannot be undone. Recommend the default,
    and change it only if the user asks.
 10. **Which MCP client do you use, and do you want it registered for your account or for one
    project?** Claude Code and Codex CLI are the two worked examples on this page, and any other
    MCP client takes the same values in its own file format. Account scope, which Codex CLI calls
-   global, is the better default for a tool that manages servers regardless of which repository
+   global, is the better default for a tool that manages Servers regardless of which repository
    is open.
 
 ### Find the SSH address
 
 You may run these two commands: they read the user's own public address and touch no cloud
-account. Run them on the machine the user connects to their servers from.
+account. Run them on the machine the user connects to their Servers from.
 
 ```bash
 curl http://portquiz.net:22/          # the address a server sees on port 22 — the one SSH uses
@@ -584,7 +584,7 @@ Do all three checks, in this order, and report each result.
    `list_providers`, `get_provider`, `list_offerings`, `list_packs`, `list_ssh_keys`,
    `stop_server` and `start_server`.
 
-Do not verify by creating a server. Creating a machine costs the user money, and it is their
+Do not verify by creating a Server. Creating a machine costs the user money, and it is their
 decision to make.
 
 ## If something does not work

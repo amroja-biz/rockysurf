@@ -33,9 +33,12 @@ reason.
 | `pnpm -r test` | vitest per package |
 
 The lint scripts are structural checks a reviewer would have to remember otherwise: core's
-dependency direction, the published AWS IAM policy matching what the provider actually calls, the
-AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, and — the
-newest, and a scar — that nothing under a package's `src/` is gitignored.
+dependency direction, the published AWS IAM policy matching what the Provider actually calls, the
+AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, that the
+markdown capitalizes the four primitives (`check-primitive-nouns.mjs`, and
+[`docs/memories/2026-09-08-capitalized-product-nouns.md`](docs/memories/2026-09-08-capitalized-product-nouns.md)
+is the rule it enforces), and — the newest, and a scar — that nothing under a package's `src/` is
+gitignored.
 
 That last one is `rockysurf-ys0i`. A bare `packs/` in `packages/core/.gitignore` matched
 `src/packs/` too, because a pattern with no slash matches at any depth; a new file there was
@@ -181,12 +184,12 @@ on it.
 ## The rule that shapes everything
 
 **`@rockysurf/core` may import `@rockysurf/provider-sdk` and nothing else from this workspace.**
-Not a provider, not `web`. Providers are loaded at runtime through configuration, and
+Not a Provider, not `web`. Providers are loaded at runtime through configuration, and
 `packages/rockysurf` is the only package allowed to import both sides.
 
 Two reasons, and both are why it is a CI lint rather than a review convention. The SDK has no
 out-of-tree consumers yet, so the lint is the only thing keeping the abstraction honest — if core
-can reach into a concrete provider, the interface stops being tested by anything. And it keeps a
+can reach into a concrete Provider, the interface stops being tested by anything. And it keeps a
 cloud vendor's SDK out of core's dependency tree, which is what makes an `npx` cold start fast; a
 regression there would be invisible until somebody timed a fresh install.
 
@@ -224,9 +227,9 @@ Three other habits worth adopting:
   breaking the rule breaks the build — the three `scripts/check-*.mjs` lints exist because
   reviewers forget.
 
-## Adding a provider
+## Adding a Provider
 
-Read [`docs/writing-a-provider.md`](docs/writing-a-provider.md). Short version: a provider is its
+Read [`docs/writing-a-provider.md`](docs/writing-a-provider.md). Short version: a Provider is its
 own package, implements ten methods against the frozen SDK, declares its
 [capabilities](docs/providers/capability-matrix.md) honestly, passes the shared conformance
 suite, and gets registered in one row of `packages/rockysurf/src/compose.ts`. Core does not
@@ -243,14 +246,14 @@ non-interactive, `runAs`-honest — each have a section in the contract with wor
 right and wrong way, and the mechanical ones are enforced by
 `packages/core/src/packs/packs.test.ts` on every test run.
 
-**A pack defines whatever tools it installs** — a tool is an id, a description and a script the
+**A pack defines whatever Tools it installs** — a Tool is an id, a description and a script the
 author wrote, and nothing has to be registered anywhere first. The only cross-file rules are that
 a reference must resolve and an id must not be defined twice.
 
-So: reference the shared base toolchain (`curl`, `git`, `nodejs`, …) by tool id rather than
+So: reference the shared base toolchain (`curl`, `git`, `nodejs`, …) by Tool id rather than
 redefining it, because a reviewer should not have to work out whether a pack's `curl` is the real
 one. Anything else your pack needs, it declares. `lint.test.ts` has the worked case — a pack
-introducing a tool nothing has ever heard of, linting clean with no core involvement.
+introducing a Tool nothing has ever heard of, linting clean with no core involvement.
 
 Two commands run the contract, and both are published, so a pack that does not live in this
 repository is held to the same standard:
@@ -345,7 +348,7 @@ put a secret, credential, IP address, or account ID in either one.
   which always runs everything. Pack smoke runs on a pull request only when it touches what runs
   on a box — `packs/`, `packages/core/`, `packages/rockysurf/`, the smoke scripts, the lockfile
   or its own workflow file — and a pull request that changes only pack files tests just those
-  packs (plus any pack that lists a tool they define); everything else runs every pack.
+  packs (plus any pack that lists a Tool they define); everything else runs every pack.
 
 ## A note on this repository's history
 

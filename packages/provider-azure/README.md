@@ -31,8 +31,8 @@ providers:
 | field | default | what it is |
 |---|---|---|
 | `subscriptionId` | **required** | The subscription everything is created in. A GUID. |
-| `resourceGroup` | **required** | The one resource group this provider owns. **You create it**; see below. |
-| `location` | `eastus` | The Azure region. One per provider instance. |
+| `resourceGroup` | **required** | The one resource group this Provider owns. **You create it**; see below. |
+| `location` | `eastus` | The Azure region. One per Provider instance. |
 | `sshAllowedCidr` | **required** | Which network may reach SSH, as an IPv4 CIDR. No default, deliberately. |
 | `allowAllCidr` | `false` | Must also be `true` before `0.0.0.0/0` is accepted. |
 | `managedBy` | `rockysurf` | The `managed-by` tag value. Everything created carries it. |
@@ -49,23 +49,23 @@ providers:
 | `imageSkuArm64` | `server-arm64` | Image SKU for Arm64. An Arm image on an x64 size is refused by Azure. |
 | `adminUsername` | `azureuser` | The account cloud-init creates and Rocky Surf connects as. Azure refuses `root`. |
 | `allowAzureCli` | `true` | Whether the credential chain may fall back to `az account get-access-token`. |
-| `sizes` | *(unset)* | Optional allowlist of VM sizes offered in the UI. Core's field, not this provider's. |
+| `sizes` | *(unset)* | Optional allowlist of VM sizes offered in the UI. Core's field, not this Provider's. |
 
-**You create the resource group and this provider does not**, which is the one thing in the table
+**You create the resource group and this Provider does not**, which is the one thing in the table
 that will surprise you:
 
 ```bash
 az group create --name rocky-surf-rg --location eastus
 ```
 
-A role cannot be scoped to a resource group that does not exist yet. A provider that created its
+A role cannot be scoped to a resource group that does not exist yet. A Provider that created its
 own scope would have to be granted resource-group write across the whole *subscription* — which
 is permission to delete any resource group in your account. One command buys a role that cannot
 reach outside one group.
 
 ## Credentials
 
-**There is no field in the configuration above for an Azure secret, and this provider will not
+**There is no field in the configuration above for an Azure secret, and this Provider will not
 read one from a file.** Four sources are tried in order:
 
 ```bash
@@ -120,7 +120,7 @@ it reads Azure's catalogue, never the contents of your account.
 The full action list, with every entry justified, is in
 [`docs/providers/azure.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/providers/azure.md).
 
-**Networking**: Azure has no default virtual network, so this provider creates one — a virtual
+**Networking**: Azure has no default virtual network, so this Provider creates one — a virtual
 network, a subnet and a security group — on first launch and adopts them forever after. They are
 never deleted. The SSH rule is written as a *child* of the security group, so if you share that
 group with anything else, your other rules survive.
@@ -158,27 +158,27 @@ never disagree with what Azure will actually sell you.
 
 ## Verified
 
-**Nobody has pointed this provider at Azure.** It was built without an Azure subscription, and
+**Nobody has pointed this Provider at Azure.** It was built without an Azure subscription, and
 that is a weaker claim than the two clouds that shipped before it can make.
 
-What has been established: 78 tests drive the provider against an in-memory Azure Resource
+What has been established: 78 tests drive the Provider against an in-memory Azure Resource
 Manager that reproduces the three behaviours the design depends on — PUT being idempotent by
 resource name, the `deleteOption` cascade that makes one delete reap four resources, and the fact
 that Azure does not copy a virtual machine's tags onto the OS disk it creates. So the suite can
 terminate a machine and assert the disk is gone, rather than assert that the right JSON was sent.
 The shared conformance suite passes, including the behavioural absence-grace check that a
-previous provider shipped without.
+previous Provider shipped without.
 
 What that cannot establish, and what a real run has to settle:
 
 - **that `canInjectHostKeys: true` is true.** Azure's Ubuntu images are cloud-init provisioned and
-  upstream cloud-init injects host keys from the block this provider sends, and Microsoft
+  upstream cloud-init injects host keys from the block this Provider sends, and Microsoft
   documents no override — but this is a security posture rather than a feature flag, and nobody
   has watched a real Azure box present a key Rocky Surf minted;
 - **that the delete cascade reaps everything on real Azure**, rather than in a model of it;
 - **that the published role is neither short an action nor wider than it needs to be.** The
   equivalent AWS policy was wrong the first time it was run under a restricted principal;
-- **whether ARM has an eventual-consistency window after a create.** The provider waits one out on
+- **whether ARM has an eventual-consistency window after a create.** The Provider waits one out on
   the assumption that it might, because believing a "not found" too early marks a running,
   billing machine dead;
 - **whether the `customData` limit is measured before or after base64**, which is why the ceiling
@@ -186,7 +186,7 @@ What that cannot establish, and what a real run has to settle:
 
 Prices are the exception: those are real, and reproducible from a public feed.
 
-## Writing your own provider
+## Writing your own Provider
 
 The contract is [`@rockysurf/provider-sdk`](https://www.npmjs.com/package/@rockysurf/provider-sdk)
 and the workflow is

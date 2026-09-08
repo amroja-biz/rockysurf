@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 /**
- * "Your server's address moved, update your SSH config."
+ * "Your Server's address moved, update your SSH config."
  *
  * Ported unchanged. The dismissal key includes `changedAt`, which is the part worth keeping:
  * dismissing one move must not suppress the next one, and a key without the timestamp would

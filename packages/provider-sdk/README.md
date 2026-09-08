@@ -1,17 +1,17 @@
 # `@rockysurf/provider-sdk`
 
-The frozen v0 contract every Rocky Surf compute provider implements. Types plus a few pure
+The frozen v0 contract every Rocky Surf compute Provider implements. Types plus a few pure
 helpers, with **zero runtime dependencies** — anything this package depends on is inherited by
-every provider and every consumer. That is the promise, and it is deliberately not "no code": a
+every Provider and every consumer. That is the promise, and it is deliberately not "no code": a
 helper lives here when more than one tree has to agree with the others exactly, which is why
 `ssh-cidr` and `sizing` are here as well as the types.
 
-This is the package you depend on to write a provider Rocky Surf can drive, whether or not it
+This is the package you depend on to write a Provider Rocky Surf can drive, whether or not it
 lives in the Rocky Surf repository. Nothing here requires it to: depend on this package,
 implement the factory, and construct your own registry in your own composition root.
 
 - [What is in it](#what-is-in-it)
-- [Writing a provider](#writing-a-provider)
+- [Writing a Provider](#writing-a-provider)
 - [Four rules that are expensive to get wrong](#four-rules-that-are-expensive-to-get-wrong)
 - [The config schema convention](#the-config-schema-convention)
 - [Conformance is the acceptance bar](#conformance-is-the-acceptance-bar)
@@ -33,29 +33,29 @@ pnpm add @rockysurf/provider-sdk
 | `provision` | `ProvisionSpec`, and `assertHostnameSafeId` / `isHostnameSafeId` |
 | `managed` | `ManagedResource`, `ResourceOwnership` — what the reconciler reads |
 | `errors` | `ProviderError`, its code list, `isRetryableProviderErrorCode`, `unsupportedOperationError` |
-| `ssh-cidr` | `normalizeSshCidrs`, `opensSshToTheInternet` — the one place three providers have to agree character-for-character (ADR-0021) |
+| `ssh-cidr` | `normalizeSshCidrs`, `opensSshToTheInternet` — the one place three Providers have to agree character-for-character (ADR-0021) |
 | `sizing` | The t-shirt size resolver: `SERVER_SIZES`, `SIZE_REQUIREMENTS`, `chooseOffering`, `chooseForSize` and the saved-type rules — shared by core and the browser bundle (ADR-0024) |
 
 The doc comments carry the reasoning, so you can see which rules are load-bearing without
 reading the history behind them. The workflow — what to build, in what order, and what has to be
 true before it merges — is
 [`docs/writing-a-provider.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/writing-a-provider.md).
-For what each shipped provider declares, see
+For what each shipped Provider declares, see
 [`docs/providers/capability-matrix.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/providers/capability-matrix.md).
 
-## Writing a provider
+## Writing a Provider
 
-A provider package default-exports a `ProviderFactory`: an id, a display name, a config schema,
+A Provider package default-exports a `ProviderFactory`: an id, a display name, a config schema,
 and a synchronous `createProvider(config)` that does no I/O — plus, optionally, `credentialField`
 and `credentialEnv` (ADR-0026, E18), which tell an installation where a token lands and which
 environment variables may supply it when the config field is empty. A factory like this can be
-installed into any Rocky Surf as a **personal provider** (`providers.<id>.package` in its config
-file); the operator-facing page is `docs/self-hosting.md`, "Personal providers". Note that such a
+installed into any Rocky Surf as a **personal Provider** (`providers.<id>.package` in its config
+file); the operator-facing page is `docs/self-hosting.md`, "Personal Providers". Note that such a
 package carries its OWN copy of this SDK, so nothing here depends on object identity —
 `isProviderError` is structural. A factory also declares its **Settings panel** — `settings`
 (ADR-0027, E19): fields with kinds, labels and help, the cloud's machine-type vocabulary, and
-advisories for the operator — which is how an installation draws a panel for a provider it has
-never seen; conformance checks the declaration against `configSchema`. The provider it returns implements nine required methods (plus
+advisories for the operator — which is how an installation draws a panel for a Provider it has
+never seen; conformance checks the declaration against `configSchema`. The Provider it returns implements nine required methods (plus
 the optional `syncSshAccess()`, ADR-0021) and declares five required capabilities; three more are
 optional and absent means `false` — `simulatedInstances` (E15), `managesSshAccess` (ADR-0021) and
 `billsWhileStopped` (ADR-0025).
@@ -104,7 +104,7 @@ Three implementations are worth reading as worked examples:
    resources are gone. Expect `terminating` from `describe()` afterwards.
 3. **`listManaged()` reports secondary resources too**, each tagged `server-owned` or `shared`.
    A reconciler deletes the first kind and never the second. Getting the tag wrong means either
-   an orphan that bills forever or a reaper that deletes something another server is using.
+   an orphan that bills forever or a reaper that deletes something another Server is using.
 4. **`stop`/`start` are required even when you cannot stop.** Throw
    `unsupportedOperationError(this.id, 'stop')` and set `capabilities.stop = false`. Core
    branches on the capability, never on whether the method exists, because two ways to ask the
@@ -113,7 +113,7 @@ Three implementations are worth reading as worked examples:
 ## The config schema convention
 
 `ConfigSchema<T>` is deliberately just `{ parse(input: unknown): T }`. **A zod schema already
-satisfies it structurally**, so a provider can use zod while this SDK depends on nothing:
+satisfies it structurally**, so a Provider can use zod while this SDK depends on nothing:
 
 ```ts
 import { z } from 'zod'
@@ -134,13 +134,13 @@ export const factory: ProviderFactory<AwsConfig> = {
 }
 ```
 
-zod lives in the provider's dependencies, never in the SDK's. Any validator with a throwing
+zod lives in the Provider's dependencies, never in the SDK's. Any validator with a throwing
 `parse` works just as well, including a hand-written one.
 
 ## Conformance is the acceptance bar
 
 [`@rockysurf/provider-conformance`](https://github.com/amroja-biz/rockysurf/tree/main/packages/provider-conformance)
-is the shared suite every provider runs against itself. It is test-only and depends only on this
+is the shared suite every Provider runs against itself. It is test-only and depends only on this
 package, so the zero-runtime-dependency promise holds. The assertions take values and throw
 `ConformanceError` rather than calling into a test framework, so you can run them from vitest,
 from a fixture harness, or from your own verification script:
@@ -155,20 +155,20 @@ offerings and managed-resource records have the right shape, errors are `Provide
 valid code, and `createProvider` does no I/O. `assertDescribeAbsenceGrace` is the probe that
 makes rule 1 above an assertion rather than an assumption.
 
-**It is in the published set**, so an out-of-tree provider runs the same bar the in-tree ones do:
+**It is in the published set**, so an out-of-tree Provider runs the same bar the in-tree ones do:
 `npm install --save-dev @rockysurf/provider-conformance`.
 
 Passing conformance is necessary and not sufficient. It cannot know whether your cloud does what
-you said it does; only a run against real infrastructure can, which is why every shipped provider
+you said it does; only a run against real infrastructure can, which is why every shipped Provider
 publishes what has been run against it and when.
 
 This package's own test suite is the other half of the same argument: it implements a complete
-fake provider against the interface, which is what proves at compile time that the contract is
+fake Provider against the interface, which is what proves at compile time that the contract is
 implementable without casts, and it asserts that the exclusions below stay excluded.
 
 ## `rockysurf-shop-entry` — the listing entry, read rather than typed
 
-Installing this package puts one command on your path. It reads a packed provider tarball and
+Installing this package puts one command on your path. It reads a packed Provider tarball and
 prints the entry that describes it for the
 [shop](https://github.com/amroja-biz/rockysurf-shop)'s `providers.json`:
 
@@ -182,26 +182,26 @@ npx rockysurf-shop-entry you-rockysurf-provider-mycloud-1.0.0.tgz \
 **Only those two options are things you write.** Everything else is read out of the artifact:
 `package` and `version` from the manifest, `providerId` from your factory, `name` from your
 settings declaration's `title` (falling back to `displayName`), the whole `settings` summary from
-your declared fields in declared order, `capabilities` from the provider `createProvider()`
+your declared fields in declared order, `capabilities` from the Provider `createProvider()`
 returns — constructed from your declared fields' own `example` values, which conformance already
 requires to parse — and `sha256` from the bytes of the file you named. The JSON goes to stdout and
 nothing else does, so it pipes.
 
 Two things it refuses, both before a pull request has to:
 
-- **a package with runtime `dependencies`**, naming them. A provider is installed by unpacking a
+- **a package with runtime `dependencies`**, naming them. A Provider is installed by unpacking a
   tarball, which resolves nothing, so a dependency is an import that throws at the operator's next
   restart;
-- **a `--tarball-url` that is not https.** A provider artifact is code.
+- **a `--tarball-url` that is not https.** A Provider artifact is code.
 
 ## What is deliberately not here
 
 `interruptible` / `checkInterruption` and spot, `resize`, live pricing APIs, dynamic out-of-tree
 plugin loading, per-server IAM, and `ProvisionSpec.hostKeys`. The first group was cut because
 generalizing from zero implementations with no out-of-tree consumers is premature, and the spike
-confirmed nothing had changed. `hostKeys` was removed because no provider ever consumed it: the
+confirmed nothing had changed. `hostKeys` was removed because no Provider ever consumed it: the
 public half reaches the box through rendered user-data, and the private half needs an encrypted
-home in core, not a trip through a provider.
+home in core, not a trip through a Provider.
 
 Bootstrap tokens are absent for a related reason — in push mode, the default topology, no token
 goes to the box at all.
@@ -214,12 +214,12 @@ written from the de-risking spike's findings memo. **Changing it means amending 
 same pull request as the code.**
 
 That is a real path rather than a closed door. Six amendments have been accepted since the
-freeze, each one driven by a provider that could not tell the truth without it: `hostKeyFingerprint`
-and `hostPublicKey` came from the first provider that could not inject a host key, `sshPort` from
-a box whose sshd was not on 22, `consoleUrl` from a console link only the provider could build,
-`simulatedInstances` from a provider with no machine behind the address it reports, and
+freeze, each one driven by a Provider that could not tell the truth without it: `hostKeyFingerprint`
+and `hostPublicKey` came from the first Provider that could not inject a host key, `sshPort` from
+a box whose sshd was not on 22, `consoleUrl` from a console link only the Provider could build,
+`simulatedInstances` from a Provider with no machine behind the address it reports, and
 `billsWhileStopped` from the first cloud whose powered-off machines still bill (ADR-0025). Every one
-is additive and optional, so no existing provider had to change.
+is additive and optional, so no existing Provider had to change.
 
 What an amendment needs: the case that some cloud's truth is currently unsayable, the field or
 flag that says it, and what core does differently once it can read it. A conditional on

@@ -159,7 +159,7 @@ export function resolveProviderPackage(spec: string, providersDir: string, home:
 export function asProviderFactory(candidate: unknown, expectedId: string): ProviderFactory {
   const factory = ((candidate as { default?: unknown } | null)?.default ?? candidate) as Partial<ProviderFactory> | null
   if (factory === null || typeof factory !== 'object') {
-    throw new Error('the package does not export a provider factory (expected a default export with id, displayName, configSchema and createProvider)')
+    throw new Error('the package does not export a Provider factory (expected a default export with id, displayName, configSchema and createProvider)')
   }
   if (typeof factory.id !== 'string' || factory.id.length === 0) throw new Error('the factory has no id')
   if (factory.id !== expectedId) {
@@ -212,7 +212,7 @@ export async function loadPersonalProviders(options: LoadPersonalProvidersOption
       factories.set(id, asProviderFactory(loaded, id))
       sources.set(id, entry)
     } catch (err) {
-      failures.set(id, `package "${section.package}" (${entry}) is not a Rocky Surf provider: ${(err as Error).message}`)
+      failures.set(id, `package "${section.package}" (${entry}) is not a Rocky Surf Provider: ${(err as Error).message}`)
     }
   }
 

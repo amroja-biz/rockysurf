@@ -93,12 +93,12 @@ yet, which on a first launch is correct. **Two different answers to one call mea
 identities**, and adding permissions to the role changes nothing, because the identity being
 refused is not the one you granted them to.
 
-You should not have to find this page to learn that. The provider recognises the shape — a 403 on
+You should not have to find this page to learn that. The Provider recognises the shape — a 403 on
 a *read* — and says so in the error itself, naming the ADC login as the thing to re-run. It stays
 quiet on a 403 from a create or a delete, where a permission really can be missing and the hint
 would be misdirection.
 
-Point the provider at your project:
+Point the Provider at your project:
 
 ```yaml
 providers:
@@ -214,14 +214,14 @@ own identity, means no key exists to leak.
 
 ## What each permission is for
 
-The provider makes **twelve** distinct API calls. These are all of them.
+The Provider makes **twelve** distinct API calls. These are all of them.
 
 | Call | Permissions | Why it is needed |
 |---|---|---|
 | `zones.get` | `compute.zones.get` | `validateCredentials()`. The cheapest authenticated call there is, and it proves four things at once: the credential works, the project exists with the Compute Engine API enabled, you can read it, and the zone is real. |
 | `images.getFromFamily` | `compute.images.get`, `compute.images.getFromFamily` | Resolving the current Ubuntu 24.04 image for the requested architecture. |
 | `instances.insert` | `compute.instances.create`, `compute.disks.create`, `compute.images.useReadOnly`, `compute.subnetworks.use`, `compute.subnetworks.useExternalIp`, `compute.instances.setMetadata`, `compute.instances.setTags`, `compute.instances.setLabels`, `compute.disks.setLabels` | Creating the box. Nine permissions for one call — see below. |
-| `instances.get` | `compute.instances.get` | Reading a server's state. |
+| `instances.get` | `compute.instances.get` | Reading a Server's state. |
 | `instances.list` | `compute.instances.list` | Listing everything labelled `managed-by` for the reconciler. |
 | `instances.delete` | `compute.instances.delete` | Destroying a box. |
 | `instances.stop` / `instances.start` | `compute.instances.stop`, `compute.instances.start` | Power-cycling. |
@@ -235,7 +235,7 @@ The provider makes **twelve** distinct API calls. These are all of them.
 
 **`instances.insert` checks nine permissions, not one.** Every field you populate in the request
 body carries its own authorization annotation, so setting `metadata`, `tags` and `labels` on the
-create call triggers `setMetadata`, `setTags` and `setLabels` — even though the provider never
+create call triggers `setMetadata`, `setTags` and `setLabels` — even though the Provider never
 calls those methods. Creating the boot disk adds `disks.create`, labelling it adds
 `disks.setLabels`, and using the image adds `images.useReadOnly`. Miss one and the launch fails
 with a `PERMISSION_DENIED` naming a method you never called.
@@ -247,7 +247,7 @@ permission to modify the VPC and is in fact the permission to attach a rule to i
 
 **`compute.firewalls.update` authorizes a `patch`, and it is the only write this release
 added.** Google's permission names do not line up one-to-one with its method names here: the
-provider calls `firewalls.patch`, and `patch` on a firewall is checked against
+Provider calls `firewalls.patch`, and `patch` on a firewall is checked against
 `compute.firewalls.update`. There is no separate `compute.firewalls.patch` to grant, and looking
 for one is the fastest way to conclude the list is wrong.
 
@@ -473,11 +473,11 @@ change.
 ### C4A's boot disk is Hyperdisk, not Persistent Disk — and that's a config choice, not automatic
 
 C4A cannot boot from Persistent Disk **at all**. Its only boot disk option is Hyperdisk Balanced.
-Every other family this provider ships (`e2-*`, `t2a-*`) is the mirror image: this package does
+Every other family this Provider ships (`e2-*`, `t2a-*`) is the mirror image: this package does
 not yet expose Hyperdisk for them, so they stay Persistent-Disk-only.
 
-`bootDiskType` is **one value for the whole provider instance** (it is scoped to one zone the
-same way the rest of this provider is), so pointing it at a C4A machine means setting it
+`bootDiskType` is **one value for the whole Provider instance** (it is scoped to one zone the
+same way the rest of this Provider is), so pointing it at a C4A machine means setting it
 explicitly:
 
 ```yaml
@@ -548,8 +548,8 @@ and provisioned throughput.** Neither is in `Offering.hourly` either, for the sa
 disk itself is not. They are not free by nature — Hyperdisk Balanced only waives them below a
 baseline (3,000 IOPS / 140 MiB/s in every region; \$0.000006849/hour per IOPS and
 \$0.000054795/hour per MiB/s above that, read 2026-08-21 from Google's disk pricing page) — but
-this provider does not expose a setting for either, so every disk it creates gets GCE's
-documented minimum for its size, which for any boot disk this provider can produce (10 GB and
+this Provider does not expose a setting for either, so every disk it creates gets GCE's
+documented minimum for its size, which for any boot disk this Provider can produce (10 GB and
 up) is exactly that baseline. In today's fixed configuration the two lines are real SKUs billed
 at \$0, not a free tier this package invented; a future version that lets an operator raise
 provisioned IOPS/throughput would make them non-zero without anything here changing.
@@ -581,7 +581,7 @@ To check the role without creating anything:
 gcloud iam roles describe rockySurfDevBoxManager --project=PROJECT
 ```
 
-The honest test is still creating one server and destroying it: create in the UI, wait for
+The honest test is still creating one Server and destroying it: create in the UI, wait for
 ready, SSH in, then terminate. If the role is short something, the failure surfaces as a
 `ProviderError` whose `providerCode` is Google's own reason and whose message names the call
 that was refused.
@@ -606,7 +606,7 @@ never a project holding anything else. The sweep that runs after each leg is del
 it deletes only the `server-id` labels the run itself recorded, and merely *reports* everything
 else it finds — but that narrowness is the second line of defence. The first is that nothing
 anybody cares about is in the project at all. On 2026-08-12 the Hetzner leg destroyed the owner's
-own live server, launched from their laptop against the same project 37 seconds earlier, and
+own live Server, launched from their laptop against the same project 37 seconds earlier, and
 reported it as a leak it had helpfully cleaned up. A separate project makes that impossible rather
 than merely unlikely.
 
@@ -695,8 +695,8 @@ create at 07:00:
 The lifecycle runs as the published account; the sweep runs as the CI-only one. They are separate
 for two independent reasons, both learned on the AWS leg:
 
-- **The sweep reads calls the provider never makes.** `compute.disks.list` is absent from the
-  published role deliberately — the provider does not list disks — so a sweep using the identity
+- **The sweep reads calls the Provider never makes.** `compute.disks.list` is absent from the
+  published role deliberately — the Provider does not list disks — so a sweep using the identity
   under test could not see a disk that outlived its instance, and would report the run clean.
 - **The sweep has to work when the identity under test is what broke.** A cleanup wired through
   the credentials being tested goes blind at exactly the moment it matters.
@@ -775,7 +775,7 @@ the first morning it is green.
 **How to re-measure:** pull the last few runs' step timings with
 `gh run list --workflow=nightly-real-cloud.yml` and `gh run view <id> --json jobs`, multiply each
 box's lifetime by its rate from the price feed (or Hetzner's API / a tracker, per above), and
-re-apply each provider's billing granularity (AWS/GCP per-second, Hetzner hourly-rounded).
+re-apply each Provider's billing granularity (AWS/GCP per-second, Hetzner hourly-rounded).
 
 ---
 
@@ -808,7 +808,7 @@ person, with the permission granted to a human instead of to the product.
 
 **No `compute.instances.setServiceAccount`, no `compute.addresses.*`.** No identity on the
 boxes, and no reserved static addresses: an external IP is ephemeral, which is why
-`ipStableAcrossStop` is `false` for this provider. A reserved address would be one more
+`ipStableAcrossStop` is `false` for this Provider. A reserved address would be one more
 per-server resource to create, tag and reap.
 
 **No `compute.instances.list` filter that could reach another project**, no organisation- or
@@ -842,7 +842,7 @@ so the SSH path is verified by the boxes having reached ready at all. Terminate 
 orphans**: an audit on Google's side afterwards found no instances and no disks, with only the
 shared `rockysurf-ssh` rule persisting, which is what it is for.
 
-**`canInjectHostKeys: true` is now measured, and it was the important one.** The provider
+**`canInjectHostKeys: true` is now measured, and it was the important one.** The Provider
 declares that a core-minted SSH host key reaches the box through the `user-data` metadata key,
 which cloud-init's GCE datasource documents that it reads. Real Google boxes presented exactly
 the fingerprint core minted, on both architectures. GCE's guest agent does not regenerate the key
@@ -887,9 +887,9 @@ on this page are re-verified against real Compute Engine.
 Two smaller things the run did not settle, both harmless:
 
 1. **Whether `instances.get` ever reports not-found for a machine it just created.** Google
-   documents it as strongly consistent and nothing in the run contradicted that. The provider
+   documents it as strongly consistent and nothing in the run contradicted that. The Provider
    implements the full propagation grace anyway, because the ADR permits lengthening it and never
-   skipping it, and because the AWS provider shipped without one while eighty-five tests were
+   skipping it, and because the AWS Provider shipped without one while eighty-five tests were
    green.
 2. **Anything about a project unlike the one it ran in** — a shared VPC, an org policy
    constraining external IPs, a different image project. If you hit a `PERMISSION_DENIED`, the

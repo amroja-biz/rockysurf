@@ -611,11 +611,11 @@ describe('choosing the provider on create', () => {
     expect((await (await get('/api/v1/servers')).json()) as unknown[]).toHaveLength(0)
   })
 
-  it('still says "no compute provider is configured" when there is none', async () => {
+  it('still says "no compute Provider is configured" when there is none', async () => {
     await buildWith([])
     const res = await post('/api/v1/servers', CREATE)
     expect(res.status).toBe(400)
-    expect(((await res.json()) as { error: string }).error).toContain('no compute provider is configured')
+    expect(((await res.json()) as { error: string }).error).toContain('no compute Provider is configured')
   })
 })
 

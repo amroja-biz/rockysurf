@@ -14,10 +14,10 @@
 ## The `guide` field
 
 The pack installs software. It does not — and must not — authenticate it: no credential of the
-user's reaches the box during bootstrap, so a freshly built server is a pile of CLIs that all want
+user's reaches the box during bootstrap, so a freshly built Server is a pile of CLIs that all want
 a login. `guide` is where you tell them how.
 
-It is displayed on the server's page as soon as the server is running, **as plain text**. The
+It is displayed on the Server's page as soon as the Server is running, **as plain text**. The
 application does not parse markdown and does not render HTML, deliberately: pack prose is
 untrusted input (a pack can arrive by pull request or by URL import), so it is rendered inside a
 `<pre>` through React's escaping and a `<script>` tag in a guide shows up as characters. Write it
@@ -71,13 +71,13 @@ subscribe to without a merge here.
 Work through the checklist at the end of `docs/writing-a-surge-pack.md` first, then open the PR. CI runs
 the smoke harness for every pack on both `amd64` and `arm64` and gates merge on it.
 
-The one design rule specific to this path: **reference the shared base tool ids, do not redefine
+The one design rule specific to this path: **reference the shared base Tool ids, do not redefine
 them.** `packs/claude-code.yaml` defines the base toolchain and the other packs list those
 ids. A `toolId` defined in two files is rejected by the loader, naming both.
 
 That sharing has a consequence worth telling the user about, because it is not obvious and it is
 the reason to be careful editing an existing file rather than adding a new one: a pack file that
-fails validation is skipped at boot, and every file that *references* a tool from the skipped file
+fails validation is skipped at boot, and every file that *references* a Tool from the skipped file
 is charged with "references unknown tool" and skipped too. A syntax error in
 `packs/claude-code.yaml` alone empties the entire pack picker — every pack, not just that one
 — until the file is fixed. Adding a new file of your own cannot do this to anyone; editing the
@@ -99,14 +99,14 @@ hear:
 - Boot never overwrites it, so it will not be clobbered by a repository update.
 - Boot never restores it either. It lives in the instance's data directory and nowhere else —
   back it up, or keep the `.yaml` you uploaded.
-- **Every tool in the imported file is upserted by id.** If your file defines a `toolId` that the
+- **Every Tool in the imported file is upserted by id.** If your file defines a `toolId` that the
   instance already has — `curl`, `nodejs`, `claude-code` — your definition replaces the existing
   row for *every pack that references it*, instance-wide, until the next restart re-syncs it from
   the file. Reference the base ids rather than redefining them, or namespace your own
-  (`acme-curl`), and never ship a file that redefines a shipped tool.
+  (`acme-curl`), and never ship a file that redefines a shipped Tool.
 
-An imported file may reference tools it does not define, as long as those tools already exist in
-the instance (they do on a standard deployment, which ships the six packs). If a referenced tool
+An imported file may reference Tools it does not define, as long as those Tools already exist in
+the instance (they do on a standard deployment, which ships the six packs). If a referenced Tool
 is missing the import fails with `Tools not found: …`; if it is disabled, `Cannot include disabled
 tools: …`.
 
@@ -199,9 +199,9 @@ your later edits. It is one file; that is the whole distribution story.
 
 Two things to check before publishing a pack for other people's instances:
 
-- **Does it reference tools it does not define?** That is correct and recommended for the standard
+- **Does it reference Tools it does not define?** That is correct and recommended for the standard
   deployment, which ships the base toolchain. If you want a file that works on *any* instance,
-  including a stripped-down one, define every tool it needs — and then namespace your ids so it
+  including a stripped-down one, define every Tool it needs — and then namespace your ids so it
   never collides with a shipped one.
 - **Does it contain anything private?** A pack is shell scripts someone else's box will run as
   root. Never inline a credential; the pack format has no place for one, and secrets are supposed
@@ -218,8 +218,8 @@ request rather than a local divergence.
 
 Two properties to know:
 
-- It **inlines every referenced tool**, not only the ones this pack introduced. Re-importing that
-  file into a tree that already defines those tools elsewhere is the one case an author has to
+- It **inlines every referenced Tool**, not only the ones this pack introduced. Re-importing that
+  file into a tree that already defines those Tools elsewhere is the one case an author has to
   resolve by hand; the loader will name the duplicate.
 - The render is faithful but not byte-identical to a hand-written file: **comments are lost** and
   YAML spelling is normalised. If the pack started as a file you wrote, keep editing that file

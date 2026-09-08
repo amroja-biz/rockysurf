@@ -1,4 +1,4 @@
-Shown while a server is provisioning, on the detail page and in the create feed.
+Shown while a Server is provisioning, on the detail page and in the create feed.
 
 ```jsx
 <StepList current="installing_tools" />

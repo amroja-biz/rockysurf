@@ -115,7 +115,7 @@ export function BackupRestoreCards({ literalTokenCount, onRestored }: BackupRest
       <div className="settings-entry" data-backup-card>
         <h3>Back up this installation</h3>
         <p className="field-help">
-          One JSON file: your servers&rsquo; records, your Surge Packs and tools, your settings
+          One JSON file: your Servers&rsquo; records, your Surge Packs and Tools, your settings
           file, your spend history, and every stored secret <strong>as the encrypted
           ciphertext it already is</strong>. Your cloud machines are not in it — they live in
           your cloud accounts and never left.

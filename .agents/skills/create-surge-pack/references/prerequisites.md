@@ -10,12 +10,12 @@ Two machines are involved and only one of them is your problem here.
 - **The user's computer** — where the checkout, the loader test and the Docker daemon live, and
   the only machine this file is about. Nothing installs itself here. If a tool is missing, name it,
   give the user the install page below, and stop at the step that needs it.
-- **The Rocky Surf server** — the cloud box a pack builds. The `apt-get install`, `npm install -g`
+- **The Rocky Surf Server** — the cloud box a pack builds. The `apt-get install`, `npm install -g`
   and `curl … | bash` lines you will read in `idioms.md` and write into an `installScript` all run
   there, as part of the bootstrap the product exists to do. They say nothing about what the user's
   computer has.
 
-The smoke harness in step 4 blurs the two on purpose: it runs the server's install plan inside a
+The smoke harness in step 4 blurs the two on purpose: it runs the Server's install plan inside a
 container on the user's machine. That container is a stock `ubuntu:24.04` image with nothing in it,
 which is exactly why the pack has to install everything it uses.
 

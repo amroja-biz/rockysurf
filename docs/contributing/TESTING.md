@@ -16,11 +16,11 @@ Testing is arranged in four bands, ordered by what each one can see and by what 
    CI's `Test` job on every pull request.
 2. **Structural checks** — scripts that assert repository-wide invariants a reviewer would
    otherwise have to remember: core's dependency direction, the published IAM policy against the
-   provider, the `npx` install closure, the bundled pack copy, gitignore anchoring. Seconds.
+   Provider, the `npx` install closure, the bundled pack copy, gitignore anchoring. Seconds.
 3. **Out-of-process checks** — the ones that need something `pnpm install` does not provide: a
    browser engine, a Docker daemon, an SSH server, a `gitleaks` binary, an npm-style install from
    packed tarballs. Each is its own CI job.
-4. **Real-cloud checks** — one scheduled workflow that creates and destroys real servers on
+4. **Real-cloud checks** — one scheduled workflow that creates and destroys real Servers on
    AWS, GCP, Azure and Hetzner in accounts Amroja LLC keeps for this purpose. It is the only band
    that spends money, and the only one that proves the shipped article works against a real API.
 
@@ -71,8 +71,8 @@ time; the list and the reason for each entry are in `scripts/check-parallel.mjs`
 
 ### Provider conformance suite
 
-`packages/provider-conformance` holds assertions every provider must satisfy — the describe
-absence-grace contract among them — and its own tests prove each assertion rejects a provider that
+`packages/provider-conformance` holds assertions every Provider must satisfy — the describe
+absence-grace contract among them — and its own tests prove each assertion rejects a Provider that
 violates it as well as accepting one that does not.
 
 **Why this approach.** A shared suite is the only thing that makes "implements the SDK" mean the
@@ -85,7 +85,7 @@ Two vitest files build a workspace package, pack it exactly as `pnpm publish` wo
 against the resulting tarball rather than against `src/`.
 `packages/rockysurf/src/personal-provider-tarball.test.ts` extracts it with the documented
 `tar -xzf` and boots it through the real loader and composition, which is what keeps a personal
-provider self-contained. `packages/rockysurf/src/shop-entry.test.ts` runs the SDK's
+Provider self-contained. `packages/rockysurf/src/shop-entry.test.ts` runs the SDK's
 `rockysurf-shop-entry` bin over the same artifact and checks the entry it prints against the one a
 human wrote by hand and merged in the shop.
 
@@ -104,13 +104,13 @@ one that decides; running its script means the refresh is a diff and the review 
 
 `packages/rockysurf/src/e2e-config.test.ts` runs the exact `rockysurf.config.yaml` that
 `scripts/e2e/lifecycle.mjs` writes through core's real loader, once per cloud for all four, and
-separately asserts that core's AWS section accepts every field the AWS provider's own schema
+separately asserts that core's AWS section accepts every field the AWS Provider's own schema
 declares. It lives in `packages/rockysurf` because it is the only package permitted
-to import both core and a concrete provider.
+to import both core and a concrete Provider.
 
 **Why this approach.** The nightly is the most expensive check in the project and the last to run;
 "is this file even valid" costs milliseconds, needs no credential and no network, and belongs on
-the pull request that breaks it. Extend it when a provider gains a config key the e2e config
+the pull request that breaks it. Extend it when a Provider gains a config key the e2e config
 writes.
 
 ## Structural checks
@@ -158,7 +158,7 @@ while it fails. When the fix lands the job goes red on purpose, which is the sig
 
 **The fixture shop.** `shop.e2e.ts` installs a community pack and the real packed
 `@rockysurf/provider-digitalocean` from the Rocky Surf Shop tab, restarts the control plane, and
-reads the provider's panel on Settings. Its installation boots with `registry: 'fixture'` (a worker
+reads the Provider's panel on Settings. Its installation boots with `registry: 'fixture'` (a worker
 option in `e2e/fixtures.ts`): `control-plane.ts` writes a registry directory — `index.json`, a pack
 file, `providers.json`, `pnpm pack` output — and the binary is started with `--import
 e2e/fixtures/shop-fetch-preload.mjs`, which answers `fetch` for that one origin from those files.
@@ -199,8 +199,8 @@ with everything asked through core's own HTTP API — and phases 7 and 8 import 
 the launcher core chose by name, what a resume reports as skipped, and the host-key mismatch that
 must never be retried.
 
-Core will not push to a machine it has no server row for, and it will not make a server row
-without a provider, so the run needs something Provider-shaped. That something is
+Core will not push to a machine it has no Server row for, and it will not make a Server row
+without a Provider, so the run needs something Provider-shaped. That something is
 `scripts/e2e/fixtures/bootstrap-target`: test-only, unpublished, absent from `compose.ts`, loaded
 by path through the personal-provider mechanism ([ADR-0026](../adr/0026-a-personal-provider-is-a-package-named-in-the-config-file.md)).
 It stands in for cloud-init — with `generatesUserData: false` there is no pre-boot hook, so the
@@ -212,7 +212,7 @@ off the running container.
 and no spend, which is what lets it gate a pull request instead of waiting for the nightly. It is
 also the only coverage of the push bootstrap's NOHUP launcher fallback, which the nightly's cloud
 runs never reach because they all boot systemd. Neither property belongs to any particular
-provider, which is why the run that carries them does not go through one.
+Provider, which is why the run that carries them does not go through one.
 
 ### Release tarballs
 
@@ -290,12 +290,12 @@ their own Rocky Surf against.
 For each cloud it runs `scripts/e2e/lifecycle.mjs`, which boots the built `rockysurf` binary from
 a real config file and then drives everything through core's own HTTP API, as the SPA would:
 
-- registers the real provider through the composition root and confirms the offering's advertised
+- registers the real Provider through the composition root and confirms the offering's advertised
   architecture;
-- creates one server, waits for `running` and for the push bootstrap to report `ready`;
-- downloads the private key from the API, connects over SSH, and asserts both a tool version from
+- creates one Server, waits for `running` and for the push bootstrap to report `ready`;
+- downloads the private key from the API, connects over SSH, and asserts both a Tool version from
   the installed pack and the box's actual architecture;
-- stops the server, waits for it to settle, starts it again, and waits for it to come back;
+- stops the Server, waits for it to settle, starts it again, and waits for it to come back;
 - terminates it;
 - runs a zero-orphan audit with reconciler semantics: nothing this run created survives, every
   managed resource carries valid ownership, the shared network objects each cloud is designed to
@@ -303,7 +303,7 @@ a real config file and then drives everything through core's own HTTP API, as th
 
 The matrix is Hetzner on amd64, and AWS, GCP and Azure on both amd64 and arm64 — the same code
 path with nothing different but the offering id. `sshAllowedCidr` is resolved at run time and
-written into the config file; the provider refuses to infer it.
+written into the config file; the Provider refuses to infer it.
 
 The identity each leg runs under is the policy this project publishes to self-hosters, deployed
 unmodified: AWS assumes the role from `deploy/aws/iam-role.yaml` through an OIDC entry role, GCP
@@ -329,12 +329,12 @@ two pack steps broken by upstream installers moving their binaries.
 
 The identity arrangement adds a second property that nothing else covers: the least-privilege
 policy this project publishes is verified continuously. Without it, adding an API call to a
-provider silently makes the published policy wrong, every self-hoster's next launch fails with a
+Provider silently makes the published policy wrong, every self-hoster's next launch fails with a
 permission error, and CI stays green because the nightly ran under a role unrelated to what is
 published.
 
 The orphan audit and sweep run under a *different*, CI-only identity on each cloud, because
-listing resources outside the run's own labels is a read the provider never makes and the
+listing resources outside the run's own labels is a read the Provider never makes and the
 published role therefore does not grant. An orphan the credentials under test cannot see is an
 orphan the audit calls clean, and a sweep wired through the identity under test goes blind at
 exactly the moment that identity is what broke. `audit-credentials-selftest.mjs` in the pull-request
@@ -359,7 +359,7 @@ request, and a per-commit real-cloud run would be slow and expensive.
 - **Every leg uploads its full lifecycle log as a workflow artifact on every path**, success
   included, so a failure is diagnosable from the run page without re-running anything.
 - **A failure becomes a GitHub issue**, which is this project's system of record. The class of
-  problem the nightly finds is usually not a one-line fix: it is a provider that needs a
+  problem the nightly finds is usually not a one-line fix: it is a Provider that needs a
   capability, a published role that needs a permission, or a config file nothing validated. Issue
   numbers appear in the workflow header and in the code the fixes landed in.
 - **Where a cheaper check could have caught it, one is added in the same fix.** The parity test
@@ -378,8 +378,8 @@ serving; installs show `price unknown` only once their cache expires.
 
 - A change that adds a component something else must wire up gets a wiring test at the seam.
 - A change to a page gets a browser test, not only a component test.
-- A change to a provider's config keys extends the nightly parity test.
-- A provider's fake of its cloud starts empty and refuses a reference to an object nobody created;
+- A change to a Provider's config keys extends the nightly parity test.
+- A Provider's fake of its cloud starts empty and refuses a reference to an object nobody created;
   one test provisions the whole chain on it from nothing, and the live dry run in the
   `add-provider` skill is run before the package is published (#405).
 - A rule worth having is a check that fails when the rule is broken, not a note in a review.

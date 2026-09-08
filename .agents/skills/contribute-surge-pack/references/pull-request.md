@@ -84,17 +84,17 @@ gh pr create --repo amroja-biz/rockysurf-shop --base main \
 The four sections in the template exist because they are what a maintainer would otherwise have
 to ask for, and each round trip is a day:
 
-1. **What it installs.** The tools the pack defines, one line each, and the base ids it borrows.
+1. **What it installs.** The Tools the pack defines, one line each, and the base ids it borrows.
    A reviewer reading a diff sees YAML; this is the sentence version.
 2. **Every URL its scripts fetch**, copied from `pack describe --markdown`, with that command's
    caveat kept intact: the list is derived by reading the scripts and cannot be complete, because
    a URL built from a variable does not appear in it. **The scripts are the ground truth.** Do
    not paraphrase the caveat away — CI posts the same one, and a body that sounds more certain
-   than the tool is worse than no body.
+   than the Tool is worse than no body.
 3. **How it was tested.** Which architectures `pack check` ran on and when; whether the author
    ran it on a real Rocky Surf box; anything the checks could not cover. If only one architecture
    ran locally, say which, and say that CI runs both.
-4. **Where each tool comes from.** CONTRIBUTING's "Review" section says a maintainer will ask:
+4. **Where each Tool comes from.** CONTRIBUTING's "Review" section says a maintainer will ask:
    anything on a quota-free registry (npm, PyPI via `pipx`) installs **unversioned**; anything
    that ships only as a GitHub release asset stays **pinned to a tag and checked against a
    `sha256`**, because the only endpoint that answers "what is latest" there is rate-limited per
@@ -129,6 +129,6 @@ for a reason the pack cannot have caused — say so to the user instead, precise
 ## What happens after
 
 A maintainer reads every community pull request before it merges, and reads the scripts, because
-they run as root on an operator's server. On merge, the shop's `index.yml` regenerates
+they run as root on an operator's Server. On merge, the shop's `index.yml` regenerates
 `index.json` on `main` — a no-op if the pull request carried it — and the pack is live in the
 registry the moment that lands.

@@ -1,6 +1,6 @@
 # The research protocol
 
-Read this before writing a line of provider code. Every question below is a place two clouds have
+Read this before writing a line of Provider code. Every question below is a place two clouds have
 already been found to differ, and every answer lands somewhere specific: a capability core computes
 with, a field of a type, a setting the operator edits, or an advisory a human reads. Answer each one
 **with a citation into the cloud's own documentation** — a URL and the sentence — and write the
@@ -27,11 +27,11 @@ looks broken. The worked example below is the case that produced this rule.
 | 9 | **What is the status vocabulary, and which of its words collide with the SDK's?** | `describe()`'s state map, exported and pinned by literal tests; `terminated` reached by ABSENCE after the grace, never by a status. `contract.md`, trap 1 |
 | 10 | **Is the API eventually consistent after create? Does it have an async operation model (HTTP 200 = accepted)?** | The absence grace (`DESCRIBE_ABSENCE_GRACE`, lengthen never skip) and, for operations, polling inside the method until the cloud says done |
 | 11 | **What idempotency primitive exists for create?** | `ProvisionSpec.idempotencyKey` → a client token (AWS), a unique name (Hetzner), or a pre-create lookup by tag when the API has none |
-| 12 | **How are resources tagged or labelled — charset, length, key=value or flat strings?** | The provider's own encoding of `ProvisionSpec.tags` (`managed-by`, `server-id`), and `listManaged()`'s filter. **If `managed-by=rockysurf` is not expressible as written, choose an injective encoding and refuse a spec you cannot round-trip** — see the traps |
+| 12 | **How are resources tagged or labelled — charset, length, key=value or flat strings?** | The Provider's own encoding of `ProvisionSpec.tags` (`managed-by`, `server-id`), and `listManaged()`'s filter. **If `managed-by=rockysurf` is not expressible as written, choose an injective encoding and refuse a spec you cannot round-trip** — see the traps |
 | 13 | **What secondary resources does a create make (keys, IPs, NICs, disks), which survive a delete, and which are shared?** | `ManagedResource.ownership` per kind, `terminate()` reaping the server-owned ones, `listManaged()` reporting all of them |
-| 14 | **Does the API take raw SSH public keys inline, or need first-class key objects?** | `ProvisionSpec.sshPublicKeys` load-bearing (key objects the provider owns and reaps) or asserted-only (cloud-init) |
+| 14 | **Does the API take raw SSH public keys inline, or need first-class key objects?** | `ProvisionSpec.sshPublicKeys` load-bearing (key objects the Provider owns and reaps) or asserted-only (cloud-init) |
 | 15 | **How does it authenticate — bearer token, signed requests, a credential chain?** | The vendor-SDK decision (`vendor-sdks.md`); `credentialField` + `credentialEnv` on the factory for a token cloud, `credentialEnv` alone for detection on a chain cloud, nothing stored anywhere |
-| 16 | **What must exist in the account before a create (a VPC, a resource group, a project)? Does the provider create it or the operator?** | Required config fields with NO defaults and instructional refusal messages; a `docs/providers/<cloud>.md` page; least-privilege IaC where the cloud has a role model |
+| 16 | **What must exist in the account before a create (a VPC, a resource group, a project)? Does the Provider create it or the operator?** | Required config fields with NO defaults and instructional refusal messages; a `docs/providers/<cloud>.md` page; least-privilege IaC where the cloud has a role model |
 | 17 | **Does a console URL for one instance exist, and is everything it needs in the API's responses?** | `InstanceView.consoleUrl` — absent rather than guessed when a part (Hetzner's project id) is not in any response |
 | 18 | **What does the base image ship without that the bootstrap agent assumes?** | Nothing in the SDK; a note in the README (Hetzner's Ubuntu has no `jq`). The agent bootstraps what it needs |
 | 19 | **What would a human be surprised by that core does not compute with?** | `settings.advisories` — a sentence on the Settings panel or the New Server page. Never a capability, never text where a number is due |
@@ -63,7 +63,7 @@ than beside the field it will erase.
 
 The rule that follows is one line of policy: **read the object, change the one field, send it all
 back.** Never assemble a body from the fields you happen to care about. Pin it with a test that
-puts something in a field the provider never reads and asserts it survives a write.
+puts something in a field the Provider never reads and asserts it survives a write.
 
 This is not theoretical. A firewall updated with a body containing only its inbound rules came
 back with its outbound rules empty and its tags empty — in one request the object stopped allowing
@@ -75,7 +75,7 @@ dropped data can catch it; only asking the question can.
 
 The other half of question 21. Having created the object the next request names is not the same as
 that object being visible to the next request: an API with read replicas can answer *not found* for
-something it acknowledged a moment ago, and a provider that assumes otherwise fails on the request
+something it acknowledged a moment ago, and a Provider that assumes otherwise fails on the request
 it just set up. A key created with a `201` and referenced in the very next call was rejected as an
 invalid key id; two reads of it in the same second both said not-found; it was there minutes later.
 
@@ -83,11 +83,11 @@ Two rules, and neither is a `sleep`:
 
 - **After creating an object a later request references, read it back by id until it is visible,
   bounded** — a handful of attempts with the same delay discipline as the absence grace, then fail
-  with the cloud's own words. Write it as a helper, because a provider with three secondary
+  with the cloud's own words. Write it as a helper, because a Provider with three secondary
   objects needs it three times.
 - **On the failure path, a delete of an object created in this same call retries on 404 rather
   than declaring success.** "Idempotent delete: 404 is success" (`contract.md`, trap 4) is right
-  for anything the provider did not just create, and wrong here: the provider holds proof the
+  for anything the Provider did not just create, and wrong here: the Provider holds proof the
   object exists, so a 404 is the replica lagging, and believing it leaks the object into the
   operator's account with nobody left holding a handle to it.
 
@@ -96,9 +96,9 @@ The dry run cannot see either of these, because it refuses the create the chain 
 ## The worked example: DigitalOcean, on paper
 
 Read against the DigitalOcean API as documented in September 2026. Every claim here is a reading of
-their documentation, not an observation — and the column a DigitalOcean provider ships stays fully
+their documentation, not an observation — and the column a DigitalOcean Provider ships stays fully
 daggered until its author or installer verifies it by hand against a real account. DigitalOcean is
-a PERSONAL provider, so it gets no nightly leg: that is for the official providers, the ones
+a PERSONAL Provider, so it gets no nightly leg: that is for the official Providers, the ones
 composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud verification").
 
 | # | answer | lands in |
@@ -106,7 +106,7 @@ composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud veri
 | 1 | Yes: `POST /v2/droplets/{id}/actions` with `type: power_off` / `power_on`; the disk persists | `stop: true` |
 | 2 | **Yes, at the full rate.** A powered-off droplet keeps billing because the hypervisor resources stay reserved, and there is no `deallocate`-shaped action. Before ADR-0025 this fitted no capability and both available answers were lies (`stop: true` made core stop the meter; `stop: false` denied the API). This is gap S1, and the rule above exists because of it | `billsWhileStopped: true` |
 | 3 | Yes: a droplet's public IPv4 is retained across power off/on | `ipStableAcrossStop: true` |
-| 4 | `user_data` at create, cloud-init on the official Ubuntu images. The user-data HOW-TO page publishes no ceiling — **but the API reference does**, and that is the one to read: the droplet-create body documents `user_data` as "plain text and may not exceed 64 KiB in size". Plain text, so there is no encoding step to read the number two ways and the honest value is 65,536. The lesson generalises: when a how-to says nothing, look in the reference before concluding the cloud published nothing (found while building the provider, issue #368) | `generatesUserData: true`; `userDataMaxBytes: 65_536`, still daggered until a create is actually refused at 65,537 |
+| 4 | `user_data` at create, cloud-init on the official Ubuntu images. The user-data HOW-TO page publishes no ceiling — **but the API reference does**, and that is the one to read: the droplet-create body documents `user_data` as "plain text and may not exceed 64 KiB in size". Plain text, so there is no encoding step to read the number two ways and the honest value is 65,536. The lesson generalises: when a how-to says nothing, look in the reference before concluding the cloud published nothing (found while building the Provider, issue #368) | `generatesUserData: true`; `userDataMaxBytes: 65_536`, still daggered until a create is actually refused at 65,537 |
 | 5 | Yes: cloud-init on the Ubuntu images honours `ssh_keys:` | `canInjectHostKeys: true` |
 | 6 | **Cloud firewalls exist and a rule is `{ protocol, ports, sources }` with no description or name field.** Per-rule authorship is unprovable, so the AWS stamp and the GCP description have no equivalent. **Ruling (gap S2): authorship belongs to the whole firewall object Rocky Surf created and named** — converge in one write (`PUT`/`POST`/`DELETE /v2/firewalls/{id}/rules` to exactly the list), `removable` always empty, `reported` always empty, the Azure shape. Anti-lockout is unchanged: provision is additive, only an explicit confirmed sync revokes, authorize before revoke. **Three things the paper reading missed and the live API supplied** (issue #410): `PUT /v2/firewalls/{id}` REPLACES the object — a body carrying only `inbound_rules` came back with `outbound_rules: []` and `tags: []`, so every write reads the object first and sends all of it back; a firewall created with no `outbound_rules` denies ALL egress, so the create body carries allow-all outbound deliberately; and every rule the API returns also carries `action: "allow"`, which the create body may omit but the fake should model anyway | `managesSshAccess: true`; `syncSshAccess()` whole-object, named `<managedBy>-ssh`; `settings` declares `sshAllowedCidr` as `sshCidrList` |
 | 7 | **No arm64 droplets are sold at all.** `GET /v2/sizes` lists amd64 sizes with an `available` flag per region | every `Offering.arch: 'amd64'`; sold-out sizes reported with `available: false`, never omitted |
@@ -114,9 +114,9 @@ composed into `packages/rockysurf/src/compose.ts` (`wiring.md`, "Real-cloud veri
 | 9 | `new` / `active` / `off` / `archive`. `off` is the SDK's `stopped` — never `terminated`; `archive` maps to `unknown` with the cloud's words in `failureReason` | the state map, pinned |
 | 10 | Actions are asynchronous (`GET /v2/actions/{id}` until `completed`); a just-created droplet can be absent from a read | the absence grace at the floor or longer; poll actions inside `stop`/`start`/`terminate` |
 | 11 | None native. Dedupe by a pre-create lookup on the `server-id` tag, the way an API with no client token has to | `idempotencyKey` → tag lookup |
-| 12 | Tags are flat strings; letters, digits, `:`, `-`, `_`. **`managed-by=rockysurf` is not expressible.** Encode `key:value` (`managed-by:rockysurf`, `server-id:<id>`), which is injective for these keys because neither key nor value may contain `:`; refuse a spec whose tag values contain `:` rather than mangling them | the provider's tag encoding, `listManaged()`'s filter, `validateSpec()`'s refusal |
-| 13 | A droplet and, if Rocky Surf creates one, a firewall it names and reuses across droplets (`shared`); SSH keys registered as account objects (`server-owned` if the provider creates them per server) | `ManagedResource.ownership` |
-| 14 | Create takes SSH key IDs or fingerprints, not raw material — first-class key objects, like Hetzner | `sshPublicKeys` load-bearing; the provider owns and reaps the keys it makes |
+| 12 | Tags are flat strings; letters, digits, `:`, `-`, `_`. **`managed-by=rockysurf` is not expressible.** Encode `key:value` (`managed-by:rockysurf`, `server-id:<id>`), which is injective for these keys because neither key nor value may contain `:`; refuse a spec whose tag values contain `:` rather than mangling them | the Provider's tag encoding, `listManaged()`'s filter, `validateSpec()`'s refusal |
+| 13 | A droplet and, if Rocky Surf creates one, a firewall it names and reuses across droplets (`shared`); SSH keys registered as account objects (`server-owned` if the Provider creates them per Server) | `ManagedResource.ownership` |
+| 14 | Create takes SSH key IDs or fingerprints, not raw material — first-class key objects, like Hetzner | `sshPublicKeys` load-bearing; the Provider owns and reaps the keys it makes |
 | 15 | Bearer personal access token. Documented REST with JSON bodies — raw `fetch`, no vendor library | `credentialField: 'token'`, `credentialEnv: ['DIGITALOCEAN_TOKEN']`; nothing stored |
 | 16 | A region; optionally a VPC (a default exists per region) and a project | `region` required with no default; `vpcUuid`/`projectId` optional |
 | 17 | `https://cloud.digitalocean.com/droplets/{id}` — everything needed is the droplet id | `consoleUrl` on every instance |

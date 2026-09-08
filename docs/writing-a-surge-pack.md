@@ -1,8 +1,8 @@
-# Writing a surge pack
+# Writing a Surge Pack
 
-*For surge pack authors and the agents that write surge packs.*
+*For Surge Pack authors and the agents that write Surge Packs.*
 
-A **surge pack** is a curated bundle of tools that gets installed on a fresh cloud box. It is a
+A **Surge Pack** is a curated bundle of Tools that gets installed on a fresh cloud box. It is a
 single YAML file, and the schema, the CLI and this page all shorten the name to *pack*. You can
 read it, diff it, fork it, and send it as a pull request — which is the whole point: packs are
 data, not code, and adding one should never mean touching the application.
@@ -36,7 +36,7 @@ The file format is **frozen at v0.1**. A pack written today keeps working.
 
 Understanding this takes two minutes and explains all four rules.
 
-When someone creates a server with your pack, the control plane resolves the pack into an
+When someone creates a Server with your pack, the control plane resolves the pack into an
 ordered **install plan** and snapshots it. The box boots with a tiny, inert pre-boot config —
 it creates the unprivileged user `rocky` and authorizes an SSH key, and that is all. Nothing
 from your pack has run yet.
@@ -89,7 +89,7 @@ three copies of the same line.
 
 **Never hardcode a CPU architecture. Read `$ARCH` and branch.**
 
-We run on both `amd64` and `arm64`, and which one a user gets depends on the provider and the
+We run on both `amd64` and `arm64`, and which one a user gets depends on the Provider and the
 size they picked. The agent exports `ARCH` for every step, root and unprivileged alike,
 normalized to Debian's spelling — `amd64` or `arm64`, never `x86_64` or `aarch64`. Most of the
 time you need nothing: `apt-get install`, `npm install -g` and `pip install` resolve the right
@@ -259,10 +259,10 @@ Three things in there are worth copying into your own pack:
 
 ## Debugging a pack on a real box
 
-When one of your tool steps fails on a real server, the default is that **the machine is
+When one of your Tool steps fails on a real Server, the default is that **the machine is
 terminated** (ADR-0010): a half-installed box is worthless and billing, and the user gets the
 complete account instead — the failed step by name, the classified cause, the decisive lines, and
-the step's whole log, on the creation screen and the server page. For most failures that log is
+the step's whole log, on the creation screen and the Server page. For most failures that log is
 all you need.
 
 When it is not — you want to poke at the box itself — set this in the config of the Rocky Surf
@@ -273,13 +273,13 @@ bootstrap:
   onFailure: keep
 ```
 
-A failed tool install then leaves the machine up, exactly as it did before, and the row carries
+A failed Tool install then leaves the machine up, exactly as it did before, and the row carries
 the still-billing notice until you terminate it. SSH in and read `/var/lib/rockysurf/agent.log`
 and `/var/lib/rockysurf/steps/<step id>.log`. Put it back to `terminate` (or delete the key) when
 you are done; nobody else's boxes should outlive their failures.
 
 A repository that fails to clone never terminates the box under either setting — it is an
-optional step, and shows up as a warning on the running server.
+optional step, and shows up as a warning on the running Server.
 
 ---
 
@@ -309,7 +309,7 @@ optional step, and shows up as a warning on the running server.
       nobody sends.
 - [ ] `guide` tells the user how to authenticate everything the pack installs, and admits
       anything the install could not finish.
-- [ ] If this pack builds on another, it references that pack's tool ids, redefines none of
+- [ ] If this pack builds on another, it references that pack's Tool ids, redefines none of
       them, and leaves the other pack's file unchanged.
 
 ---
@@ -334,8 +334,8 @@ look a rule up:
   quota-free registry channel; pinned and `sha256`-verified everywhere else.
 - [The environment your scripts get](surge-pack-contract.md#the-environment-your-scripts-get) — every
   variable a step is handed, and how to handle the two secrets.
-- [Sharing a single tool](surge-pack-contract.md#sharing-a-single-tool) — the tool-file format, for
-  when the thing worth sharing is one tool rather than a whole box.
+- [Sharing a single Tool](surge-pack-contract.md#sharing-a-single-tool) — the tool-file format, for
+  when the thing worth sharing is one Tool rather than a whole box.
 - [The CI smoke test](surge-pack-contract.md#the-ci-smoke-test) — `rockysurf pack lint` and
   `rockysurf pack check`, what the second run must satisfy, and publishing to the shop.
 - [Where these rules come from](surge-pack-contract.md#where-these-rules-come-from) — the evidence

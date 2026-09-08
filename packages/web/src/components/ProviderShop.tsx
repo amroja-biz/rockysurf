@@ -74,7 +74,7 @@ function capabilityRows(capabilities: ProviderCapabilityAnswers): Array<{ label:
     value:
       capabilities.userDataMaxBytes > 0
         ? `Accepted, up to ${capabilities.userDataMaxBytes.toLocaleString()} bytes`
-        : 'Not accepted — servers are set up over SSH',
+        : 'Not accepted — Servers are set up over SSH',
   })
   if (capabilities.simulatedInstances) {
     rows.push({ label: 'Machines', value: 'Simulated — nothing is created at a cloud' })
@@ -136,7 +136,7 @@ function ProviderCard({
 
       {provider.installed && (
         <p className="hint" data-testid={`provider-installed-${provider.providerId}`}>
-          Installed{provider.installedVersion ? `, version ${provider.installedVersion}` : ''}. A provider package is
+          Installed{provider.installedVersion ? `, version ${provider.installedVersion}` : ''}. A Provider package is
           loaded when Rocky Surf starts, so a restart is needed after an install or an update; it is
           configured under{' '}
           <Link to={`/settings?section=providers.${provider.providerId}`}>Settings &rarr; {provider.name}</Link>.
@@ -174,7 +174,7 @@ export function ProviderShop({ active, isAdmin }: { active: boolean; isAdmin: bo
         setProblem(null)
       } catch (err) {
         setRegistry(null)
-        setProblem(err instanceof ApiError ? err.detail : 'Could not read the provider listing.')
+        setProblem(err instanceof ApiError ? err.detail : 'Could not read the Provider listing.')
       } finally {
         setLoading(false)
         setLoaded(true)
@@ -196,7 +196,7 @@ export function ProviderShop({ active, isAdmin }: { active: boolean; isAdmin: bo
       toast.success(`Installed ${result.package} ${result.version}.`)
       await load({ refresh: true })
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : 'Could not install the provider.')
+      toast.error(err instanceof ApiError ? err.detail : 'Could not install the Provider.')
     } finally {
       setBusyId(null)
     }
@@ -217,7 +217,7 @@ export function ProviderShop({ active, isAdmin }: { active: boolean; isAdmin: bo
       toast.success(`Removed ${provider.providerId}.`)
       await load({ refresh: true })
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : 'Could not remove the provider.')
+      toast.error(err instanceof ApiError ? err.detail : 'Could not remove the Provider.')
     } finally {
       setBusyId(null)
     }
@@ -245,7 +245,7 @@ export function ProviderShop({ active, isAdmin }: { active: boolean; isAdmin: bo
         <a href={SHOP_URL} target="_blank" rel="noreferrer">
           Rocky Surf Shop
         </a>
-        . A provider adds a cloud Rocky Surf can create servers on. Installing one fetches the
+        . A Provider adds a cloud Rocky Surf can create Servers on. Installing one fetches the
         package over https, checks its digest, unpacks it under the data directory&rsquo;s{' '}
         <code>providers</code> folder and adds a section to the config file; nothing in the package
         runs until Rocky Surf is restarted, and it is configured on the Settings page once it loads.
@@ -290,7 +290,7 @@ export function ProviderShop({ active, isAdmin }: { active: boolean; isAdmin: bo
               {shelf.failure.reason}
             </p>
           ) : shelf.providers.length === 0 ? (
-            <Shore>This registry lists no providers.</Shore>
+            <Shore>This registry lists no Providers.</Shore>
           ) : (
             <ul className="provider-grid">
               {shelf.providers.map((provider) => (

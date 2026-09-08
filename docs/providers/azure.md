@@ -65,7 +65,7 @@ identical binary and takes the same environment. The Docker Compose path in the
 [README](../../README.md#quick-start) works too.
 
 **Rocky Surf does not create the resource group, and that is deliberate.** A role cannot be
-scoped to a resource group that does not exist yet, so a provider that created its own scope
+scoped to a resource group that does not exist yet, so a Provider that created its own scope
 would have to be granted resource-group write at *subscription* scope — permission to delete any
 resource group in your account. One `az group create` buys a role that cannot reach outside one
 group.
@@ -76,7 +76,7 @@ group.
 
 Both of these were found the first time Rocky Surf was pointed at a real Azure subscription, and
 neither is something the role can grant. They are listed together because they produce confident,
-misleading errors that look like the provider is broken.
+misleading errors that look like the Provider is broken.
 
 ### Resource provider registration
 
@@ -167,7 +167,7 @@ When nothing works, the error names **every** source it tried and why each one d
 An operator who misspelled `AZURE_CLIENT_SECRET` should not be told "the Azure CLI is not
 installed".
 
-Turn off the fourth source on a server:
+Turn off the fourth source on a Server:
 
 ```yaml
 providers:
@@ -395,7 +395,7 @@ you can audit.
 
 ## What each action is for
 
-The provider makes these calls and no others.
+The Provider makes these calls and no others.
 
 | Call | Actions | Why it is needed |
 |---|---|---|
@@ -408,7 +408,7 @@ The provider makes these calls and no others.
 | read it | `virtualMachines/read`, `virtualMachines/instanceView/read` | State and power state. |
 | power-cycle it | `virtualMachines/deallocate/action`, `virtualMachines/start/action` | **Deallocate, not power off.** Both preserve the disk and only one stops the compute bill: an Azure VM that is merely powered off is charged the full rate for doing nothing. |
 | destroy it | `virtualMachines/delete`, `disks/delete`, `networkInterfaces/delete`, `publicIPAddresses/delete` | One `DELETE` cascades to the other three. See [below](#what-terminate-actually-deletes). |
-| the shared network | `virtualNetworks/*`, `networkSecurityGroups/*`, `securityRules/*`, minus delete | Created on first launch and adopted forever after. **No delete action is granted for either**, because they outlive every server and a reconciler must never reap them. |
+| the shared network | `virtualNetworks/*`, `networkSecurityGroups/*`, `securityRules/*`, minus delete | Created on first launch and adopted forever after. **No delete action is granted for either**, because they outlive every Server and a reconciler must never reap them. |
 | attach things | the four `join/action` entries | See below. This is the one that trips people up. |
 
 Note what is **not** in that table: a pricing call. A size's hourly price comes from the hosted
@@ -463,7 +463,7 @@ alone**, because `203.0.113.7/32` inside `198.51.100.0/24` means something to th
 maintaining the file and collapsing them would make removing one of them do something other than
 what it says.
 
-There is no default, and startup reports the provider as unloaded with an explanation if you omit
+There is no default, and startup reports the Provider as unloaded with an explanation if you omit
 it. Same rule as [AWS](aws.md#who-can-reach-ssh), and the same reasoning: a firewall rule is a
 security decision that belongs somewhere reviewable, not inferred at runtime from whatever
 address the operator happened to have that morning. **That is unchanged** — nothing here
@@ -503,7 +503,7 @@ body, so the two cannot drift into writing different things.
 
 **One rule, two ARM spellings.** A security rule carries *either* `sourceAddressPrefix` (one
 value) *or* `sourceAddressPrefixes` (a list), and sending both is rejected outright — ARM will not
-pick one. So a single-CIDR list is written on the scalar key, exactly as every rule this provider
+pick one. So a single-CIDR list is written on the scalar key, exactly as every rule this Provider
 has ever written, and a multi-entry list is written on the plural key. A one-CIDR installation's
 NSG therefore does not churn on upgrade. When reading the rule back, both keys are honoured,
 because the rule may have been written by an older Rocky Surf or edited in the portal, which
@@ -513,7 +513,7 @@ switches to the plural key the moment you add a second entry.
 
 Until issue #304, the only thing that ever wrote your CIDR to ARM was `provision()`. Azure
 recovered better than the other two clouds — the next provision PUTs the rule unconditionally, so
-the setting did take effect at the next launch — but "launch a server you did not want" was still
+the setting did take effect at the next launch — but "launch a Server you did not want" was still
 the only way to get there.
 
 Saving the setting now pushes it, without provisioning anything. The save stays local and atomic
@@ -557,7 +557,7 @@ Established sessions survive, and the boxes keep running. This is reachability, 
 It is attached to the **network interface**, not to the subnet, so Rocky Surf never changes the
 network configuration of a subnet you may share with other things.
 
-Rocky Surf does **not** create Azure SSH key resources. Keys are generated per server, the public
+Rocky Surf does **not** create Azure SSH key resources. Keys are generated per Server, the public
 half is injected through cloud-init, and the private half stays encrypted in Rocky Surf's own
 store. There is nothing in your subscription to manage or leak.
 
@@ -571,7 +571,7 @@ part most likely to cost you money if it were got wrong.**
 On EC2 and on Hetzner, an instance is one resource and destroying it destroys it. A running Azure
 dev box is **four** resources — the virtual machine, its OS disk, its network interface and its
 public IP address — and **Azure's default is to keep all of them when the VM is deleted.** A
-naive integration leaks three billable resources per server, forever, and an audit that walks
+naive integration leaks three billable resources per Server, forever, and an audit that walks
 virtual machines never sees them.
 
 Rocky Surf sets `deleteOption: "Delete"` at create time so that one `DELETE` cascades:
@@ -591,7 +591,7 @@ normal use — but if you ever move one in by hand, its disk and address are you
 
 **The reconciler lists the whole resource group rather than filtering by tag**, and there are two
 reasons. ARM's `$filter=tagName eq … and tagValue eq …` does not return the tags of the resources
-it matches, so a filtered listing can find a resource and then not say which server owns it. More
+it matches, so a filtered listing can find a resource and then not say which Server owns it. More
 importantly, **Azure does not copy a VM's tags onto the OS disk it creates from an image** — so a
 tag-filtered sweep would never see a disk at all, which is exactly the orphan class that costs
 money silently. A stray disk is attributed instead through its `managedBy`, which points at the
@@ -623,8 +623,8 @@ published to the hosted feed (issue #100, [ADR-0009](../adr/0009-prices-served-f
 restrict `location` to this list and Azure will create the machine — but every offering's
 `hourly` comes back `null`, which the SDK defines as "unknown, never free" rather than reusing
 another region's number. One consequence is worth stating plainly: **the spend cap cannot see
-those boxes.** `hourlyCostAmount` is null for an unpriced offering, so a server in an uncovered
-location counts toward nobody's spend total. Budget for it the way you would for a provider Rocky
+those boxes.** `hourlyCostAmount` is null for an unpriced offering, so a Server in an uncovered
+location counts toward nobody's spend total. Budget for it the way you would for a Provider Rocky
 Surf could not price at all.
 
 **The size catalogue is not per-region.** `AZURE_SIZES` in
@@ -652,7 +652,7 @@ did this in `eastus` and `germanywestcentral` — `Standard_M16bs_v4` through
 
 A zero is not a price, and the generator now excludes such a size and names it in the run log,
 on the same "report, don't guess" rule that already excluded a size resolving to two meters or
-none. **This is why it matters more than thirty missing sizes** (issue #140): every provider's
+none. **This is why it matters more than thirty missing sizes** (issue #140): every Provider's
 feed reader rejects a price document *whole* on a single non-positive number, because the spend
 cap must degrade to *unpriced* rather than to *wrong*. So thirty zeros in `eastus` did not
 unprice thirty sizes — they unpriced every Azure size in all fourteen regions, for every
@@ -695,7 +695,7 @@ page](gcp.md#the-nightly-real-cloud-run-maintainers) states for its project. The
 after each leg is deliberately narrow — it deletes only what the run itself recorded and merely
 *reports* everything else — but that narrowness is the second line of defence. The first is that
 nothing anybody cares about is in the group at all. On 2026-08-12 the Hetzner leg destroyed the
-owner's own live server, launched from their laptop against the same project 37 seconds earlier,
+owner's own live Server, launched from their laptop against the same project 37 seconds earlier,
 and reported it as a leak it had helpfully cleaned up.
 
 ### No secret exists anywhere on this path
@@ -839,7 +839,7 @@ minutes each, billed per minute.
 ## What is deliberately absent
 
 **No `Microsoft.Resources/subscriptions/resourceGroups/write` or `/delete`.** Rocky Surf cannot
-create or destroy resource groups, including its own. A resource group per server would have made
+create or destroy resource groups, including its own. A resource group per Server would have made
 `terminate()` a single atomic call — and would have required exactly these two actions at
 subscription scope, which is permission to delete any resource group in your account.
 `deleteOption` buys the same atomicity without it.

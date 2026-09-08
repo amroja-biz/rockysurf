@@ -168,7 +168,7 @@ describe('what a loaded module has to look like', () => {
   })
 
   it('refuses a module that is not a factory, naming what is missing', () => {
-    expect(() => asProviderFactory({ default: 42 }, 'nimbus')).toThrow(/does not export a provider factory/)
+    expect(() => asProviderFactory({ default: 42 }, 'nimbus')).toThrow(/does not export a Provider factory/)
     expect(() => asProviderFactory({ default: { ...good, configSchema: {} } }, 'nimbus')).toThrow(/configSchema\.parse/)
     expect(() => asProviderFactory({ default: { ...good, createProvider: 'no' } }, 'nimbus')).toThrow(/createProvider/)
     expect(() => asProviderFactory({ default: { ...good, credentialEnv: 'DO_TOKEN' } }, 'nimbus')).toThrow(/credentialEnv/)
@@ -237,7 +237,7 @@ describe('loading every personal provider the config names', () => {
     expect(loaded.factories.size).toBe(0)
     expect(loaded.failures.get('missing')).toMatch(/could not be found: never-installed is not installed under/)
     expect(loaded.failures.get('crashes')).toMatch(/failed to load from .*boom at import/)
-    expect(loaded.failures.get('shapeless')).toMatch(/is not a Rocky Surf provider: the package does not export a provider factory/)
+    expect(loaded.failures.get('shapeless')).toMatch(/is not a Rocky Surf Provider: the package does not export a Provider factory/)
     expect(loaded.failures.get('renamed')).toMatch(/factory id is 'other' but the config section is providers\.renamed/)
   })
 

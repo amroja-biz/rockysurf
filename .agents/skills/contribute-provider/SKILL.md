@@ -3,32 +3,32 @@ name: contribute-provider
 description: Contribute a finished Rocky Surf provider to the shop — the community registry at amroja-biz/rockysurf-shop — as a pull request whose `provider listing` check is green on the first push. Use when someone has a working provider package and wants to publish, submit, list, share or "get it into the shop"; says "open a PR for my provider", "list my provider in the registry", "release my provider and add it to providers.json", "how do other people install my provider"; or when a provider pull request there has come back red on the validator or the digest check. Builds, packs, releases the tarball, generates the listing entry from the artifact with `rockysurf-shop-entry`, and refuses to open the pull request when the manifest declares runtime dependencies or the released asset's digest differs from the tarball it read. NOT for writing the provider in the first place: that is `add-provider`. NOT for contributing a Surge Pack, which is a YAML file and a different procedure — that is `contribute-surge-pack`.
 ---
 
-# Contribute a provider to the shop
+# Contribute a Provider to the shop
 
 The shop is [`amroja-biz/rockysurf-shop`](https://github.com/amroja-biz/rockysurf-shop). A
-provider listed there is one JSON object in its `providers.json` — the package name, the URL of a
-tarball you host, that tarball's digest, the settings the provider asks for and the capabilities
+Provider listed there is one JSON object in its `providers.json` — the package name, the URL of a
+tarball you host, that tarball's digest, the settings the Provider asks for and the capabilities
 it answers with. **The shop never holds the artifact.** An operator reads the entry, downloads
 your tarball from your release, checks the digest by hand, unpacks it under their data directory,
 names it in their config file and restarts. Nothing in Rocky Surf fetches the listing, and
 nothing executes at install.
 
-Your job here is narrow and mechanical: **take a provider that already builds and passes
+Your job here is narrow and mechanical: **take a Provider that already builds and passes
 conformance, and end with a pull request that a maintainer only has to make a judgement about.**
 Every question a machine can answer — is `dist/` in the tarball, does the manifest resolve
 anything at install time, does the release serve the exact bytes that were hashed, does the entry
 describe the artifact — gets answered on this machine, before the pull request exists.
 
-**You are not writing the provider here.** If the user does not have one that builds and passes
+**You are not writing the Provider here.** If the user does not have one that builds and passes
 `@rockysurf/provider-conformance`, that is [`add-provider`](../add-provider/SKILL.md) — the
 research protocol, the nine methods, the capability answers and the acceptance bar. Come back when
 there is a package. If they want to contribute a *Surge Pack* (a YAML file describing scripts to
-run on a server, not code that runs inside Rocky Surf), that is
+run on a Server, not code that runs inside Rocky Surf), that is
 [`contribute-surge-pack`](../contribute-surge-pack/SKILL.md).
 
 **The normative documents are in two places and neither is this skill.** The shop's
 [`CONTRIBUTING.md`](https://github.com/amroja-biz/rockysurf-shop/blob/main/CONTRIBUTING.md),
-section "Contributing a provider", says what that repository expects; Rocky Surf's
+section "Contributing a Provider", says what that repository expects; Rocky Surf's
 [`docs/writing-a-provider.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/writing-a-provider.md)
 is the authoring contract. When either disagrees with what you read here, it wins — say so to the
 user and follow it.
@@ -41,27 +41,27 @@ and where it comes from — **do not install it for them**, and do not route aro
 
 | Tool | Why this skill needs it | Check |
 |---|---|---|
-| Git | the release is a tag in the provider's repository, and the contribution is a branch on a fork | `git --version` |
-| Node.js 24+ | the provider is a Node package and `engines.node` is `>=24`; the entry generator runs on it | `node --version` |
+| Git | the release is a tag in the Provider's repository, and the contribution is a branch on a fork | `git --version` |
+| Node.js 24+ | the Provider is a Node package and `engines.node` is `>=24`; the entry generator runs on it | `node --version` |
 | npm (or pnpm) | `npm pack` produces the tarball, and the same manager runs the build and the conformance suite | `npm --version` |
-| `gh`, logged in | it must be an account that may **create a release on the provider's repository** and **fork a public repository**. Those are two different permissions and they fail at different steps | `gh auth status` |
-| `rockysurf-shop-entry` | the listing entry is read out of the artifact, never typed. It is a bin of `@rockysurf/provider-sdk`, which the provider already depends on | `npx rockysurf-shop-entry --help` |
+| `gh`, logged in | it must be an account that may **create a release on the Provider's repository** and **fork a public repository**. Those are two different permissions and they fail at different steps | `gh auth status` |
+| `rockysurf-shop-entry` | the listing entry is read out of the artifact, never typed. It is a bin of `@rockysurf/provider-sdk`, which the Provider already depends on | `npx rockysurf-shop-entry --help` |
 
 [`references/prerequisites.md`](references/prerequisites.md) has the install page for each on
 macOS and Ubuntu, the two ways `gh` is authenticated and still cannot do the job, and where the
 entry generator comes from.
 
-Docker is **not** a prerequisite: a provider's acceptance suite is unit tests, and nothing here
+Docker is **not** a prerequisite: a Provider's acceptance suite is unit tests, and nothing here
 starts a container.
 
-## Step 1 — The provider, and the bar it must already pass
+## Step 1 — The Provider, and the bar it must already pass
 
 Ask for the package directory if you do not have it. Three things must be true before anything
 else happens, and each is a command rather than an assurance:
 
 1. **It builds.** `npm run build` (or `pnpm build`) in the package, and `dist/` exists afterwards.
 2. **It passes conformance.** `npm test`, running `@rockysurf/provider-conformance` — at minimum
-   `assertFactoryShape` and the absence-grace harness. A provider that has never run the suite is
+   `assertFactoryShape` and the absence-grace harness. A Provider that has never run the suite is
    not ready to be listed; hand it back to [`add-provider`](../add-provider/SKILL.md).
 3. **Its source is in a public repository.** Operators are being asked to run this code with their
    Rocky Surf process's full access — its database, its master key, every cloud credential in its
@@ -107,17 +107,17 @@ the failure-to-cause table.
 A GitHub release is a tag with files attached; each attached file gets a permanent `https://`
 download URL, which is what the listing needs.
 
-**The tag name depends on where the provider lives, and getting it wrong is not cosmetic.**
+**The tag name depends on where the Provider lives, and getting it wrong is not cosmetic.**
 
-| The provider's repository | Tag |
+| The Provider's repository | Tag |
 |---|---|
-| holds this provider and nothing else | `v<version>` — e.g. `v1.0.0` |
-| is a **monorepo** holding this provider among other packages | `provider-<providerId>-v<version>` — e.g. `provider-digitalocean-v0.1.0` |
+| holds this Provider and nothing else | `v<version>` — e.g. `v1.0.0` |
+| is a **monorepo** holding this Provider among other packages | `provider-<providerId>-v<version>` — e.g. `provider-digitalocean-v0.1.0` |
 
 A monorepo's `v1.0.0` belongs to the repository, not to one package inside it, so a bare version
 tag there either collides with a release that means something else or silently claims the whole
 repository is at that version. Package-scoped tags are the only ones that stay true when the
-second provider ships. Ask which case applies if the repository layout does not make it obvious.
+second Provider ships. Ask which case applies if the repository layout does not make it obvious.
 
 ```bash
 git tag <tag> && git push origin <tag>
@@ -151,7 +151,7 @@ npx rockysurf-shop-entry <file>.tgz \
 
 Nine fields, and **only those two options are things anyone writes.** `providerId` comes from the
 factory, `name` from the settings declaration's title, `version` and `package` from the manifest,
-`settings` from the declared fields in declared order, `capabilities` from the provider
+`settings` from the declared fields in declared order, `capabilities` from the Provider
 `createProvider()` returns, and `sha256` from the bytes of the file named on the command line.
 A settings summary transcribed by hand and a capability struct copied out of a source file are two
 transcriptions that drift from the artifact silently and are checked by nobody.
@@ -193,8 +193,8 @@ a workflow is a different review.
 ## Step 6 — Open the pull request
 
 [`assets/pr-body-template.md`](assets/pr-body-template.md) is the body to fill in. It carries the
-link to the provider's source repository, which the shop's CONTRIBUTING asks for by name, because
-reading that source is the only review a provider gets.
+link to the Provider's source repository, which the shop's CONTRIBUTING asks for by name, because
+reading that source is the only review a Provider gets.
 
 ```bash
 git push -u origin providers/<providerId>
@@ -224,7 +224,7 @@ than pushing at it.
 
 End with the pull request URL and this, in one sentence, not softened:
 
-> A maintainer will still read the provider's code before merging, because it runs with the
+> A maintainer will still read the Provider's code before merging, because it runs with the
 > operator's full access.
 
 That is the whole point of the review the pull request is entering. The validator checks the shape

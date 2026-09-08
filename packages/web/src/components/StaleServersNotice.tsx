@@ -21,7 +21,7 @@ import { Link } from 'react-router'
  * only one of these to dismiss, so one pair of keys covers it.
  *
  * The advice itself is NOT only here — dismissing (either way) must not make it unfindable, so
- * `HelpPage`'s "Checking for stale servers" section carries the same paragraph permanently.
+ * `HelpPage`'s "Checking for stale Servers" section carries the same paragraph permanently.
  */
 
 /** How long a plain "Dismiss" snoozes the notice before it reappears. */
@@ -88,7 +88,7 @@ export function StaleServersNotice() {
         </span>
         <span>
           Rocky Surf can&rsquo;t guarantee this list matches your cloud account. Check your cloud
-          provider&rsquo;s console periodically for stale resources it may not know about.{' '}
+          Provider&rsquo;s console periodically for stale resources it may not know about.{' '}
           <Link to="/help#stale-servers">Why, and how to check</Link>.
         </span>
       </div>

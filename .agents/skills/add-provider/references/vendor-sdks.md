@@ -4,7 +4,7 @@
 liability, which in practice means auth, and for nothing else.
 
 This is a decision to **measure**, not to recall. The instruction below is a process; running it is
-the deliverable, and its output goes in the provider's code as a comment naming the versions
+the deliverable, and its output goes in the Provider's code as a comment naming the versions
 measured.
 
 ## The test, in order
@@ -13,7 +13,7 @@ measured.
 
 Documented REST, JSON bodies? **Write the calls by hand.** The relevant cost is not the whole SDK
 package — it is the *transport*, the part a generated client would replace, and in this repository
-that is one small file per provider.
+that is one small file per Provider.
 
 ### 2. Is some part of it not fetch-shaped?
 
@@ -41,17 +41,17 @@ published, so `@google-cloud/compute@7.1.0 is 110,039,229 bytes` is checkable in
 
 ### 3. Whatever you take has to be contained
 
-The principle applies wherever the provider lives: a vendor dependency must not leak out of the
+The principle applies wherever the Provider lives: a vendor dependency must not leak out of the
 package that needs it. Core is loaded by every installation, including operators who will never call
 your cloud, and its cold start is a feature.
 
 **In tree**, this is mechanised. `scripts/check-npx-closure.mjs` walks core's and the CLI's
 production closures and asserts that each vendor package is **absent from the first** and **reaches
-the second only through its own provider**. Add the dependency to its rules, with fixture tests
+the second only through its own Provider**. Add the dependency to its rules, with fixture tests
 proving the check fails in *both* directions when it is broken.
 
 **Out of tree** that script does not exist and there is nothing to edit. The obligation that
-survives is the one it encodes: keep the vendor package a dependency of your provider alone, never
+survives is the one it encodes: keep the vendor package a dependency of your Provider alone, never
 a peer or transitive requirement of anything that embeds it.
 
 ## The argument that is not about disk
@@ -70,7 +70,7 @@ shape recurs: if the cloud has an async operation model, you need to see it, bec
 
 ## What to write down
 
-In the provider's auth or transport file, a comment recording:
+In the Provider's auth or transport file, a comment recording:
 
 - which package was taken, at which version, and for exactly which job;
 - which was declined, at which version, and the measured sizes behind the comparison;

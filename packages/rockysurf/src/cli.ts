@@ -91,17 +91,17 @@ interface Subcommand extends CliSubcommand {
 const SUBCOMMANDS: readonly Subcommand[] = [
   { name: 'mcp', summary: 'serve the MCP tools over stdio, for an agent client', run: runMcpCommand },
   { name: 'token', summary: 'mint a token for an MCP client, printed once', run: runTokenCommand },
-  { name: 'list', summary: 'list your servers, with status, address and cost', run: (a) => runClientCommand('list', a) },
+  { name: 'list', summary: 'list your Servers, with status, address and cost', run: (a) => runClientCommand('list', a) },
   {
     name: 'create',
     // Says the floor, because nothing else does: `create` appears in no document in this
     // repository, so this line is the whole of its documentation (rockysurf-zaqs, and the
     // reason rockysurf-3w2u mattered). Same wording as the MCP tool's `size` description.
-    summary: 'create a server — --size is a floor, or name --arch / --offering exactly',
+    summary: 'create a Server — --size is a floor, or name --arch / --offering exactly',
     run: (a) => runClientCommand('create', a),
   },
-  { name: 'stop', summary: 'stop a server, keeping its disk', run: (a) => runClientCommand('stop', a) },
-  { name: 'ssh', summary: 'connect to a server over SSH', run: (a) => runClientCommand('ssh', a) },
+  { name: 'stop', summary: 'stop a Server, keeping its disk', run: (a) => runClientCommand('stop', a) },
+  { name: 'ssh', summary: 'connect to a Server over SSH', run: (a) => runClientCommand('ssh', a) },
   {
     name: 'ssh-config',
     summary: 'write an ssh config include, so plain `ssh <name>` works',
@@ -114,14 +114,14 @@ const SUBCOMMANDS: readonly Subcommand[] = [
   },
   {
     name: 'network',
-    summary: 'push sshAllowedCidr to the clouds now, without launching a server',
+    summary: 'push sshAllowedCidr to the clouds now, without launching a Server',
     run: (a) => runClientCommand('network', a),
   },
   {
     name: 'pack',
     // `pack` opens no database and boots no core — it is a pure function of a directory of
     // files, which is what lets somebody else's CI run it (rockysurf-arym.2).
-    summary: 'lint or smoke-test a directory of surge packs',
+    summary: 'lint or smoke-test a directory of Surge Packs',
     run: (a) =>
       runPackCommand(a, {
         out: (line) => process.stdout.write(`${line}\n`),

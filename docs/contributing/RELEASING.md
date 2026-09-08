@@ -12,20 +12,20 @@ not.
 |---|---|
 | `rockysurf` | the thing `npx rockysurf` installs — the composition root, and the only one with a `bin` |
 | `@rockysurf/core` | the control plane, so someone can build their own composition root |
-| `@rockysurf/provider-sdk` | the frozen v0 contract an out-of-tree provider implements |
+| `@rockysurf/provider-sdk` | the frozen v0 contract an out-of-tree Provider implements |
 | `@rockysurf/provider-aws` | |
 | `@rockysurf/provider-azure` | |
 | `@rockysurf/provider-gcp` | |
 | `@rockysurf/provider-hetzner` | |
-| `@rockysurf/provider-conformance` | the acceptance bar a provider runs against itself, so an out-of-tree author can run it too |
-| `@rockysurf/provider-digitalocean` | a PERSONAL provider (ADR-0026): nothing imports it and the CLI does not bundle it, so it is public because installing it is the only way to have it |
+| `@rockysurf/provider-conformance` | the acceptance bar a Provider runs against itself, so an out-of-tree author can run it too |
+| `@rockysurf/provider-digitalocean` | a PERSONAL Provider (ADR-0026): nothing imports it and the CLI does not bundle it, so it is public because installing it is the only way to have it |
 
 | package | why it stays `private: true` |
 |---|---|
 | `@rockysurf/web` | not a library. Its build output is copied into `@rockysurf/core/public` and shipped there |
 
 **`@rockysurf/provider-digitalocean` is the one package nothing else in the release depends on**,
-and that is what it is for. It is a personal provider (ADR-0026): the composition root does not
+and that is what it is for. It is a personal Provider (ADR-0026): the composition root does not
 name it, `check-core-deps.mjs` does not require it, and an installation acquires it by putting it
 under `<dataDir>/providers` — with `npm install`, or by extracting the tarball, which works because
 the package declares no runtime dependencies and its build bundles what it uses of the SDK into its
@@ -33,17 +33,17 @@ own `dist/`. `packages/rockysurf/src/personal-provider-tarball.test.ts` packs an
 every CI run and boots the loader against the result, so the release cannot quietly stop producing
 an installable artifact.
 
-**Why all ten rather than one bundled tarball.** Bundling the providers and core into the
+**Why all ten rather than one bundled tarball.** Bundling the Providers and core into the
 `rockysurf` tarball was considered and rejected. `better-sqlite3` and `ssh2` are native modules
-and cannot be bundled; and an out-of-tree provider author needs a real `@rockysurf/provider-sdk`
+and cannot be bundled; and an out-of-tree Provider author needs a real `@rockysurf/provider-sdk`
 on the registry to build against, which means the scope is public regardless. Once the scope is
 public, a private core buys nothing and costs the ability to embed the control plane.
 
 **`@rockysurf/provider-conformance` is the one package whose tarball manifest differs from the
 one in the repository, and that is deliberate** (`rockysurf-92nv`). In the workspace its `main`,
-`types` and `exports` point at `src/`, because provider packages depend on it from their *tests*
+`types` and `exports` point at `src/`, because Provider packages depend on it from their *tests*
 and `pnpm run check` runs `test` without running `build` — pointing at `dist/` would make every
-provider's test run wait on this package being compiled first. A published package cannot ship
+Provider's test run wait on this package being compiled first. A published package cannot ship
 TypeScript sources, so its `publishConfig` overrides those same three fields to `dist/`, and pnpm
 applies the override at pack time. If you are diffing a tarball against the repository and the
 entry points disagree, that is why. `scripts/verify-tarballs.mjs` checks the packed form.
@@ -147,7 +147,7 @@ claims MIT in its manifest and ships no license text at all — a bare claim, wh
 claim.
 
 Verified by tarball inspection (`rockysurf-gonw.2`, re-verified for all six under
-`rockysurf-3hz9`, and again for the two cloud providers added since — `@rockysurf/provider-azure`
+`rockysurf-3hz9`, and again for the two cloud Providers added since — `@rockysurf/provider-azure`
 and `@rockysurf/provider-gcp`): `package/LICENSE` is present in every tarball packed by pnpm.
 
 ### `pack` does not check that `files` matched anything
@@ -208,8 +208,8 @@ grep -rn "on npm\|before the v0.1.0 release\|Not yet published\|Not published ye
   --include='*.md' --include='*.tsx' . | grep -v node_modules
 ```
 
-At the time of writing that finds `README.md`, `docs/self-hosting.md`, the three provider pages
+At the time of writing that finds `README.md`, `docs/self-hosting.md`, the three Provider pages
 under `docs/providers/`, four package READMEs, and the help page in
 `packages/web/src/pages/HelpPage.tsx` — whose test pins the wording, so the test changes with it.
-The provider pages should keep `node packages/rockysurf/dist/bin.js` working as an alternative;
+The Provider pages should keep `node packages/rockysurf/dist/bin.js` working as an alternative;
 what goes is the claim that it is the *only* thing that works.

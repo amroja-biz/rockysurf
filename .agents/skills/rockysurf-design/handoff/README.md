@@ -160,5 +160,5 @@ calls that match; one working from the CSS alone will not.
 - `components/etched/` — the nine parts with their props contracts and usage notes
 - `tokens/etched.css`, `css/etched.css` — the skin as the design system states it
 - `ui_kits/explorations/G-etched-parts.html` — the dashboard built from the parts
-- `ui_kits/explorations/H-etched-screens.html` — the create form and server detail
+- `ui_kits/explorations/H-etched-screens.html` — the create form and Server detail
 - `readme.md` § *The etched skin* — what each mark replaces and why

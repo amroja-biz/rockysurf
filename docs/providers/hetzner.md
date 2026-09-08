@@ -2,7 +2,7 @@
 
 *For operators.*
 
-What you need to give Rocky Surf so it can create, stop, start and destroy servers in your own
+What you need to give Rocky Surf so it can create, stop, start and destroy Servers in your own
 Hetzner project — and nothing beyond that.
 
 - [Credentials](#credentials)
@@ -29,7 +29,7 @@ Create a project at [console.hetzner.com](https://console.hetzner.com), then gen
 token inside that project — it lives under the project's **Security** section — with
 **Read & Write** permission.
 
-Read-only is not enough and fails at the first create. The provider makes servers and the SSH Key
+Read-only is not enough and fails at the first create. The Provider makes Servers and the SSH Key
 objects they need, and both are writes.
 
 The token belongs in your environment; the config file holds a reference to it:
@@ -41,9 +41,9 @@ providers:
     token: "${HETZNER_TOKEN}"
 ```
 
-That `${...}` form is resolved before the value reaches the provider, so the secret never lands in
+That `${...}` form is resolved before the value reaches the Provider, so the secret never lands in
 a file you might back up, diff or paste into an issue. The `token` line is optional: with the
-provider enabled and no token in the file, Rocky Surf reads `HETZNER_TOKEN` (or `HCLOUD_TOKEN`)
+Provider enabled and no token in the file, Rocky Surf reads `HETZNER_TOKEN` (or `HCLOUD_TOKEN`)
 from its environment directly, which is what the first-run wizard's enable-and-export flow
 relies on — the wizard never collects the token itself, and Rocky Surf stores no cloud
 credentials anywhere (issue #280). **A token named in the config file wins over the ambient
@@ -65,7 +65,7 @@ worth acting on:
   about a blast radius you chose. This is the closest thing to a least-privilege setup the API
   offers, and it costs one menu click.
 - **Rocky Surf's own restraint is not the same as a permission boundary.** It only ever deletes,
-  stops or starts a server whose `managed-by` label it set itself, and `listManaged()` filters on
+  stops or starts a Server whose `managed-by` label it set itself, and `listManaged()` filters on
   that label — but that is the application declining to touch your other servers, not the API
   refusing to let it. On AWS the equivalent restraint is written into the policy and enforced by
   the cloud. Here it is not, and the honest thing is to say so rather than let the shorter setup
@@ -86,18 +86,18 @@ providers:
 | field | default | what it does |
 |---|---|---|
 | `token` | none — **required** | read/write API token for one project |
-| `location` | `fsn1` | the one location this provider manages |
+| `location` | `fsn1` | the one location this Provider manages |
 | `image` | `ubuntu-24.04` | base image, overridable for another Ubuntu LTS |
-| `managedBy` | `rockysurf` | value of the `managed-by` label this provider owns. `listManaged()` filters on it, and `validateSpec()` refuses a spec that disagrees |
-| `consoleProjectId` | none | numeric project id, used only to link a server to its page in the console |
+| `managedBy` | `rockysurf` | value of the `managed-by` label this Provider owns. `listManaged()` filters on it, and `validateSpec()` refuses a spec that disagrees |
+| `consoleProjectId` | none | numeric project id, used only to link a Server to its page in the console |
 | `sizes` | none — offers everything | allowlist of server types this installation will create, on the New Server page and through the API, CLI and MCP alike |
 
-**One provider instance manages one location.** `listManaged()` is scoped at construction, so two
-locations means two configured providers rather than one that spans both.
+**One Provider instance manages one location.** `listManaged()` is scoped at construction, so two
+locations means two configured Providers rather than one that spans both.
 
 **`consoleProjectId` has to be typed in because the Cloud API never says it.** A token is scoped
 to one project without any response naming that project, and a console URL is
-`/projects/<id>/servers/<server id>/overview`. Leave it out and servers simply have no console
+`/projects/<id>/servers/<server id>/overview`. Leave it out and Servers simply have no console
 link — a guessed value would deep-link into somebody else's project. Open the project in the
 console and read the number out of the address bar.
 
@@ -111,7 +111,7 @@ console and read the number out of the address bar.
 Locations are `fsn1` (Falkenstein), `nbg1` (Nuremberg) and `hel1` (Helsinki) in Europe, `ash`
 (Ashburn) and `hil` (Hillsboro) in the US, and `sin` (Singapore).
 
-The families above are Hetzner's catalogue, not a rule the provider applies: it reads each type's
+The families above are Hetzner's catalogue, not a rule the Provider applies: it reads each type's
 `architecture` field from the API and reports `arm64` or `amd64` from that, so a family Hetzner
 adds tomorrow is classified correctly without a release here.
 
@@ -123,62 +123,62 @@ instead of silently offering you a shorter menu.
 **Availability is read from the API's own `locations[].available`, never inferred from a price.**
 Hetzner publishes prices for architectures it has no stock of: at the spike's capstone every CAX
 type reported `available: false` in all three ARM locations while still quoting a price, and a
-direct order in each returned `412 resource_unavailable`. A provider that treated "has a price" as
+direct order in each returned `412 resource_unavailable`. A Provider that treated "has a price" as
 "can be ordered" would offer machines that cannot be created.
 
 **Hetzner's Ubuntu 24.04 is not the same image as the other clouds'** — notably it ships without
-`jq`. Nothing in the provider contract describes image contents and nothing reasonably could; the
+`jq`. Nothing in the Provider contract describes image contents and nothing reasonably could; the
 bootstrap agent installs what it needs before parsing its own plan.
 
 ## Who can reach SSH
 
-**There is nothing to configure, and that is the thing to know about.** A Hetzner server is
+**There is nothing to configure, and that is the thing to know about.** A Hetzner Server is
 reachable from the internet the moment it boots. There is no network, subnet or firewall object to
 prepare, which is why Hetzner is the quickest of the four clouds to start on — and it means these
-boxes are **exposed by default**, unlike the AWS, Azure and GCP providers, where you must name the
+boxes are **exposed by default**, unlike the AWS, Azure and GCP Providers, where you must name the
 CIDR allowed to reach SSH and startup fails if you do not.
 
 **So there is nothing to sync, either.** Issue #304 made `sshAllowedCidr` a list that Rocky Surf
 pushes to the cloud when you save it — reporting per cloud on the Settings page under "SSH access
 at the cloud", with a `Push SSH access to the clouds` button and `rockysurf network sync` for
-pushing on demand. None of that applies here: this provider declares no `managesSshAccess` capability, because it
+pushing on demand. None of that applies here: this Provider declares no `managesSshAccess` capability, because it
 maintains no whitelist to bring into line. It is absent from the sync report rather than reported
 as a failure — there is nothing there to be wrong — and the Settings page shows no CIDR field for
-it, because there is no such setting on this provider at all.
+it, because there is no such setting on this Provider at all.
 
 What stands between the box and the internet is therefore SSH itself, and it is set up to carry
 that weight: the rendered cloud-config sets `ssh_pwauth: false`, `lock_passwd: true` and
 `disable_root: true`, so there is no password to guess on any account and root cannot log in at
-all. Access is by key only, against a host key core minted before the server existed. If you want
+all. Access is by key only, against a host key core minted before the Server existed. If you want
 a network boundary as well, Hetzner Cloud Firewalls are a per-project feature you can apply
 yourself — Rocky Surf does not create, adopt or modify one.
 
 ## What it creates, and what it reaps
 
-**Per server: the server, and one SSH Key object.** Hetzner's create call will not take raw key
+**Per Server: the Server, and one SSH Key object.** Hetzner's create call will not take raw key
 material inline, so the public half has to exist as a first-class API object before it can be
-referenced. The provider creates one per provision, labels it, owns it, and deletes it with the
-server.
+referenced. The Provider creates one per provision, labels it, owns it, and deletes it with the
+Server.
 
 **A key that already existed is never claimed.** If a key with the same fingerprint is already in
-the project, the provider references it and records it as *not* owned, because reaping it on
+the project, the Provider references it and records it as *not* owned, because reaping it on
 terminate would break whoever else put it there.
 
 **Nothing is shared, and terminate leaves nothing behind.** This is the one structural difference
 from every other cloud here: AWS keeps a shared security group, Azure a resource group's worth of
-network objects, GCP a shared firewall rule — all of which outlive the servers they serve. Hetzner
-has no such resource. Every managed row is `server-owned`, so a project with no Rocky Surf servers
+network objects, GCP a shared firewall rule — all of which outlive the Servers they serve. Hetzner
+has no such resource. Every managed row is `server-owned`, so a project with no Rocky Surf Servers
 in it has no Rocky Surf anything in it.
 
-The reconciler audit that proves it is `listManaged()`, which lists servers and SSH Key objects
+The reconciler audit that proves it is `listManaged()`, which lists Servers and SSH Key objects
 by label. After a terminate it returns empty.
 
-**Terminal states are fast.** Hetzner drops a deleted server almost immediately, where EC2 sits in
+**Terminal states are fast.** Hetzner drops a deleted Server almost immediately, where EC2 sits in
 `terminating` for 30–120 seconds.
 
 ## What it costs
 
-**Live prices, in the currency your project is billed in.** This provider is the documented
+**Live prices, in the currency your project is billed in.** This Provider is the documented
 exception to Rocky Surf's bundled-prices rule, and the reason is narrow: Hetzner returns `prices[]`
 inline on `GET /server_types`, the exact call `listOfferings()` already makes. Preferring a bundled
 number would mean showing a figure known to be staler than one already in hand, having saved no
@@ -220,7 +220,7 @@ in Settings with **Enabled** on runs it too, and the answer appears on that page
 **Credentials at the cloud** — verified, or Hetzner's own error. The check never blocks the save,
 and never runs for a Provider that is switched off.
 
-The honest test is still creating one server and destroying it: create in the UI, wait for ready,
+The honest test is still creating one Server and destroying it: create in the UI, wait for ready,
 SSH in, then terminate. A token that is read-only surfaces as a `ProviderError` whose
 `providerCode` is Hetzner's own reason, on the create rather than at startup, because reading is
 all validation does.
@@ -231,11 +231,11 @@ all validation does.
 project-wide object whose other rules are somebody else's business, and the exposure it would
 change is documented above rather than silently altered.
 
-**No Floating IPs or Primary IPs as managed resources.** A server's primary IPv4 comes with it and
+**No Floating IPs or Primary IPs as managed resources.** A Server's primary IPv4 comes with it and
 survives a poweroff/poweron, which is what `ipStableAcrossStop: true` reports. A floating IP would
 be one more per-server resource to create, tag and reap.
 
-**No Volumes, no Load Balancers, no Networks, no Placement Groups.** A dev box is one server with
+**No Volumes, no Load Balancers, no Networks, no Placement Groups.** A dev box is one Server with
 its own disk.
 
 **No Backups or Snapshots.** They are a per-server paid feature and turning one on quietly would
@@ -287,26 +287,26 @@ came from.
 
 **A full lifecycle on real Hetzner Cloud, on 2026-08-12: `cpx12`, 149 seconds end to end, zero
 orphans.** The run drove the shipped article — the `rockysurf` binary booted from a real config
-file, then everything through core's own HTTP API — created a server, watched push bootstrap
+file, then everything through core's own HTTP API — created a Server, watched push bootstrap
 report ready, ran `claude --version` over SSH on the box (2.1.228), stopped and started it,
 terminated it, and finished with a reconciler-grade `listManaged()` audit showing no server-owned
-instances left and the owned SSH Key objects reaped with the server. Transcript:
+instances left and the owned SSH Key objects reaped with the Server. Transcript:
 [`scripts/e2e/recordings/hetzner-lifecycle.log`](../../scripts/e2e/recordings/hetzner-lifecycle.log).
 
 **It is re-run nightly at 07:00 UTC** by
 [`.github/workflows/nightly-real-cloud.yml`](../../.github/workflows/nightly-real-cloud.yml),
 against the same `cpx12`, with a terminate sweep that runs even when the run fails. Hetzner is the
-only provider under continuous real-cloud test, which is a large part of why it is the recommended
+only Provider under continuous real-cloud test, which is a large part of why it is the recommended
 place to start.
 
 The spike's earlier capstone, also on `cpx12` in `fsn1`, is what proved the two claims this
-provider makes about first boot: cloud-init consumed core's `#cloud-config`, with
+Provider makes about first boot: cloud-init consumed core's `#cloud-config`, with
 `/var/lib/cloud/instance/user-data.txt` matching what core sent **byte for byte** (2,138 bytes),
 and the box presented **exactly the host key core had minted**. That transcript is
 [`docs/history/spike/recordings/hetzner-lifecycle.txt`](../history/spike/recordings/hetzner-lifecycle.txt).
 
 **One value is weaker than the rest, and it is worth naming.** The lifecycle stops and starts a
-server but does not re-read the address afterwards, so `ipStableAcrossStop: true` rests on
+Server but does not re-read the address afterwards, so `ipStableAcrossStop: true` rests on
 Hetzner's documented behaviour rather than on a recorded comparison. The AWS side of the same
 claim *is* measured: its transcript shows the address changing across a restart. The full table,
 with what each value was established against, is

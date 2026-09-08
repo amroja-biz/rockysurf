@@ -5,14 +5,14 @@ in-process jobs for everything asynchronous — one process, one file on disk, n
 
 **Most people do not install this package.** The thing you run is
 [`rockysurf`](https://www.npmjs.com/package/rockysurf), the composition root that wires the
-compute providers into this control plane:
+compute Providers into this control plane:
 
 ```bash
 npx -y rockysurf
 ```
 
 Install `@rockysurf/core` directly only when you are building your own composition root — a
-distribution with a different set of providers, or one that embeds the control plane in a larger
+distribution with a different set of Providers, or one that embeds the control plane in a larger
 process.
 
 ```ts
@@ -25,7 +25,7 @@ const app = await boot({ providers: [hetzner] })
 ## The dependency rule
 
 Core may import `@rockysurf/provider-sdk` and **nothing else** from this workspace — never a
-concrete provider, never the web package. `scripts/check-core-deps.mjs` enforces the edge and
+concrete Provider, never the web package. `scripts/check-core-deps.mjs` enforces the edge and
 `scripts/check-npx-closure.mjs` enforces what it is for: the AWS SDK, by a wide margin the
 heaviest thing this project installs, stays out of core's production closure, so an operator who
 runs only Hetzner never downloads it.
@@ -41,7 +41,7 @@ Four directories, and each is load-bearing at runtime rather than a build leftov
 |---|---|
 | `dist/` | the compiled control plane |
 | `drizzle/` | schema migrations, applied on boot |
-| `bootstrap/` | the agent scripts pushed to a server over SSH |
+| `bootstrap/` | the agent scripts pushed to a Server over SSH |
 | `public/` | the built web UI, served from the same process |
 
 `public/` is produced by `@rockysurf/web` at build time, so a publish must follow a full

@@ -292,7 +292,7 @@ export function composeRegistry(
       credentialHint: field
         ? `set providers.${id}.${field} in rockysurf.config.yaml (e.g. "\${${variables[0] ?? 'YOUR_TOKEN'}}")` +
           (variables.length > 0 ? `, or export ${variables.join(' or ')} in the environment Rocky Surf starts from and restart` : '')
-        : `this provider resolves its own credentials — see its README`,
+        : `this Provider resolves its own credentials — see its README`,
     }
     compose(wiring, section)
   }
@@ -314,7 +314,7 @@ export function composeRegistry(
    */
   if (providers.length === 0) {
     providers.push(makeFakeProvider({ bootMs: 2000, terminateMs: 1500, simulateBootstrap: true }))
-    notes.push('fake: no cloud configured, so the in-memory provider is available for a trial run')
+    notes.push('fake: no cloud configured, so the in-memory Provider is available for a trial run')
   }
 
   for (const note of notes) log(`[providers] ${note}`)

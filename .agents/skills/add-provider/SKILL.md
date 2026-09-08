@@ -3,10 +3,10 @@ name: add-provider
 description: Add a cloud to Rocky Surf, or configure one it already supports. Use when the user wants to switch on or configure a provider (AWS, Azure, GCP, Hetzner) — credentials, region, sshAllowedCidr, the setup wizard, the Settings page — or wants to add support for a cloud Rocky Surf does not have yet by writing a new provider package against @rockysurf/provider-sdk, either as a personal provider installed into their own Rocky Surf or as one shipped in the repository. Triggers on "add a provider", "configure AWS/Azure/GCP/Hetzner", "add DigitalOcean/Vultr/Linode/OVH support", "write a compute provider", "new provider package", "personal provider", "provider credentials", "sshAllowedCidr", "my provider isn't showing up", "provider conformance".
 ---
 
-# Rocky Surf providers
+# Rocky Surf Providers
 
-A provider is the only part of Rocky Surf that knows what a cloud is. Core knows how to boot a
-box, install software on it, watch it, bill it and reap it; a provider knows how to make one
+A Provider is the only part of Rocky Surf that knows what a cloud is. Core knows how to boot a
+box, install software on it, watch it, bill it and reap it; a Provider knows how to make one
 exist.
 
 Two different jobs share that word. Ask which one this is before doing anything:
@@ -23,8 +23,8 @@ missing, tell the user which tool and where it comes from — **do not install i
 
 | Tool | Why this skill needs it | Check |
 |---|---|---|
-| Node.js 24+, with npm | a provider is a Node package; `engines.node` is `>=24`, and `npm` is how `@rockysurf/provider-sdk` and `@rockysurf/provider-conformance` reach it | `node --version` |
-| Git and pnpm | in-tree work only: `pnpm install && pnpm -r build`, `pnpm run check`, `pnpm pack`. A personal provider needs neither | `git --version`, `pnpm --version` |
+| Node.js 24+, with npm | a Provider is a Node package; `engines.node` is `>=24`, and `npm` is how `@rockysurf/provider-sdk` and `@rockysurf/provider-conformance` reach it | `node --version` |
+| Git and pnpm | in-tree work only: `pnpm install && pnpm -r build`, `pnpm run check`, `pnpm pack`. A personal Provider needs neither | `git --version`, `pnpm --version` |
 | A cloud CLI (`az`, `gcloud`) | only on the Configure routes that use one — `az login`, `az group create`, `gcloud auth application-default login`. Every cloud also has a route that needs no CLI | `az version`, `gcloud version` |
 
 Docker is not needed: conformance is unit tests. `tsc` and `vitest` are devDependencies of the
@@ -42,7 +42,7 @@ job with a different endpoint rather than a new package.
 
 ---
 
-# Authoring a new provider
+# Authoring a new Provider
 
 **The type contract travels with the package.** After installing `@rockysurf/provider-sdk`, the SDK
 README is at `node_modules/@rockysurf/provider-sdk/README.md` and the fully commented type
@@ -57,11 +57,11 @@ In a checkout, the workflow standard is
 assume you have either.** Where a step below points at something in-tree, it says so, and says what
 the out-of-tree equivalent is.
 
-**Where the package lives is not a hard choice any more.** A provider can be a PERSONAL provider —
+**Where the package lives is not a hard choice any more.** A Provider can be a PERSONAL Provider —
 an npm package the operator installs under their Rocky Surf's data directory and names in the config
 file as `providers.<id>.package` — and it gets composed, a Settings panel and a place in the wizard
 with no change to this repository (ADR-0026, ADR-0027). That is the default for a cloud one person
-needs. A provider that would help others can be promoted into the repository later; the package is
+needs. A Provider that would help others can be promoted into the repository later; the package is
 the same either way. See [references/wiring.md](references/wiring.md), "Out of tree".
 
 ## The fixed majority and the variable parts
@@ -71,8 +71,8 @@ knowing which is which:
 
 - **What core computes with is a typed capability**, never text — `stop`, `ipStableAcrossStop`,
   `billsWhileStopped`, `managesSshAccess`, and the rest of `ProviderCapabilities`. Core branches on
-  these and never on a provider's id; that is grep-enforced.
-- **What only the human needs to know is an advisory** — a sentence the provider declares and the
+  these and never on a Provider's id; that is grep-enforced.
+- **What only the human needs to know is an advisory** — a sentence the Provider declares and the
   Settings and New Server pages print. Cheap, safe, no core logic.
 - **What the operator configures is a declared setting** — fields with kinds, labels and help on the
   factory (`settings`), from which the Settings panel is built.
@@ -94,7 +94,7 @@ Do not start writing until every question in
 into the cloud's own documentation**, and each answer is mapped to the capability, field or setting
 it lands in. The list is fixed on purpose: it is every place two clouds have already been found to
 differ. The reference carries a full worked example for DigitalOcean, including the two answers
-that needed rulings before an honest provider could exist.
+that needed rulings before an honest Provider could exist.
 
 Two of the questions decide the architecture of the package and are the ones to answer first:
 **does a stopped machine still bill** (→ `billsWhileStopped`, ADR-0025), and **what is the
@@ -158,7 +158,7 @@ when a maintainer "fixes the typo":
 3. **Ownership labels, and reaping on failure.** A `managed-by` label means "a Rocky Surf made
    this", not "this run made this". Getting `listManaged()` ownership wrong means either an orphan
    that bills forever or a reaper that deletes something in use — a sweep selecting on
-   `managed-by` alone once destroyed the repository owner's live server. The create-time half of
+   `managed-by` alone once destroyed the repository owner's live Server. The create-time half of
    the same rule: refuse a spec whose `managed-by` disagrees with your prefix, and assert
    `serverId` is hostname-safe rather than sanitizing it — and send the CLOUD that `serverId`,
    never `spec.name`, which is the human's display name and is hostname-shaped for nobody. These
@@ -179,7 +179,7 @@ when a maintainer "fixes the typo":
    verifies it before the request that names it; and the fake **starts empty and refuses a
    reference to an object nobody created**, so the fresh-account test fails the way the cloud
    would ([references/scaffold.md](references/scaffold.md), "The fake starts empty"). The first
-   provider built with this skill shipped without this and failed on its first live create.
+   Provider built with this skill shipped without this and failed on its first live create.
 9. **Whole-object writes, and objects too fresh to read.** Find out per write whether the API
    MERGES what you send or REPLACES the object with it: a replacing write empties every field you
    omitted, and one such update took a firewall's egress rules and its tags away in a single
@@ -218,12 +218,12 @@ does.
 Before publishing or installing, and again whenever the provision chain changes: run
 [`assets/dry-run-provision.mjs`](assets/dry-run-provision.mjs) with the credential in the
 environment and the instance create refused by name. It intercepts `fetch` under the real
-provider, lets every read through, refuses every write that is not explicitly allowed, and prints
+Provider, lets every read through, refuses every write that is not explicitly allowed, and prints
 each request with the cloud's own answer. Allow the non-billable objects one collection at a time
 until the chain reaches the instance create; that create is never allowed. Nothing billable is
 made, and the cloud's reply to every write the fake never saw is on the screen in under a minute.
 [references/dry-run.md](references/dry-run.md) is the procedure, the exit codes and what each
-outcome obliges you to do. A personal provider gets no nightly leg; this is the verification its
+outcome obliges you to do. A personal Provider gets no nightly leg; this is the verification its
 author and installer can afford, and the README's Verified section records the date it was run.
 
 ### 7. Wire it in — or install it
@@ -233,12 +233,12 @@ install <your package>` (or point `package:` at a path while developing), then a
 section in the config file with `package:` and `enabled: true`. Restart. That is the whole of it —
 [references/wiring.md](references/wiring.md), "Out of tree", has the exact section and what to
 expect when something is wrong. **The trust model is one sentence and your README should carry it:
-a provider runs with Rocky Surf's full access — install ones you trust.**
+a Provider runs with Rocky Surf's full access — install ones you trust.**
 
 **In tree:** read [references/wiring.md](references/wiring.md) before starting. Registration is
 "one row in `compose.ts`" for the composition root and more than that for the job — core's config
 section still has to mirror your fields by hand, and a field missing from it is not merely
-undocumented, it is *unusable*. The list is shorter than it was: a declared provider needs no rows
+undocumented, it is *unusable*. The list is shorter than it was: a declared Provider needs no rows
 in `fields.ts` and no block in the SPA.
 
 ### 8. Ship it
@@ -248,19 +248,19 @@ shop listing entry — which is **generated, never composed by hand**: `npx rock
 <your>.tgz --tarball-url <https URL> --description "<one line>"` reads seven of its nine fields out
 of the artifact, and you print its output with those two options marked as the author's — and the
 ADR amendment etiquette for when the SDK genuinely lacks something. **Getting the listing merged is
-its own skill:** once the provider builds and passes conformance, hand off to
+its own skill:** once the Provider builds and passes conformance, hand off to
 [`contribute-provider`](../contribute-provider/SKILL.md), which does the release, the digest round
 trip, the fork and the pull request. In tree, also the
 capability-matrix column, the `docs/providers/` page, least-privilege IaC, and — for an OFFICIAL
-provider, one composed into `packages/rockysurf/src/compose.ts` — the nightly real-cloud leg,
-without which every value in your column is daggered. A personal provider gets no leg: its author
+Provider, one composed into `packages/rockysurf/src/compose.ts` — the nightly real-cloud leg,
+without which every value in your column is daggered. A personal Provider gets no leg: its author
 and its installer verify it themselves
 ([references/wiring.md](references/wiring.md#real-cloud-verification)).
 
 ## Before it merges
 
-Everything here is checkable. The first ten apply wherever the provider lives; the one after them
-applies whenever the provider is listed in the shop; the last three are in-tree only, because they
+Everything here is checkable. The first ten apply wherever the Provider lives; the one after them
+applies whenever the Provider is listed in the shop; the last three are in-tree only, because they
 are edits to this repository.
 
 - [ ] Every research-protocol question answered with a citation, and each answer mapped to a
@@ -275,7 +275,7 @@ are edits to this repository.
       fake that holds nothing, asserting the order of writes by the cloud's own paths.
 - [ ] The cloud-side name is `spec.serverId`, pinned by a test whose spec carries a display name a
       hostname could not hold; and every update to a shared object reads it back and sends it whole,
-      pinned by a test on a field the provider never reads.
+      pinned by a test on a field the Provider never reads.
 - [ ] The live dry run walked `provision()` to the instance create with that create refused, and
       the README's Verified section names the date and region it was run.
 - [ ] A package `README.md` whose capability values match the source constant and which carries the
@@ -299,5 +299,5 @@ than quoted; never write one into the file it measures, because the edit that co
 invalidates it. A measurement of an external immutable artifact (an npm tarball at a named
 version) is the only kind safe to inline.
 
-This is not a style note. A wrong line count in a provider comment propagated into two other
+This is not a style note. A wrong line count in a Provider comment propagated into two other
 documents before anyone counted, and the first attempt to fix it in place was false on save.

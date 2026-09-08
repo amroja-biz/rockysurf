@@ -12,7 +12,7 @@ security group per region, and nothing else.
 - [Capabilities](#capabilities)
 - [Prices](#prices)
 - [Verified](#verified)
-- [Writing your own provider](#writing-your-own-provider)
+- [Writing your own Provider](#writing-your-own-provider)
 
 ## How you get it
 
@@ -20,7 +20,7 @@ It is already there. The `rockysurf` CLI depends on this package, so `npx rockys
 AWS as soon as you switch it on. Providers are constructed at boot, so a configuration change
 takes effect at the next restart.
 
-Install it directly only if you are embedding Rocky Surf's provider in something of your own:
+Install it directly only if you are embedding Rocky Surf's Provider in something of your own:
 
 ```bash
 pnpm add @rockysurf/provider-aws
@@ -33,7 +33,7 @@ const config = aws.configSchema.parse({ region: 'us-east-1', sshAllowedCidr: '20
 const provider = aws.createProvider(config)
 ```
 
-`createProvider` is synchronous and does no I/O, so a caller can load the provider, show its
+`createProvider` is synchronous and does no I/O, so a caller can load the Provider, show its
 identity and validate its configuration before it holds anything live. Credentials are proven
 separately, by `validateCredentials()`.
 
@@ -50,17 +50,17 @@ providers:
 
 | field | default | what it does |
 |---|---|---|
-| `region` | `us-east-1` | the one region this provider manages. Two regions means two providers; `listManaged()` is scoped at construction |
+| `region` | `us-east-1` | the one region this Provider manages. Two regions means two Providers; `listManaged()` is scoped at construction |
 | `sshAllowedCidr` | none — **required** | which network may reach SSH on your boxes |
 | `allowAllCidr` | `false` | the second signature `0.0.0.0/0` needs |
 | `profile` | none | named profile from your shared credentials file |
-| `managedBy` | `rockysurf` | value of the `managed-by` tag this provider owns. `listManaged()` filters on it and `validateSpec()` refuses a spec that disagrees |
-| `securityGroupName` | `rockysurf-ssh` | the shared SSH group, one per region, reused by every server |
+| `managedBy` | `rockysurf` | value of the `managed-by` tag this Provider owns. `listManaged()` filters on it and `validateSpec()` refuses a spec that disagrees |
+| `securityGroupName` | `rockysurf-ssh` | the shared SSH group, one per region, reused by every Server |
 | `rootVolumeGb` | `20` | root volume size in GiB, 8 to 16384 |
 | `amiParameterPrefix` | `/aws/service/canonical/ubuntu/server/24.04/stable/current` | SSM public parameter path for the base image, with `{arch}` substituted |
 
 **`sshAllowedCidr` has no default, and that is the security decision of the package.** Enabling
-`aws` without it means the provider refuses its own section and is dropped at startup; the app
+`aws` without it means the Provider refuses its own section and is dropped at startup; the app
 still comes up, says why on the New Server page, and names it in the boot log. Opening SSH to the
 whole internet takes two lines rather than one typo:
 
@@ -84,11 +84,11 @@ export AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…
 # or nothing at all, if you run core on an EC2 instance with an instance role
 ```
 
-If `aws sts get-caller-identity` works in your shell, this provider authenticates the same way.
+If `aws sts get-caller-identity` works in your shell, this Provider authenticates the same way.
 
 ## What it needs in your account
 
-A policy covering the EC2 and SSM calls the provider makes, and nothing wider.
+A policy covering the EC2 and SSM calls the Provider makes, and nothing wider.
 [`docs/providers/aws.md`](https://github.com/amroja-biz/rockysurf/blob/main/docs/providers/aws.md)
 carries the JSON, statement by statement, with the reason for each.
 [`deploy/aws/iam-role.yaml`](https://github.com/amroja-biz/rockysurf/blob/main/deploy/aws/iam-role.yaml)
@@ -100,7 +100,7 @@ matching action fails lint instead of failing in a stranger's account. The night
 then runs the full lifecycle under a principal holding exactly that policy.
 
 The region also needs a **default VPC** with a default subnet, which is what an account comes
-with unless someone removed it. This provider does not create networking: without one it refuses
+with unless someone removed it. This Provider does not create networking: without one it refuses
 the launch and says so. It does create the shared SSH security group on first launch if it is
 absent.
 
@@ -114,7 +114,7 @@ absent.
 | `userDataMaxBytes` | `16384` | EC2's hard limit, measured on the raw bytes before base64. Push-mode documents run about 2.1KB, so the ceiling is not a live constraint |
 | `generatesUserData` | `true` | cloud-init does the pre-boot work |
 
-Instances also report a `consoleUrl`, so a server links to its EC2 page from the moment
+Instances also report a `consoleUrl`, so a Server links to its EC2 page from the moment
 `RunInstances` returns. Nothing extra needs configuring for that: region plus instance id is the
 whole URL.
 
@@ -146,7 +146,7 @@ audit. That run found a real bug in the published policy, which is why it was wo
 **It is re-run nightly**, at 07:00 UTC, by
 [`.github/workflows/nightly-real-cloud.yml`](https://github.com/amroja-biz/rockysurf/blob/main/.github/workflows/nightly-real-cloud.yml),
 under credentials that chain into the role deployed from `deploy/aws/iam-role.yaml`; the job
-asserts that identity is in force before it launches anything. A provider call the published
+asserts that identity is in force before it launches anything. A Provider call the published
 policy does not cover fails the nightly the first morning after it lands.
 
 Two limits worth stating. The nightly exercises what the lifecycle exercises, so a code path no
@@ -155,7 +155,7 @@ owns the shared security group, so `CreateSecurityGroup` and `AuthorizeSecurityG
 the two calls a *first* launch makes — are covered by EC2 dry-run probes rather than by the
 nightly.
 
-## Writing your own provider
+## Writing your own Provider
 
 This package is one implementation of a frozen contract. To write another, start with
 [`@rockysurf/provider-sdk`](https://github.com/amroja-biz/rockysurf/blob/main/packages/provider-sdk/README.md)
@@ -165,4 +165,4 @@ for the workflow.
 
 One local detail if you are auditing dependencies: this is the only package in the workspace that
 pulls in `@aws-sdk/*`, and `scripts/check-npx-closure.mjs` enforces that every AWS SDK package in
-the shipped CLI closure arrives through this one. Dropping this provider drops all of them.
+the shipped CLI closure arrives through this one. Dropping this Provider drops all of them.

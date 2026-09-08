@@ -47,7 +47,7 @@ import { destructiveAction } from '../lib/serverActions'
  *    hard-coded into a component. It now asks the provider registry whether this server's
  *    provider can stop an instance at all.
  *  - **Billing, spot and limits are gone**, along with the banner, the interruption warning
- *    and the "you have reached your server limit" gate.
+ *    and the "you have reached your Server limit" gate.
  *  - **Live updates use core's event vocabulary** (`server-status`, `bootstrap-progress`),
  *    not the legacy `provisioning-progress`.
  */
@@ -69,7 +69,7 @@ export function DashboardPage() {
       setServers(await listServers())
       setError(null)
     } catch {
-      setError('Could not load your servers')
+      setError('Could not load your Servers')
     } finally {
       setLoading(false)
     }
@@ -192,11 +192,11 @@ export function DashboardPage() {
 
       <div className="dashboard-actions">
         <Link className="button primary new-action" to="/servers/new">
-          New server
+          New Server
         </Link>
       </div>
 
-      {loading && <p>Loading your servers…</p>}
+      {loading && <p>Loading your Servers…</p>}
       {/* The list did not load at all — a refusal, and it takes the red the `SyncErrorNotice`
           below it takes yellow for: that one is a stale list, this one is no list (issue #216). */}
       {error && (
@@ -214,7 +214,7 @@ export function DashboardPage() {
       ))}
       {!loading && !error && live.length === 0 && (
         <Shore>
-          No servers yet. <Link to="/servers/new">Create one</Link> to get started.
+          No Servers yet. <Link to="/servers/new">Create one</Link> to get started.
         </Shore>
       )}
 
@@ -229,7 +229,7 @@ export function DashboardPage() {
       {activeGroup && (
         <>
           <Tabs
-            label="Cloud providers"
+            label="Cloud Providers"
             panelId="fleet"
             className="provider-tabs"
             tabs={groups.map((group) => ({
@@ -257,7 +257,7 @@ export function DashboardPage() {
           >
             {activeGroup.servers.length === 0 && live.length > 0 ? (
               <Shore>
-                Nothing on {activeGroup.label}. <Link to="/servers/new">Create a server</Link> there.
+                Nothing on {activeGroup.label}. <Link to="/servers/new">Create a Server</Link> there.
               </Shore>
             ) : (
               <div className="server-grid">
@@ -400,7 +400,7 @@ function ServerCard({
       await onChanged()
     } catch (err) {
       // Core's message when it has one. A refused stop/start is usually a transient state the
-      // user can act on — "server is still stopping; try again in a moment" (rockysurf-55fx.15)
+      // user can act on — "Server is still stopping; try again in a moment" (rockysurf-55fx.15)
       // — and `Could not stop dev-box` throws that away and leaves them guessing.
       toast.error(err instanceof ApiError ? err.detail : `Could not ${action} ${server.name}`)
     } finally {
@@ -571,7 +571,7 @@ function ServerCard({
       {confirming === 'stop' && (
         <ConfirmModal
           title={`Stop ${server.name}?`}
-          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped servers. If you are using another Provider, check their documentation."
+          message="The disk is kept, so you can start it again later. AWS, GCP, Azure, and Hetzner don't charge for stopped Servers. If you are using another Provider, check their documentation."
           confirmLabel="Stop"
           onCancel={() => setConfirming(null)}
           onConfirm={() => void run('stop', () => stopServer(server.serverId), `${server.name} is stopping`)}

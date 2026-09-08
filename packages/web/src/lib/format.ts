@@ -22,9 +22,9 @@ export const STATUS_LABELS: Record<Server['status'], string> = {
  */
 export const STEP_LABELS: Record<ProvisioningStep, string> = {
   requested: 'Requested',
-  instance_launching: 'Launching server',
+  instance_launching: 'Launching Server',
   instance_running: 'Server launched',
-  installing_tools: 'Installing tools',
+  installing_tools: 'Installing Tools',
   tools_installed: 'Tools installed',
   cloning_repos: 'Cloning repositories',
   running_user_script: 'Running your script',
@@ -79,7 +79,7 @@ export function formatUptime(seconds: number | null | undefined): string {
 
 /** The estimate caveat, attached to every number that is one. */
 export const ESTIMATE_HINT =
-  'Estimate. Rounds down: uptime accrues on a timer, so a running server has cost slightly more than shown.'
+  'Estimate. Rounds down: uptime accrues on a timer, so a running Server has cost slightly more than shown.'
 
 /**
  * Why a cost can be missing, in one sentence (rockysurf-dec8's snapshot doctrine).
@@ -89,7 +89,7 @@ export const ESTIMATE_HINT =
  * multiply — so its cost is unknown rather than zero, and nothing retro-prices it.
  */
 export const UNPRICED_HINT =
-  'No price was recorded for this server when it was created, so its cost is not tracked — here or against the spend cap.'
+  'No price was recorded for this Server when it was created, so its cost is not tracked — here or against the spend cap.'
 
 /**
  * Currency comes from the provider, not from us: Hetzner quotes in the project's billing

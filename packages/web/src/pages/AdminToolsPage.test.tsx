@@ -276,7 +276,7 @@ describe('editing a script', () => {
 
   it('offers an import control that takes a file and one that takes a URL (issue #299)', async () => {
     renderPage()
-    expect(await screen.findByLabelText('Import a tool file')).toBeDefined()
+    expect(await screen.findByLabelText('Import a Tool file')).toBeDefined()
     // The URL arm exists now that the tools table records provenance (ADR-0018, issue #299).
     expect(screen.getByLabelText('Tool file URL')).toBeDefined()
   })
@@ -389,18 +389,18 @@ describe('editing a script', () => {
   /**
    * The disclosure has to carry the blast radius, not just the behaviour. An always-install
    * tool runs on every box regardless of pack, so it cannot lean on anything a pack might not
-   * have — and under ADR-0010 a failed tool install terminates the machine, which turns one
+   * have — and under ADR-0010 a failed Tool install terminates the machine, which turns one
    * mis-ordered tool here into every new server failing.
    */
   it('discloses what "install on every box" costs, in the tool form', async () => {
     renderPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'New tool' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'New Tool' }))
     const form = await screen.findByRole('dialog')
 
     expect(within(form).getByTestId('tool-always-install')).toBeDefined()
     expect(form.textContent).toContain('Install on every box you create from now on')
     // Snapshotted plans: a running box does not change under it.
-    expect(form.textContent).toContain('servers already running keep the plan they were built with')
-    expect(form.textContent).toContain('a failed tool install terminates the machine')
+    expect(form.textContent).toContain('Servers already running keep the plan they were built with')
+    expect(form.textContent).toContain('a failed Tool install terminates the machine')
   })
 })

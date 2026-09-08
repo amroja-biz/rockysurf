@@ -672,7 +672,7 @@ export function CreateServerPage() {
   const planFailure =
     resolution && !resolution.ok
       ? { reason: resolution.reason, soldOut: resolution.soldOut }
-      : { reason: 'Choose a provider', soldOut: false }
+      : { reason: 'Choose a Provider', soldOut: false }
 
   // Pack metadata, not pack identity, decides which fields exist. `requiresRepos` decides no
   // field at all — the repositories field is always there (issue #178); it decides only whether
@@ -876,12 +876,12 @@ export function CreateServerPage() {
   }
 
   function validate(): string | null {
-    if (!providerId) return 'Choose a provider'
+    if (!providerId) return 'Choose a Provider'
     if (!packId) return 'Choose a pack'
     if (customOfferingId) {
-      if (!customOffering) return 'That machine type is no longer offered by this provider — pick another'
+      if (!customOffering) return 'That machine type is no longer offered by this Provider — pick another'
     } else {
-      if (!resolution) return 'Choose a provider'
+      if (!resolution) return 'Choose a Provider'
       if (!resolution.ok) return resolution.reason
     }
     if (requiresRdp) {
@@ -935,7 +935,7 @@ export function CreateServerPage() {
     // question the form has not asked yet (issue #90).
     if (requiresRepos && repositories.length === 0 && !createWithoutRepos) {
       setWithoutReposOffered(true)
-      setSubmitError('No repository is listed. Confirm below to create the server without one.')
+      setSubmitError('No repository is listed. Confirm below to create the Server without one.')
       return
     }
     setSubmitError(null)
@@ -1008,7 +1008,7 @@ export function CreateServerPage() {
         }
         setRepoErrors(byIndex)
       } else {
-        setSubmitError(err instanceof Error ? err.message : 'Failed to create server')
+        setSubmitError(err instanceof Error ? err.message : 'Failed to create Server')
       }
     } finally {
       setSubmitting(false)
@@ -1017,7 +1017,7 @@ export function CreateServerPage() {
 
   if (loading) {
     return (
-      <AppShell title="New server" className="page">
+      <AppShell title="New Server" className="page">
         <p>Loading options…</p>
       </AppShell>
     )
@@ -1025,7 +1025,7 @@ export function CreateServerPage() {
 
   if (loadError) {
     return (
-      <AppShell title="New server" className="page">
+      <AppShell title="New Server" className="page">
         <p className="error">{loadError}</p>
       </AppShell>
     )
@@ -1037,14 +1037,14 @@ export function CreateServerPage() {
       <AppShell title={`Setting up ${name.trim() || 'your server'}`} className="page">
         <ProvisioningFeed serverId={createdServerId} onReady={() => navigate(`/servers/${createdServerId}`)} />
         <button type="button" className="btn-secondary" onClick={() => navigate(`/servers/${createdServerId}`)}>
-          Go to server
+          Go to Server
         </button>
       </AppShell>
     )
   }
 
   return (
-    <AppShell title="New server" className="page">
+    <AppShell title="New Server" className="page">
       <form onSubmit={handleSubmit}>
         <label className="form-label" htmlFor="name">
           Name <span className="hint">optional</span>
@@ -1069,7 +1069,7 @@ export function CreateServerPage() {
           <fieldset data-testid="provider-choice">
             <legend>Provider</legend>
             <p className="hint">
-              Pick the cloud this server runs on. The plan and its price below are that cloud&apos;s
+              Pick the cloud this Server runs on. The plan and its price below are that cloud&apos;s
               answer, and it is that cloud that bills you.
             </p>
             {providers.map((p) => (
@@ -1310,14 +1310,14 @@ export function CreateServerPage() {
                 </p>
               ) : (
                 <p className="price-note">
-                  This provider quoted no price. You are billed by {provider?.displayName}, not by Rocky Surf.
+                  This Provider quoted no price. You are billed by {provider?.displayName}, not by Rocky Surf.
                 </p>
               )}
             </>
           ) : (
             <p className={!customOfferingId && planFailure.soldOut ? 'warning' : 'error'}>
               {customOfferingId
-                ? 'That machine type is no longer offered by this provider — pick another.'
+                ? 'That machine type is no longer offered by this Provider — pick another.'
                 : planFailure.reason}
             </p>
           )}
@@ -1511,7 +1511,7 @@ export function CreateServerPage() {
               this one were saying "optional" in the one place a form is read for that. Same
               markers, same position, same `.hint` span as a pack's own inputs already use.
 
-              "required" is the pack's word, not a refusal: an empty list still creates a server
+              "required" is the pack's word, not a refusal: an empty list still creates a Server
               (issue #90) — the submit asks once and takes yes for an answer. The label says what
               the pack expects; the check at submit says what happens if you disagree. */}
           <label className="form-label" htmlFor="repositories">
@@ -1628,7 +1628,7 @@ export function CreateServerPage() {
                 is one the selected pack already asks for.
               </li>
               <li>Values are a single line each, and are never written into the install plan.</li>
-              <li>Plain lines are shown on the server&apos;s page afterwards, so you can read back what a box was built with.</li>
+              <li>Plain lines are shown on the Server&apos;s page afterwards, so you can read back what a box was built with.</li>
               <li>
                 Rocky Surf writes these once, when the box is built — they cannot be edited here
                 afterwards. On the box itself they are yours to change: they live in{' '}
@@ -1666,7 +1666,7 @@ export function CreateServerPage() {
           <details className="field-details">
             <summary role="button">When it runs, what it gets, and what happens if it fails</summary>
             <ul>
-              <li>Runs after the pack&apos;s tools are installed and your repositories are cloned.</li>
+              <li>Runs after the pack&apos;s Tools are installed and your repositories are cloned.</li>
               <li>
                 Gets <code>$REPOS</code>, <code>$HOME</code> and <code>$ARCH</code> like a pack script does, plus
                 anything you set in Environment above.
@@ -1675,7 +1675,7 @@ export function CreateServerPage() {
                 Run with <code>bash</code>, and nothing is added to it — write <code>set -euo pipefail</code>{' '}
                 yourself if you want it.
               </li>
-              <li>If it fails the server still comes up, and the whole log is kept on it as a warning.</li>
+              <li>If it fails the Server still comes up, and the whole log is kept on it as a warning.</li>
               <li>At most 16 KiB, and 30 minutes to run. It runs once, during setup, and never again.</li>
               <li>
                 The full contract is in{' '}
@@ -1846,7 +1846,7 @@ export function CreateServerPage() {
             habit every other cloud teaches. */}
         {provider && provider.capabilities.stop && provider.capabilities.billsWhileStopped === true && (
           <p className="hint" data-testid="bills-while-stopped">
-            Stopping a {provider.displayName} server does not stop its charges — a stopped machine bills at the
+            Stopping a {provider.displayName} Server does not stop its charges — a stopped machine bills at the
             running rate there. Only terminating ends the charge.
           </p>
         )}
@@ -1878,14 +1878,14 @@ export function CreateServerPage() {
               onChange={(e) => setCreateWithoutRepos(e.target.checked)}
             />
             <span>
-              Create the server without a repository. Nothing is cloned during setup — you can
+              Create the Server without a repository. Nothing is cloned during setup — you can
               clone whatever you like over SSH once it is running.
             </span>
           </label>
         )}
 
         <button type="submit" className="btn-primary new-action" disabled={submitting || !resolved}>
-          {submitting ? 'Creating…' : 'Create server'}
+          {submitting ? 'Creating…' : 'Create Server'}
         </button>
       </form>
     </AppShell>
