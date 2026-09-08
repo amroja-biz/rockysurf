@@ -62,6 +62,10 @@
 
 ## Writing and documentation
 
+- [capitalized-product-nouns](2026-09-08-capitalized-product-nouns.md): [active] owner ruling
+  (#464): Provider, Surge Pack, Tool and Server are the four primitives and are capitalized in
+  prose whenever they mean the Rocky Surf concept; identity provider, MCP tools, the Rocky Surf
+  server and every identifier, key, path and package name stay as they are.
 - [measured-numbers-in-prose](2026-08-13-measured-numbers-in-prose.md): why a measurement of this
   repository needs exactly one dated, re-measured home instead of being copied into prose.
 - [pass-along-home](2026-08-21-pass-along-home.md): session hand-off notes live in `.pass-along/`
