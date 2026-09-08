@@ -32,9 +32,9 @@ the package pins, and is how a build starts disagreeing with CI.
 
 ## Git and pnpm — for work in a checkout only
 
-**Why:** the in-tree route. `pnpm install && pnpm -r build`, `pnpm run check` before the pull
-request, and `pnpm pack` to produce the SDK and conformance tarballs before the first release puts
-them on the registry. A personal provider needs none of this.
+**Why:** the in-tree route. `pnpm install && pnpm -r build`, and `pnpm run check` before the pull
+request. A personal provider needs none of this: the SDK and the conformance package install from
+the registry.
 
 **Check:** `git --version`, `pnpm --version`
 

@@ -48,8 +48,8 @@ and where it comes from — **do not install it for them**, and do not route aro
 | `rockysurf-shop-entry` | the listing entry is read out of the artifact, never typed. It is a bin of `@rockysurf/provider-sdk`, which the provider already depends on | `npx rockysurf-shop-entry --help` |
 
 [`references/prerequisites.md`](references/prerequisites.md) has the install page for each on
-macOS and Ubuntu, the two ways `gh` is authenticated and still cannot do the job, and what to run
-before the SDK's first release puts the generator on the registry.
+macOS and Ubuntu, the two ways `gh` is authenticated and still cannot do the job, and where the
+entry generator comes from.
 
 Docker is **not** a prerequisite: a provider's acceptance suite is unit tests, and nothing here
 starts a container.

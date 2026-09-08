@@ -6,10 +6,9 @@ address of this page and ask it to install Rocky Surf for you.*
 Read this page to the end before you run anything. Everything you need is on this page or reached
 from it by a link, and you are not expected to know anything about Rocky Surf already.
 
-**Rocky Surf v0.1.0 is not on the public npm registry yet**, so `npx -y rockysurf` has nothing to
-fetch. Until it is published, installing Rocky Surf means cloning the repository and building it,
-and that is the path this page walks. When v0.1.0 ships, one `npx` command replaces the clone and
-the build, and a checkout becomes optional — see
+**Installing Rocky Surf is one command: `npx -y rockysurf`.** It is on the public npm registry,
+so there is nothing to clone and nothing to build. Cloning the repository is optional, and only
+for extending Rocky Surf with your own Surge Packs or Providers — see
 [After the install: what a checkout is for](#after-the-install-what-a-checkout-is-for).
 
 Rocky Surf is one process that a person runs on their own computer. It creates a Linux server in
@@ -29,9 +28,8 @@ Your job has six parts, in this order:
 
 1. Check the preconditions on the user's computer.
 2. Ask the user the questions in this page, and get an answer to each one.
-3. Clone the repository, then print the commands that touch the user's cloud account and let the
-   user run them. The clone comes first because three of those commands read a file out of it.
-4. Build Rocky Surf, and have the user start it for the first time.
+3. Print the commands that touch the user's cloud account, and let the user run them.
+4. Install Rocky Surf, and have the user start it for the first time.
 5. Mint a token, and use it to configure the Providers through the HTTP API.
 6. Register the MCP server in the user's client, and verify the whole thing.
 
@@ -79,12 +77,11 @@ Run these checks yourself, before you ask the user anything. Report any that fai
 
 | Check | Command | What you need |
 |---|---|---|
-| Node.js | `node --version` | 24 or later, on the host. Rocky Surf refuses to start on anything older, and the pre-publish install builds the workspace on this machine. |
-| pnpm | `pnpm --version` | Any version. The pre-publish install needs it to build the workspace. Install it with `corepack enable`. |
+| Node.js | `node --version` | 24 or later, on the host. Rocky Surf refuses to start on anything older, and `npx` comes with it. |
 | Port 3000 is free | `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health` | No answer. An answer of `200` means Rocky Surf is already running here, so this is a reconfiguration rather than an install. |
 | An existing configuration | `ls ~/.rockysurf/config.yaml` | If the file exists, the user has an installation already. Read it, patch it through the API described later on this page, and never overwrite it. |
 | The cloud's own tool | `hcloud version`, `aws --version`, `az --version` or `gcloud --version` | Only for the cloud the user picks, and only Hetzner needs no tool at all. AWS, Azure and Google Cloud each need their own command-line tool so the user can sign in. |
-| Docker | `docker --version` | Only if the user asks for the Docker Compose path, which runs the server process but cannot complete the MCP setup before v0.1.0 is published. See [Install Rocky Surf and start it](#install-rocky-surf-and-start-it). |
+| Docker | `docker --version` | Only if the user asks for the Docker Compose path, which is an alternative to `npx` for the server process. See [Install Rocky Surf and start it](#install-rocky-surf-and-start-it). |
 
 To install Node.js 24, tell the user to run `nvm install 24 && nvm use 24`, or to use their
 platform's installer.
@@ -161,25 +158,26 @@ Rocky Surf stores no cloud credentials. Each cloud authenticates through the pat
 already uses, so what the user runs here puts a credential where Rocky Surf can read it and
 nowhere else.
 
-**Clone the repository first.** Three of the commands in this section read a file out of it, and
-the install in the next section needs it anyway before v0.1.0 is published:
+**Three of the commands in this section read a file out of the repository.** Installing Rocky
+Surf does not need a clone, so have the user download the one file their cloud needs. These
+write it to the path the commands below expect, in whatever directory the user runs them from:
 
 ```bash
-git clone https://github.com/amroja-biz/rockysurf
-cd rockysurf
+# AWS
+curl -fsSL --create-dirs -o deploy/aws/iam-role.yaml \
+  https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/aws/iam-role.yaml
+# Azure
+curl -fsSL --create-dirs -o deploy/azure/role.bicep \
+  https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/azure/role.bicep
+# Google Cloud
+curl -fsSL --create-dirs -o deploy/gcp/setup.sh \
+  https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/gcp/setup.sh
+chmod +x deploy/gcp/setup.sh
 ```
 
-The commands below are written with paths relative to the root of that checkout, so have the user
-run them from there. The files are `deploy/aws/iam-role.yaml`, `deploy/azure/role.bicep` and
-`deploy/gcp/setup.sh`, and each one is also readable on its own:
-
-- <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/aws/iam-role.yaml>
-- <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/azure/role.bicep>
-- <https://raw.githubusercontent.com/amroja-biz/rockysurf/main/deploy/gcp/setup.sh>
-
-Read them there when the user asks what a command will grant. Once v0.1.0 is published and a
-checkout is no longer part of installing, the AWS template and the Azure template are each a
-single file the user can download with `curl -fsSLO <the address above>` and pass by filename.
+Read the file at that address when the user asks what a command will grant. A user who already
+has a clone of the repository can skip the download and run the commands below from its root
+instead — the paths are the same.
 
 **Hetzner Cloud.** Rocky Surf works with any Hetzner Cloud API token that has Read & Write on a
 project. A token on the project the user already uses works with no further setup. For reduced
@@ -269,8 +267,8 @@ gcloud auth application-default login
 Warn the user that `gcloud auth login` is a different command that does not write the credentials
 Rocky Surf reads. The two logins can even belong to two different Google accounts, which is the
 likeliest reason a correct configuration fails on a first run. For reduced blast radius,
-recommend `./deploy/gcp/setup.sh --project=my-project-123456`, run from a checkout of the
-repository. It creates a custom IAM role carrying exactly the permissions Rocky Surf calls, a
+recommend `./deploy/gcp/setup.sh --project=my-project-123456`, the script downloaded above. It
+creates a custom IAM role carrying exactly the permissions Rocky Surf calls, a
 service account to hold it, and the binding between them, and it grants no predefined role, no
 owner and no editor. It is idempotent, and `--dry-run` prints every command it would run and
 changes nothing.
@@ -288,57 +286,41 @@ the cloud the user chose:
 Do this after the user confirms the cloud setup is done, so the credential is in place before the
 process starts.
 
-<!-- MAINTAINER NOTE: once v0.1.0 is on npm, this whole section collapses to `npx -y rockysurf`,
-     the "read `node <checkout>/…`" sentence goes, the Docker Compose caveat below becomes a
-     plain alternative, and the opening of this page and the closing checkout section both stop
-     saying a clone is required. -->
-
-**This page says Rocky Surf v0.1.0 is not on npm. Check whether that is still true** before you
-commit to the fallback: the page is written to go stale on exactly this point, and one command
-settles it.
+**One command installs and starts it.** It needs Node.js 24 or later on the host, and nothing
+else — `npx` fetches the published `rockysurf` package on first use:
 
 ```bash
-npm view rockysurf version
+npx -y rockysurf
 ```
 
-If it prints a version, use `npx -y rockysurf` and skip the rest of this section. If it reports
-that the package does not exist, carry on.
-
-**Build the checkout.** This is the only complete install path before v0.1.0 is published: it
-produces the same binary `npx` will fetch, and every command on the rest of this page has a
-working form on it. It needs Node.js 24 or later on the host, and `pnpm`. You cloned the
-repository in the previous section, so this runs in that directory:
-
-```bash
-pnpm install && pnpm -r build
-node packages/rockysurf/dist/bin.js
-```
-
-Read `node <checkout>/packages/rockysurf/dist/bin.js` everywhere the rest of this page writes
-`rockysurf`. Once v0.1.0 is published, that becomes `npx -y rockysurf` and the clone and the
-build both go away.
+Everywhere the rest of this page writes `rockysurf`, the command is `npx -y rockysurf`.
 
 Start the process from a shell holding the environment variables the user exported, or the
 credential will not be visible to it.
 
-**Docker Compose runs the server process, and is not a complete path before publish.** Offer it
-only to a user who already knows Docker and only for the server process, and say why it is
-partial:
+**Docker Compose is the alternative to `npx` for the server process.** Offer it to a user who
+already knows Docker and prefers a container. The Compose file lives in the repository, so this
+path does need a clone:
 
 ```bash
+git clone https://github.com/amroja-biz/rockysurf
+cd rockysurf
 docker compose up --build
 ```
 
-- **`rockysurf token` and `rockysurf mcp` have no working host form** on a Compose-only install.
-  There is no binary on the host, and `npx -y rockysurf` is dead until v0.1.0 is published. The
-  copy inside the container is not addressed by the commands on this page.
+Two things differ on that path, and both change what you do later on this page:
+
 - **Only some credentials reach the container.** The Compose file passes through
   `ROCKYSURF_ADMIN_PASSWORD`, `ROCKYSURF_SECRET_KEY`, `HETZNER_TOKEN` and `HCLOUD_TOKEN`, and
   nothing else. An AWS SSO session, an Azure sign-in and Google Application Default Credentials
-  all live on the host and do not cross into the container.
-
-So on a machine that has Docker and no checkout, tell the user that Rocky Surf will run but that
-you cannot finish the MCP setup, and offer the checkout build instead.
+  all live on the host and do not cross into the container, so those three clouds want the
+  `npx` path.
+- **The token is minted inside the container.** `rockysurf token` reads the SQLite file
+  directly, and on this path that file is in the container's volume rather than on the host, so
+  mint it with `docker compose run --rm rockysurf token` instead — that form goes through the
+  image's entrypoint, which is what turns `token` into the CLI command. `rockysurf mcp` runs on the
+  host as `npx -y rockysurf mcp`: it talks to Rocky Surf over HTTP at `ROCKYSURF_URL`, and the
+  published port is that address.
 
 **The user starts Rocky Surf for the first time, in their own terminal.** The first boot prints
 an admin password to stderr, once, and stores only its hash. That password is the user's
@@ -363,7 +345,7 @@ process yourself.
 The admin password is for the web UI. Your credential is a token, and one command mints it:
 
 ```bash
-rockysurf token
+npx -y rockysurf token
 ```
 
 The command reads the SQLite file directly and does not need Rocky Surf running, but it does need
@@ -372,7 +354,7 @@ the first boot creates. The token is printed once, is valid for 365 days, and is
 hash. Capture it into a variable and never echo it:
 
 ```bash
-ROCKYSURF_TOKEN=$(rockysurf token)
+ROCKYSURF_TOKEN=$(npx -y rockysurf token)
 ```
 
 Only the token goes to stdout; everything a person reads goes to stderr.
@@ -570,10 +552,8 @@ args = ["-y", "rockysurf", "mcp"]
 env = { ROCKYSURF_TOKEN = "<redacted>", ROCKYSURF_URL = "http://127.0.0.1:3000" }
 ```
 
-**Until v0.1.0 is on npm, none of the four examples works as written**, because `npx` has no
-`rockysurf` to fetch. Replace `npx -y rockysurf mcp` with
-`node <checkout>/packages/rockysurf/dist/bin.js mcp`: `node` as the command, and the absolute
-path and `mcp` as the two args. The two environment variables are unchanged.
+All four examples run `npx -y rockysurf mcp`, which fetches the published `rockysurf` package
+the first time the client starts the MCP server. Nothing has to be installed for them first.
 
 Then have the user reconnect the client, which means restarting the session. Nothing changes for
 an already-connected client until it reconnects.
@@ -628,13 +608,10 @@ The following table lists the failures you are most likely to meet, and what eac
 
 ## After the install: what a checkout is for
 
-You already have a checkout, because installing Rocky Surf before v0.1.0 is published means
-cloning and building the repository. Once v0.1.0 is on npm, `npx -y rockysurf` replaces all of
-that and a checkout stops being part of installing anything.
-
-From then on, clone the repository for one reason: to extend Rocky Surf with your own Surge Packs
-or Providers. The published `rockysurf` package on npm ships the runtime, and the Agent Skills
-and the Surge Pack smoke harness exist only in the repository.
+Cloning the repository is optional: `npx -y rockysurf` installs everything Rocky Surf needs to
+run. Clone it for one reason — to extend Rocky Surf with your own Surge Packs or Providers. The
+published `rockysurf` package on npm ships the runtime, and the Agent Skills and the Surge Pack
+smoke harness exist only in the repository.
 
 ```bash
 git clone https://github.com/amroja-biz/rockysurf

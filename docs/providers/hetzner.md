@@ -207,14 +207,12 @@ Hetzner quotes per project, so a table built from one account's numbers would be
 Start Rocky Surf and let it validate:
 
 ```bash
-HETZNER_TOKEN=... node packages/rockysurf/dist/bin.js
+HETZNER_TOKEN=... npx -y rockysurf
 ```
 
-**That is the `rockysurf` command until v0.1.0 is on npm.** The published form is
-`npx rockysurf`, but npm cannot supply a package that has not been published yet; from a checkout
-you have run `pnpm -r build` in, `packages/rockysurf/dist/bin.js` is the identical binary. The
-Docker Compose path in the [README](../../README.md#quickstart) works today too. See
-[`docs/contributing/RELEASING.md`](../contributing/RELEASING.md).
+From a checkout you have run `pnpm -r build` in, `node packages/rockysurf/dist/bin.js` is the
+identical binary and takes the same environment. The Docker Compose path in the
+[README](../../README.md#quick-start) works too.
 
 `validateCredentials()` proves the token and checks that the configured location exists — a
 typo'd `location` is caught at startup rather than at the first create. Saving the Hetzner section

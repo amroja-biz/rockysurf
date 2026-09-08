@@ -24,8 +24,9 @@ carry the most current reasoning in their comments; `packages/provider-hetzner` 
 complete one and the best to read end to end; `scripts/e2e/fixtures/bootstrap-target` (test-only)
 is the minimal model for a provider that does not generate user-data.
 
-**Out of tree you have none of those** — they are not on npm as readable examples and you should not
-need them. What you do have, inside the tarballs you installed, is the authoritative contract:
+**Out of tree you have none of those.** The published provider packages ship built JavaScript and
+their README, not the commented sources, and you should not need them. What you do have, inside the
+packages you installed, is the authoritative contract:
 `node_modules/@rockysurf/provider-sdk/README.md` and the fully commented type definitions in
 `node_modules/@rockysurf/provider-sdk/dist/*.d.ts`. Start from
 [types.md](types.md) in this skill, which is the field lists and the signatures, and read those

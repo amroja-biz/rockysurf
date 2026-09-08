@@ -40,9 +40,8 @@ which and where it comes from — **do not install it for them**, and do not rou
 
 | Tool | Why this skill needs it | Check |
 |---|---|---|
-| Git | the harness is a clone, and the contribution is a branch on a fork | `git --version` |
-| Node.js 24+ | the harness is a Node program; Rocky Surf's `engines.node` is `>=24` | `node --version` |
-| pnpm | the harness is built from a workspace: `pnpm install && pnpm --filter 'rockysurf...' build` | `pnpm --version` |
+| Git | the contribution is a branch on a fork of the shop | `git --version` |
+| Node.js 24+ | the harness is a Node program run with `npx`; Rocky Surf's `engines.node` is `>=24` | `node --version` |
 | Docker | `pack check` runs the pack twice in a real `ubuntu:24.04` container. Nothing else proves the pack works, and it is the check the shop's CI will run on both architectures | `docker version` (a **Server** line, not just a client) |
 | `gh`, logged in | fork, push, open the pull request, and read its checks. It must be authenticated as an account that may fork a public repository | `gh auth status` |
 | `jq` | the index comparison below is the same `jq -S 'del(.generatedAt)'` diff the shop's CI runs | `jq --version` |
@@ -61,22 +60,19 @@ Everything above is about *this* machine. The `apt-get install` lines inside the
 half of the pull request. If the user has no file, stop and go to `create-surge-pack`.
 
 **The harness.** Both checks come from the `rockysurf` CLI, so what you run locally is what CI
-runs. Rocky Surf is not on npm yet — the publish is gated behind v0.1.0, and bare `npx rockysurf`
-resolves to a placeholder with no `pack` command — so build it from a clone, once:
+runs. It is on npm, so there is nothing to clone or build:
 
 ```bash
-git clone --depth 1 https://github.com/amroja-biz/rockysurf /tmp/rockysurf
-cd /tmp/rockysurf && pnpm install && pnpm --filter 'rockysurf...' build
+npx -y rockysurf@0.1.0 --version
 ```
 
-The binary is then `/tmp/rockysurf/packages/rockysurf/dist/bin.js`, run with `node`. Anchor that
-absolute path in every command below — your working directory may reset between tool calls, and
-these commands run from the *shop* clone, not this one.
+Pin the version. Every command below is `npx -y rockysurf@0.1.0 pack …`, and it runs from the
+*shop* clone rather than a Rocky Surf one.
 
-If you are already inside a Rocky Surf checkout, that checkout is the harness; build it in place
-rather than cloning a second copy. **This is the pre-release form.** When v0.1.0 publishes, every
-command below becomes `npx rockysurf@<version> pack …` and the clone disappears. CI does exactly
-the same thing today, in the shop's `.github/actions/pack-harness`.
+If you are already inside a Rocky Surf checkout, that checkout is the harness instead: build it
+in place and read `node <checkout>/packages/rockysurf/dist/bin.js` for `npx -y rockysurf@0.1.0`
+everywhere below. That is what the shop's `.github/actions/pack-harness` builds, so it is also
+how you check a pack against an unreleased change.
 
 **Do not pass `--base-packs`.** A built harness carries the packs its own release ships, so the
 shared base tool ids a community pack references — `curl`, `git`, `gh`, `nodejs`, `tmux`,
@@ -140,7 +136,7 @@ gh repo fork amroja-biz/rockysurf-shop --clone     # once; it clones your fork
 cd rockysurf-shop
 git checkout -b packs/<packId>
 cp <the pack file> packs/<packId>.yaml
-node /tmp/rockysurf/packages/rockysurf/dist/bin.js pack index --source packs --out index.json
+npx -y rockysurf@0.1.0 pack index --source packs --out index.json
 git add packs/<packId>.yaml index.json
 git commit -m "packs: add <packId>"
 ```

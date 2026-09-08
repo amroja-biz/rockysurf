@@ -12,7 +12,6 @@ None of this is about the box the pack builds. The `apt-get install` lines insid
 |---|---|---|
 | Git | Xcode command line tools (`xcode-select --install`), or https://git-scm.com/downloads | `apt-get install git` |
 | Node.js 24+ | https://nodejs.org/en/download, or `nvm install 24` (https://github.com/nvm-sh/nvm) | https://github.com/nodesource/distributions, or `nvm install 24` |
-| pnpm | `corepack enable` on a Node that ships Corepack, or https://pnpm.io/installation | same |
 | Docker | Docker Desktop, https://docs.docker.com/desktop/install/mac-install/ | Docker Engine, https://docs.docker.com/engine/install/ubuntu/ |
 | `gh` | `brew install gh`, or https://cli.github.com/ | https://github.com/cli/cli/blob/trunk/docs/install_linux.md |
 | `jq` | `brew install jq`, or https://jqlang.github.io/jq/download/ | `apt-get install jq` |
@@ -53,9 +52,7 @@ does not have that access and the procedure would be a lie.
 
 ## What is *not* needed
 
-- **An npm-installed `rockysurf`.** There is not one yet; the publish is gated behind v0.1.0.
-  `npx rockysurf` today resolves to a placeholder with no `pack` command, which fails in a way
-  that reads like a broken pack. Build the harness from a clone (SKILL.md step 1).
-- **A checkout of Rocky Surf, separately from the harness.** The clone you build the harness from
-  is the checkout. If the session is already inside one, that is it — build it in place.
+- **A checkout of Rocky Surf.** The harness is `npx -y rockysurf@0.1.0` (SKILL.md step 1), and
+  npx fetches it on first use. A session already inside a checkout can build that in place and
+  use its `packages/rockysurf/dist/bin.js` instead, but nothing requires a clone.
 - **A write bit on `amroja-biz/rockysurf-shop`.** The whole procedure runs on a fork.

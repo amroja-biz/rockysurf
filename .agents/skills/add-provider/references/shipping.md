@@ -6,10 +6,8 @@
 npm install --save-dev @rockysurf/provider-conformance
 ```
 
-In the published set, so this is the out-of-tree route too. **Before the first release nothing is on
-the registry yet** and that command 404s — until then, `pnpm pack` in `packages/provider-sdk` and
-`packages/provider-conformance` from a checkout and install the two tarballs, which are the same
-artifacts the release publishes.
+In the published set, so this is the out-of-tree route too: it and `@rockysurf/provider-sdk` are
+on the public registry and install like any other package.
 
 It depends only on `@rockysurf/provider-sdk` and is test-framework-free — the assertions take values
 and throw `ConformanceError`, so they run under vitest, under `node:test`, or from a plain
@@ -233,10 +231,6 @@ Two refusals happen before the pull request, which is the point of running this 
 it: **a package whose manifest declares runtime `dependencies`** is refused with them named — a
 provider is installed by unpacking a tarball and nothing resolves a dependency for it — and **a
 `--tarball-url` that is not https** is refused, because a provider artifact is code.
-
-Before the first SDK release the command is not on the registry: `pnpm pack` in
-`packages/provider-sdk` from a checkout and install that tarball, the same artifact the release
-publishes.
 
 ## Least-privilege IaC *(in tree)*
 

@@ -201,11 +201,8 @@ in [references/types.md](references/types.md#providersettings).
 npm install --save-dev @rockysurf/provider-conformance
 ```
 
-It is in the published set, so this is the out-of-tree route too. **Before the first release
-nothing is on the registry yet** and that command 404s. Until then you need the two tarballs
-(`@rockysurf/provider-sdk` and `@rockysurf/provider-conformance`) from whoever pointed you at this
-skill, or produce them yourself with `pnpm pack` in a checkout. They are the same artifacts the
-release will publish.
+It is in the published set, so this is the out-of-tree route too: it and `@rockysurf/provider-sdk`
+are on the public npm registry and install like any other package.
 
 [references/shipping.md](references/shipping.md) covers wiring up the assertions, including the
 absence-grace harness — the one check that asserts behaviour rather than shape, the one worth wiring

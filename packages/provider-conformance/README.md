@@ -21,11 +21,6 @@ npm install --save-dev @rockysurf/provider-conformance
 Its only dependency is `@rockysurf/provider-sdk`, so it inherits that package's zero-runtime-
 dependency promise and adds nothing to your install closure.
 
-> **Before the first release**, no `@rockysurf` package is on the registry yet, so that command
-> 404s. Until it lands, install from a packed tarball — `pnpm pack` in `packages/provider-sdk` and
-> in `packages/provider-conformance` from a checkout, then `npm install --save-dev ./<tarball>`.
-> The tarball is the same artifact the release publishes.
-
 A provider does not have to live in the Rocky Surf repository. This package is in the published set
 precisely so that an out-of-tree provider can run the same acceptance bar the in-tree ones do —
 while it was private, the standard pointed authors at a suite they could only get by vendoring the

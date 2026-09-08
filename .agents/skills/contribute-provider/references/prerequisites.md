@@ -33,35 +33,23 @@ account to do:
 Do not work around either by pushing a branch to the upstream repository. A contributor does not
 have that access, and the procedure would be a lie.
 
-## `rockysurf-shop-entry` before the SDK's first release
+## Where `rockysurf-shop-entry` comes from
 
-The generator is a bin of `@rockysurf/provider-sdk`, so a provider that depends on the SDK already
-has it under `node_modules/.bin` and `npx rockysurf-shop-entry` finds it. **Before the first SDK
-release nothing is on the registry yet**, and a bare `npx rockysurf-shop-entry` will not resolve.
-Until then, produce the SDK from a checkout and install that tarball — it is the same artifact the
-release publishes:
+The generator is a bin of `@rockysurf/provider-sdk`, which is on the public npm registry. A
+provider that depends on the SDK already has it under `node_modules/.bin`, so
+`npx rockysurf-shop-entry` finds it with nothing else installed.
 
-```bash
-git clone --depth 1 https://github.com/amroja-biz/rockysurf /tmp/rockysurf
-cd /tmp/rockysurf && pnpm install && pnpm -r build
-pnpm -C packages/provider-sdk pack --pack-destination /tmp
-npm install --save-dev /tmp/rockysurf-provider-sdk-<version>.tgz    # in the provider package
-```
-
-If the session is already inside a Rocky Surf checkout, that checkout is the source — build it in
-place rather than cloning a second copy, and the bin is
-`packages/provider-sdk/dist/bin/shop-entry.js`, run with `node`. Anchor that absolute path in
-every command: the working directory changes when you move into the shop clone.
-
-`@rockysurf/provider-conformance` has the same pre-release story, and
-[`add-provider`](../../add-provider/references/shipping.md) covers it.
+If the session is inside a Rocky Surf checkout and you want the unreleased generator instead,
+build the workspace in place and run `node <checkout>/packages/provider-sdk/dist/bin/shop-entry.js`.
+Anchor that absolute path in every command: the working directory changes when you move into the
+shop clone.
 
 ## What is *not* needed
 
 - **Docker.** A provider's acceptance suite is unit tests. Nothing in this procedure starts a
   container. (`contribute-surge-pack` does need it; a pack is verified by running it.)
-- **A checkout of Rocky Surf**, once the SDK is on the registry. The generator travels inside the
-  package the provider already depends on.
+- **A checkout of Rocky Surf.** The generator travels inside the SDK package the provider already
+  depends on, and that package is on the registry.
 - **A write bit on `amroja-biz/rockysurf-shop`.** The whole procedure runs on a fork.
 - **An npm publish.** The tarball can be hosted on a GitHub release, on npm, or on any static host
   that serves the exact bytes over https indefinitely. The walkthrough this skill follows uses a

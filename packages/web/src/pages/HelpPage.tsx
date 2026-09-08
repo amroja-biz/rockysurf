@@ -1311,14 +1311,11 @@ export function HelpPage() {
                   Mint a token. It is printed once, it is valid for 365 days, and it is stored only
                   as a hash:
                   <pre>
-                    <code>
-                      # from a built checkout — until v0.1.0 is on npm,{'\n'}
-                      # this file IS the rockysurf command:{'\n'}
-                      node packages/rockysurf/dist/bin.js token
-                    </code>
+                    <code>npx -y rockysurf token</code>
                   </pre>
                   The token is the only thing the command writes to stdout, so{' '}
-                  <code>ROCKYSURF_TOKEN=$(rockysurf token)</code> captures it and nothing else.
+                  <code>ROCKYSURF_TOKEN=$(npx -y rockysurf token)</code> captures it and nothing
+                  else.
                 </li>
                 <li>
                   Add Rocky Surf to your MCP client. Every client wants the same three things — a
@@ -1364,14 +1361,10 @@ export function HelpPage() {
                     <code>{CODEX_CONFIG_SNIPPET}</code>
                   </pre>
                   <p className="hint">
-                    Those are the shapes v0.1.0 ships. Until the packages are on npm,{' '}
-                    <code>npx</code> has no <code>rockysurf</code> to fetch — use{' '}
-                    <code>"command": "node"</code> (Claude Code, JSON) or{' '}
-                    <code>command = "node"</code> (Codex CLI, TOML) with{' '}
-                    <code>"&lt;your-checkout&gt;/packages/rockysurf/dist/bin.js"</code> and{' '}
-                    <code>"mcp"</code> as the two args, and the same env vars. For a command-line
-                    form, replace <code>npx -y rockysurf mcp</code> with{' '}
-                    <code>node &lt;your-checkout&gt;/packages/rockysurf/dist/bin.js mcp</code>.
+                    <code>npx -y rockysurf mcp</code> fetches the published{' '}
+                    <code>rockysurf</code> package from npm the first time a client starts the MCP
+                    server, so there is nothing to install beforehand. Node 24 or newer is the only
+                    requirement.
                   </p>
                 </li>
                 <li>Reconnect the MCP client so it starts the new server. Restart the session.</li>

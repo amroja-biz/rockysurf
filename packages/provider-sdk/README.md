@@ -156,9 +156,7 @@ valid code, and `createProvider` does no I/O. `assertDescribeAbsenceGrace` is th
 makes rule 1 above an assertion rather than an assumption.
 
 **It is in the published set**, so an out-of-tree provider runs the same bar the in-tree ones do:
-`npm install --save-dev @rockysurf/provider-conformance`. Before the first release nothing is on
-the registry yet, so until then install it from a packed tarball — `pnpm pack` produces the same
-artifact the release publishes.
+`npm install --save-dev @rockysurf/provider-conformance`.
 
 Passing conformance is necessary and not sufficient. It cannot know whether your cloud does what
 you said it does; only a run against real infrastructure can, which is why every shipped provider

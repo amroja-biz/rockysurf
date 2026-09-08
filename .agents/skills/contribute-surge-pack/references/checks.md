@@ -6,10 +6,10 @@ rather than a hope. The workflows are `.github/workflows/pack-pr.yml` (lint, the
 comparison, and the per-architecture check) and `.github/workflows/disclose.yml` (the
 description comment) in the shop.
 
-Throughout, `rs` stands for the built harness:
+Throughout, `rs` stands for the harness:
 
 ```bash
-rs() { node /tmp/rockysurf/packages/rockysurf/dist/bin.js "$@"; }
+rs() { npx -y rockysurf@0.1.0 "$@"; }
 ```
 
 and every command runs from the root of the **shop** clone, with the pack file already at
