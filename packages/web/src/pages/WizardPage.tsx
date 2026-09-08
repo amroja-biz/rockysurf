@@ -476,7 +476,7 @@ function cloudSetupSteps(id: string): SetupStep[] {
         text: 'Rocky Surf reads AWS credentials from the standard chain — AWS_PROFILE, environment variables, or an instance role. There is nothing to type here.',
       },
       {
-        text: 'Set the region and sshAllowedCidr in rockysurf.config.yaml or on the Settings page — see docs/providers/aws.md for the minimal IAM policy.',
+        text: 'On the Settings page, under AWS, set Region and SSH allowed from. The Help page (Settings → Help → Cloud Providers) lists the minimal IAM policy.',
       },
     ]
   }
@@ -486,7 +486,7 @@ function cloudSetupSteps(id: string): SetupStep[] {
         text: 'Rocky Surf reads Azure credentials from AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET, from a managed identity, or from az login. There is nothing to type here.',
       },
       {
-        text: 'Set subscriptionId, resourceGroup and sshAllowedCidr in rockysurf.config.yaml or on the Settings page, and create the resource group first with az group create — see docs/providers/azure.md for the least-privilege role.',
+        text: 'On the Settings page, under Microsoft Azure, set Subscription id, Resource group and SSH allowed from — create the resource group first with az group create. The Help page (Settings → Help → Cloud Providers) lists the least-privilege role.',
       },
     ]
   }
@@ -496,7 +496,7 @@ function cloudSetupSteps(id: string): SetupStep[] {
         text: 'Rocky Surf reads Google Cloud credentials from Application Default Credentials — gcloud auth application-default login, GOOGLE_APPLICATION_CREDENTIALS, or the metadata server. There is nothing to type here.',
       },
       {
-        text: 'Set projectId, zone and sshAllowedCidr in rockysurf.config.yaml or on the Settings page; projectId is required and never inferred — see docs/providers/gcp.md for the least-privilege role.',
+        text: 'On the Settings page, under Google Compute Engine, set Project id, Zone and SSH allowed from; Project id is required and never inferred. The Help page (Settings → Help → Cloud Providers) lists the least-privilege role.',
       },
     ]
   }

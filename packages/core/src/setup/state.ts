@@ -105,7 +105,7 @@ export interface SetupStateDeps {
 
 const DISPLAY_NAMES: Record<string, string> = {
   hetzner: 'Hetzner Cloud',
-  aws: 'Amazon EC2',
+  aws: 'AWS',
   azure: 'Microsoft Azure',
   gcp: 'Google Compute Engine',
 }

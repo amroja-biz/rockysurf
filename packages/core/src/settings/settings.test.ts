@@ -124,7 +124,7 @@ function shippedDeclared(): ProviderRegistry {
       },
       {
         id: 'aws',
-        displayName: 'Amazon EC2',
+        displayName: 'AWS',
         settings: {
           title: 'AWS',
           help: 'EC2 instances in one region, with no credential to type here.',

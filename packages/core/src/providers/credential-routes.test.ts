@@ -60,10 +60,10 @@ const working = (id: string, displayName: string, calls?: string[]): StubProvide
 describe('checking Provider credentials', () => {
   it('reports a Provider whose cheapest authenticated call succeeds as verified', async () => {
     const calls: string[] = []
-    const app = harness([working('aws', 'Amazon EC2', calls)])
+    const app = harness([working('aws', 'AWS', calls)])
 
     expect(await rows(await check(app, ['aws']))).toEqual([
-      { provider: 'aws', displayName: 'Amazon EC2', status: 'verified', detail: '' },
+      { provider: 'aws', displayName: 'AWS', status: 'verified', detail: '' },
     ])
     expect(calls).toEqual(['aws'])
   })
@@ -72,7 +72,7 @@ describe('checking Provider credentials', () => {
     const app = harness([
       {
         id: 'aws',
-        displayName: 'Amazon EC2',
+        displayName: 'AWS',
         validateCredentials: async () => {
           throw new ProviderError('auth', 'The security token included in the request is invalid.', {
             providerCode: 'UnauthorizedOperation',
@@ -84,7 +84,7 @@ describe('checking Provider credentials', () => {
     expect(await rows(await check(app, ['aws']))).toEqual([
       {
         provider: 'aws',
-        displayName: 'Amazon EC2',
+        displayName: 'AWS',
         status: 'failed',
         code: 'auth',
         providerCode: 'UnauthorizedOperation',
@@ -118,12 +118,12 @@ describe('checking Provider credentials', () => {
 
   it('never dials a Provider that is not loaded — a disabled section has no row', async () => {
     const calls: string[] = []
-    const app = harness([working('aws', 'Amazon EC2', calls)])
+    const app = harness([working('aws', 'AWS', calls)])
 
     // `gcp` is switched off, so it is not in the registry at all. Asking about it is not an error
     // and is not a failure: there is no cloud there to be wrong about.
     expect(await rows(await check(app, ['aws', 'gcp']))).toEqual([
-      { provider: 'aws', displayName: 'Amazon EC2', status: 'verified', detail: '' },
+      { provider: 'aws', displayName: 'AWS', status: 'verified', detail: '' },
     ])
     expect(calls).toEqual(['aws'])
   })
@@ -138,7 +138,7 @@ describe('checking Provider credentials', () => {
 
   it('one cloud failing does not lose the others', async () => {
     const app = harness([
-      working('aws', 'Amazon EC2'),
+      working('aws', 'AWS'),
       {
         id: 'azure',
         displayName: 'Microsoft Azure',
@@ -159,7 +159,7 @@ describe('checking Provider credentials', () => {
 
   it('checks every loaded Provider when the request names none', async () => {
     const calls: string[] = []
-    const app = harness([working('aws', 'Amazon EC2', calls), working('hetzner', 'Hetzner Cloud', calls)])
+    const app = harness([working('aws', 'AWS', calls), working('hetzner', 'Hetzner Cloud', calls)])
 
     expect((await rows(await check(app))).map((row) => row.provider)).toEqual(['aws', 'hetzner'])
     expect(calls.sort()).toEqual(['aws', 'hetzner'])
@@ -167,7 +167,7 @@ describe('checking Provider credentials', () => {
 
   it('is admin-only, like every route that reaches a cloud', async () => {
     const calls: string[] = []
-    const app = harness([working('aws', 'Amazon EC2', calls)], [], false)
+    const app = harness([working('aws', 'AWS', calls)], [], false)
 
     expect((await check(app, ['aws'])).status).toBe(403)
     expect(calls).toEqual([])

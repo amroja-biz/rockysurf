@@ -559,7 +559,7 @@ export function makeAwsProvider(options: AwsProviderOptions): ComputeProvider {
 
   const provider: ComputeProvider = {
     id: 'aws',
-    displayName: 'Amazon EC2',
+    displayName: 'AWS',
     capabilities: CAPABILITIES,
 
     async validateCredentials() {
