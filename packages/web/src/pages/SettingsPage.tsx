@@ -16,14 +16,19 @@ import {
   helpId as drawHelpId,
   humanize,
   keyOf,
+  listDraftValue,
+  ListDraftForm,
+  listItemFields,
   patternOf,
   readOnlyField as drawReadOnlyField,
+  refuseListDraft,
   refusalLine,
   RestartNote,
   secretAt,
   secretField as drawSecretField,
   secretInput as drawSecretInput,
   secretStateHint,
+  shapeProblems,
   textField as drawTextField,
   valueAt,
   type Edits,
@@ -404,6 +409,14 @@ export function SettingsPage() {
   const tokenEdits = Object.entries(edits).filter(([key]) => isTokenKey(key))
   const dirty = formEdits.length > 0
   const anyDirty = Object.keys(edits).length > 0
+  /**
+   * Edits that do not look like what their field is for — a Region box with `sandbox` in it.
+   *
+   * The Save button is off while there are any, and the footer names them, because a button that
+   * is off for a reason nobody can see is indistinguishable from a broken one. The complaint
+   * itself is drawn under its own box by the control, the moment focus leaves it.
+   */
+  const shaping = shapeProblems(specs, Object.fromEntries(formEdits))
 
   function setEdit(path: (string | number)[], change: SettingsChange | null): void {
     const key = keyOf(path)
@@ -1222,98 +1235,43 @@ export function SettingsPage() {
     }
 
     function addDraftEntry(add: SettingsListAdd, draftValues: Record<string, string>): void {
-      const refuse = (message: string) => setListDraftErrors((prev) => ({ ...prev, [listKey]: message }))
-      const typed = (name: string) => (draftValues[name] ?? '').trim()
+      // The refusals and the entry shape are `settingsFields.tsx`'s, so the wizard's SSH-key
+      // step makes exactly the same ones (ADR-0019: one key editor, not two).
+      const refusal = refuseListDraft(
+        fields,
+        add,
+        draftValues,
+        labelField ? entries.map((entry) => String(entry[labelField] ?? '')) : [],
+        labelField,
+      )
+      if (refusal) return setListDraftErrors((prev) => ({ ...prev, [listKey]: refusal }))
 
-      const missing = fields.find((f) => add.required.includes(f.name) && typed(f.name) === '')
-      if (missing) return refuse(`A new ${add.noun} needs the ${missing.label.toLowerCase()} filled in first.`)
-
-      // The schemas behind these lists require the label to be unique — core would refuse the
-      // save — but the server's sentence arrives keyed to the whole list, and the person is
-      // looking at this form. Same check, said where they are, before anything is sent.
-      const title = labelField ? typed(labelField) : ''
-      if (labelField && entries.some((entry) => String(entry[labelField] ?? '') === title)) {
-        return refuse(`There is already a ${add.noun} called “${title}” — give this one a different name.`)
-      }
-
-      // Only what was typed is written. A box left empty says nothing, so an optional field is
-      // absent from the file and a schema default (a host's port, a source's trust) applies —
-      // the entry a person would have written by hand.
-      const value: Record<string, unknown> = {}
-      for (const f of fields) {
-        const raw = typed(f.name)
-        if (raw === '') continue
-        const asNumber = Number(raw)
-        value[f.name] = f.name === 'port' && Number.isFinite(asNumber) ? asNumber : raw
-      }
-      void submit([{ path: [...path, entries.length], value }], []).then((ok) => {
+      void submit([{ path: [...path, entries.length], value: listDraftValue(fields, draftValues) }], []).then((ok) => {
         if (ok) closeDraft()
       })
     }
 
     function draftForm(add: SettingsListAdd, draftValues: Record<string, string>): ReactNode {
       return (
-        <div className="settings-entry" data-list-draft={listKey}>
-          <h3>New {add.noun}</h3>
-          {fields.map((f) => {
-            const id = draftId(f.name)
-            const specPath = `${listKey}.*.${f.name}`
-            const placeholder = String(add.example[f.name] ?? '')
-            /* The server answers about the slot this form is writing to — `entries.length` —
-               so its refusal of a box renders under that box, not at the top of the page. */
-            const serverError = fieldErrors[`${draftPrefix}.${f.name}`]
-            return (
-              <div className="form-group" data-field={id} key={id}>
-                <label htmlFor={id}>{f.label}</label>
-                {helpFor(specPath, id)}
-                <input
-                  id={id}
-                  type={f.name === 'port' ? 'number' : 'text'}
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={draftValues[f.name] ?? ''}
-                  placeholder={placeholder}
-                  aria-describedby={helpId(specPath, id)}
-                  onChange={(e) => {
-                    setListDraftErrors((prev) =>
-                      Object.fromEntries(Object.entries(prev).filter(([k]) => k !== listKey)),
-                    )
-                    setListDrafts((prev) => ({
-                      ...prev,
-                      [listKey]: { ...draftValues, [f.name]: e.target.value },
-                    }))
-                  }}
-                />
-                {serverError && <p className="error settings-field-error">{serverError}</p>}
-              </div>
-            )
-          })}
-          {listDraftErrors[listKey] && (
-            <p className="error settings-field-error" data-draft-refusal={listKey}>
-              {listDraftErrors[listKey]}
-            </p>
-          )}
-          {/* A refusal of the entry as a whole — or of a box this form does not draw. */}
-          {Object.entries(fieldErrors)
-            .filter(
-              ([key]) =>
-                (key === draftPrefix || key.startsWith(`${draftPrefix}.`)) &&
-                !fields.some((f) => key === `${draftPrefix}.${f.name}`),
-            )
-            .map(([key, message]) => (
-              <p className="error settings-field-error" key={key}>
-                {message}
-              </p>
-            ))}
-          <div className="settings-entry-actions">
-            <button type="button" className="btn-primary" disabled={saving} onClick={() => addDraftEntry(add, draftValues)}>
-              Add this {add.noun}
-            </button>
-            <button type="button" className="btn-secondary" onClick={closeDraft}>
-              Cancel
-            </button>
-          </div>
-        </div>
+        <ListDraftForm
+          listKey={listKey}
+          /* The server answers about the slot this form is writing to — `entries.length` — so its
+             refusal of a box renders under that box, not at the top of the page. */
+          draftPrefix={draftPrefix}
+          add={add}
+          fields={fields}
+          specs={specs}
+          values={draftValues}
+          refusal={listDraftErrors[listKey] ?? null}
+          fieldErrors={fieldErrors}
+          saving={saving}
+          onChange={(name, value) => {
+            setListDraftErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== listKey)))
+            setListDrafts((prev) => ({ ...prev, [listKey]: { ...draftValues, [name]: value } }))
+          }}
+          onSubmit={() => addDraftEntry(add, draftValues)}
+          onCancel={closeDraft}
+        />
       )
     }
 
@@ -1425,17 +1383,8 @@ export function SettingsPage() {
 
   function oneList(list: SettingsList): ReactNode {
     const id = list.path
-    const fields: ListField[] = list.itemFields.map((name) => {
-      const spec = specs.get(`${id}.*.${name}`)
-      return {
-        name,
-        // The label the inventory carries when it has one — a provider that DECLARED this list
-        // wrote "Admin login" and "Host key fingerprint", and humanizing the key would put "User"
-        // and "Fingerprint" over boxes whose own sentences say otherwise (ADR-0027).
-        label: spec?.label ?? humanize(name),
-        ...(spec?.kind === 'secret' ? { secret: true } : {}),
-      }
-    })
+    // The same derivation the wizard's SSH-key step uses, so both draw the Provider's own labels.
+    const fields: ListField[] = listItemFields(list, specs)
     const labelField = list.labelField ?? list.itemFields[0]!
     const noun = sections.get(id)?.title ?? humanize(id.split('.').pop() ?? id)
 
@@ -2096,7 +2045,13 @@ export function SettingsPage() {
         </div>
 
         <footer className="settings-actions">
-          <button type="submit" className="btn-primary" disabled={!dirty || saving}>
+          {shaping.length > 0 && (
+            <p className="error" data-testid="shape-problems" role="alert">
+              Saving is off until {shaping.map((problem) => problem.label).join(' and ')}{' '}
+              {shaping.length === 1 ? 'looks' : 'look'} right. The box says what is expected.
+            </p>
+          )}
+          <button type="submit" className="btn-primary" disabled={!dirty || saving || shaping.length > 0}>
             {saving ? 'Saving…' : 'Save to the file'}
           </button>
           <button type="button" className="btn-secondary" disabled={!anyDirty || saving} onClick={() => setEdits({})}>

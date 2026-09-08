@@ -44,8 +44,10 @@ password **once**:
 docker compose logs rockysurf | grep -A3 'first boot'
 ```
 
-Open <http://127.0.0.1:3000>, sign in with that password, and the first-run wizard asks which
-clouds you want — never for a credential. Pick a cloud and switch it on; the wizard shows that
+Open <http://127.0.0.1:3000>, sign in with that password, and the first-run wizard asks whether
+you already have an SSH key to log in to your Servers with — paste the public half and it is saved
+by name, or say no and Rocky Surf makes one per Server — and then which clouds you want. It never
+asks for a cloud credential. Pick a cloud and switch it on; the wizard shows that
 cloud's own auth path inline. For Hetzner that means exporting `HETZNER_TOKEN` where the
 container can see it and restarting — the wizard detects the token when you come back and
 finishes the step itself; AWS, Azure and GCP use their standard credential chains, with nothing

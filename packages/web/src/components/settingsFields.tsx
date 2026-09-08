@@ -1,6 +1,6 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { MachineTypePicker } from './MachineTypePicker'
-import type { ProviderInfo, SecretView, SettingsChange, SettingsField } from '../lib/api'
+import { ApiError, getMyIp, type ProviderInfo, type SecretView, type SettingsChange, type SettingsField } from '../lib/api'
 import { ENV_VAR_ONLY, envVarDisplay, envVarReference } from '../lib/envRef'
 
 /**
@@ -149,8 +149,8 @@ export function RestartNote({ spec }: { spec: SettingsField | undefined }) {
  * surface whose whole job is explaining a setting to somebody who has not read the file, the
  * explanation would be missing for exactly the readers most in need of it.
  */
-export function helpFor(ctx: FieldsContext, specPath: string, id: string): ReactNode {
-  const help = ctx.specs.get(specPath)?.help
+export function helpNode(specs: Map<string, SettingsField>, specPath: string, id: string): ReactNode {
+  const help = specs.get(specPath)?.help
   return help ? (
     <p className="field-help" id={`${id}-help`}>
       {help}
@@ -158,8 +158,14 @@ export function helpFor(ctx: FieldsContext, specPath: string, id: string): React
   ) : null
 }
 
-export const helpId = (ctx: FieldsContext, specPath: string, id: string) =>
-  ctx.specs.get(specPath)?.help ? `${id}-help` : undefined
+export const helpIdOf = (specs: Map<string, SettingsField>, specPath: string, id: string) =>
+  specs.get(specPath)?.help ? `${id}-help` : undefined
+
+export function helpFor(ctx: FieldsContext, specPath: string, id: string): ReactNode {
+  return helpNode(ctx.specs, specPath, id)
+}
+
+export const helpId = (ctx: FieldsContext, specPath: string, id: string) => helpIdOf(ctx.specs, specPath, id)
 
 /** Label, help, control, the server's warning for the field, and any error from a save. */
 export function wrap(
@@ -216,6 +222,119 @@ export function shownText(ctx: FieldsContext, path: (string | number)[]): string
   return current === undefined || current === null ? '' : String(current)
 }
 
+/* ------------------------------------------------------- does that look like a region? */
+
+/**
+ * THE SHAPE CHECK THE EDITOR RUNS BEFORE THE SAVE DOES.
+ *
+ * A first-contact test put `sandbox` in AWS's Region box by mis-clicking, and nothing said a word
+ * until the save came back refused — by which time the reader had filled in three more boxes and
+ * was no longer looking at the wrong one. This is the second's worth of feedback that was
+ * missing.
+ *
+ * IT IS NOT VALIDATION AND MUST NEVER BECOME IT. The server's schema is the only thing that
+ * accepts or refuses a value, and nothing here loosens it or duplicates it: `pattern` is a HINT a
+ * Provider declared about the shape of its own field (`ProviderSettingField.pattern`), and
+ * `patternMessage` is the sentence core assembled from that Provider's title, label and example.
+ * So no regular expression for any cloud is written in this package — a Provider that is not in
+ * this repository gets the same behaviour by declaring one line, which is the whole point of
+ * doing it this way round.
+ *
+ * A BAD PATTERN IS NO PATTERN. A regex that does not compile means the field simply has no shape
+ * check; refusing to draw the control, or refusing the value, would let one bad character in a
+ * Provider's declaration stop an operator saving anything at all.
+ */
+export function patternProblem(spec: SettingsField | undefined, value: string): string | null {
+  if (!spec?.pattern || !spec.patternMessage) return null
+  // An empty box is not a badly-shaped value; it is the absence of one, and `textField` already
+  // reads it as "say nothing about this field". Requiredness is the server's to enforce.
+  if (value.trim() === '') return null
+  let compiled: RegExp
+  try {
+    compiled = new RegExp(spec.pattern)
+  } catch {
+    return null
+  }
+  return compiled.test(value) ? null : spec.patternMessage
+}
+
+/** One pending edit that does not look like what its field is for. */
+export interface FieldShapeProblem {
+  /** The dotted key, which is also the `data-field` the control is drawn under. */
+  key: string
+  /** The control's own label, so a sentence somewhere else on the page can name the box. */
+  label: string
+  message: string
+}
+
+/**
+ * Every pending edit whose value does not match its field's declared shape.
+ *
+ * THE PENDING EDITS ONLY, never the whole file. A value already IN the file that no longer
+ * matches a Provider's pattern is not this operator's doing and must not hold their save
+ * hostage — the save is the server's to refuse. What a page may reasonably refuse to send is
+ * something typed into a box a second ago.
+ */
+export function shapeProblems(specs: Map<string, SettingsField>, edits: Edits): FieldShapeProblem[] {
+  const problems: FieldShapeProblem[] = []
+  for (const [key, change] of Object.entries(edits)) {
+    if (change.unset) continue
+    const spec = specs.get(patternOf(change.path))
+    const message = patternProblem(spec, String(change.value ?? ''))
+    if (message !== null) problems.push({ key, label: spec?.label ?? humanize(key.split('.').pop() ?? key), message })
+  }
+  return problems
+}
+
+/**
+ * The box, and the shape complaint under it once focus has left it.
+ *
+ * A REAL COMPONENT, and one of only two in this file — see the note at the top about why the rest
+ * are functions. The reason it can be one is the reason it has to be: it is declared at module
+ * level, so its identity is stable and the input keeps focus, and it needs state of its own
+ * (`touched`) that no caller should have to hold. Complaining while somebody is still typing
+ * `us-` would be an editor arguing with a half-written word.
+ */
+function ShapedTextInput({
+  id,
+  type,
+  value,
+  placeholder,
+  describedBy,
+  problem,
+  onChange,
+}: {
+  id: string
+  type: 'text' | 'number'
+  value: string
+  placeholder: string
+  describedBy: string | undefined
+  problem: string | null
+  onChange: (raw: string) => void
+}) {
+  const [touched, setTouched] = useState(false)
+  const showing = touched && problem !== null
+  return (
+    <>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        aria-describedby={showing ? `${id}-shape` : describedBy}
+        aria-invalid={showing || undefined}
+        placeholder={placeholder}
+        onBlur={() => setTouched(true)}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {showing && (
+        <p className="error settings-field-error" id={`${id}-shape`} data-shape-problem={id}>
+          {problem}
+        </p>
+      )}
+    </>
+  )
+}
+
 /**
  * `extra` is drawn under the box, inside the same form group.
  *
@@ -230,6 +349,7 @@ export function textField(
   extra?: ReactNode,
 ): ReactNode {
   const key = keyOf(path)
+  const pattern = patternOf(path)
   const fallback = valueAt(ctx.defaults, path)
   const shown = shownText(ctx, path)
 
@@ -238,14 +358,14 @@ export function textField(
     path,
     label,
     <>
-      <input
+      <ShapedTextInput
         id={key}
         type={type}
         value={shown}
-        aria-describedby={helpId(ctx, patternOf(path), key)}
+        describedBy={helpId(ctx, pattern, key)}
         placeholder={fallback === undefined ? '' : `default: ${String(fallback)}`}
-        onChange={(e) => {
-          const raw = e.target.value
+        problem={patternProblem(ctx.specs.get(pattern), shown)}
+        onChange={(raw) => {
           // An emptied box says nothing about the field, which is how the file gets back to the
           // default rather than to an empty string.
           if (raw === '') return ctx.setEdit(path, { path, unset: true })
@@ -499,6 +619,103 @@ export function secretField(
 }
 
 /**
+ * "Use my current IP" — the button that stops the reader leaving the browser to run `curl`.
+ *
+ * THE HELP TEXT ALREADY SAID `your own address as a /32 is the usual answer`, and a first-contact
+ * test showed what that costs: the reader knew exactly what to type and had no way to find out
+ * what it was, so they left the page, ran `curl` against a what-is-my-address service, and came
+ * back. This button asks CORE, which knows already.
+ *
+ * IT FILLS THE BOX AND STOPS THERE. It does not add the entry and it does not save: this is a
+ * firewall rule, the reader gets to read it before it becomes one, and Add stays the deliberate
+ * act it has always been.
+ *
+ * THE TWO ANSWERS ARE LABELLED DIFFERENTLY BECAUSE THEY ARE DIFFERENT FACTS. On the usual
+ * installation the browser and the server are the same machine, so the connection core sees comes
+ * from loopback — worthless in a cloud firewall — and core answers instead with the address the
+ * internet sees THIS COMPUTER at, having asked a public service itself. That is very probably the
+ * right answer and it is not the same claim, so it says so out loud rather than quietly handing
+ * back a different number than the one it was asked for.
+ *
+ * A SECOND REAL COMPONENT, for the reason `ShapedTextInput` is one: it needs state of its own and
+ * is declared at module level, so nothing remounts.
+ */
+function CidrAddRow({
+  cloud,
+  draft,
+  onDraft,
+  onAdd,
+}: {
+  cloud: string
+  draft: string
+  onDraft: (typed: string) => void
+  onAdd: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
+
+  async function lookUp() {
+    setBusy(true)
+    setNote(null)
+    setFailure(null)
+    try {
+      const { ip, source } = await getMyIp()
+      onDraft(`${ip}/32`)
+      setNote(
+        source === 'public'
+          ? `${ip} is your public address as seen from this computer. Check it, then press Add.`
+          : `${ip} is the address this browser reached Rocky Surf from. Check it, then press Add.`,
+      )
+    } catch (err) {
+      // NEVER SILENTLY NOTHING. A button that fills no box and says nothing reads as broken, and
+      // core's sentence names which of the two lookups failed and what to do instead.
+      setFailure(
+        err instanceof ApiError ? err.detail : 'Rocky Surf could not work out your address. Type the network in yourself.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="settings-cidr-add">
+        <input
+          type="text"
+          aria-label={`Add a network for ${cloud}`}
+          placeholder="203.0.113.7/32"
+          value={draft}
+          onChange={(e) => onDraft(e.target.value)}
+        />
+        <button type="button" onClick={onAdd} disabled={draft.trim() === ''}>
+          Add
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busy}
+          onClick={() => void lookUp()}
+          data-testid={`use-my-ip-${cloud}`}
+        >
+          {busy ? 'Looking…' : 'Use my current IP'}
+        </button>
+      </div>
+      {note && (
+        <p className="hint" data-my-ip-note={cloud} role="status">
+          {note}
+        </p>
+      )}
+      {failure && (
+        <p className="error" data-my-ip-error={cloud} role="alert">
+          {failure}
+        </p>
+      )}
+    </>
+  )
+}
+
+/**
  * The networks allowed to reach SSH on one cloud (issue #304).
  *
  * A hand-written control rather than the generic `stringList` fallback, because this list is the
@@ -586,21 +803,12 @@ export function cidrListField(ctx: FieldsContext, cloud: string, label: string):
             ))}
           </ul>
         )}
-        <div className="settings-cidr-add">
-          <input
-            type="text"
-            aria-label={`Add a network for ${cloud}`}
-            placeholder="203.0.113.7/32"
-            value={draft}
-            onChange={(e) => {
-              const typed = e.target.value
-              ctx.setCidrDrafts((drafts) => ({ ...drafts, [key]: typed }))
-            }}
-          />
-          <button type="button" onClick={addDraft} disabled={draft.trim() === ''}>
-            Add
-          </button>
-        </div>
+        <CidrAddRow
+          cloud={cloud}
+          draft={draft}
+          onDraft={(typed) => ctx.setCidrDrafts((drafts) => ({ ...drafts, [key]: typed }))}
+          onAdd={addDraft}
+        />
       </fieldset>
       {spec.warning && <p className="hint settings-warning">{spec.warning}</p>}
       {ctx.fieldErrors[key] && <p className="error">{ctx.fieldErrors[key]}</p>}
@@ -610,6 +818,191 @@ export function cidrListField(ctx: FieldsContext, cloud: string, label: string):
         an ordinary boolean field, so its help and warning come from core.
       */}
       {pending.includes('0.0.0.0/0') && boolField(ctx, ['providers', cloud, 'allowAllCidr'], 'Allow all CIDR')}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------- the blank form a list's Add reveals */
+
+/**
+ * One box of a list entry, as the page that draws the list describes it.
+ *
+ * A repeat of core's `SettingsList.itemFields` with the label resolved, which is the shape both
+ * callers already had.
+ */
+export interface ListItemField {
+  name: string
+  label: string
+  secret?: boolean
+  /** The variable name shown as a placeholder in a credential box — see `lib/envRef.ts`. */
+  example?: string
+}
+
+/**
+ * A list's boxes, with the label the inventory carries for each.
+ *
+ * The label the inventory carries when it has one — a Provider that DECLARED this list wrote
+ * "Admin login" and "Host key fingerprint", and humanizing the key would put "User" and
+ * "Fingerprint" over boxes whose own sentences say otherwise (ADR-0027).
+ */
+export function listItemFields(
+  list: { path: string; itemFields: readonly string[] },
+  specs: Map<string, SettingsField>,
+): ListItemField[] {
+  return list.itemFields.map((name) => {
+    const spec = specs.get(`${list.path}.*.${name}`)
+    return {
+      name,
+      label: spec?.label ?? humanize(name),
+      ...(spec?.kind === 'secret' ? { secret: true } : {}),
+    }
+  })
+}
+
+/**
+ * THE TWO REFUSALS A BLANK LIST FORM MAKES FOR ITSELF, before anything is sent.
+ *
+ * Both are the SERVER's rules, said where the person is looking. A missing required box and a
+ * name already taken are refusals core would make anyway, keyed to the whole list, arriving
+ * after a round trip — while the person is looking at the form they just filled in.
+ */
+export function refuseListDraft(
+  fields: readonly ListItemField[],
+  add: { noun: string; required: readonly string[] },
+  values: Record<string, string>,
+  existingLabels: readonly string[],
+  labelField?: string,
+): string | null {
+  const typed = (name: string) => (values[name] ?? '').trim()
+  const missing = fields.find((f) => add.required.includes(f.name) && typed(f.name) === '')
+  if (missing) return `A new ${add.noun} needs the ${missing.label.toLowerCase()} filled in first.`
+  const title = labelField ? typed(labelField) : ''
+  if (labelField && existingLabels.includes(title)) {
+    return `There is already a ${add.noun} called “${title}” — give this one a different name.`
+  }
+  return null
+}
+
+/**
+ * The entry the form writes: only the boxes that were actually typed in.
+ *
+ * A box left empty says nothing, so an optional field is ABSENT from the file and a schema
+ * default (a host's port, a source's trust) applies — the entry a person would have written by
+ * hand.
+ */
+export function listDraftValue(
+  fields: readonly ListItemField[],
+  values: Record<string, string>,
+): Record<string, unknown> {
+  const entry: Record<string, unknown> = {}
+  for (const f of fields) {
+    const raw = (values[f.name] ?? '').trim()
+    if (raw === '') continue
+    const asNumber = Number(raw)
+    entry[f.name] = f.name === 'port' && Number.isFinite(asNumber) ? asNumber : raw
+  }
+  return entry
+}
+
+/**
+ * THE BLANK FORM AN "Add" CLICK REVEALS — the one implementation of it (ADR-0019, rsui-9sc).
+ *
+ * IT LIVES HERE BECAUSE OF WHAT HAPPENED THE LAST TIME IT DID NOT. ADR-0019 said the saved-keys
+ * list reused the Settings page's list machinery when no such machinery existed, and the page
+ * shipped with two headings and no editor. The amendment made that claim true. The setup wizard
+ * now asks for an SSH key as well, and a second key form written for it would be the same
+ * mistake with the same shape: a second idea of what a key box accepts, a second set of labels,
+ * a second place for the private-key refusal to go missing.
+ *
+ * SO NOTHING ABOUT A KEY IS IN HERE. The boxes, their labels, their help, their placeholders and
+ * the refusals all come from core's `SettingsList` and the field inventory behind it, exactly as
+ * they do on the Settings page — this draws whatever list it is handed.
+ *
+ * NOTHING IS WRITTEN UNTIL THE FORM'S OWN SAVE. The draft is not an entry and has no index, so a
+ * half-typed form cannot dirty the list, block a Remove, or be carried off by a page's bulk Save.
+ */
+export function ListDraftForm({
+  listKey,
+  draftPrefix,
+  add,
+  fields,
+  specs,
+  values,
+  refusal,
+  fieldErrors,
+  saving,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  /** The list's dotted path — `ssh.keys`. Also the `data-list-draft` a test finds the form by. */
+  listKey: string
+  /** The slot this form is writing to — `ssh.keys.2` — which is what the server answers about. */
+  draftPrefix: string
+  add: { noun: string; example: Record<string, string | number | boolean>; required: readonly string[] }
+  fields: readonly ListItemField[]
+  specs: Map<string, SettingsField>
+  values: Record<string, string>
+  /** The form's own refusal, from `refuseListDraft`. */
+  refusal: string | null
+  /** The server's field-level refusals, keyed by full path — a private key lands here. */
+  fieldErrors: Record<string, string>
+  saving: boolean
+  onChange: (name: string, value: string) => void
+  onSubmit: () => void
+  onCancel: () => void
+}) {
+  const draftId = (name: string) => `${listKey}.new.${name}`
+  return (
+    <div className="settings-entry" data-list-draft={listKey}>
+      <h3>New {add.noun}</h3>
+      {fields.map((f) => {
+        const id = draftId(f.name)
+        const specPath = `${listKey}.*.${f.name}`
+        const serverError = fieldErrors[`${draftPrefix}.${f.name}`]
+        return (
+          <div className="form-group" data-field={id} key={id}>
+            <label htmlFor={id}>{f.label}</label>
+            {helpNode(specs, specPath, id)}
+            <input
+              id={id}
+              type={f.name === 'port' ? 'number' : 'text'}
+              spellCheck={false}
+              autoComplete="off"
+              value={values[f.name] ?? ''}
+              placeholder={String(add.example[f.name] ?? '')}
+              aria-describedby={helpIdOf(specs, specPath, id)}
+              onChange={(e) => onChange(f.name, e.target.value)}
+            />
+            {serverError && <p className="error settings-field-error">{serverError}</p>}
+          </div>
+        )
+      })}
+      {refusal && (
+        <p className="error settings-field-error" data-draft-refusal={listKey}>
+          {refusal}
+        </p>
+      )}
+      {/* A refusal of the entry as a whole — or of a box this form does not draw. */}
+      {Object.entries(fieldErrors)
+        .filter(
+          ([key]) =>
+            (key === draftPrefix || key.startsWith(`${draftPrefix}.`)) &&
+            !fields.some((f) => key === `${draftPrefix}.${f.name}`),
+        )
+        .map(([key, message]) => (
+          <p className="error settings-field-error" key={key}>
+            {message}
+          </p>
+        ))}
+      <div className="settings-entry-actions">
+        <button type="button" className="btn-primary" disabled={saving} onClick={onSubmit}>
+          Add this {add.noun}
+        </button>
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }

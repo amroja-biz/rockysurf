@@ -198,6 +198,62 @@ describe('a declared shipped provider (Hetzner)', () => {
   })
 })
 
+/**
+ * A DECLARED SHAPE BECOMES A WHOLE SENTENCE HERE, and nowhere else.
+ *
+ * The provider declares `pattern` and an `example`; the cloud's name is on its `settings.title`
+ * and the box's name is the field's own `label`. Only the inventory has all three at once, so the
+ * message is assembled here — which is what keeps every regular expression and every cloud's name
+ * out of the web package, and what makes a Provider from outside this repository behave the same
+ * way for one line of declaration.
+ */
+describe('a declared shape hint (the follow-up to the first-contact test)', () => {
+  const withPattern = (settings: Partial<ProviderSettings['fields'][number]>, title = 'AWS'): ProviderSettings => ({
+    title,
+    help: 'A cloud with one box whose shape is worth saying out loud.',
+    fields: [
+      { name: 'region', kind: 'string', label: 'Region', help: 'Which region new instances are created in.', ...settings },
+    ],
+    offering: { noun: 'instance type', example: 't4g.medium' },
+  })
+
+  const specOf = (settings: ProviderSettings) =>
+    buildSettingsInventory({
+      tree: tree({}),
+      describeProvider: (id: string) => (id === 'aws' ? { displayName: settings.title, settings } : undefined),
+    }).specFor(['providers', 'aws', 'region'])
+
+  it('carries the pattern and a sentence built from the title, the label and the example', () => {
+    const spec = specOf(withPattern({ pattern: '^[a-z]{2}(-[a-z]+)+-\\d$', example: 'us-east-1' }))
+    expect(spec?.pattern).toBe('^[a-z]{2}(-[a-z]+)+-\\d$')
+    expect(spec?.patternMessage).toBe('That does not look like an AWS region, for example us-east-1.')
+  })
+
+  it('gets the article right from the cloud’s own name', () => {
+    const google = specOf(withPattern({ pattern: '^[a-z]+$', example: 'zone' }, 'Google Cloud'))
+    expect(google?.patternMessage).toBe('That does not look like a Google Cloud region, for example zone.')
+    const azure = specOf(withPattern({ pattern: '^[a-z]+$', example: 'eastus' }, 'Azure'))
+    expect(azure?.patternMessage).toBe('That does not look like an Azure region, for example eastus.')
+  })
+
+  /*
+    A pattern with no example has no sentence to print, and an unexplained complaint under a box is
+    worse than the save's own refusal — which at least says what it wanted. Conformance refuses the
+    pair, so this is the belt to that braces.
+  */
+  it('carries neither half when the declaration gave no example to name', () => {
+    const spec = specOf(withPattern({ pattern: '^[a-z]{2}-\\d$' }))
+    expect(spec?.pattern).toBeUndefined()
+    expect(spec?.patternMessage).toBeUndefined()
+  })
+
+  it('leaves a field that declared no pattern with neither', () => {
+    const spec = specOf(withPattern({ example: 'us-east-1' }))
+    expect(spec?.pattern).toBeUndefined()
+    expect(spec?.patternMessage).toBeUndefined()
+  })
+})
+
 describe('the other three shipped providers, declared (issue #370)', () => {
   const inv = buildSettingsInventory({ tree: tree({}), describeProvider })
 

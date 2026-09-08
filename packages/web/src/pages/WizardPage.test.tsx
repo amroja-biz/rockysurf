@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthProvider } from '../contexts/AuthContext'
@@ -83,6 +83,22 @@ const settingsView: SettingsView = {
   values: { providers: { hetzner: { token: { secret: true, state: 'unset' } }, aws: {} } },
   defaults: {},
   fields: [
+    // The saved-keys list core has declared since ADR-0019, which the SSH-key step draws its form
+    // from — the same declaration the Settings page's list renderer reads.
+    {
+      path: 'ssh.keys.*.name',
+      kind: 'string',
+      writable: true,
+      appliesAt: 'save',
+      help: 'What you will call this public key when the New Server page offers it.',
+    },
+    {
+      path: 'ssh.keys.*.publicKey',
+      kind: 'string',
+      writable: true,
+      appliesAt: 'save',
+      help: 'The PUBLIC key itself: one line, the whole contents of a `.pub` file.',
+    },
     {
       path: 'providers.hetzner.enabled',
       kind: 'boolean',
@@ -120,6 +136,10 @@ const settingsView: SettingsView = {
       kind: 'string',
       label: 'Region',
       example: 'us-east-1',
+      // The shape the Provider declared and the sentence core assembled from it — the wizard
+      // writes neither, which is what makes an unshipped cloud behave the same way.
+      pattern: '^[a-z]{2}(-[a-z]+)+-\\d$',
+      patternMessage: 'That does not look like an AWS region, for example us-east-1.',
       writable: true,
       appliesAt: 'save',
       help: 'Which AWS region new instances are created in.',
@@ -154,7 +174,15 @@ const settingsView: SettingsView = {
     { id: 'providers.hetzner', title: 'Hetzner Cloud', help: 'Servers at Hetzner Cloud.' },
     { id: 'providers.aws', title: 'AWS', help: 'EC2 instances in one region.' },
   ],
-  lists: [],
+  lists: [
+    {
+      path: 'ssh.keys',
+      itemFields: ['name', 'publicKey'],
+      add: { noun: 'key', example: { name: 'my-laptop', publicKey: '' }, required: ['name', 'publicKey'] },
+      labelField: 'name',
+      empty: 'None yet.',
+    },
+  ],
   drifted: false,
   pendingRestart: [],
   restartHint: 'Stop Rocky Surf and start it again.',
@@ -179,14 +207,26 @@ function renderWizard() {
 
 const click = (testId: string) => fireEvent.click(screen.getByTestId(testId))
 
-/** Welcome → Your account → Choose your clouds, the way a first-time user walks it. */
+/** Welcome → Your account → Your SSH key → Choose your clouds, the way a first-time user walks it. */
 async function reachCloudsStep() {
   renderWizard()
   await screen.findByTestId('next')
   click('next')
   await screen.findByRole('heading', { name: 'Your account' })
   click('next')
+  await screen.findByRole('heading', { name: 'Your SSH key' })
+  click('next')
   await screen.findByRole('heading', { name: 'Choose your clouds' })
+}
+
+/** Welcome → Your account → Your SSH key, which is where the key question is asked. */
+async function reachKeyStep() {
+  renderWizard()
+  await screen.findByTestId('next')
+  click('next')
+  await screen.findByRole('heading', { name: 'Your account' })
+  click('next')
+  await screen.findByRole('heading', { name: 'Your SSH key' })
 }
 
 /** …and then pick one, which is what makes its panel appear in place. */
@@ -210,7 +250,7 @@ afterEach(() => {
 })
 
 describe('the walkthrough, forwards and backwards', () => {
-  it('goes welcome → account → clouds → done', async () => {
+  it('goes welcome → account → SSH key → clouds → done', async () => {
     renderWizard()
 
     expect(await screen.findByRole('heading', { name: 'Welcome' })).toBeTruthy()
@@ -218,9 +258,23 @@ describe('the walkthrough, forwards and backwards', () => {
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeTruthy()
     expect(screen.getByText('admin')).toBeTruthy()
     click('next')
+    expect(await screen.findByRole('heading', { name: 'Your SSH key' })).toBeTruthy()
+    click('next')
     expect(await screen.findByRole('heading', { name: 'Choose your clouds' })).toBeTruthy()
     click('continue')
     expect(await screen.findByRole('heading', { name: 'Not ready yet' })).toBeTruthy()
+  })
+
+  it('lists every step in the tabs, in the order they are walked', async () => {
+    renderWizard()
+    const steps = await screen.findByTestId('wizard-steps')
+    expect([...steps.children].map((li) => li.textContent)).toEqual([
+      'Welcome',
+      'Your account',
+      'Your SSH key',
+      'Choose your clouds',
+      'Done',
+    ])
   })
 
   it('has a Back button on every step after Welcome, and it goes back', async () => {
@@ -237,9 +291,16 @@ describe('the walkthrough, forwards and backwards', () => {
     click('next')
     await screen.findByRole('heading', { name: 'Your account' })
     click('next')
-    await screen.findByRole('heading', { name: 'Choose your clouds' })
+    await screen.findByRole('heading', { name: 'Your SSH key' })
     click('back')
     expect(await screen.findByRole('heading', { name: 'Your account' })).toBeTruthy()
+
+    click('next')
+    await screen.findByRole('heading', { name: 'Your SSH key' })
+    click('next')
+    await screen.findByRole('heading', { name: 'Choose your clouds' })
+    click('back')
+    expect(await screen.findByRole('heading', { name: 'Your SSH key' })).toBeTruthy()
   })
 
   it('comes back from Done to the clouds step, so a fix is one click away', async () => {
@@ -255,6 +316,130 @@ describe('the walkthrough, forwards and backwards', () => {
     vi.mocked(getCurrentUser).mockRejectedValue(new ApiError(401, 'Unauthorized'))
     renderWizard()
     expect(await screen.findByText('LOGIN')).toBeTruthy()
+  })
+})
+
+/**
+ * THE QUESTION NOBODY WAS ASKED UNTIL THE CREATE FORM.
+ *
+ * Both answers already worked — a generated key per Server (ADR-0008) and saved public keys by
+ * name (ADR-0019) — and neither was ever put to the first-time user, so they met the question for
+ * the first time on the form that creates a billable machine. The step asks it once, and either
+ * answer is optional.
+ */
+describe('the SSH key step', () => {
+  const KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyForTheTestSuiteOnly laptop'
+
+  it('asks the question in plain language and offers exactly two answers', async () => {
+    await reachKeyStep()
+    expect(screen.getByText(/Do you already have one you want to use\?/)).toBeTruthy()
+    expect(screen.getByTestId('key-paste').textContent).toContain('Yes, I’ll paste my public key')
+    expect(screen.getByTestId('key-generate').textContent).toContain('No, make one for me')
+    // Nothing is required here, and the step says so rather than leaving it to be inferred.
+    expect(screen.getByTestId('key-optional').textContent).toContain('Nothing here is required')
+    expect(screen.getByTestId('next').textContent).toBe('Next')
+  })
+
+  it('says what happens if Rocky Surf makes the key, and asks for nothing', async () => {
+    await reachKeyStep()
+    click('key-generate')
+    const said = (await screen.findByTestId('key-generate-explainer')).textContent ?? ''
+    expect(said).toContain('creates a fresh key for each Server')
+    expect(said).toContain('download the private half from that Server’s own page')
+    expect(screen.queryByTestId('key-paste-form')).toBeNull()
+  })
+
+  it('shows where a public key lives, and the command to print it', async () => {
+    await reachKeyStep()
+    click('key-paste')
+    const form = await screen.findByTestId('key-paste-form')
+    expect(form.textContent).toContain('~/.ssh/id_ed25519.pub')
+    expect(form.textContent).toContain('cat ~/.ssh/id_ed25519.pub')
+    expect(within(form).getByRole('button', { name: 'Copy' })).toBeTruthy()
+  })
+
+  it('saves a pasted key into ssh.keys through the settings route, and shows it saved', async () => {
+    vi.mocked(saveSettings).mockResolvedValue({
+      ...savedView,
+      values: { ...settingsView.values, ssh: { keys: [{ name: 'laptop', publicKey: KEY }] } },
+    })
+    await reachKeyStep()
+    click('key-paste')
+
+    // The Settings page's own form, drawn from core's `ssh.keys` declaration — not a second one.
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'laptop' } })
+    fireEvent.change(screen.getByLabelText('Public Key'), { target: { value: KEY } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this key' }))
+
+    await waitFor(() => expect(vi.mocked(saveSettings)).toHaveBeenCalled())
+    const [mtime, changes] = vi.mocked(saveSettings).mock.calls[0]!
+    expect(mtime).toBe(1000)
+    expect(changes).toEqual([{ path: ['ssh', 'keys', 0], value: { name: 'laptop', publicKey: KEY } }])
+
+    const saved = await screen.findByTestId('saved-keys')
+    expect(saved.textContent).toContain('laptop')
+    expect(saved.textContent).toContain('saved')
+  })
+
+  it('refuses a private key in core’s own words, under the box it was pasted into', async () => {
+    vi.mocked(saveSettings).mockRejectedValue(
+      new ApiError(400, 'Bad Request', {
+        error: 'ssh.keys.0.publicKey: that is a PRIVATE key',
+        issues: [
+          {
+            path: 'ssh.keys.0.publicKey',
+            message:
+              'that is a PRIVATE key, and it must never be pasted here or stored by Rocky Surf. Paste the PUBLIC half instead.',
+          },
+        ],
+      }),
+    )
+    await reachKeyStep()
+    click('key-paste')
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'laptop' } })
+    fireEvent.change(screen.getByLabelText('Public Key'), {
+      target: { value: '-----BEGIN OPENSSH PRIVATE KEY-----' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this key' }))
+
+    // Core's sentence, verbatim, under the box — the parser names the private half before it
+    // checks anything else, and rewording it would give one mistake two sentences.
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-field="ssh.keys.new.publicKey"] .settings-field-error')?.textContent,
+      ).toContain('that is a PRIVATE key'),
+    )
+    expect(screen.queryByTestId('saved-keys')).toBeNull()
+  })
+
+  it('refuses an empty box at the form, before anything is sent', async () => {
+    await reachKeyStep()
+    click('key-paste')
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'laptop' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add this key' }))
+
+    expect(document.querySelector('[data-draft-refusal="ssh.keys"]')?.textContent).toContain(
+      'needs the public key filled in first',
+    )
+    expect(vi.mocked(saveSettings)).not.toHaveBeenCalled()
+  })
+
+  it('lists keys that are already saved, and offers to add another', async () => {
+    vi.mocked(getSettings).mockResolvedValue({
+      ...settingsView,
+      values: { ...settingsView.values, ssh: { keys: [{ name: 'laptop', publicKey: KEY }] } },
+    })
+    await reachKeyStep()
+
+    expect((await screen.findByTestId('saved-keys')).textContent).toContain('laptop')
+    expect(screen.getByTestId('key-paste').textContent).toContain('Add another key')
+  })
+
+  it('says so when this installation offers no saved-key list at all', async () => {
+    vi.mocked(getSettings).mockResolvedValue({ ...settingsView, lists: [] })
+    await reachKeyStep()
+    click('key-paste')
+    expect((await screen.findByTestId('no-key-form')).textContent).toContain('paste a key on the New Server page')
   })
 })
 
@@ -325,13 +510,37 @@ describe('choosing a cloud sets it up in place', () => {
       }),
     )
     await pickCloud('aws')
-    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'nowhere-1' } })
+    // A region SHAPED like one and sold by nobody: the page has nothing to say about it, which is
+    // the point — refusing a value is the server's job and this is what its refusal looks like.
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'xx-nowhere-1' } })
     click('save-cloud')
 
     expect((await screen.findByTestId('save-error')).textContent).toContain('providers.aws.region: unknown region')
     expect(document.querySelector('[data-field="providers.aws.region"] .settings-field-error')?.textContent).toBe(
       'unknown region',
     )
+  })
+
+  /**
+   * A mis-click typed `sandbox` into AWS's Region box in the first-contact test and nothing said
+   * a word about it until the save came back refused, several fields later. The Provider declares
+   * the shape; the wizard neither knows nor writes it.
+   */
+  it('will not save a Region that does not look like one, and says which box is wrong', async () => {
+    await pickCloud('aws')
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'sandbox' } })
+
+    expect((screen.getByTestId('save-cloud') as HTMLButtonElement).disabled).toBe(true)
+    // The button being off is visible; the REASON has to be too, or it reads as broken.
+    expect((await screen.findByTestId('shape-problems')).textContent).toContain('Region')
+
+    fireEvent.blur(screen.getByLabelText('Region'))
+    expect(screen.getByText('That does not look like an AWS region, for example us-east-1.')).toBeTruthy()
+
+    // And fixing it hands the button back.
+    fireEvent.change(screen.getByLabelText('Region'), { target: { value: 'eu-west-1' } })
+    expect((screen.getByTestId('save-cloud') as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.queryByTestId('shape-problems')).toBeNull()
   })
 
   it('refuses a pasted token in a credential box before anything is sent', async () => {
@@ -387,6 +596,51 @@ describe('the Check button says what it does and shows what it found', () => {
     const result = await screen.findByTestId('check-result-aws')
     expect(result.getAttribute('data-check-status')).toBe('not-enabled')
     expect(result.textContent).toContain('AWS is not switched on yet')
+  })
+
+  /**
+   * "Didn't I just do this?" — the first-contact test pressed the full-sized Check button that sat
+   * under the green "AWS is ready" line the SAVE had already produced, to find out whether the
+   * save's check had counted. One screen, one live question: once a cloud has said yes, the
+   * control shrinks to a "Check again" link beside its own answer.
+   */
+  it('drops the Check button once the cloud has said yes, leaving a Check again link', async () => {
+    vi.mocked(checkProviderCredentials).mockResolvedValue({
+      checked: [{ provider: 'aws', displayName: 'AWS', status: 'verified', detail: '' }],
+    })
+    await pickCloud('aws')
+    expect(screen.getByTestId('check-aws').textContent).toBe('Check AWS')
+
+    click('save-cloud')
+    expect((await screen.findByTestId('check-result-aws')).textContent).toContain('AWS is ready')
+
+    // The big button is gone; the way to ask again is a link inside the answer itself.
+    expect(screen.getByTestId('check-aws').textContent).toBe('Check again')
+    expect(screen.getByTestId('check-result-aws').contains(screen.getByTestId('check-aws'))).toBe(true)
+  })
+
+  it('keeps the Check button while the cloud is not ready, which is when it is needed', async () => {
+    vi.mocked(checkProviderCredentials).mockResolvedValue({
+      checked: [{ provider: 'aws', displayName: 'AWS', status: 'failed', detail: 'no credentials' }],
+    })
+    await pickCloud('aws')
+    click('save-cloud')
+
+    await screen.findByTestId('check-result-aws')
+    expect(screen.getByTestId('check-aws').textContent).toBe('Check AWS')
+  })
+
+  it('still asks the cloud when Check again is pressed', async () => {
+    vi.mocked(checkProviderCredentials).mockResolvedValue({
+      checked: [{ provider: 'aws', displayName: 'AWS', status: 'verified', detail: '' }],
+    })
+    await pickCloud('aws')
+    click('check-aws')
+    await screen.findByTestId('check-result-aws')
+
+    vi.mocked(checkProviderCredentials).mockClear()
+    click('check-aws')
+    await waitFor(() => expect(vi.mocked(checkProviderCredentials)).toHaveBeenCalledWith(['aws']))
   })
 
   it('says so when the check itself could not run', async () => {
@@ -456,6 +710,24 @@ describe('the Done step reports the real state, and never points backwards in pr
     click('continue')
     expect(await screen.findByRole('heading', { name: 'You are ready' })).toBeTruthy()
     expect(document.querySelector('[data-summary-cloud="hetzner"]')?.getAttribute('data-summary-ready')).toBe('true')
+  })
+
+  /** The same control, so the two screens cannot disagree about when a Check is still a question. */
+  it('shrinks a ready cloud’s Check to a link here too, and keeps the button on one that is not', async () => {
+    vi.mocked(getSetupState).mockResolvedValue(ready)
+    vi.mocked(checkProviderCredentials).mockResolvedValue({
+      checked: [{ provider: 'hetzner', displayName: 'Hetzner Cloud', status: 'verified', detail: '' }],
+    })
+    await reachCloudsStep()
+    click('continue')
+    await screen.findByRole('heading', { name: 'You are ready' })
+    expect(screen.getByTestId('check-done-hetzner').textContent).toBe('Check again')
+
+    vi.mocked(checkProviderCredentials).mockResolvedValue({
+      checked: [{ provider: 'hetzner', displayName: 'Hetzner Cloud', status: 'failed', detail: 'token rejected' }],
+    })
+    click('check-done-hetzner')
+    await waitFor(() => expect(screen.getByTestId('check-done-hetzner').textContent).toBe('Check Hetzner Cloud'))
   })
 
   it('does not claim readiness core built but no cloud has confirmed', async () => {

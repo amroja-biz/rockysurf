@@ -59,6 +59,27 @@ export interface ProviderSettingField {
    * before parsing. For an `sshCidrList`, one CIDR.
    */
   example?: string
+  /**
+   * THE SHAPE A TYPED VALUE HAS TO HAVE, so the page can say so before the save does.
+   *
+   * A `string` field only, and a source-form regular expression — `'^[a-z]{2}(-[a-z]+)+-\\d$'`,
+   * anchored, matched against the whole box. It exists because of one thing a first-contact test
+   * caught: a mis-click put `sandbox` in AWS's Region box and nothing said a word about it until
+   * the save came back refused, several fields later, with the reader no longer looking at the
+   * box that was wrong.
+   *
+   * IT IS A HINT ABOUT SHAPE, NEVER A VALIDATOR. `configSchema` remains the only thing that
+   * accepts or refuses a value, unchanged and unweakened; this is the editor being able to point
+   * at the right box a second after the typo instead of a minute later. So keep it LOOSE — a
+   * pattern that refuses a region the cloud has since added is worse than no pattern at all,
+   * because it stops a save the schema would have taken.
+   *
+   * DECLARING ONE REQUIRES `example`: the message the page prints is "that does not look like an
+   * AWS region, for example us-east-1", and the second half of that sentence is this field's own
+   * example. Conformance checks the example matches the pattern, so the page can never hold a
+   * reader to a shape the provider's own example breaks.
+   */
+  pattern?: string
 }
 
 /** One field of a list entry. */

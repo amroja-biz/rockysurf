@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppEnv } from '../app.js'
 import type { Config } from '../config/index.js'
 import type { ProviderRegistry } from '../providers/registry.js'
@@ -205,5 +205,148 @@ describe('pushing the SSH whitelist', () => {
       }),
     )
     expect((await syncing(app)).status).toBe(403)
+  })
+})
+
+/**
+ * `GET /api/v1/network/my-ip` — the address behind the "Use my current IP" button.
+ *
+ * Two branches and they are genuinely different answers, so both are pinned here: the socket knew
+ * (a browser on another machine, reaching this one over the internet) and the socket did not (the
+ * ordinary installation, where the page is open on the machine running Rocky Surf and the
+ * connection comes from loopback). The outbound call is mocked — a test that reached
+ * checkip.amazonaws.com would be a test of somebody's network.
+ */
+describe('working out the address for the SSH allow-list', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** The bindings `@hono/node-server` puts on `c.env`, which is where the socket address lives. */
+  const from = (address: string | undefined) => ({
+    incoming: { socket: { remoteAddress: address, remotePort: 51234, remoteFamily: address?.includes(':') ? 'IPv6' : 'IPv4' } },
+  })
+
+  function ipApp(address: string | undefined) {
+    const app = new Hono<AppEnv>()
+    app.use('*', async (c, next) => {
+      c.set('user', { isAdmin: true } as never)
+      await next()
+    })
+    app.route(
+      '/',
+      createNetworkRoutes({
+        registry: { ids: () => [], get: () => undefined } as unknown as ProviderRegistry,
+        inForce: () => ({}) as Config,
+        configPath: '/nonexistent',
+      }),
+    )
+    return () => app.request('/api/v1/network/my-ip', {}, from(address) as never)
+  }
+
+  it('answers with the socket’s own address when the browser is somewhere else', async () => {
+    const outbound = vi.fn()
+    vi.stubGlobal('fetch', outbound)
+
+    const response = await ipApp('203.0.113.7')()
+    expect(await response.json()).toEqual({ ip: '203.0.113.7', source: 'socket' })
+    // Nothing left this machine: the connection already carried the answer.
+    expect(outbound).not.toHaveBeenCalled()
+  })
+
+  it('unwraps the v4-mapped v6 form a dual-stack listener reports', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const response = await ipApp('::ffff:203.0.113.7')()
+    expect(await response.json()).toEqual({ ip: '203.0.113.7', source: 'socket' })
+  })
+
+  /**
+   * THE ORDINARY CASE. The page is open on the machine running Rocky Surf, so the socket says
+   * loopback — true, and a /32 of it would allow SSH from nowhere. Core asks a public service
+   * instead and LABELS the answer, so the page can say which of the two questions it answered.
+   */
+  it('asks a public service when the connection is loopback, and says that is what it did', async () => {
+    const outbound = vi.fn(async (_url: string) => new Response('198.51.100.4\n', { status: 200 }))
+    vi.stubGlobal('fetch', outbound)
+
+    const response = await ipApp('127.0.0.1')()
+    expect(await response.json()).toEqual({ ip: '198.51.100.4', source: 'public' })
+    expect(outbound.mock.calls[0]?.[0]).toBe('https://checkip.amazonaws.com')
+  })
+
+  it('does the same for a private address, which is just as useless in a cloud firewall', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('198.51.100.4', { status: 200 })))
+    const response = await ipApp('192.168.1.20')()
+    expect(await response.json()).toEqual({ ip: '198.51.100.4', source: 'public' })
+  })
+
+  it('says so, in a sentence, when neither answer could be had', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('getaddrinfo ENOTFOUND checkip.amazonaws.com')
+      }),
+    )
+
+    const response = await ipApp('::1')()
+    expect(response.status).toBe(500)
+    const body = (await response.json()) as { error: string }
+    // Never a blank answer: it names what it tried and what to do instead.
+    expect(body.error).toContain('checkip.amazonaws.com')
+    expect(body.error).toContain('ENOTFOUND')
+    expect(body.error).toContain('Type the network in yourself')
+  })
+
+  it('treats a service that answers with something other than an address as a failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>captive portal</html>', { status: 200 })))
+    const response = await ipApp('127.0.0.1')()
+    expect(response.status).toBe(500)
+    expect(((await response.json()) as { error: string }).error).toContain('did not answer with an address')
+  })
+
+  /**
+   * THE HEADER IS NOT EVIDENCE. This is a local tool with no proxy in front of it, so
+   * `X-Forwarded-For` carries nothing true — but it would carry whatever a caller typed, into a
+   * box whose next stop is a cloud firewall rule.
+   */
+  it('ignores X-Forwarded-For entirely — the socket is the only witness', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const app = new Hono<AppEnv>()
+    app.use('*', async (c, next) => {
+      c.set('user', { isAdmin: true } as never)
+      await next()
+    })
+    app.route(
+      '/',
+      createNetworkRoutes({
+        registry: { ids: () => [], get: () => undefined } as unknown as ProviderRegistry,
+        inForce: () => ({}) as Config,
+        configPath: '/nonexistent',
+      }),
+    )
+
+    const response = await app.request(
+      '/api/v1/network/my-ip',
+      { headers: { 'x-forwarded-for': '198.51.100.66', 'x-real-ip': '198.51.100.66' } },
+      from('203.0.113.7') as never,
+    )
+    expect(await response.json()).toEqual({ ip: '203.0.113.7', source: 'socket' })
+  })
+
+  it('turns a non-admin away, like everything else under /network', async () => {
+    const app = new Hono<AppEnv>()
+    app.use('*', async (c, next) => {
+      c.set('user', { isAdmin: false } as never)
+      await next()
+    })
+    app.route(
+      '/',
+      createNetworkRoutes({
+        registry: { ids: () => [], get: () => undefined } as unknown as ProviderRegistry,
+        inForce: () => ({}) as Config,
+        configPath: '/nonexistent',
+      }),
+    )
+    expect((await app.request('/api/v1/network/my-ip')).status).toBe(403)
   })
 })

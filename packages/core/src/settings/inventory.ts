@@ -148,7 +148,24 @@ function allowAllCidrField(id: string): FieldSpec {
   }
 }
 
-function declaredField(id: string, field: ProviderSettingField): FieldSpec {
+/**
+ * "That does not look like an AWS region, for example us-east-1."
+ *
+ * WRITTEN HERE BECAUSE THIS IS THE ONLY PLACE THAT HAS ALL THREE WORDS: the cloud's name is on
+ * the provider's `settings.title`, the field's name is its own `label`, and the shape is its
+ * `example`. The editor would otherwise have to know which cloud a path belongs to in order to
+ * name it — the per-provider knowledge in the web package that ADR-0027 exists to have deleted.
+ *
+ * `a`/`an` by first LETTER rather than by sound, which is right for every provider title a cloud
+ * is likely to have: "an AWS region", "an Azure location", "a Google Cloud zone", "a Hetzner
+ * Cloud location", "a DigitalOcean region".
+ */
+function patternMessageFor(title: string, label: string, example: string): string {
+  const article = /^[aeiou]/i.test(title) ? 'an' : 'a'
+  return `That does not look like ${article} ${title} ${label.toLowerCase()}, for example ${example}.`
+}
+
+function declaredField(id: string, field: ProviderSettingField, title: string): FieldSpec {
   return {
     path: `providers.${id}.${field.name}`,
     kind: field.kind,
@@ -157,6 +174,12 @@ function declaredField(id: string, field: ProviderSettingField): FieldSpec {
     help: field.help,
     label: field.label,
     ...(field.example !== undefined ? { example: field.example } : {}),
+    // A pattern with no example has no sentence to print, so it is not carried at all: an
+    // unexplained refusal under a box is worse than the save's own refusal, which at least says
+    // what it wanted. Conformance refuses the pair, so a shipped Provider cannot reach this.
+    ...(field.pattern !== undefined && field.example !== undefined
+      ? { pattern: field.pattern, patternMessage: patternMessageFor(title, field.label, field.example) }
+      : {}),
     ...(field.warning !== undefined ? { warning: field.warning } : {}),
     ...(field.reason !== undefined ? { reason: field.reason } : {}),
     ...(field.restartReason !== undefined ? { restartReason: field.restartReason } : {}),
@@ -211,7 +234,7 @@ function declaredRows(id: string, described: DescribedProvider & { settings: Pro
   const declared = new Set<string>(CORE_PROVIDER_FIELDS)
   const secrets = new Set<string>()
   for (const field of settings.fields) {
-    fields.push(declaredField(id, field))
+    fields.push(declaredField(id, field, settings.title))
     declared.add(field.name)
     if (field.kind === 'secret') secrets.add(field.name)
     if (field.kind === 'sshCidrList') {

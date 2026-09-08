@@ -77,6 +77,10 @@ export const gcpProviderFactory: ProviderFactory<GcpProviderConfig> = {
         kind: 'string',
         label: 'Zone',
         example: 'us-central1-a',
+        // us-central1-a, europe-west4-b, asia-northeast1-c. The mistake worth catching is the
+        // REGION — `us-central1` — which is one letter short of a zone and is what most of
+        // Google's own documentation shows.
+        pattern: '^[a-z]+-[a-z]+\\d-[a-z]$',
         help:
           'The single zone new instances are created in. The default is us-central1-a rather than -c, ' +
           'deliberately — arm64 (Tau T2A) exists in only eight zones, and us-central1-c is not one of ' +

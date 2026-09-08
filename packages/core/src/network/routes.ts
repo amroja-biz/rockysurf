@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
+import { getConnInfo } from '@hono/node-server/conninfo'
 import { Hono } from 'hono'
 import { parse as parseYaml } from 'yaml'
 import type { AppEnv } from '../app.js'
-import { forbidden, success } from '../http/responses.js'
+import { forbidden, serverError, success } from '../http/responses.js'
 import type { ProviderRegistry } from '../providers/registry.js'
 import type { Config } from '../config/index.js'
 
@@ -29,6 +30,60 @@ import type { Config } from '../config/index.js'
  * per-cloud report and nothing else — which is also the only shape that can honestly describe
  * "AWS updated, Azure updated, GCP refused".
  */
+/**
+ * Where `GET /api/v1/network/my-ip` looks the address up when the socket cannot answer.
+ *
+ * PLAIN TEXT, ONE LINE, and Amazon's because it is the one this product's own docs and the
+ * Server detail page already tell people to curl (`curl -4 https://checkip.amazonaws.com`) — the
+ * button is doing for the reader exactly what those pages ask them to do by hand, so it should
+ * get the same answer from the same place.
+ */
+const PUBLIC_IP_URL = 'https://checkip.amazonaws.com'
+
+/** Three seconds. A box the reader is waiting in front of, not a background job. */
+const PUBLIC_IP_TIMEOUT_MS = 3000
+
+/** `::ffff:203.0.113.7` is how a v4 client reaches a dual-stack listener. */
+function unmapped(address: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(address)
+  return mapped ? mapped[1]! : address
+}
+
+/**
+ * Whether a /32 of this address would mean anything to a cloud firewall.
+ *
+ * LOOPBACK IS THE COMMON CASE and the reason this exists: the browser is nearly always on the
+ * same machine as the server, so the socket says `127.0.0.1` and a firewall rule for that would
+ * allow SSH from nowhere at all. The private ranges are here for the same reason and not a
+ * different one — a laptop opening the page across the house reaches the server from
+ * `192.168.1.x`, which is just as useless in a security group. Both fall through to the public
+ * lookup below, which answers with the address the internet actually sees.
+ */
+function isRoutableOnTheInternet(address: string): boolean {
+  const ip = unmapped(address)
+  if (ip === '::1' || ip === '::') return false
+  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10).
+  if (/^f[cd]/i.test(ip) || /^fe[89ab]/i.test(ip)) return false
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip)
+  if (!v4) return ip.includes(':')
+  const [a, b] = [Number(v4[1]), Number(v4[2])]
+  if (a === 127 || a === 0 || a === 10) return false
+  if (a === 172 && b >= 16 && b <= 31) return false
+  if (a === 192 && b === 168) return false
+  if (a === 169 && b === 254) return false
+  // 100.64.0.0/10, the carrier-grade NAT range some home routers hand out.
+  if (a === 100 && b >= 64 && b <= 127) return false
+  return true
+}
+
+/** What the outbound service is allowed to have said. Anything else is a failed lookup. */
+function asAddress(text: string): string | null {
+  const line = text.trim().split('\n')[0]?.trim() ?? ''
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(line) && line.split('.').every((part) => Number(part) <= 255)) return line
+  if (/^[0-9a-f:]{3,45}$/i.test(line) && line.includes(':')) return line
+  return null
+}
+
 export interface NetworkRoutesDeps {
   /** The live provider registry — rebuilt in place on a config change (ADR-0017). */
   registry: ProviderRegistry
@@ -122,6 +177,67 @@ export function createNetworkRoutes(deps: NetworkRoutesDeps) {
   routes.use('/api/v1/network/*', async (c, next) => {
     if (!c.get('user').isAdmin) return forbidden(c, 'Admin access required')
     await next()
+  })
+
+  /**
+   * `GET /api/v1/network/my-ip` — the address to put in the SSH allow-list, so nobody has to
+   * leave the browser to find it.
+   *
+   * WHY THE SOCKET AND NOTHING ELSE. The address is taken from the TCP connection this request
+   * arrived on and from no header — not `X-Forwarded-For`, not `X-Real-IP`, not `Forwarded`.
+   * Rocky Surf is a local tool with no reverse proxy in front of it, so those headers would carry
+   * no truth here; what they WOULD carry is a value any caller can type, into a box whose next
+   * stop is a cloud firewall rule. Trusting a header would let a request name its own allow-list
+   * entry. The socket cannot be talked into lying.
+   *
+   * WHY THERE IS A SECOND ANSWER AT ALL. On the ordinary installation the browser and the server
+   * are the same machine, so the socket says `127.0.0.1` — true, and worthless as a firewall
+   * rule. Rather than hand back a loopback /32 for somebody to paste into a security group, the
+   * SERVER asks a public what-is-my-address service and says plainly which of the two answers it
+   * is giving (`source`), so the page can label it. The browser never makes that call itself: a
+   * page that reaches a third party directly is a page that leaks who is reading it.
+   *
+   * THIS IS NOT THE `sshAllowedCidr` AUTO-DISCOVERY `provider-aws/src/config.ts` REJECTED, and
+   * the difference is who decides. That spike scoped a firewall to whatever address the process
+   * happened to observe at runtime, silently, every launch. This fills in a box a person then
+   * reads, edits and saves — the security-relevant choice stays written down in the file, made
+   * once, by a human.
+   */
+  routes.get('/api/v1/network/my-ip', async (c) => {
+    let socketAddress: string | undefined
+    try {
+      socketAddress = getConnInfo(c).remote.address
+    } catch {
+      // No node-server bindings on this context. Not an error: it means the socket has nothing
+      // to say, which is the same situation as loopback and takes the same road.
+      socketAddress = undefined
+    }
+
+    if (socketAddress !== undefined && isRoutableOnTheInternet(socketAddress)) {
+      return success(c, { ip: unmapped(socketAddress), source: 'socket' as const })
+    }
+
+    try {
+      const response = await fetch(PUBLIC_IP_URL, { signal: AbortSignal.timeout(PUBLIC_IP_TIMEOUT_MS) })
+      if (!response.ok) throw new Error(`${PUBLIC_IP_URL} answered ${response.status}`)
+      const ip = asAddress(await response.text())
+      if (ip === null) throw new Error(`${PUBLIC_IP_URL} did not answer with an address`)
+      return success(c, { ip, source: 'public' as const })
+    } catch (err) {
+      /*
+        SAY WHICH LOOKUP FAILED AND WHY, because the reader's next move depends on it: this
+        machine has no way out to the internet, or the service is down, and either way the
+        remedy is to find the address by hand. A blank box with no sentence would look like the
+        button had simply not worked.
+      */
+      return serverError(
+        c,
+        `Rocky Surf could not work out your address. This computer reached the browser on ` +
+          `${socketAddress === undefined ? 'an address it cannot see' : unmapped(socketAddress)}, which is not ` +
+          `an internet address, and asking ${PUBLIC_IP_URL} failed: ` +
+          `${err instanceof Error ? err.message : String(err)}. Type the network in yourself.`,
+      )
+    }
   })
 
   routes.post('/api/v1/network/ssh-access/sync', async (c) => {
