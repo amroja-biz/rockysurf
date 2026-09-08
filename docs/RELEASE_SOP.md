@@ -22,18 +22,74 @@ Make sure all of the following are true:
 ## Choose the version number
 
 Rocky Surf follows semantic versioning. Pick the number by asking what the release does to someone
-who already uses it:
+who already uses it. Start with "is anything breaking?", because that answer decides the rest.
 
-- **Major** (`1.0.0` to `2.0.0`): something that worked before stops working. A removed CLI flag,
-  a changed config key, a Provider SDK contract that an out-of-tree Provider must be rewritten
-  against, a data migration that cannot be undone.
-- **Minor** (`0.1.0` to `0.2.0`): a new capability, and everything that worked before still works.
+A change is breaking when something that worked before stops working:
+
+- A removed or renamed CLI flag, config file key, or HTTP API field.
+- A change to the Provider SDK contract that an out-of-tree Provider must be rewritten against.
+- A data migration that cannot be undone.
+- **A changed default value for an existing setting.** The config file that produced one behavior
+  now produces another, which is a break even though nothing was removed.
+- **A raised minimum for a runtime the reader has to supply**, such as the minimum Node version.
+  An installation that met the old floor stops installing.
+
+Adding a setting that has a default is not breaking: an existing config file keeps behaving as it
+did.
+
+### Before 1.0.0
+
+Rocky Surf is in the `0.x` series, so the numbers work as the `0.x` convention has them, and this
+is the rule to apply today:
+
+- A breaking change bumps the **minor**: `0.1.0` to `0.2.0`.
+- Everything else — a new capability, a fix — bumps the **patch**: `0.1.0` to `0.1.1`.
+- The major stays `0` until the owner declares the public surface stable.
+
+`1.0.0` is that declaration, and it is a promise about four surfaces: the CLI flags, the config
+file keys, the HTTP API, and the Provider SDK contract. From `1.0.0` on, those are supported, and
+breaking any of them costs a major version.
+
+### From 1.0.0 on
+
+Once the major is `1` or higher, the standard rule applies:
+
+- **Major** (`1.0.0` to `2.0.0`): the release contains a breaking change, as defined earlier.
+- **Minor** (`1.0.0` to `1.1.0`): a new capability, and everything that worked before still works.
   A new Provider, a new command, a new setting with a default.
-- **Patch** (`0.1.0` to `0.1.1`): a fix, with no new capability and nothing removed.
+- **Patch** (`1.0.0` to `1.0.1`): a fix, with no new capability and nothing removed.
+
+### The lockstep rule
 
 Every package under `packages/` carries the same number, including the ones a given release does
-not touch. That is the lockstep rule, and the workflow enforces it: it refuses a tag whose number
-does not match the `version` field in every `package.json`.
+not touch. The workflow enforces it: it refuses a tag whose number does not match the `version`
+field in every `package.json`.
+
+The consequence is worth stating plainly, because it surprises people reading the registry: a
+package's version tells you which release train it belongs to and which other packages it is
+compatible with. It does not tell you that the package changed. A package nobody edited jumps from
+`0.1.0` to `0.2.0` along with everything else, and its diff between those two versions is empty.
+
+That is also why there are two unrelated things called "v0" here. The **frozen v0 contract** that
+[`docs/contributing/RELEASING.md`](contributing/RELEASING.md) and
+[ADR-0003](adr/0003-provider-sdk-shape-and-exclusions.md) describe is the generation of the
+Provider SDK's API — the shape an out-of-tree Provider implements. The **package version** of
+`@rockysurf/provider-sdk` is the release train. The two move independently: the package version
+changes at every release, and the contract generation changes only when the API shape does.
+
+### Pre-releases
+
+A pre-release version takes the form `X.Y.Z-rc.N` — for example, `0.2.0-rc.1`. Use `rc` and no
+other identifier, and do not add build metadata.
+
+Any version whose number contains a hyphen publishes under the npm dist-tag `next`, never
+`latest`. The workflow reads the tag name and adds `--tag next` for you. This is what keeps
+`npx -y rockysurf` serving the last stable release to everyone who has not asked for otherwise;
+readers who want the pre-release ask for it by name:
+
+```bash
+npx -y rockysurf@next
+```
 
 ## Publish the release
 
@@ -147,13 +203,17 @@ hand:
 
 - Proves the tagged commit is on `main`.
 - Proves the tag's number matches the `version` in every `package.json`.
+- Proves a stable tag's number is greater than the version the registry already serves, so a
+  downgrade or a transposed digit fails before anything is published rather than burning a version
+  number that can never be reused. Pre-releases are exempt from this check.
 - Runs `pnpm -r build` across the whole workspace, then the full `pnpm run check` gate.
 - Runs `scripts/verify-tarballs.mjs`, which packs every publishable package, asserts what each
   tarball must and must not contain, and installs the packed CLI into an empty directory.
 - Publishes every non-private package with `pnpm publish -r --access public --provenance`, in
-  dependency order, with a provenance attestation on each one.
-- Installs the published CLI from the real registry, retrying until the timeout set in
-  `release.yml`.
+  dependency order, with a provenance attestation on each one. A tag whose number contains a
+  hyphen publishes under the `next` dist-tag instead of `latest`.
+- Installs the published CLI from the real registry by exact version, retrying until the timeout
+  set in `release.yml`.
 
 ## Review the package READMEs before you bump
 
@@ -173,6 +233,20 @@ the CLI never imports it and the release does not bundle it. It is a personal Pr
 acquires it by installing it under their own `<dataDir>/providers` directory, and npm is where they
 install it from. Publishing it is the only way to ship it, so it releases in lockstep like the
 rest.
+
+## Support policy
+
+Only the latest release is supported. A security fix ships as a patch of the current version, and
+nothing is backported to an older major or minor: a reader on an older version upgrades to get the
+fix.
+
+Removals are announced before they happen. From `1.0.0` on, deprecate the CLI flag, config key, or
+API in a minor release, name its replacement in the same release, and remove it no earlier than the
+next major. Before `1.0.0`, a removal happens in a minor release and the release notes carry the
+entry that says so.
+
+`npm deprecate` is reserved for a published version that is dangerous to run, not for announcing
+that a feature is going away.
 
 ## If something goes wrong
 
