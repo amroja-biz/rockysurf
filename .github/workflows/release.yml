@@ -102,13 +102,16 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The WHOLE workspace, never --filter: @rockysurf/core ships public/, which @rockysurf/web
+      # produces (docs/contributing/RELEASING.md). Build BEFORE the check: typecheck resolves
+      # workspace packages through their dist/ type declarations, so `pnpm run check` on a fresh
+      # checkout fails in provider-conformance until the SDK is built (the first v0.1.0 run, 2026-09-07).
+      # ci.yml orders them the same way.
+      - run: pnpm -r build
+
       # The same gate main is protected by, run again on the exact commit being shipped. A
       # release is rare and a few minutes here is cheaper than a broken version on the registry.
       - run: pnpm run check
-
-      # The WHOLE workspace, never --filter: @rockysurf/core ships public/, which @rockysurf/web
-      # produces (docs/contributing/RELEASING.md).
-      - run: pnpm -r build
 
       - name: Every tarball is complete and the CLI installs from them alone
         run: node scripts/verify-tarballs.mjs
