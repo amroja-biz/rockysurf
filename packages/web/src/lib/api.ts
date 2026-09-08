@@ -1065,6 +1065,14 @@ export interface SettingsField {
   label?: string
   /** A placeholder for the box; for a secret, the NAME of a variable. */
   example?: string
+  /**
+   * The shape a typed value should have, as a source-form regular expression, when the field
+   * declared one. A HINT the page can show under the box the moment focus leaves it — never a
+   * validator: the server's schema is still the only thing that accepts or refuses a save.
+   */
+  pattern?: string
+  /** The whole sentence to print when `pattern` does not match. Core writes it; the page prints it. */
+  patternMessage?: string
   writable: boolean
   /** What the setting is for, in operator language. Rendered under every label (rockysurf-5qzg). */
   help: string
@@ -1272,6 +1280,30 @@ export async function syncSshAccess(revoke?: Record<string, string[]>): Promise<
     method: 'POST',
     ...(revoke && Object.keys(revoke).length > 0 ? { body: JSON.stringify({ revoke }) } : {}),
   })
+}
+
+/**
+ * The address to put in an SSH allow-list, worked out by CORE rather than by this page.
+ *
+ * `source` is which of two questions core managed to answer, and the page says which one out
+ * loud rather than presenting them as the same fact:
+ *
+ * - `'socket'` — the address this browser reached Rocky Surf from. Exact.
+ * - `'public'` — the browser is on the same machine (or the same house) as the server, so the
+ *   socket said loopback or a private address and core asked a public what-is-my-address service
+ *   instead. That is the address the internet sees this COMPUTER at, which is what a cloud
+ *   firewall needs and is worth labelling as such.
+ *
+ * The browser never calls the outside service itself: a page that reaches a third party directly
+ * tells that third party who is reading it. A lookup that fails throws, with core's own sentence.
+ */
+export interface MyIpAnswer {
+  ip: string
+  source: 'socket' | 'public'
+}
+
+export async function getMyIp(): Promise<MyIpAnswer> {
+  return request<MyIpAnswer>('/network/my-ip')
 }
 
 export async function saveSettings(mtimeMs: number | null, changes: SettingsChange[]): Promise<SettingsSaveResult> {

@@ -169,7 +169,10 @@ settings: {
   fields: [
     { name: 'token', kind: 'secret', label: 'Token Environment Variable', example: 'MYCLOUD_TOKEN',
       help: 'The NAME of an environment variable holding a read/write API token — not the token itself.' },
-    { name: 'region', kind: 'string', label: 'Region', example: 'nyc3', help: 'Which region new servers are created in.' },
+    // `pattern` is optional: the SHAPE of the box, so the page can say "that does not look like a
+    // My Cloud region, for example nyc3" the moment focus leaves it, rather than at the save.
+    { name: 'region', kind: 'string', label: 'Region', example: 'nyc3', pattern: '^[a-z]{3}\\d$',
+      help: 'Which region new servers are created in.' },
     // The two-act SSH whitelist as ONE kind: the list is declared, `allowAllCidr` is implied and
     // drawn beside it. Declaring it requires `capabilities.managesSshAccess` (ADR-0021).
     { name: 'sshAllowedCidr', kind: 'sshCidrList', label: 'SSH allowed from', example: '203.0.113.7/32',
@@ -187,6 +190,15 @@ The kinds are the controls a settings page draws honestly — `string`, `number`
 file. Don't declare `enabled`, `package` or `sizes`: those are the installation's, and every panel
 gets them. Use `advisories` for what only the human needs to know, such as a quirk or a caveat.
 Anything core has to COMPUTE with is a capability, never a sentence.
+
+**`pattern` is a shape hint, never a validator.** A `string` field may declare an anchored regular
+expression; the editor then complains under the box as soon as focus leaves it and turns Save off
+until the box is fixed, with a sentence built from your `title`, the field's `label` and its
+`example` — "That does not look like a My Cloud region, for example nyc3." Your `configSchema` is
+still the only thing that accepts or refuses a value, and nothing about the save changes. Declaring
+a pattern requires an `example`, and conformance checks that your own example matches it. Keep the
+pattern **loose**: one that refuses a region your cloud opened last week is worse than no pattern
+at all, because it stops a save the schema would have taken.
 
 Two more knobs on `offering` are optional, and both are for Providers whose panel doesn't read
 like a proper noun. Use `label` for how the Provider is named inside a sentence ("whenever you ask

@@ -38,6 +38,13 @@ test('every step is reachable forwards and backwards, and the clouds are listed 
 
   await page.getByRole('button', { name: 'Get started' }).click()
   await page.getByRole('button', { name: 'Next' }).click()
+
+  // The SSH-key question, which is skippable and goes back like every other step.
+  await expect(page.getByRole('heading', { name: 'Your SSH key' })).toBeVisible()
+  await page.getByRole('button', { name: 'Back' }).click()
+  await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
   await expect(page.getByRole('heading', { name: 'Choose your clouds' })).toBeVisible()
 
   // Every cloud this installation knows about, each with its own state under its name.
@@ -48,6 +55,8 @@ test('every step is reachable forwards and backwards, and the clouds are listed 
 test('picking a cloud draws its own settings fields, in place', async ({ page }) => {
   await page.goto('/setup')
   await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Next' }).click()
   await page.locator('[data-cloud="nimbus"]').click()
 
@@ -71,6 +80,8 @@ test('saving writes the fields AND switches the cloud on, then says what the clo
 }) => {
   await page.goto('/setup')
   await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Next' }).click()
   await page.locator('[data-cloud="nimbus"]').click()
 
@@ -88,6 +99,8 @@ test('saving writes the fields AND switches the cloud on, then says what the clo
 test('the Done step reports the cloud that is on, and offers a Check and a way back', async ({ page }) => {
   await page.goto('/setup')
   await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
 
@@ -99,4 +112,127 @@ test('the Done step reports the cloud that is on, and offers a Check and a way b
   // The step that used to say "the way the previous step described" now goes there.
   await page.getByRole('button', { name: 'Back' }).click()
   await expect(page.getByRole('heading', { name: 'Choose your clouds' })).toBeVisible()
+})
+
+/**
+ * THE THREE THINGS A FIRST-CONTACT TEST FOUND, in the browser they were found in.
+ *
+ * An engineer was handed the rebuilt wizard and watched setting a cloud up. Each of these is a
+ * property of the real page rather than of a component test: a button that is off, a button that
+ * is gone, and a sentence under a box.
+ */
+test('a Region that does not look like one is refused at the box, with Save off until it is fixed', async ({ page }) => {
+  await page.goto('/setup')
+  await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.locator('[data-cloud="nimbus"]').click()
+
+  const region = panel(page).locator('#providers\\.nimbus\\.region')
+  await region.fill('sandbox')
+  // On blur, in the Provider's own words — assembled by core from the declaration, not by the SPA,
+  // which holds no regular expression and no cloud's name.
+  await region.blur()
+  await expect(panel(page).locator('[data-shape-problem]')).toHaveText(
+    'That does not look like a Nimbus Cloud region, for example sky-1.',
+  )
+  await expect(page.getByRole('button', { name: 'Save and turn on Nimbus Cloud' })).toBeDisabled()
+  // And the reason the button is off is on the screen, not only in the developer's head.
+  await expect(page.getByTestId('shape-problems')).toContainText('Region')
+
+  await region.fill('sky-2')
+  await expect(panel(page).locator('[data-shape-problem]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Save and turn on Nimbus Cloud' })).toBeEnabled()
+})
+
+test('the SSH allow-list offers to find the address, instead of sending the reader to a terminal', async ({ page }) => {
+  await page.goto('/setup')
+  await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.locator('[data-cloud="nimbus"]').click()
+
+  // Beside Add, inside the allow-list's own control. The help says "your own address as a /32 is
+  // the usual answer"; this is how the reader finds out what that is without leaving the page.
+  const useMyIp = page.getByTestId('use-my-ip-nimbus')
+  await expect(useMyIp).toBeVisible()
+  await useMyIp.click()
+
+  /*
+    EITHER OUTCOME PASSES, deliberately. The browser and the server are the same machine here, so
+    the socket is loopback and core falls through to a public what-is-my-address service, which a
+    given machine may or may not be able to reach. The rule being pinned is the one that matters:
+    the button always ends by SAYING something — the address it found, or why it could not. It
+    never fills nothing in silence.
+  */
+  await expect(page.locator('[data-my-ip-note="nimbus"], [data-my-ip-error="nimbus"]')).toBeVisible({ timeout: 15_000 })
+})
+
+test('a cloud that has just said yes is not asked to prove it twice', async ({ page }) => {
+  await page.goto('/setup')
+  await page.getByRole('button', { name: 'Get started' }).click()
+  // Your account, then Your SSH key — both passed through without answering.
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.locator('[data-cloud="nimbus"]').click()
+
+  // The save runs the check itself and prints the green line. A full-sized "Check Nimbus Cloud"
+  // button under that reads as "did I not just do this?", which is what the tester asked out loud.
+  await panel(page).getByRole('button', { name: 'Save and turn on Nimbus Cloud' }).click()
+  await expect(page.getByTestId('check-result-nimbus')).toContainText('Nimbus Cloud is ready')
+  await expect(page.getByRole('button', { name: 'Check Nimbus Cloud' })).toHaveCount(0)
+
+  // The way to ask again is still there, at the size of the job it is still for.
+  const again = page.getByTestId('check-nimbus')
+  await expect(again).toHaveText('Check again')
+  await again.click()
+  await expect(page.getByTestId('check-result-nimbus')).toContainText('Nimbus Cloud is ready')
+})
+
+/**
+ * THE SSH-KEY QUESTION, ASKED ONCE INSTEAD OF AT EVERY CREATE.
+ *
+ * Both answers already worked and neither was ever asked, so the first-time user met the question
+ * on the form that creates a billable machine. What is proved here is that the wizard's form is
+ * the SETTINGS list's form — the save lands in `ssh.keys` in the configuration file this
+ * installation booted on — and that a private key is refused with core's own sentence.
+ */
+test('the SSH-key step saves a public key into the config file, and refuses the private half', async ({
+  page,
+  controlPlane,
+}) => {
+  const PUBLIC_KEY =
+    'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN7VQ0Zq1r6VJ5eBK4cQKcO0uYQ1n4jvVYQ8Gk2r1TxA browser-suite'
+
+  await page.goto('/setup')
+  await page.getByRole('button', { name: 'Get started' }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await expect(page.getByRole('heading', { name: 'Your SSH key' })).toBeVisible()
+
+  // The other answer first: it asks for nothing and says where the private half comes from.
+  await page.getByTestId('key-generate').click()
+  await expect(page.getByTestId('key-generate-explainer')).toContainText('a fresh key for each Server')
+
+  await page.getByTestId('key-paste').click()
+  await expect(page.getByTestId('key-paste-form')).toContainText('cat ~/.ssh/id_ed25519.pub')
+
+  // THE PREDICTABLE MISTAKE, refused by the config file's own validator with the parser's words.
+  await page.locator('#ssh\\.keys\\.new\\.name').fill('browser-suite')
+  await page.locator('#ssh\\.keys\\.new\\.publicKey').fill('-----BEGIN OPENSSH PRIVATE KEY-----')
+  await page.getByRole('button', { name: 'Add this key' }).click()
+  await expect(page.locator('[data-field="ssh.keys.new.publicKey"]')).toContainText('that is a PRIVATE key')
+
+  await page.locator('#ssh\\.keys\\.new\\.publicKey').fill(PUBLIC_KEY)
+  await page.getByRole('button', { name: 'Add this key' }).click()
+
+  /*
+    THE FILE THIS INSTALLATION BOOTED ON, not a page that says it saved. The key's own blob rather
+    than the whole line: the YAML writer folds a line this long across three of them, which is a
+    fact about the serializer and not about whether the key was saved.
+  */
+  await expect.poll(() => controlPlane.readConfig()).toContain('name: browser-suite')
+  await expect.poll(() => controlPlane.readConfig()).toContain(PUBLIC_KEY.split(' ')[1]!)
+  await expect(page.getByTestId('saved-keys')).toContainText('browser-suite')
 })

@@ -97,6 +97,10 @@ export const hetznerProviderFactory: ProviderFactory<HetznerProviderConfig> = {
         kind: 'string',
         label: 'Location',
         example: 'fsn1',
+        // Every Hetzner location is a three-letter city code with an optional index — fsn1, nbg1,
+        // hel1, ash, hil, sin. Kept to a SHAPE rather than the list above on purpose: a new
+        // datacentre must not be refused by a box, only by Hetzner.
+        pattern: '^[a-z]{3}\\d?$',
         help:
           'Which datacentre new servers are created in: fsn1/nbg1/hel1 (Germany, Finland), ash/hil ' +
           '(US), sin (Singapore). ARM (CAX) types are only sold in fsn1, nbg1 and hel1.',

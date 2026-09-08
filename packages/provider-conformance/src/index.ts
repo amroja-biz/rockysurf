@@ -221,6 +221,35 @@ export function assertSettingsShape<T>(factory: ProviderFactory<T>, validConfig:
     }
     check(!names.has(SSH_ALLOW_ALL_FIELD) || sshCidrList, `settings.fields['${SSH_ALLOW_ALL_FIELD}'] is drawn by the sshCidrList control — declare the list, not the checkbox`)
 
+    /*
+      A declared `pattern` is a SHAPE HINT the editor prints beside the box, never a validator —
+      `configSchema` still decides what the file accepts. Three rules keep it honest: it applies
+      to a plain text box, it has to compile, and the provider's OWN example has to satisfy it.
+      The last one is the load-bearing one: the message the page prints is "…, for example
+      us-east-1", so a pattern its example fails would hold the reader to a shape the provider
+      itself contradicts in the same sentence.
+    */
+    if (field.pattern !== undefined) {
+      check(typeof field.pattern === 'string', `${where}: pattern must be a string`)
+      check(field.kind === 'string', `${where}: pattern is only meaningful on a string field`)
+      check(
+        typeof field.example === 'string' && field.example.length > 0,
+        `${where}: a pattern needs an example — the page prints it as "for example <example>"`,
+      )
+      let compiled: RegExp
+      try {
+        compiled = new RegExp(field.pattern)
+      } catch (err) {
+        throw new ConformanceError(
+          `${where}: pattern '${field.pattern}' is not a regular expression — ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+      check(
+        compiled.test(String(field.example)),
+        `${where}: example '${field.example}' does not match pattern '${field.pattern}'`,
+      )
+    }
+
     // The example parses: a declared box the schema would refuse is the drift this exists to catch.
     if (field.example !== undefined) {
       check(typeof field.example === 'string', `${where}: example must be a string`)

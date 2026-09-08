@@ -138,6 +138,10 @@ export const azureProviderFactory: ProviderFactory<AzureProviderConfig> = {
         kind: 'string',
         label: 'Location',
         example: 'eastus',
+        // Azure writes its regions as one lowercase run with no separators, optionally numbered:
+        // eastus, westeurope, uksouth, centralindia, eastus2. The mistake worth catching is the
+        // DISPLAY name — "East US" — which is what the portal shows and what people paste.
+        pattern: '^[a-z]+\\d*$',
         help: 'Which Azure region new VMs are created in, e.g. eastus.',
       },
       {

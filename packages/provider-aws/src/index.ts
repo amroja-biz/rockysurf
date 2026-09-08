@@ -52,6 +52,10 @@ export const awsProviderFactory: ProviderFactory<AwsProviderConfig> = {
         kind: 'string',
         label: 'Region',
         example: 'us-east-1',
+        // Two letters, one or more words, one digit: us-east-1, eu-central-1, ap-southeast-4,
+        // il-central-1, us-gov-west-1. Loose enough for a region AWS has not opened yet, tight
+        // enough for the mis-click this was added for — a Region box with `sandbox` in it.
+        pattern: '^[a-z]{2}(-[a-z]+)+-\\d$',
         help: 'Which AWS region new instances are created in.',
       },
       {

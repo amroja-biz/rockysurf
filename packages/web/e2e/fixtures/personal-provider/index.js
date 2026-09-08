@@ -31,7 +31,11 @@ const factory = {
     help: 'A fixture cloud for the browser suite: everything it does is in memory, nothing is billed.',
     fields: [
       { name: 'token', kind: 'secret', label: 'API token variable', example: 'NIMBUS_TOKEN', help: 'The NAME of an environment variable holding a Nimbus API token.' },
-      { name: 'region', kind: 'string', label: 'Region', example: 'sky-1', help: 'Which Nimbus region new servers are created in.' },
+      // `pattern` is the declarative shape hint every Provider gets (the follow-up to the
+      // first-contact test): the page complains under the box and turns Save off, and no regular
+      // expression for any cloud lives in the web package. Nimbus is not in that package at all,
+      // which is what makes this fixture the proof.
+      { name: 'region', kind: 'string', label: 'Region', example: 'sky-1', pattern: '^sky-\\d$', help: 'Which Nimbus region new servers are created in.' },
       {
         name: 'sshAllowedCidr',
         kind: 'sshCidrList',

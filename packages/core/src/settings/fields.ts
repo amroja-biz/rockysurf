@@ -75,6 +75,27 @@ export interface FieldSpec {
   label?: string
   /** A placeholder for the box — for a secret, the NAME of a variable (`HETZNER_TOKEN`). */
   example?: string
+  /**
+   * THE SHAPE A TYPED VALUE HAS TO HAVE, for the editor to say so before the save does.
+   *
+   * A source-form regular expression, anchored, matched against the whole box, and it arrives
+   * from a Provider's declaration (`ProviderSettingField.pattern`) — core writes none of its own
+   * today. It is a HINT, not a rule: `config/schema.ts` and each Provider's `configSchema` are
+   * still the only things that accept or refuse a value, and nothing here loosens either. What it
+   * buys is the difference between "that does not look like an AWS region" under the Region box
+   * one second after the typo, and a refused save several fields later.
+   */
+  pattern?: string
+  /**
+   * The whole sentence the editor prints when `pattern` does not match.
+   *
+   * DERIVED, NOT DECLARED — `settings/inventory.ts` writes it from the Provider's own title, the
+   * field's label and its `example`, because those three words live in three different places and
+   * only the inventory has all of them at once. A Provider author declares a `pattern` and gets
+   * "That does not look like an AWS region, for example us-east-1." for free; the editor never
+   * assembles a sentence about a cloud it has to know the name of.
+   */
+  patternMessage?: string
   /** False when the editor shows the value but will not write it. `reason` is then required. */
   writable: boolean
   /**

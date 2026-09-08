@@ -6,6 +6,12 @@ import {
   asReferences,
   genericField,
   keyOf,
+  listDraftValue,
+  ListDraftForm,
+  listItemFields,
+  refuseListDraft,
+  shapeProblems,
+  valueAt,
   type Edits,
   type FieldConfirmRequest,
   type FieldsContext,
@@ -147,11 +153,12 @@ export function SetupGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-type StepId = 'welcome' | 'account' | 'clouds' | 'done'
+type StepId = 'welcome' | 'account' | 'sshKey' | 'clouds' | 'done'
 
 const STEPS: { id: StepId; title: string }[] = [
   { id: 'welcome', title: 'Welcome' },
   { id: 'account', title: 'Your account' },
+  { id: 'sshKey', title: 'Your SSH key' },
   { id: 'clouds', title: 'Choose your clouds' },
   { id: 'done', title: 'Done' },
 ]
@@ -252,11 +259,21 @@ export function WizardPage() {
             <button type="button" className="btn-secondary" onClick={() => setStep('welcome')} data-testid="back">
               Back
             </button>
-            <button type="button" onClick={() => setStep('clouds')} data-testid="next">
+            <button type="button" onClick={() => setStep('sshKey')} data-testid="next">
               Next
             </button>
           </div>
         </section>
+      )}
+
+      {step === 'sshKey' && (
+        <SshKeyStep
+          settings={settings}
+          settingsError={settingsError}
+          onSettings={setSettings}
+          onBack={() => setStep('account')}
+          onContinue={() => setStep('clouds')}
+        />
       )}
 
       {step === 'clouds' && (
@@ -266,7 +283,7 @@ export function WizardPage() {
           settingsError={settingsError}
           onSettings={setSettings}
           refreshSetup={refresh}
-          onBack={() => setStep('account')}
+          onBack={() => setStep('sshKey')}
           onContinue={() => setStep('done')}
         />
       )}
@@ -275,6 +292,238 @@ export function WizardPage() {
         <DoneStep setup={setup} refreshSetup={refresh} onBack={() => setStep('clouds')} onFinish={finish} />
       )}
     </main>
+  )
+}
+
+/* --------------------------------------------------------------------- your SSH key */
+
+/**
+ * "DO YOU ALREADY HAVE AN SSH KEY?" — asked once, here, instead of at every create.
+ *
+ * WHAT IT IS FOR. Logging in to a Server means a keypair, and there are exactly two honest
+ * answers: the person has a key they already use, or they do not and Rocky Surf should make one.
+ * Both answers already worked — the New Server page has offered "generate one for me" and "use a
+ * key I provide" since ADR-0008, and Settings has saved public keys by name since ADR-0019 — and
+ * neither was ever ASKED. So the first-time user met the question for the first time on the form
+ * that creates a billable machine, which is the worst moment to go looking for `~/.ssh`.
+ *
+ * IT IS ONE QUESTION AND IT IS SKIPPABLE. Nothing here is required to finish setup: a person who
+ * picks neither answer, or who skips, gets exactly what they got before — a key generated per
+ * Server, offered on the create form.
+ *
+ * THE FORM IS THE SETTINGS PAGE'S OWN, NOT A SECOND ONE. `ListDraftForm` draws it from core's
+ * `ssh.keys` list declaration and the same field inventory, and the save is the same
+ * `PUT /api/v1/settings` writing the same `ssh.keys` entry. ADR-0019's first amendment exists
+ * because a key editor was claimed to be shared and was not; a second key form written for this
+ * step would be that mistake again — a second idea of what a key box takes, and a second place
+ * for the private-key refusal to go missing. The refusal below is core's, verbatim: the schema
+ * runs the create path's own parser, which names the private half before it checks anything else.
+ */
+function SshKeyStep({
+  settings,
+  settingsError,
+  onSettings,
+  onBack,
+  onContinue,
+}: {
+  settings: SettingsView | null
+  settingsError: string | null
+  onSettings: (view: SettingsView) => void
+  onBack: () => void
+  onContinue: () => void
+}) {
+  const [answer, setAnswer] = useState<'paste' | 'generate' | null>(null)
+  const [draft, setDraft] = useState<Record<string, string> | null>(null)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [justSaved, setJustSaved] = useState<string | null>(null)
+
+  const specs = useMemo(() => {
+    const map = new Map<string, SettingsField>()
+    for (const field of settings?.fields ?? []) map.set(field.path, field)
+    return map
+  }, [settings])
+
+  const list = (settings?.lists ?? []).find((entry) => entry.path === 'ssh.keys')
+  const keys = ((valueAt(settings?.values ?? {}, ['ssh', 'keys']) as { name?: unknown }[] | undefined) ?? []).map(
+    (entry, index) => String(entry?.name ?? `key ${index + 1}`),
+  )
+  const fields = list ? listItemFields(list, specs) : []
+  const add = list?.add
+
+  async function saveDraft(values: Record<string, string>) {
+    if (!settings || !list || !add) return
+    setFormError(null)
+    const local = refuseListDraft(fields, add, values, keys, list.labelField ?? fields[0]?.name)
+    if (local) return setRefusal(local)
+
+    setRefusal(null)
+    setFieldErrors({})
+    setSaving(true)
+    try {
+      const result = await saveSettings(settings.file.mtimeMs, [
+        { path: ['ssh', 'keys', keys.length], value: listDraftValue(fields, values) },
+      ])
+      onSettings(result)
+      // The form closes on success, so what is left on screen is the key that was saved and an
+      // offer to add another — rather than a second blank form nobody asked for, which reads as
+      // though the first one had not worked.
+      setDraft(null)
+      setAnswer(null)
+      setJustSaved((values[list.labelField ?? 'name'] ?? '').trim())
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const body = err.data as { issues?: { path: string; message: string }[] } | undefined
+        // Keyed to the slot this form wrote to, which is where the form draws them — so core's
+        // "that is a PRIVATE key" lands under the box the private key was pasted into.
+        setFieldErrors(Object.fromEntries((body?.issues ?? []).map((issue) => [issue.path, issue.message])))
+        if ((body?.issues ?? []).length === 0) setFormError(err.detail)
+      } else {
+        setFormError('Could not save this key')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section>
+      <h2>Your SSH key</h2>
+      <p>
+        You log in to the Servers Rocky Surf creates with an SSH key. Do you already have one you
+        want to use?
+      </p>
+
+      {keys.length > 0 && (
+        <div data-testid="saved-keys">
+          <p>
+            {keys.length === 1 ? 'One key is saved' : `${keys.length} keys are saved`} on this
+            installation, and the New Server page will offer{' '}
+            {keys.length === 1 ? 'it' : 'them'}:
+          </p>
+          <ul className="wizard-summary">
+            {keys.map((name) => (
+              <li key={name} data-saved-key={name}>
+                <strong>{name}</strong>
+                {justSaved === name && <span className="wizard-ready"> — saved</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="wizard-clouds">
+        <button
+          type="button"
+          className={answer === 'paste' ? 'wizard-cloud-choice selected' : 'wizard-cloud-choice'}
+          aria-pressed={answer === 'paste'}
+          data-testid="key-paste"
+          onClick={() => {
+            setAnswer('paste')
+            setDraft((current) => current ?? {})
+          }}
+        >
+          <strong>{keys.length > 0 ? 'Add another key' : 'Yes, I’ll paste my public key'}</strong>
+          <span className="hint">Rocky Surf saves it by name and offers it on every new Server.</span>
+        </button>
+        <button
+          type="button"
+          className={answer === 'generate' ? 'wizard-cloud-choice selected' : 'wizard-cloud-choice'}
+          aria-pressed={answer === 'generate'}
+          data-testid="key-generate"
+          onClick={() => {
+            setAnswer('generate')
+            setDraft(null)
+          }}
+        >
+          <strong>No, make one for me</strong>
+          <span className="hint">Nothing to do now.</span>
+        </button>
+      </div>
+
+      {answer === 'generate' && (
+        <div data-testid="key-generate-explainer">
+          <p>
+            Rocky Surf creates a fresh key for each Server it builds, so there is nothing to set up
+            here.
+          </p>
+          <p>
+            You download the private half from that Server’s own page once it has been created, and
+            keep it somewhere safe — Rocky Surf shows it there and nowhere else.
+          </p>
+        </div>
+      )}
+
+      {answer === 'paste' && (
+        <div data-testid="key-paste-form">
+          <p>
+            A public key is usually at <code>~/.ssh/id_ed25519.pub</code> — the file ending in{' '}
+            <code>.pub</code>, never the one without it. Print it and paste the single line it
+            gives you:
+          </p>
+          <CopyableCommand command="cat ~/.ssh/id_ed25519.pub" />
+          {settingsError !== null && (
+            <p className="error" data-testid="settings-error">
+              {settingsError}
+            </p>
+          )}
+          {list === undefined || add === undefined ? (
+            <p className="hint" data-testid="no-key-form">
+              This installation does not offer saved keys yet. You can still paste a key on the New
+              Server page whenever you create one.
+            </p>
+          ) : (
+            <ListDraftForm
+              listKey="ssh.keys"
+              draftPrefix={`ssh.keys.${keys.length}`}
+              add={add}
+              fields={fields}
+              specs={specs}
+              values={draft ?? {}}
+              refusal={refusal}
+              fieldErrors={fieldErrors}
+              saving={saving}
+              onChange={(name, value) => {
+                setRefusal(null)
+                setFieldErrors({})
+                setDraft((current) => ({ ...(current ?? {}), [name]: value }))
+              }}
+              onSubmit={() => void saveDraft(draft ?? {})}
+              onCancel={() => {
+                setDraft(null)
+                setAnswer(null)
+                setRefusal(null)
+                setFieldErrors({})
+              }}
+            />
+          )}
+          {formError && (
+            <p role="alert" className="error" data-testid="key-save-error">
+              {formError}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Skippable, and said so rather than left to be inferred from a button that is not
+          disabled: neither answer is needed to finish setting up, and the person who has not
+          decided yet should not think they are stuck. */}
+      <p className="hint" data-testid="key-optional">
+        Nothing here is required. Go on without answering and Rocky Surf will make a key for each
+        Server, which you can change at any time on Settings.
+      </p>
+
+      <div className="wizard-actions">
+        <button type="button" className="btn-secondary" onClick={onBack} data-testid="back">
+          Back
+        </button>
+        <button type="button" onClick={onContinue} data-testid="next">
+          Next
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -579,6 +828,8 @@ function CloudPanel({
   }
 
   const guide = cloudGuide(provider.id)
+  /** Boxes whose contents do not look like what the Provider declared they are for. */
+  const shaping = shapeProblems(specs, edits)
 
   return (
     <div className="wizard-cloud" data-testid="cloud-panel" data-cloud-panel={provider.id}>
@@ -639,11 +890,23 @@ function CloudPanel({
         </p>
       )}
 
+      {/*
+        WHY THE BUTTON IS OFF, said out loud. A Save that is greyed for a reason the reader cannot
+        see is indistinguishable from one that is broken; the box itself already carries the
+        Provider's own sentence about the shape it wanted.
+      */}
+      {shaping.length > 0 && (
+        <p className="error" data-testid="shape-problems" role="alert">
+          Saving is off until {shaping.map((problem) => problem.label).join(' and ')}{' '}
+          {shaping.length === 1 ? 'looks' : 'look'} right. The box says what is expected.
+        </p>
+      )}
+
       <div className="wizard-actions">
         <button
           type="button"
           className="btn-primary"
-          disabled={saving || settings === null}
+          disabled={saving || settings === null || shaping.length > 0}
           onClick={() => void save()}
           data-testid="save-cloud"
         >
@@ -696,6 +959,20 @@ type CheckOutcome =
   | { kind: 'not-enabled' }
   | { kind: 'unreachable'; detail: string }
 
+/**
+ * The Check, and — once it has said yes — the small link that repeats it.
+ *
+ * WHY THE BIG BUTTON GOES AWAY WHEN THE ANSWER IS YES. "Save and turn on <cloud>" runs the check
+ * itself and prints "<cloud> is ready" underneath. Leaving a full-sized "Check <cloud>" button
+ * below that green line reads as "did I not just do this?" — a first-contact test pressed it
+ * again to find out, which is the question a screen should not be asking. So a successful check
+ * folds the control into a "Check again" text link beside its own result, which is the size of
+ * the job it is still there for: proving the cloud again after something has changed.
+ *
+ * NOT READY, AND THE BUTTON STAYS. That is when it is the thing the reader most needs: they have
+ * fixed the credential in a terminal and want to ask again. The same control serves the Done
+ * step, so the two screens cannot disagree about this.
+ */
 function CheckControl({
   displayName,
   checking,
@@ -709,11 +986,14 @@ function CheckControl({
   onCheck: () => void
   testId: string
 }) {
+  const verified = outcome?.kind === 'report' && outcome.report.status === 'verified'
   return (
     <div className="wizard-check" data-check={testId}>
-      <button type="button" className="btn-secondary" disabled={checking} onClick={onCheck} data-testid={`check-${testId}`}>
-        {checking ? 'Checking…' : `Check ${displayName}`}
-      </button>
+      {!verified && (
+        <button type="button" className="btn-secondary" disabled={checking} onClick={onCheck} data-testid={`check-${testId}`}>
+          {checking ? 'Checking…' : `Check ${displayName}`}
+        </button>
+      )}
       {checking && (
         <p className="hint" role="status">
           Asking {displayName}…
@@ -723,7 +1003,10 @@ function CheckControl({
         <div data-testid={`check-result-${testId}`} data-check-status={statusOf(outcome)}>
           {outcome.kind === 'report' && outcome.report.status === 'verified' && (
             <p className="wizard-ready" role="status">
-              <strong>{displayName} is ready.</strong> Rocky Surf can create Servers on it.
+              <strong>{displayName} is ready.</strong> Rocky Surf can create Servers on it.{' '}
+              <button type="button" className="link-button" onClick={onCheck} data-testid={`check-${testId}`}>
+                Check again
+              </button>
             </p>
           )}
           {outcome.kind === 'report' && outcome.report.status === 'failed' && (

@@ -100,6 +100,10 @@ export const digitaloceanProviderFactory: ProviderFactory<DigitaloceanProviderCo
         kind: 'string',
         label: 'Region',
         example: 'nyc3',
+        // Every DigitalOcean region slug is a three-letter city code and a digit — nyc3, fra1,
+        // syd1, atl1. The shape, not the list, so a new datacentre is refused by DigitalOcean
+        // rather than by this box.
+        pattern: '^[a-z]{3}\\d$',
         help:
           'Which datacentre region new droplets are created in — nyc1/nyc3 and sfo3 (US), lon1, ' +
           'fra1 and ams3 (Europe), sgp1, blr1 and syd1 (Asia-Pacific), tor1 (Canada). There is no ' +
