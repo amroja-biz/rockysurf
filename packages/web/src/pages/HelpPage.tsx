@@ -220,6 +220,11 @@ const DOC_GROUPS = [
         'Releasing',
         'Publishing to npm — the procedure, and the reasons behind each step.',
       ],
+      [
+        'docs/RELEASE_SOP.md',
+        'The release checklist',
+        'Choosing the version number, the steps in order, and what to do when a run fails.',
+      ],
     ],
   },
 ] as const

@@ -80,6 +80,29 @@ jobs:
           done
           [ "$bad" = 0 ]
 
+      # A stable tag has to move the registry FORWARDS. npm refuses a republish of an existing
+      # version, so a repeat is caught anyway — but a downgrade (v0.1.0 after v0.2.0) and a
+      # transposed digit (v0.21.0 for v0.12.0) both publish happily and both are unfixable: a
+      # version number, once used, can never be reused. `semver -r` prints nothing and exits 1
+      # when no version satisfies the range, which is exactly the check.
+      #
+      # Pre-releases are exempt. Under semver's range semantics a prerelease only satisfies a
+      # range when the range itself names one, so `>0.1.0` rejects `0.2.0-rc.1` and the check
+      # cannot be applied to them without special-casing it into meaninglessness.
+      - name: A stable tag is greater than the published version
+        run: |
+          set -euo pipefail
+          want="${GITHUB_REF_NAME#v}"
+          case "$want" in
+            *-*) echo "$GITHUB_REF_NAME is a pre-release; the greater-than check does not apply"; exit 0 ;;
+          esac
+          cur=$(npm view rockysurf version)
+          echo "registry has $cur, tag says $want"
+          if ! npx --yes semver@7 -r ">$cur" "$want" > /dev/null; then
+            echo "::error::${GITHUB_REF_NAME} is not greater than the published ${cur}. Check for a downgrade or a transposed digit."
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
@@ -120,11 +143,29 @@ jobs:
       # refuses; the two checks it would have done (clean tree, on a branch) are replaced by the
       # is-on-main step above and by this being a fresh checkout. `--provenance` is what the
       # docs say is automatic under trusted publishing and what experience says to pass anyway.
+      #
+      # A version whose number carries a hyphen is a pre-release (X.Y.Z-rc.N) and goes out under
+      # the `next` dist-tag, never `latest`: `npx -y rockysurf` resolves `latest`, so a
+      # release candidate published without this becomes what every new install gets. Readers
+      # who want it ask for `rockysurf@next`.
       - name: Publish
-        run: pnpm publish -r --access public --provenance --no-git-checks
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME#v}" in
+            *-*)
+              echo "pre-release: publishing under the 'next' dist-tag"
+              pnpm publish -r --access public --provenance --no-git-checks --tag next
+              ;;
+            *)
+              pnpm publish -r --access public --provenance --no-git-checks
+              ;;
+          esac
 
       # From an empty directory, against the real registry, the way an operator will. Anything
       # less checks the tarball, not the release (docs/contributing/RELEASING.md, "After publishing").
+      #
+      # This installs by EXACT version, so it needs no dist-tag handling: a pre-release published
+      # under `next` is fetched here by its own number, and `latest` is never consulted.
       - name: Install the published CLI from the registry
         run: |
           set -euo pipefail
