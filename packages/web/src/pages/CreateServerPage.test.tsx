@@ -85,6 +85,17 @@ const packWith = (over: Partial<api.SurgePack>): api.SurgePack => ({
   ...over,
 })
 
+/** A pack made in this installation (uploaded or written here): the Personal shelf's inhabitant. */
+const personalPack = (over: Partial<api.SurgePack> = {}): api.SurgePack =>
+  packWith({
+    packId: 'hermes-agent',
+    name: 'Hermes',
+    displayOrder: 3,
+    provenance: 'local',
+    tools: [{ toolId: 'hermes', name: 'Hermes', description: '', category: 'agent', url: '' }],
+    ...over,
+  })
+
 /** A pack the operator installed from a registry: the Community shelf's inhabitant. */
 const communityPack = (over: Partial<api.SurgePack> = {}): api.SurgePack =>
   packWith({
@@ -687,19 +698,21 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
     return user
   }
 
-  it('renders exactly two tabs, with the active one marked and the other off the tab order', async () => {
+  it('renders exactly three tabs, with the active one marked and the others off the tab order', async () => {
     await renderTabs()
 
     const tabs = screen.getAllByRole('tab')
-    expect(tabs.map((t) => t.textContent)).toEqual(['Official', 'Community'])
+    expect(tabs.map((t) => t.textContent)).toEqual(['Official', 'Community', 'Personal'])
     expect(tabs[0]!.getAttribute('aria-selected')).toBe('true')
     expect(tabs[1]!.getAttribute('aria-selected')).toBe('false')
+    expect(tabs[2]!.getAttribute('aria-selected')).toBe('false')
     // Roving tabindex: Tab moves past the control, not through it.
     expect(tabs[0]!.getAttribute('tabindex')).toBe('0')
     expect(tabs[1]!.getAttribute('tabindex')).toBe('-1')
-    // Both tabs drive the one panel, and it names the tab it is currently showing.
+    expect(tabs[2]!.getAttribute('tabindex')).toBe('-1')
+    // All three tabs drive the one panel, and it names the tab it is currently showing.
     const panel = screen.getByRole('tabpanel')
-    expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([panel.id, panel.id])
+    expect(tabs.map((t) => t.getAttribute('aria-controls'))).toEqual([panel.id, panel.id, panel.id])
     expect(panel.getAttribute('aria-labelledby')).toBe(tabs[0]!.id)
   })
 
@@ -766,6 +779,51 @@ describe('the Surge Pack picker splits official packs from contributed ones', ()
     // ...and the Official shelf is still offered, saying why it is empty rather than showing a gap.
     await user.click(screen.getByRole('tab', { name: 'Official' }))
     expect(screen.getByTestId('official-empty')).toBeTruthy()
+  })
+
+  /**
+   * PERSONAL IS ITS OWN SHELF (issue #487). A pack uploaded on /packs → Personal used to land
+   * under Community here, next to a Shop pack, and the person who had just made it looked for
+   * it under Official and then under a label that said it was somebody else's.
+   */
+  describe('the Personal shelf', () => {
+    it('holds the personal pack, and keeps it off Community', async () => {
+      const user = userEvent.setup()
+      vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({}), communityPack(), personalPack()])
+      renderPage()
+      await screen.findByRole('tab', { name: 'Official' })
+
+      await user.click(screen.getByRole('tab', { name: 'Community' }))
+      expect(screen.getByRole('radio', { name: /Aider/ })).toBeTruthy()
+      expect(screen.queryByRole('radio', { name: /Hermes/ })).toBeNull()
+
+      await user.click(screen.getByRole('tab', { name: 'Personal' }))
+      expect(screen.getByRole('radio', { name: /Hermes/ })).toBeTruthy()
+      expect(screen.queryByRole('radio', { name: /Aider/ })).toBeNull()
+    })
+
+    it('opens on Personal when the preselected pack is a personal one', async () => {
+      // "Launch a server with this pack" from /packs on a personal pack.
+      vi.mocked(api.listSurgePacks).mockResolvedValue([packWith({}), personalPack()])
+      search.value = 'pack=hermes-agent'
+      renderPage()
+
+      const personal = await screen.findByRole('tab', { name: 'Personal' })
+      expect(personal.getAttribute('aria-selected')).toBe('true')
+      expect((screen.getByRole('radio', { name: /Hermes/ }) as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('is offered when empty, and points at the Personal tab of the Surge Packs page', async () => {
+      const user = userEvent.setup()
+      renderPage()
+      await screen.findByRole('tab', { name: 'Official' })
+
+      await user.click(screen.getByRole('tab', { name: 'Personal' }))
+
+      const empty = screen.getByTestId('personal-empty')
+      expect(empty.textContent).toContain('No personal packs yet')
+      expect(within(empty).getByRole('link').getAttribute('href')).toBe('/packs?tab=personal')
+    })
   })
 
   describe('with nothing contributed installed', () => {
