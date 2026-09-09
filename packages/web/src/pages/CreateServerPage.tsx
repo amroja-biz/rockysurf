@@ -345,9 +345,15 @@ function RepositoryPicker({
   )
 }
 
-/** Which tab a pack belongs on. Core's three words, grouped into this screen's two. */
-type PackTab = 'official' | 'community'
-const tabFor = (pack: SurgePack): PackTab => (pack.provenance === 'official' ? 'official' : 'community')
+/**
+ * Which tab a pack belongs on: core's three words, one tab each, the same split `/packs` shows.
+ * Issue #487: this used to fold `local` into Community, so a pack someone had just uploaded
+ * sat under a label that says it is somebody else's, and the two pages disagreed about what
+ * the pack was.
+ */
+type PackTab = 'official' | 'community' | 'personal'
+const tabFor = (pack: SurgePack): PackTab =>
+  pack.provenance === 'official' ? 'official' : pack.provenance === 'local' ? 'personal' : 'community'
 
 export function CreateServerPage() {
   const navigate = useNavigate()
@@ -549,8 +555,8 @@ export function CreateServerPage() {
           // Open on whichever tab HOLDS the preselection, rather than on Official by rule. The
           // selection rule is untouched — lowest displayOrder, exactly as before — and this only
           // follows it, so an installation whose only enabled packs are contributed ones opens
-          // on Community instead of on an Official shelf that does not contain the checked
-          // radio (rockysurf-jn71).
+          // on Community (or Personal, issue #487) instead of on an Official shelf that does
+          // not contain the checked radio (rockysurf-jn71).
           setPackTab(tabFor(preselected))
         }
         // Asked for but not available — absent from the catalogue, or disabled — and NOTHING
@@ -590,9 +596,9 @@ export function CreateServerPage() {
   }, [savedKeyName, savedSshKeys, sshPublicKey])
 
   /**
-   * The two shelves (rockysurf-jn71). The same partition the admin Pack Shop already performs —
-   * `official` on one side, everything else on the other — kept in the VIEW, where the naming
-   * decision belongs, rather than pushed into core's vocabulary.
+   * The three shelves (rockysurf-jn71, issue #487). The same partition `/packs` performs —
+   * shipped, installed from a registry, made here — kept in the VIEW, where the naming decision
+   * belongs, rather than pushed into core's vocabulary.
    */
   const shelved = useMemo(() => packs.filter((p) => tabFor(p) === packTab), [packs, packTab])
 
@@ -1365,6 +1371,7 @@ export function CreateServerPage() {
                 tabs={[
                   { key: 'official', label: 'Official' },
                   { key: 'community', label: 'Community' },
+                  { key: 'personal', label: 'Personal' },
                 ]}
               />
               {/*
@@ -1388,6 +1395,13 @@ export function CreateServerPage() {
                           admin-only `/admin/pack-shop` it replaced — so this is offered to
                           everyone rather than branching on `user?.isAdmin`. */}
                       <Link to="/packs">Browse the Surge Packs</Link>
+                    </p>
+                  ) : packTab === 'personal' ? (
+                    // Always offered, like Community: on an installation with no personal pack
+                    // yet, the tab is how someone learns they can make one (issue #487).
+                    <p className="hint" data-testid="personal-empty">
+                      No personal packs yet.{' '}
+                      <Link to="/packs?tab=personal">Make one on the Surge Packs page</Link>
                     </p>
                   ) : (
                     // The mirror case, and it is reachable: an operator can disable the packs
