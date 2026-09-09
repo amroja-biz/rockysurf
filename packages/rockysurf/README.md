@@ -1,65 +1,97 @@
-# rockysurf
+# Rocky Surf
 
-Self-hosted, persistent cloud dev boxes with your coding agents already installed. One box, on
-your cloud, under your budget cap.
+Rocky Surf is an open-source productivity tool for software engineers. It provides a lightweight layer for creating and managing Linux VMs running on your own cloud accounts, pre-installed with your favorite AI coding agent harnesses and GitHub repos. The only costs are the ones from your cloud and coding agents.
+
+## Installation
+
+Requires Node 24 or newer.
 
 ```bash
 npx -y rockysurf
 ```
 
-First boot prints an admin password once, opens the web UI, and walks you through adding a
-cloud. With no cloud configured it still comes up with an in-memory Provider, so you can create
-a Server, watch it boot and terminate it before deciding whether to paste a token.
+## Features
 
-## What this package is
+- Works with AWS, GCP, Azure and Hetzner
+- Web app and MCP server, both running on your own machine
+- Create, stop, start and terminate Servers on every cloud you configured, from one list
+- Pre-install your favorite agent harnesses and Tools with a Surge Pack. Eleven ship in the box,
+  covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others
+- Pre-load public and private GitHub repos
+- Reuse your existing SSH keys, or let Rocky Surf make one for you
+- Restrict which network may reach SSH on your Servers
+- Server count, create-rate and spend caps, enforced server-side so they cover the web app, the
+  CLI and MCP alike
+- Agent Skills for writing your own Surge Packs and Providers, in this repository
+- Share custom Surge Packs and Providers through the Rocky Surf Shop
 
-**The composition root.** It is the only package in the repository allowed to import both the
-control plane (`@rockysurf/core`) and the concrete compute Providers, because somebody has to
-build the Provider registry and core is deliberately forbidden from doing it:
+## MCP basics
 
-- core may import `@rockysurf/provider-sdk` and nothing else, which is what keeps the Provider
-  interface honest while it has no out-of-tree consumers;
-- it also keeps a cloud vendor's SDK out of core's dependency tree, which is what makes an
-  `npx` cold start fast.
+Rocky Surf must already be running; the MCP server talks to it over HTTP.
 
-`scripts/check-core-deps.mjs` enforces both rules, and enforces that this package exists and
-reaches both sides — otherwise deleting it would leave the lint green and `npx rockysurf`
-booting with no cloud at all.
+### Mint a token
 
-It also carries the `rockysurf` binary and the npm name; `@rockysurf/core` stays private.
-
-## How a Provider gets configured
-
-Credentials resolve **config file first, then the encrypted secrets store**:
-
-| where | who writes it | notes |
-|---|---|---|
-| `rockysurf.config.yaml` | you, in an editor | wins, because it is the copy you can diff and roll back |
-| encrypted secrets store | the first-run wizard | what a token pasted in the UI becomes |
-| Provider's own chain | AWS | `AWS_PROFILE` and friends; never stored by Rocky Surf |
-
-**A credential pasted in the wizard takes effect at the next restart.** Providers are
-constructed at boot, so the wizard saves and encrypts the token, says so plainly, and the
-Provider comes up on the next start. That is the documented v0.1 behaviour rather than an
-oversight — hot-reloading a Provider is a bigger change than it looks, and a restart is honest.
-
-A Provider that is enabled but cannot be built is **reported and skipped**, never fatal: the
-control plane still starts, because the UI is where you fix it. The boot log carries one line
-per Provider.
-
-## Adding a Provider
-
-One row in `src/compose.ts` — the config section to read, where its credential comes from, and
-what to hand its own `configSchema`. No core change, no new interface. Each Provider package
-exports a `ProviderFactory` (`id`, `displayName`, `configSchema`, `createProvider`) and this
-package calls it.
-
-## Development
+It is printed once.
 
 ```bash
-pnpm --filter rockysurf test
-pnpm --filter rockysurf typecheck
-pnpm --filter rockysurf build
+npx -y rockysurf token
 ```
+
+### Install MCP in Claude Code
+
+```bash
+claude mcp add --scope user --env ROCKYSURF_TOKEN=the-token-you-just-minted \
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
+```
+
+### Install MCP in Codex CLI
+
+```bash
+codex mcp add rockysurf --env ROCKYSURF_TOKEN=the-token-you-just-minted \
+  --env ROCKYSURF_URL=http://127.0.0.1:3000 -- npx -y rockysurf mcp
+```
+
+### MCP Permissions
+
+`mcp.scopes` in the config file governs permissions. Defaults are
+`[read, stop]`:
+
+```yaml
+mcp:
+  scopes: [read, stop]                        # read, stop and start
+  # scopes: [read, stop, create]              # ...and create Servers
+  # scopes: [read, stop, create, terminate]   # ...and destroy them
+```
+
+ `create` and `terminate` are configurable on Rocky Surf's Settings page.
+
+A scope you have not granted means the tool is not offered at all. Tick `create` under
+**Settings → MCP**, then reconnect the MCP client.
+
+### Basic MCP usage
+
+> Create a new Rocky Surf EC2 on AWS, medium size, with the OpenCode Surge Pack. Clone
+> https://github.com/pyjanitor-devs/pyjanitor. Use my standard ssh key.
+
+> Show me all running Servers.
+
+> Stop the OpenCode EC2.
+
+## Agent Skills
+
+Agent skills are available in the [source code](https://github.com/amroja-biz/rockysurf) under
+[`.agents/skills/`](.agents/skills/README.md), not in the npm package. Clone the repository and
+any Agent Skills–compatible agent can use them.
+
+### Examples:
+
+_Create a Personal Surge Pack_
+
+> Make me a Surge Pack for Hermes, https://github.com/nousresearch/hermes-agent
+
+_Add a cloud Provider_
+
+> Make a Rocky Surf Provider for Digital Ocean.
+
 
 Licensed MIT. The Rocky Surf name and logo are not covered by the MIT license.
