@@ -1,23 +1,25 @@
 ---
 KEY: pass-along-home
 DATE: 2026-08-21
-UPDATED: 2026-09-06
+UPDATED: 2026-09-10
 STATUS: active
-SOURCE: bd remember, migrated 2026-08-21
+SOURCE: bd remember, migrated 2026-08-21; owner ruling 2026-09-09 ("as long as we have github issues for those things, no need for the pass along") and 2026-09-10 (remove them from the repo, gitignore the folder)
 ---
 
-# Session pass-alongs live in this repository, and they're public
+# Session pass-alongs are local files, never committed
 
-Session hand-off notes ("pass-alongs" — what a work session did, what's still open, what to do
-next) are committed to `.pass-along/` in this repository, on `main`.
+A pass-along (what a work session did, what's still open, what to do next) may still be written
+to `.pass-along/` on the machine doing the work, but the folder is gitignored and nothing in it
+reaches the repository. Until 2026-09-10 pass-alongs were committed to `main` and pruned by hand;
+the owner removed them because every open item they carried belongs in a GitHub issue, and a
+public hand-off note was one more place a secret could leak.
 
-Because this repository is public, everything under `.pass-along/` is world-readable. The
-no-secrets rule is load-bearing, not a formality: no IP addresses, account IDs, tokens, or other
-private infrastructure detail belongs in a pass-along. Scan a pass-along for that kind of content
-before committing it.
+What this means for a session:
 
-The folder is not append-only. Pass-alongs are pruned periodically (first done 2026-09-06, #339):
-anything older than about a day goes, because a pass-along is operational state for the next
-session, not a record — what is durable belongs in a memory, an ADR, or `docs/history/DEVLOG.md`.
-Expect the oldest surviving pass-along's `PREDECESSOR` to name a file that is no longer in the
-tree; that is the prune, not a mistake.
+- **Open work goes in a GitHub issue**, one per item, before the session ends. A pass-along is
+  not a substitute for filing it.
+- **Durable knowledge goes in `docs/memories/`** (a lesson, a ruling, a convention) or in an ADR.
+- **A pass-along, if written, is for the next session on this machine only.** Expect it to be
+  absent on any other checkout, and never point a memory, an issue, or a document at one.
+- The no-secrets rule still applies to everything that *is* committed: `docs/memories/`, ADRs,
+  issues, pull requests.

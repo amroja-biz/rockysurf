@@ -262,7 +262,7 @@ checks that can see it and let the pull request's CI be the full gate
 
 On a pull request, `ci.yml`'s `What changed` job reads the changed-file list from the pull request
 itself and sets one output. A pull request confined to `packages/web/`, `docs/`, `.claude/`,
-`.agents/skills/`, `.pass-along/`, `LICENSE` or Markdown runs `Typecheck`, `Test`, `Secret scan`
+`.agents/skills/`, `LICENSE` or Markdown runs `Typecheck`, `Test`, `Secret scan`
 and `UI (browser)`. Anything beyond that also runs `Lint (structure)`, `Release tarballs` and
 `Push bootstrap (real sshd)`. Pushes to `main` are never filtered. `Pack smoke` is its own workflow
 and triggers only on paths that reach a box, testing just the changed packs when a pull request

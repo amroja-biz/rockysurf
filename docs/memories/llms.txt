@@ -68,9 +68,9 @@
   server and every identifier, key, path and package name stay as they are.
 - [measured-numbers-in-prose](2026-08-13-measured-numbers-in-prose.md): why a measurement of this
   repository needs exactly one dated, re-measured home instead of being copied into prose.
-- [pass-along-home](2026-08-21-pass-along-home.md): session hand-off notes live in `.pass-along/`
-  in this repository, and they're world-readable — no secrets, ever; the folder is pruned
-  periodically to about the last day.
+- [pass-along-home](2026-08-21-pass-along-home.md): session hand-off notes (`.pass-along/`) are
+  local and gitignored, never committed; what the next session needs goes in a GitHub issue or
+  a memory.
 
 ## Architecture
 

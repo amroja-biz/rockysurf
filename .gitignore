@@ -35,6 +35,10 @@ rockysurf-graph.html
 .beads-credential-key
 .beads/proxieddb/
 
+# Session hand-off notes (pass-alongs). Local to the machine that wrote them; never committed.
+# Durable knowledge goes in docs/memories/, open work goes in GitHub issues.
+.pass-along/
+
 # OS and editor
 .DS_Store
 Thumbs.db
