@@ -1,6 +1,6 @@
 {
   "name": "@rockysurf/provider-conformance",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "SDK conformance checks every compute provider runs against itself. Test-only; never a runtime dependency.",
   "license": "MIT",
   "type": "module",

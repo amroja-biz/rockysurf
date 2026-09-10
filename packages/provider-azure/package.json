@@ -1,6 +1,6 @@
 {
   "name": "@rockysurf/provider-azure",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Azure compute provider — plain fetch against the ARM REST API, no vendor SDK.",
   "license": "MIT",
   "type": "module",
