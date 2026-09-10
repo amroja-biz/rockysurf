@@ -21,10 +21,10 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.1.0
-        version: 2.1.0(hono@4.13.1)
+        version: 2.1.0(hono@4.13.5)
       '@hono/zod-validator':
         specifier: ^0.9.0
-        version: 0.9.0(hono@4.13.1)(zod@4.4.3)
+        version: 0.9.0(hono@4.13.5)(zod@4.4.3)
       '@rockysurf/provider-sdk':
         specifier: workspace:*
         version: link:../provider-sdk
@@ -35,8 +35,8 @@ importers:
         specifier: ^0.45.2
         version: 0.45.2(@types/better-sqlite3@9.6.0)(better-sqlite3@13.0.3)
       hono:
-        specifier: ^4.13.1
-        version: 4.13.1
+        specifier: ^4.13.5
+        version: 4.13.5
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
@@ -1545,6 +1545,10 @@ packages:
     resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
     engines: {node: '>=16.9.0'}
 
+  hono@4.13.5:
+    resolution: {integrity: sha512-O6+/eCYRkzzzy0rPWwKLiGBR1nFuUPZynnwjxN1MBA62NNqbT0wQEzQyK2gSO5yDIDB336sXQleAhOHrzlYyKw==}
+    engines: {node: '>=16.9.0'}
+
   html-encoding-sniffer@6.0.0:
     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
@@ -2604,9 +2608,13 @@ snapshots:
     dependencies:
       hono: 4.13.1
 
-  '@hono/zod-validator@0.9.0(hono@4.13.1)(zod@4.4.3)':
+  '@hono/node-server@2.1.0(hono@4.13.5)':
     dependencies:
-      hono: 4.13.1
+      hono: 4.13.5
+
+  '@hono/zod-validator@0.9.0(hono@4.13.5)(zod@4.4.3)':
+    dependencies:
+      hono: 4.13.5
       zod: 4.4.3
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
@@ -3342,6 +3350,8 @@ snapshots:
       function-bind: 1.1.2
 
   hono@4.13.1: {}
+
+  hono@4.13.5: {}
 
   html-encoding-sniffer@6.0.0:
     dependencies:

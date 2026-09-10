@@ -47,7 +47,7 @@
     "@rockysurf/provider-sdk": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.1",
+    "hono": "^4.13.5",
     "ssh2": "^1.17.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
