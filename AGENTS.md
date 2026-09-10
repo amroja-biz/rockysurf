@@ -22,10 +22,11 @@ database; don't expect a shared or repo-tracked one to exist, and don't try to c
 
 Cross-session project knowledge that isn't tied to a single issue lives in `docs/memories/` — read
 [`docs/memories/llms.txt`](docs/memories/llms.txt) first, it indexes the rest. Session hand-off
-notes (what a work session did, what's still open) live in `.pass-along/`.
+notes (pass-alongs) are local files under `.pass-along/`, which is gitignored: anything a next
+session must know goes in a GitHub issue or a memory, not in a pass-along.
 
-Both directories are committed to this public repository and are world-readable: never write a
-secret, credential, IP address, account ID, or other private infrastructure detail into either
+`docs/memories/` is committed to this public repository and is world-readable: never write a
+secret, credential, IP address, account ID, or other private infrastructure detail into it
 one.
 
 ## The pre-push gate

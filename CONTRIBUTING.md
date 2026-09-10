@@ -324,8 +324,9 @@ tracked elsewhere, not at work that has been forgotten.
 
 Durable knowledge that outlives a single issue — lessons, rulings, conventions — lives in
 [`docs/memories/`](docs/memories/llms.txt) instead of in anyone's beads database. Session hand-off
-notes live in [`.pass-along/`](.pass-along/). Both are committed here and world-readable, so never
-put a secret, credential, IP address, or account ID in either one.
+notes (`.pass-along/`) are gitignored and stay on the machine that wrote them; open work belongs
+in a GitHub issue. `docs/memories/` is committed here and world-readable, so never put a secret,
+credential, IP address, or account ID in it.
 
 ## Commits and pull requests
 
@@ -339,8 +340,8 @@ put a secret, credential, IP address, or account ID in either one.
   (docs-only, a rename, copy, a config tweak, a single-file fix) run only the checks that can see
   it and let the pull request's CI be the full gate — see
   [`docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md`](docs/memories/2026-09-05-small-changes-run-only-relevant-checks.md).
-- A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/`, `.agents/skills/`
-  or `.pass-along/` runs typecheck, the unit tests, the secret scan and the browser suite, and
+- A pull request that touches only `packages/web/`, `docs/`, Markdown, `.claude/` or
+  `.agents/skills/` runs typecheck, the unit tests, the secret scan and the browser suite, and
   nothing else. `UI (browser)` runs on **every** pull request regardless of paths — it is the
   layer a UI-only change most needs, and a job that will become a required check must never be
   path-filtered. Release tarballs, the push-bootstrap gate, the structural lint and Pack smoke wait
