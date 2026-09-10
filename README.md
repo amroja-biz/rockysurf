@@ -53,6 +53,25 @@ npx -y rockysurf
 Rocky Surf is a Node app that runs on your computer. You access it from localhost.
 No Saas, telemetry, or sneaky phoning home.
 
+The web server runs on http://127.0.0.1:3000 by default.
+
+#### Running on a different port
+
+Pass `--port` when you start it:
+
+```bash
+npx -y rockysurf --port 3080
+```
+
+To make it stick, set `server.port` in your config file, `~/.rockysurf/config.yaml`, and restart Rocky Surf. The file does not exist until the setup wizard or the Settings page writes it, so on a fresh install create it yourself:
+
+```bash
+mkdir -p ~/.rockysurf
+printf 'server:\n  port: 3080\n' > ~/.rockysurf/config.yaml
+```
+
+`--port` wins over the file for that run. The port is read once at boot, so a change made on the Settings page takes effect at the next restart. If you use the MCP server, set `ROCKYSURF_URL` in your `.mcp.json` entry to the same port.
+
 ### MCP
 
 When running, Rocky Surf is also accessible from your coding agents as a local MCP server. 
