@@ -1,6 +1,6 @@
 {
   "name": "@rockysurf/core",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "The portable control plane: Hono + Drizzle/SQLite + SSE + in-process jobs, with the web build bundled in.",
   "license": "MIT",
   "type": "module",
