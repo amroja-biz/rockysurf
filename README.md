@@ -8,7 +8,7 @@ Rocky Surf is an open-source productivity tool for software engineers. It provid
 
 ## Installation
 
-Requires Node 24 or newer.
+Requires Node 24 or newer, and the command-line tool of any cloud you plan to use, signed in: the AWS CLI, the Azure CLI, or gcloud. Hetzner needs only an API token.
 
 ```bash
 npx -y rockysurf
@@ -52,6 +52,16 @@ npx -y rockysurf
 
 Rocky Surf is a Node app that runs on your computer. You access it from localhost.
 No Saas, telemetry, or sneaky phoning home.
+
+The web server runs on http://127.0.0.1:3000 by default.
+
+#### Running on a different port
+
+Pass `--port` when you start it:
+
+```bash
+npx -y rockysurf --port 3080
+```
 
 ### MCP
 
