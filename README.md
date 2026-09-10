@@ -8,7 +8,7 @@ Rocky Surf is an open-source productivity tool for software engineers. It provid
 
 ## Installation
 
-Requires Node 24 or newer.
+Requires Node 24 or newer, and the command-line tool of any cloud you plan to use, signed in: the AWS CLI, the Azure CLI, or gcloud. Hetzner needs only an API token.
 
 ```bash
 npx -y rockysurf
