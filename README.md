@@ -63,15 +63,6 @@ Pass `--port` when you start it:
 npx -y rockysurf --port 3080
 ```
 
-To make it stick, set `server.port` in your config file, `~/.rockysurf/config.yaml`, and restart Rocky Surf. The file does not exist until the setup wizard or the Settings page writes it, so on a fresh install create it yourself:
-
-```bash
-mkdir -p ~/.rockysurf
-printf 'server:\n  port: 3080\n' > ~/.rockysurf/config.yaml
-```
-
-`--port` wins over the file for that run. The port is read once at boot, so a change made on the Settings page takes effect at the next restart. If you use the MCP server, set `ROCKYSURF_URL` in your `.mcp.json` entry to the same port.
-
 ### MCP
 
 When running, Rocky Surf is also accessible from your coding agents as a local MCP server. 
