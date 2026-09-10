@@ -25,9 +25,13 @@ npx -y rockysurf
 - Agent Skills for writing your own Surge Packs and Providers, in this repository
 - Share custom Surge Packs and Providers through the Rocky Surf Shop
 
+## Web app basics
+
+The web server runs on http://127.0.0.1:3000 by default. This is the primary surface for Rocky Surf. All features are available from it.
+
 ## MCP basics
 
-Rocky Surf must already be running; the MCP server talks to it over HTTP.
+The MCP server is a convenience surface so you can manage your Servers from inside of any coding agent or MCP client. Rocky Surf must already be running; the MCP server talks to it over HTTP.
 
 ### Mint a token
 
@@ -77,21 +81,6 @@ A scope you have not granted means the tool is not offered at all. Tick `create`
 
 > Stop the OpenCode EC2.
 
-## Agent Skills
-
-Agent skills are available in the [source code](https://github.com/amroja-biz/rockysurf) under
-[`.agents/skills/`](.agents/skills/README.md), not in the npm package. Clone the repository and
-any Agent Skills–compatible agent can use them.
-
-### Examples:
-
-_Create a Personal Surge Pack_
-
-> Make me a Surge Pack for Hermes, https://github.com/nousresearch/hermes-agent
-
-_Add a cloud Provider_
-
-> Make a Rocky Surf Provider for Digital Ocean.
 
 
 Licensed MIT. The Rocky Surf name and logo are not covered by the MIT license.
