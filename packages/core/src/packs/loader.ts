@@ -49,6 +49,16 @@ export interface LoadResult {
    * source to reconcile against" rather than "the source says zero packs" (rockysurf-96ce).
    */
   files: string[]
+  /**
+   * Of those, the ones that were TOOL files rather than pack files — `packs/base.yaml` and
+   * anything else shaped like it (issue #499, ADR-0018's format).
+   *
+   * Recorded because "this file defined no pack" and "this file failed to load" are different
+   * facts, and a caller comparing two directories needs to tell them apart: `lint.ts` uses it
+   * to recognise the same tool file seen twice, and it is how a reader of a report knows why a
+   * file contributed no pack.
+   */
+  toolFiles: string[]
 }
 
 const PACK_EXTENSIONS = new Set(['.yaml', '.yml'])
@@ -91,9 +101,44 @@ export function parsePackFile(fileName: string, text: string): { file?: PackFile
   return { file: parsed.data, issues }
 }
 
-/** Read every pack file in a directory and resolve them against each other. */
+/**
+ * True when a document is the TOOL FILE shape: an object with no `pack` key (ADR-0018).
+ *
+ * The two formats are siblings and this is the only thing that tells them apart — a tool file
+ * has no `packId` to key on, and its name carries no signal because, unlike a pack file, it is
+ * not named after anything. So the rule is the absence of the `pack` block, which is also what
+ * `parseToolFile` already keys on from the other direction when someone pastes a pack file into
+ * the tool importer.
+ *
+ * The cost, stated because it is the one thing this trades away: a pack file whose `pack:` block
+ * is deleted outright is now read as a tool file, so instead of "pack: required" the author sees
+ * their pack silently absent from the picker. Every other way of breaking a pack file — a
+ * missing field, a bad id, a filename that disagrees — still names itself, and a whole missing
+ * block is the one case where "this file introduces tools and no pack" is a true reading of it.
+ *
+ * Unparseable YAML is not decided here: it goes down the pack-file path, which reports it as
+ * invalid YAML, so the error a broken file gets does not depend on a shape nobody could read.
+ */
+function looksLikeToolFile(text: string): boolean {
+  try {
+    const raw = parseYaml(text)
+    return raw !== null && typeof raw === 'object' && !('pack' in raw)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Read every file in a directory and resolve them against each other.
+ *
+ * Both formats are read: a file with a `pack:` block is a pack file, and one without is a TOOL
+ * FILE contributing definitions and no pack (issue #499 — `packs/base.yaml` holds the shared
+ * base toolchain that every pack references by id). ADR-0018 froze that format for imports and
+ * exports; nothing about it needed changing to be loaded from disk, which is why it is the shape
+ * a base file takes rather than a pack with `enabled: false` pretending not to be one.
+ */
 export function loadPacksFromDir(dir: string): LoadResult {
-  const result: LoadResult = { packs: [], tools: new Map(), issues: [], files: [] }
+  const result: LoadResult = { packs: [], tools: new Map(), issues: [], files: [], toolFiles: [] }
 
   let entries: string[]
   try {
@@ -109,18 +154,9 @@ export function loadPacksFromDir(dir: string): LoadResult {
 
   const definedIn = new Map<string, string>()
 
-  for (const name of entries) {
-    const { file, issues } = parsePackFile(name, readFileSync(join(dir, name), 'utf8'))
-    result.issues.push(...issues)
-    if (!file) continue
-
-    if (result.packs.some((p) => p.packId === file.pack.packId)) {
-      result.issues.push({ file: name, message: `packId "${file.pack.packId}" is already defined in another file` })
-      continue
-    }
-    result.packs.push({ ...file.pack, sourceFile: name })
-
-    for (const tool of file.tools) {
+  /** One id, one home — whichever of the two formats the definition arrived in. */
+  const register = (name: string, tools: readonly ToolDefinition[]): void => {
+    for (const tool of tools) {
       const owner = definedIn.get(tool.toolId)
       if (owner) {
         result.issues.push({
@@ -132,6 +168,30 @@ export function loadPacksFromDir(dir: string): LoadResult {
       definedIn.set(tool.toolId, name)
       result.tools.set(tool.toolId, { ...tool, sourceFile: name })
     }
+  }
+
+  for (const name of entries) {
+    const text = readFileSync(join(dir, name), 'utf8')
+
+    if (looksLikeToolFile(text)) {
+      const { file, issues } = parseToolFile(name, text)
+      result.issues.push(...issues)
+      result.toolFiles.push(name)
+      if (file) register(name, file.tools)
+      continue
+    }
+
+    const { file, issues } = parsePackFile(name, text)
+    result.issues.push(...issues)
+    if (!file) continue
+
+    if (result.packs.some((p) => p.packId === file.pack.packId)) {
+      result.issues.push({ file: name, message: `packId "${file.pack.packId}" is already defined in another file` })
+      continue
+    }
+    result.packs.push({ ...file.pack, sourceFile: name })
+
+    register(name, file.tools)
   }
 
   // Cross-file references resolve only once every file has been read, so this runs last.

@@ -1,6 +1,6 @@
 # Grok Build — xAI's terminal coding agent, on the shared base toolchain.
 #
-# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/base.yaml and referenced here.
 # Only `grok-build` is defined in this file.
 version: 1
 

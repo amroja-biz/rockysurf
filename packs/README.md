@@ -20,9 +20,14 @@ pack:  { … }      # required; exactly one SurgePack
 tools: [ … ]      # required; the Tool records this file introduces
 ```
 
-`pack.tools` lists Tool **ids**, which may be defined in this file or in any other pack file
+`pack.tools` lists Tool **ids**, which may be defined in this file or in any other file
 here — that is how several packs share one `claude-code` definition. Defining the same
 `toolId` twice is an error and CI rejects it.
+
+One file here is not a pack. `base.yaml` is a **Tool file** (ADR-0018) — `version: 1` and a
+`tools:` list, no `pack:` block — and it holds the shared base toolchain everything else
+references. Any file in this directory with no `pack:` block is read that way: definitions, no
+pack, no card in the picker, no image.
 
 The format is **frozen at v0.1** (ADR-0004). These files are the source of truth; the database
 is a cache and edit layer.
@@ -45,10 +50,13 @@ single run and fails the second one.
 the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, and `pi` have shipped
 since.
 
-`claude-code.yaml` also **defines the shared base toolchain** — the compiler, Node, the
-Python bits, tmux, git, the GitHub CLI and so on — that the other packs reference by id. If you are adding a
-pack, list those ids in your `pack.tools` rather than redefining them; the loader rejects a
-`toolId` defined in two files.
+`base.yaml` **defines the shared base toolchain** — the compiler, Node, the Python bits, tmux,
+git, the GitHub CLI and so on — that every pack references by id. If you are adding a pack, list
+those ids in your `pack.tools` rather than redefining them; the loader rejects a `toolId` defined
+in two files. Those definitions lived in `claude-code.yaml` until issue #499 moved them out: a
+file that fails to parse is skipped at boot, so while they lived in a pack's file, one typo
+there left every other pack referencing ids that no longer existed and the picker came up
+empty.
 
 That is the only thing a pack may not do with Tools. **Everything else it installs, it defines
 itself** — a Tool is an id, a description and a script, and nothing needs registering anywhere
