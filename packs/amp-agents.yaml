@@ -1,6 +1,6 @@
 # Amp — Sourcegraph's coding agent, on the shared base toolchain.
 #
-# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/base.yaml and referenced here.
 version: 1
 
 pack:

@@ -49,7 +49,7 @@ outcome this run must not produce.
 does with it. Redefining a shared base id is the cheapest way to produce one:
 
 ```
-broken-demo.yaml: [duplicate-tool] toolId "git" is already defined by claude-code.yaml — …
+broken-demo.yaml: [duplicate-tool] toolId "git" is already defined by base.yaml — …
 ```
 
 A pass is: **no pull request exists**, and the agent told the user which rule failed, in which

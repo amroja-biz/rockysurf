@@ -193,8 +193,13 @@ describe('the rockysurf binary', () => {
     const configPath = join(dir, 'rockysurf.config.yaml')
     writeFileSync(configPath, `server:\n  port: ${port}\n  dataDir: ${dataDir}\n`)
 
-    // cwd at the repository root, so the checkout branch of resolvePacksDir fires.
-    const expected = readdirSync(join(repoRoot, 'packs')).filter((f) => f.endsWith('.yaml')).length
+    // cwd at the repository root, so the checkout branch of resolvePacksDir fires. Files that
+    // declare a pack, not every YAML file: `packs/base.yaml` is a TOOL FILE holding the shared
+    // base toolchain, so it becomes tool rows and never a pack (issue #499).
+    const packsDir = join(repoRoot, 'packs')
+    const expected = readdirSync(packsDir)
+      .filter((f) => f.endsWith('.yaml'))
+      .filter((f) => /^pack:/m.test(readFileSync(join(packsDir, f), 'utf8'))).length
 
     // A known password, so the test can log in rather than scraping the generated one.
     const password = 'test-admin-password'

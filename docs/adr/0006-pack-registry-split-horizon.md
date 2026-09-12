@@ -192,10 +192,16 @@ worst direction for a gate to fail in.
 ### Negative
 
 - **A community pack cannot resolve the base toolchain on its own.** Packs reference `curl`,
-  `git`, `claude-code` and the rest by id, and those definitions ship with Rocky Surf rather than
+  `git`, `nodejs` and the rest by id, and those definitions ship with Rocky Surf rather than
   living in the registry. The shop's CI therefore clones this repository to supply `--base-packs`.
   Nothing is committed from that clone, but the registry's checks are coupled to this
-  repository's `main`, and a tool removed here turns into a failed check there.
+  repository's `main`, and a tool removed here turns into a failed check there. **Amended
+  2026-09-11 (issue #499):** the definitions are in `packs/base.yaml`, a Tool file (ADR-0018)
+  that holds the base toolchain and defines no pack — they were in `packs/claude-code.yaml`, so
+  the coupling read as "a community pack depends on the Claude Code pack's file", which was
+  true and was nobody's intent. The coupling itself is unchanged and is loosened elsewhere:
+  `--base-packs` defaults to the packs bundled in the `rockysurf` the shop already pins
+  (rockysurf-io02), so the clone is a fallback rather than the only route.
 - **The trust label is per registry, not per pack.** An operator who adds a registry vouches for
   all of it. Finer granularity would need per-pack signatures, which is `rockysurf-cqrm`.
 - **The digest is not a signature**, and the honest description of the trust chain is "the

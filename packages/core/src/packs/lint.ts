@@ -59,9 +59,9 @@ export interface LintOptions {
    *
    * Without this the check is unusable for the thing it exists for. A community pack is
    * expected to reference the shared base toolchain by id rather than redefine it
-   * (CONTRIBUTING.md), that toolchain is defined in this repository's
-   * `packs/claude-code.yaml`, and a directory holding one community pack therefore
-   * fails `references unknown tool "claude-code"` on every single tool it does not own.
+   * (CONTRIBUTING.md), that toolchain is defined in this repository's `packs/base.yaml`, and a
+   * directory holding one community pack therefore fails `references unknown tool "git"` on
+   * every single tool it does not own.
    */
   basePacksDirs?: string[]
 }
@@ -298,6 +298,7 @@ export function lintPacksDir(options: LintOptions): LintReport {
   const { tools: baseTools, findings: baseFindings } = loadBasePacks(
     options.basePacksDirs ?? [],
     new Set(loaded.packs.map((p) => p.packId)),
+    new Set(loaded.files),
   )
 
   // A reference the base satisfies is not the target's problem. Matched on the tool id the
@@ -336,7 +337,7 @@ export function lintPacksDir(options: LintOptions): LintReport {
 }
 
 /**
- * Load the base directories, minus any pack the TARGET also defines.
+ * Load the base directories, minus any file the TARGET is itself the home of.
  *
  * The subtraction is what makes a default base directory safe. `rockysurf pack lint` falls back
  * to the packs bundled in the running `rockysurf` when no `--base-packs` is given, and those are
@@ -348,10 +349,20 @@ export function lintPacksDir(options: LintOptions): LintReport {
  * contributes nothing; a base file the target knows nothing about stays, and a community pack
  * that redefines `git` out of it is still caught — which is the case the check exists for, since
  * a toolId defined twice breaks the operator's whole catalog rather than just that pack.
+ *
+ * A TOOL FILE has no packId to key on (issue #499 — `packs/base.yaml` is the shared base
+ * toolchain and defines no pack), so its identity is its filename, and a base tool file the
+ * target also holds a file of that name for is the same subtraction by the same argument: since
+ * a pack file must be named after its packId, filename identity is what the packId rule has
+ * always been measuring anyway. The hole this leaves is the mirror of the one the packId rule
+ * leaves — a community directory shipping its own `base.yaml` that redefines `git` is not
+ * caught by this check — and it is caught at load time instead, because the operator's own
+ * directory is where the two definitions finally meet and the loader refuses the second one.
  */
 function loadBasePacks(
   dirs: string[],
   targetPackIds: ReadonlySet<string>,
+  targetFiles: ReadonlySet<string>,
 ): { tools: Map<string, LoadedTool>; findings: LintFinding[] } {
   const tools = new Map<string, LoadedTool>()
   const findings: LintFinding[] = []
@@ -365,8 +376,12 @@ function loadBasePacks(
         message: `base pack directory does not validate: ${issue.message}`,
       })
     }
-    // Files belonging to a pack the target also defines are the target's own, seen twice.
-    const shadowed = new Set(base.packs.filter((p) => targetPackIds.has(p.packId)).map((p) => p.sourceFile))
+    // Files belonging to a pack the target also defines are the target's own, seen twice — and so
+    // is a tool file the target holds under the same name.
+    const shadowed = new Set([
+      ...base.packs.filter((p) => targetPackIds.has(p.packId)).map((p) => p.sourceFile),
+      ...base.toolFiles.filter((name) => targetFiles.has(name)),
+    ])
     for (const [id, tool] of base.tools) {
       if (shadowed.has(tool.sourceFile) || tools.has(id)) continue
       tools.set(id, tool)

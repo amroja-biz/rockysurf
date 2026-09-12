@@ -1204,13 +1204,17 @@ Tool definitions by referencing ids across files, and a reference to a Tool that
 anywhere is itself a validation issue — charged to the file doing the *referencing*. So breaking
 a file that defines shared Tools invalidates every file that depends on it.
 
-That is not hypothetical with the shipped set. `claude-code.yaml` defines the 16-tool base
-toolchain, and the other five packs reference 15 to 18 Tools apiece that are defined outside
-themselves — `amp-agents`, `codex-cli`, `open-claw` and `open-code` each pull 15 from
-`claude-code`, and `gas-town` pulls 18 from three different files. A syntax error in
-`claude-code.yaml` alone therefore invalidates every shipped pack, and the boot log will
-name all six files rather than the one you edited. **Read the log from the top: the first file
-listed is usually the one to fix.**
+That is not hypothetical with the shipped set. `base.yaml` defines the shared base toolchain —
+the compiler, curl, git, the GitHub CLI, tmux, the Python bits, Node, Playwright and beads — and
+every shipped pack references most of its Tools from there rather than defining them. A syntax
+error in `base.yaml` alone therefore invalidates every shipped pack, and the boot log will name
+every file rather than the one you edited. **Read the log from the top: the first file listed is
+usually the one to fix.**
+
+`base.yaml` is the one file with that reach, and it is a file of its own for exactly this reason
+(issue #499): those definitions used to live in `claude-code.yaml`, so a typo in the Claude Code
+pack emptied the picker. Breaking any single *pack* file now costs that pack, plus any pack that
+lists a Tool it defines.
 
 ### When a Server's setup fails
 

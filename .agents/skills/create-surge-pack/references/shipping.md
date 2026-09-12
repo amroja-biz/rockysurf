@@ -72,16 +72,16 @@ Work through the checklist at the end of `docs/writing-a-surge-pack.md` first, t
 the smoke harness for every pack on both `amd64` and `arm64` and gates merge on it.
 
 The one design rule specific to this path: **reference the shared base Tool ids, do not redefine
-them.** `packs/claude-code.yaml` defines the base toolchain and the other packs list those
-ids. A `toolId` defined in two files is rejected by the loader, naming both.
+them.** `packs/base.yaml` defines the base toolchain and every pack lists those ids. A `toolId`
+defined in two files is rejected by the loader, naming both.
 
 That sharing has a consequence worth telling the user about, because it is not obvious and it is
 the reason to be careful editing an existing file rather than adding a new one: a pack file that
 fails validation is skipped at boot, and every file that *references* a Tool from the skipped file
 is charged with "references unknown tool" and skipped too. A syntax error in
-`packs/claude-code.yaml` alone empties the entire pack picker — every pack, not just that one
-— until the file is fixed. Adding a new file of your own cannot do this to anyone; editing the
-shared base file can.
+`packs/base.yaml` alone empties the entire pack picker — every pack, even though that file
+defines no pack of its own — until the file is fixed. Adding a new file of your own cannot do
+this to anyone; editing the shared base file can.
 
 ## 2. Import into a running instance
 

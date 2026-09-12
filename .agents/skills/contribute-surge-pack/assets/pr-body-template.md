@@ -17,7 +17,7 @@ trip is a day. A section with nothing to say gets one honest line, not deletion.
 
 - `<toolId>` — <what it is>, installed <from apt / from npm / from a pinned GitHub release>, runs as `<root|rocky>`.
 
-**Borrows** (defined in Rocky Surf's own `packs/claude-code.yaml`, referenced by id)
+**Borrows** (defined in Rocky Surf's own `packs/base.yaml`, referenced by id)
 
 `build-essential`, `curl`, `git`, …
 

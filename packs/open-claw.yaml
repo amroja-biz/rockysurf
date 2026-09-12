@@ -4,7 +4,7 @@
 # UI. It needs none now: `requiresRdp`, `requiresRepos` and `desktop` say what it is, and the
 # application reads those fields instead of recognising the name.
 #
-# The base tool ids below are DEFINED in packs/claude-code.yaml.
+# The base tool ids below are DEFINED in packs/base.yaml.
 version: 1
 
 pack:

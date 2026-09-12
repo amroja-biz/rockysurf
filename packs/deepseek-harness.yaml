@@ -10,7 +10,7 @@
 # Upstream calls this a developer preview and says there will be compatibility-breaking
 # changes. The guide says so too, so a user knows before they pick the card.
 #
-# The base tool ids below are DEFINED in packs/claude-code.yaml and referenced here.
+# The base tool ids below are DEFINED in packs/base.yaml and referenced here.
 # Only `deepseek-harness` is defined in this file.
 version: 1
 

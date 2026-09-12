@@ -26,7 +26,7 @@ pack:
   packId: my-pack                 # lowercase, single hyphens; must equal the filename
   name: My Pack                   # display name
   tools:
-    # The shared base toolchain, DEFINED in packs/claude-code.yaml and referenced here by
+    # The shared base toolchain, DEFINED in packs/base.yaml and referenced here by
     # id. Keep the ones you need and delete the rest — do not redefine them, the loader rejects
     # a toolId defined in two files.
     - build-essential             # C/C++ toolchain

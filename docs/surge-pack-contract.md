@@ -59,8 +59,18 @@ tools: [ … ]      # required; the Tool records this file introduces
 ```
 
 `pack.tools` is a list of Tool **ids**. It may name Tools defined in this file or Tools defined
-in any other pack file in the repository — that is how several packs share one `claude-code`
-definition. Defining the same `toolId` in two files is an error and CI will reject it.
+in any other file in `packs/` — that is how several packs share one `claude-code` definition.
+Defining the same `toolId` in two files is an error and CI will reject it.
+
+**One file in `packs/` is not a pack.** `packs/base.yaml` holds the shared base toolchain —
+`build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, the Python bits, `nodejs`, Playwright,
+`beads` — that every pack in the directory lists by id. It is a **Tool file** (below, and
+ADR-0018): `version: 1` plus a `tools:` list and no `pack:` key. Anything in `packs/` without a
+`pack:` block is read that way — it contributes definitions, appears in no picker, and needs no
+image. Those Tools were defined in `packs/claude-code.yaml` until issue #499, which is why a
+typo in the Claude Code pack used to empty the whole picker.
+
+If you are adding a pack, list the base ids in your `pack.tools` rather than redefining them.
 
 ### Building on an existing pack
 
@@ -82,8 +92,8 @@ being built on gets modified:
   after writing it should show exactly one new file.
 - **Amend** — editing the base file itself, right only when it is yours to change and every
   existing user of it should get the new Tool too. Re-smoke the amended pack; if the file is
-  `packs/claude-code.yaml`, that is the shared base toolchain for every pack in the
-  repository, so re-smoke everything, not just the one pack touched.
+  `packs/base.yaml`, that is the shared base toolchain for every pack in the repository, so
+  re-smoke everything, not just the one pack touched.
 
 Full workflow, a worked example and the failures that come up: the `create-surge-pack` skill,
 Step 1E and `references/extending.md`.
@@ -1014,6 +1024,11 @@ provenance; issue #299 added them.
 
 A Tool file is for *sharing*, not for *deploying*: a Tool reaches a box only by being listed in a
 pack. Registering one makes it available to put in a pack; it installs nothing on its own.
+
+The format is also read straight out of `packs/`, which is what `packs/base.yaml` is (issue
+#499). A Tool file there is loaded at boot like any pack file — its definitions become
+file-backed rows the reconcile owns — and it still deploys nothing on its own: some pack has to
+list the ids.
 
 The `register-a-tool` agent skill walks an agent through all of this, including how to prove a
 single Tool in the real Docker harness by generating a throwaway wrapper pack.

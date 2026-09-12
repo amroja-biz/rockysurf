@@ -123,9 +123,11 @@ function hasPackFiles(dir: string): boolean {
  * Nothing loaded covers two ways of getting there, because the blast radius is identical and
  * so is the reasoning. One is no pack files: absent directory, empty directory, non-checkout
  * cwd. The other is files that all failed validation, which is not the exotic case it sounds
- * like — the shipped catalog has every pack referencing the base tools that
- * `claude-code.yaml` owns, so deleting or breaking that ONE file invalidates every other
- * pack by cascade and would otherwise empty the picker. Per-file deletion is untouched by
+ * like — the shipped catalog has every pack referencing the base tools that `base.yaml` owns
+ * (`claude-code.yaml` owned them until issue #499), so deleting or breaking that ONE file
+ * invalidates every other pack by cascade and would otherwise empty the picker. Breaking any
+ * other single file, the Claude Code pack's included, now costs only that pack — which is the
+ * whole reason the base toolchain was moved into a file of its own. Per-file deletion is untouched by
  * this: as long as one pack still validates, a file that went away still loses its rows,
  * which is the rule rockysurf-a0ss asked for and the case that actually has evidence behind
  * it. The narrow thing given up is emptying a catalog by deleting or breaking every file at
@@ -163,6 +165,7 @@ export function syncPacksAtBoot(options: SyncPacksAtBootOptions): PacksAtBootRes
     tools: new Map([...loaded.tools].filter(([, tool]) => !skippedFiles.includes(tool.sourceFile))),
     issues: [],
     files: loaded.files,
+    toolFiles: loaded.toolFiles,
   }
 
   if (clean.packs.length === 0) {

@@ -12,11 +12,12 @@ coordinate with each other." Two Tools, on top of a base that already ships.
 
 **1. Read the base.** `packs/claude-code.yaml` — `packId: claude-code`, `displayOrder:
 1`, `requiresRepos: true`, `requiresRdp: false`, no `desktop`, no `webPort`. Its `pack.tools` is
-fourteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, `python3-pip`,
-`python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`,
-`claude-code`. Nothing about the two new Tools changes any of `requiresRepos`,
-`requiresRdp`, `desktop` or `webPort` — neither is a GUI app or a loopback web server — so those
-flags carry over unchanged.
+fifteen ids: `build-essential`, `curl`, `gh`, `git`, `tmux`, `tmux-mouse`, `unzip`,
+`python3-pip`, `python3-venv`, `pipx`, `nodejs`, `playwright-deps`, `playwright`, `beads`,
+`claude-code`. The pack file itself defines only `claude-code`; every other id on that list is
+defined in `packs/base.yaml` and referenced. Nothing about the two new Tools changes any of
+`requiresRepos`, `requiresRdp`, `desktop` or `webPort` — neither is a GUI app or a loopback
+web server — so those flags carry over unchanged.
 
 **2. Take a new identity.** `grep -h 'toolId:\|packId:\|displayOrder:' packs/*.yaml | sort -u`
 shows `displayOrder` 1–9 taken by the nine shipped packs and no `omp` or `mcp-agent-mail` id
@@ -114,7 +115,7 @@ already in the base toolchain — does the job:
     installScript: |
       set -euo pipefail
       # UNPINNED (deliberate): PyPI is a quota-free registry channel, so this follows the same
-      # rule the base pack's own registry-served tools do. pip install is convergent — reruns
+      # rule the base toolchain's own registry-served tools do. pip install is convergent — reruns
       # either do nothing or upgrade in place, the same pattern `packs/open-code.yaml`'s own
       # `npm install -g` uses for its unpinned agent.
       #
@@ -132,8 +133,8 @@ already in the base toolchain — does the job:
       "$venv/bin/python" -c "import mcp_agent_mail"
 ```
 
-**5. `installOrder`: 30 and 40 are gaps, not the base's own values.** Nothing under
-`claude-code.yaml`'s fifteen Tools was renumbered.
+**5. `installOrder`: 30 and 40 are gaps, not the base's own values.** Nothing in
+`base.yaml`'s fourteen Tools, or `claude-code` itself, was renumbered.
 
 **6. `guide`: append, don't replace.** Everything in the base pack's guide is still true, so it
 stays; two new blocks go after it:
@@ -153,8 +154,9 @@ stays; two new blocks go after it:
 ```
 
 **7. The guardrail.** `git status --porcelain packs/` after writing `packs/omp-agent-mail.yaml`
-shows exactly that one new file — `packs/claude-code.yaml` is untouched. Then Step 3 and
-Step 4 run on `omp-agent-mail` exactly as they would on a from-scratch pack.
+shows exactly that one new file — `packs/claude-code.yaml` and `packs/base.yaml` are
+untouched. Then Step 3 and Step 4 run on `omp-agent-mail` exactly as they would on a
+from-scratch pack.
 
 ## Symptom → cause → fix
 
@@ -174,9 +176,10 @@ existing user of it should get the new Tool too. Add the Tool's definition under
 id to `pack.tools` in the base file — same four authoring rules, same `installOrder` bands as any
 other Tool — then re-run Step 3 and Step 4 **on the amended pack**, not a derived one.
 
-**If the file is `packs/claude-code.yaml`, this is the shared base toolchain for every pack
-in the repository.** A validation failure in it is not contained to one pack — a pack file that
-fails to parse is skipped entirely at boot, and because every other pack references its Tool ids,
+**If the file is `packs/base.yaml`, this is the shared base toolchain for every pack in the
+repository.** It is a Tool file rather than a pack — `version: 1` and a `tools:` list, no `pack:`
+block — so it defines no pack of its own, but a validation failure in it is not contained: a file
+that fails to parse is skipped entirely at boot, and because every pack references its Tool ids,
 that takes all of them out of the picker until the file is fixed. Re-smoke everything after an
 amend to this file: `node scripts/pack-smoke.mjs` with no `--pack` argument runs the whole
 matrix, not just the one pack you touched.
@@ -199,9 +202,10 @@ in-tree loader does. Three things differ from working inside the repository:
   it, the import path does not.
 - **Do not use Export as a "fork this pack" button.** Export inlines every Tool the pack
   references, including the ones it only pointed at — so exporting `omp-agent-mail` would embed
-  full copies of all fifteen base Tools too. Importing that back in redefines every one of those
-  ids, which the in-tree loader rejects outright and which, on another instance, silently
-  overwrites its shipped Tool rows. Deriving by hand from the base pack's `pack.tools` list, the
+  full copies of all fifteen Tools it lists, the fourteen from `base.yaml` plus `claude-code`.
+  Importing that back in redefines every one of those ids, which the in-tree
+  loader rejects outright and which, on another instance, silently overwrites its shipped Tool
+  rows. Deriving by hand from the base pack's `pack.tools` list, the
   way this file just did, is the supported way to fork a pack; Export is for handing someone a
   pack's complete, self-contained bundle, not for basing a new one on it.
 

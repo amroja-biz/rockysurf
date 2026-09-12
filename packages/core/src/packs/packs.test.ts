@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -6,8 +7,8 @@ import { openTestDatabase } from '../db/client.js'
 import type { Db } from '../db/client.js'
 import { getPack, getTool, listPacks, listTools, upsertPack, upsertTool } from '../db/repositories/packs.js'
 import { formatFindings, lintPacksDir } from './lint.js'
-import { loadPacksFromDir, parsePackFile, renderPackFile } from './loader.js'
-import { packFileSchema } from './schema.js'
+import { loadPacksFromDir, parsePackFile, parseToolFile, renderPackFile } from './loader.js'
+import { packFileSchema, toolFileSchema } from './schema.js'
 import { PackValidationError, syncPacksToDb } from './sync.js'
 
 /**
@@ -22,11 +23,24 @@ import { PackValidationError, syncPacksToDb } from './sync.js'
 const packsDir = fileURLToPath(new URL('../../../../packs/', import.meta.url))
 
 /**
+ * Every YAML document in `packs/`, split by which of the two formats it is in.
+ *
+ * A file with no `pack:` block is a TOOL FILE (ADR-0018) — `packs/base.yaml` holds the shared
+ * base toolchain and defines no pack (issue #499) — so it contributes tools and never a row in
+ * the picker. Told apart by the same rule the loader uses, read off the text rather than
+ * hardcoded, because a list of names here is a list that goes stale.
+ */
+const shippedFiles = readdirSync(packsDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+const isToolFile = (name: string): boolean => !/^pack:/m.test(readFileSync(join(packsDir, name), 'utf8'))
+const shippedToolFiles = shippedFiles.filter(isToolFile)
+const shippedPackFiles = shippedFiles.filter((name) => !isToolFile(name))
+
+/**
  * Counted from disk rather than hardcoded: the assertion worth making is "every pack file
  * became a row", not "there are exactly N packs". A literal here means adding a pack fails
  * three unrelated tests and teaches the next author to edit the number rather than read it.
  */
-const shippedPackCount = readdirSync(packsDir).filter((name) => name.endsWith('.yaml')).length
+const shippedPackCount = shippedPackFiles.length
 
 const MINIMAL_TOOL = {
   toolId: 'a-tool',
@@ -123,10 +137,52 @@ describe('loading a directory', () => {
     expect(loaded).toMatchObject({ packs: [], issues: [] })
     expect(loaded.tools.size).toBe(0)
   })
+
+  /**
+   * The tool-file arm (issue #499). A directory may hold files in either frozen format, and a
+   * file with no `pack:` block contributes definitions and no pack — which is what lets the
+   * shared base toolchain stop belonging to whichever pack happened to be written first.
+   */
+  it('reads a tool file as definitions, resolves them for a pack, and lists no pack for it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-loader-'))
+    try {
+      writeFileSync(
+        join(dir, 'zz-base.yaml'),
+        JSON.stringify({ version: 1, tools: [{ ...MINIMAL_TOOL, toolId: 'zz-shared' }] }),
+      )
+      writeFileSync(
+        join(dir, 'zz-user.yaml'),
+        fileText({ ...MINIMAL_PACK, packId: 'zz-user', tools: ['zz-shared'] }, []),
+      )
+      const loaded = loadPacksFromDir(dir)
+
+      expect(loaded.issues).toEqual([])
+      expect(loaded.toolFiles).toEqual(['zz-base.yaml'])
+      expect(loaded.packs.map((p) => p.packId)).toEqual(['zz-user'])
+      expect(loaded.tools.get('zz-shared')?.sourceFile).toBe('zz-base.yaml')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a tool a pack file and a tool file both define', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rockysurf-loader-'))
+    try {
+      writeFileSync(join(dir, 'zz-base.yaml'), JSON.stringify({ version: 1, tools: [MINIMAL_TOOL] }))
+      writeFileSync(join(dir, 'zz-user.yaml'), fileText({ ...MINIMAL_PACK, packId: 'zz-user' }))
+      const loaded = loadPacksFromDir(dir)
+
+      expect(loaded.issues.map((i) => i.message).join('\n')).toContain(
+        'toolId "a-tool" is already defined in zz-base.yaml',
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('the shipped packs', () => {
-  const files = readdirSync(packsDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
+  const files = shippedFiles
   const loaded = loadPacksFromDir(packsDir)
 
   it('there are pack files to check', () => {
@@ -137,13 +193,33 @@ describe('the shipped packs', () => {
     expect(loaded.issues).toEqual([])
   })
 
-  it.each(files)('%s validates against the frozen schema', (name) => {
+  it.each(shippedPackFiles)('%s validates against the frozen pack schema', (name) => {
     const parsed = packFileSchema.safeParse(
       // Re-parsed through the raw schema so a filename or cross-file issue cannot mask a
       // shape problem in the file itself.
       parsePackFile(name, readFileSync(join(packsDir, name), 'utf8')).file,
     )
     expect(parsed.success).toBe(true)
+  })
+
+  it.each(shippedToolFiles)('%s validates against the frozen tool-file schema', (name) => {
+    const parsed = toolFileSchema.safeParse(parseToolFile(name, readFileSync(join(packsDir, name), 'utf8')).file)
+    expect(parsed.success).toBe(true)
+  })
+
+  /**
+   * The base toolchain is a file of its own (issue #499), and this is the pair of facts that
+   * makes the split worth having: the definitions are in `base.yaml`, and the Claude Code pack
+   * is one tool like any other agent pack. Pinned by name because both halves are the point —
+   * "some file defines git" would still pass with the base tools back where they were.
+   */
+  it('defines the shared base toolchain in base.yaml, and one tool in claude-code.yaml', () => {
+    expect(loaded.toolFiles).toContain('base.yaml')
+    for (const id of ['build-essential', 'curl', 'gh', 'git', 'nodejs', 'playwright', 'beads']) {
+      expect(loaded.tools.get(id)?.sourceFile, id).toBe('base.yaml')
+    }
+    const ownedByClaudeCode = [...loaded.tools.values()].filter((t) => t.sourceFile === 'claude-code.yaml')
+    expect(ownedByClaudeCode.map((t) => t.toolId)).toEqual(['claude-code'])
   })
 
   it('every pack references only tools that exist', () => {

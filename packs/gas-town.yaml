@@ -1,6 +1,6 @@
 # Gas Town — multi-agent workspace manager, with all three agent CLIs alongside it.
 #
-# The base tool ids below are DEFINED in packs/claude-code.yaml; `amp` and `codex` come
+# The base tool ids below are DEFINED in packs/base.yaml; `amp` and `codex` come
 # from packs/amp-agents.yaml and packs/codex-cli.yaml.
 version: 1
 
@@ -65,7 +65,7 @@ tools:
   # There is no `gas-town-toolchain` here any more. This pack used to install Ubuntu's Go
   # compiler so it could build `gt` from source; it now downloads upstream's release binary,
   # and nothing else on the box needs Go — `bd` comes from a beads release asset too (see
-  # `beads` in packs/claude-code.yaml), and `libicu-dev`, which the source build of gt
+  # `beads` in packs/base.yaml), and `libicu-dev`, which the source build of gt
   # v1.2.0 wanted, was never installed here at all. Removing the compiler takes ~500 MB of
   # apt and every request to the Go module proxy off the critical path of a fresh box: that
   # proxy was the only thing in any shipped pack that could not be retried, and it failed
