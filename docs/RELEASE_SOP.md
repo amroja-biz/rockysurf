@@ -114,78 +114,82 @@ To publish version `X.Y.Z`, follow these steps. Replace `X.Y.Z` with the version
    pnpm install
    ```
 
-4. Commit the bump:
+4. Add the release to `CHANGELOG.md`: a new `## [X.Y.Z] - YYYY-MM-DD` section at the top with an
+   entry per user-visible change, each naming its pull request, and a compare link at the bottom
+   of the file.
+
+5. Commit the bump:
 
    ```bash
    git commit -am "release: vX.Y.Z"
    ```
 
-5. Push the branch:
+6. Push the branch:
 
    ```bash
    git push -u origin release/vX.Y.Z
    ```
 
-6. Open the pull request:
+7. Open the pull request:
 
    ```bash
    gh pr create --fill
    ```
 
-7. Wait for every check to pass:
+8. Wait for every check to pass:
 
    ```bash
    gh pr checks --watch
    ```
 
-8. Merge the pull request:
+9. Merge the pull request:
 
    ```bash
    gh pr merge --squash
    ```
 
-9. Bring the merged commit down:
+10. Bring the merged commit down:
 
    ```bash
    git fetch origin
    ```
 
-10. Tag the merged commit. The tag must be annotated, and it must point at `origin/main`; the
+11. Tag the merged commit. The tag must be annotated, and it must point at `origin/main`; the
     workflow refuses a tag whose commit is not on `main`:
 
     ```bash
     git tag -a vX.Y.Z -m "vX.Y.Z" origin/main
     ```
 
-11. Push the tag, which starts the release workflow:
+12. Push the tag, which starts the release workflow:
 
     ```bash
     git push origin vX.Y.Z
     ```
 
-12. Approve the deployment. In the repository's Actions tab, open the "Release to npm" run, click
+13. Approve the deployment. In the repository's Actions tab, open the "Release to npm" run, click
     **Review deployments**, select **npm**, and click **Approve and deploy**. Nothing publishes
     until you do; this click is the human gate.
 
-13. Watch the run to the end:
+14. Watch the run to the end:
 
     ```bash
     gh run watch
     ```
 
-14. Confirm the registry serves the new version:
+15. Confirm the registry serves the new version:
 
     ```bash
     npm view rockysurf version
     ```
 
-15. Install it the way an operator will, from an empty directory:
+16. Install it the way an operator will, from an empty directory:
 
     ```bash
     cd "$(mktemp -d)" && npx -y rockysurf@X.Y.Z --version
     ```
 
-16. Write the GitHub release notes. Issue #130 fixes the four sections they carry: the features in
+17. Write the GitHub release notes. Issue #130 fixes the four sections they carry: the features in
     the release, the Provider capability matrix, a summary of the security posture, and the
     roadmap. Draft them in a file, then publish:
 
@@ -193,7 +197,7 @@ To publish version `X.Y.Z`, follow these steps. Replace `X.Y.Z` with the version
     gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md
     ```
 
-17. Announce the release wherever you announce releases, and link the release notes rather than
+18. Announce the release wherever you announce releases, and link the release notes rather than
     repeating them.
 
 ## What the workflow does for you

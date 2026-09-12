@@ -1,6 +1,6 @@
 {
   "name": "@rockysurf/provider-hetzner",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Hetzner Cloud compute provider — plain fetch against the public API.",
   "license": "MIT",
   "type": "module",
