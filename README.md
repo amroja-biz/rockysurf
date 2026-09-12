@@ -178,6 +178,7 @@ Additional documentation is available on the repo.
 |---|---|---|
 | [`docs/agent-quickstart.md`](docs/agent-quickstart.md) | Your coding agent | Installing and configuring Rocky Surf on your behalf, end to end |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Operators | Install paths, data, upgrades, backup and restore |
+| [`CHANGELOG.md`](CHANGELOG.md) | Operators | What changed in each release, newest first |
 | [`SECURITY.md`](SECURITY.md) | Operators | Credential custody, SSH trust, the MCP threat model |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each Provider can do, and the evidence for it |
 | [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) | Surge Pack authors | Writing a Surge Pack - how one runs, the four rules, a worked example, the checklist |
@@ -188,7 +189,6 @@ Additional documentation is available on the repo.
 | [`docs/contributing/TESTING.md`](docs/contributing/TESTING.md) | Contributors | The testing strategy - every layer, where it runs, and the nightly real-cloud run |
 | [`docs/contributing/RELEASING.md`](docs/contributing/RELEASING.md) | The maintainer | Publishing to npm - the procedure, and the reasons behind each step |
 | [`docs/RELEASE_SOP.md`](docs/RELEASE_SOP.md) | The maintainer | The release checklist - choosing the version number, the steps in order, and what to do when a run fails |
-| [`CHANGELOG.md`](CHANGELOG.md) | Everyone | What changed in each release, newest first |
 
 Rocky Surf is deliberately small: no devcontainers, no throwaway per-task sandboxes, no Windows,
 no multi-tenancy.

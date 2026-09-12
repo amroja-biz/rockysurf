@@ -151,6 +151,7 @@ const DOC_GROUPS = [
   {
     audience: 'Operators',
     docs: [
+      ['CHANGELOG.md', 'Changelog', 'What changed in each release, newest first.'],
       [
         'docs/self-hosting.md',
         'Self-hosting',
