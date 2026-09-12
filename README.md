@@ -19,8 +19,8 @@ npx -y rockysurf
 - Works with AWS, GCP, Azure and Hetzner
 - Web app and MCP server, both running on your own machine
 - Create, stop, start and terminate Servers on every cloud you configured, from one list
-- Pre-install your favorite agent harnesses and Tools with a Surge Pack. Eleven ship in the box,
-  covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others
+- Pre-install your favorite agent harnesses and Tools with a Surge Pack. Twelve ship in the box,
+  covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others, every one with herdr
 - Pre-load public and private GitHub repos
 - Reuse your existing SSH keys, or let Rocky Surf make one for you
 - Restrict which network may reach SSH on your Servers
@@ -178,6 +178,7 @@ Additional documentation is available on the repo.
 |---|---|---|
 | [`docs/agent-quickstart.md`](docs/agent-quickstart.md) | Your coding agent | Installing and configuring Rocky Surf on your behalf, end to end |
 | [`docs/self-hosting.md`](docs/self-hosting.md) | Operators | Install paths, data, upgrades, backup and restore |
+| [`CHANGELOG.md`](CHANGELOG.md) | Operators | What changed in each release, newest first |
 | [`SECURITY.md`](SECURITY.md) | Operators | Credential custody, SSH trust, the MCP threat model |
 | [`docs/providers/capability-matrix.md`](docs/providers/capability-matrix.md) | Operators | What each Provider can do, and the evidence for it |
 | [`docs/writing-a-surge-pack.md`](docs/writing-a-surge-pack.md) | Surge Pack authors | Writing a Surge Pack - how one runs, the four rules, a worked example, the checklist |

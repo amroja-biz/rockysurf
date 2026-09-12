@@ -15,8 +15,8 @@ npx -y rockysurf
 - Works with AWS, GCP, Azure and Hetzner
 - Web app and MCP server, both running on your own machine
 - Create, stop, start and terminate Servers on every cloud you configured, from one list
-- Pre-install your favorite agent harnesses and Tools with a Surge Pack. Eleven ship in the box,
-  covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others
+- Pre-install your favorite agent harnesses and Tools with a Surge Pack. Twelve ship in the box,
+  covering Claude Code, Codex CLI, Amp, OpenCode, Gas Town, Pi and others, every one with herdr
 - Pre-load public and private GitHub repos
 - Reuse your existing SSH keys, or let Rocky Surf make one for you
 - Restrict which network may reach SSH on your Servers
