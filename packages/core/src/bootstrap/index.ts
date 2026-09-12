@@ -38,7 +38,7 @@ export { createInternalRoutes, type InternalRoutesDeps } from './internal-routes
  * The create path's plan snapshot and the ticker's push driver (rockysurf-55fx.13) — the two
  * halves that turn everything above into a box with software on it.
  */
-export { snapshotInstallPlan, type SnapshotInstallPlanOptions } from './install-plan.js'
+export { resolveServerToolIds, snapshotInstallPlan, type SnapshotInstallPlanOptions } from './install-plan.js'
 
 export {
   createPushBootstrapSupervisor,

@@ -597,6 +597,121 @@ describe('the web-UI tunnel (rockysurf-bbmi)', () => {
 })
 
 /**
+ * The `herdr machine add` line (issue #500).
+ *
+ * The daily loop is two commands and Rocky Surf only ever said the first one: create a Server,
+ * then attach it to the herdr already running on your own machine. The address for the second
+ * is on this page, so the line belongs on this page.
+ *
+ * THE SHOW/HIDE RULE IS WHAT THESE PIN, because it is the part that can be wrong quietly. A
+ * line offered for a box with no herdr on it fails at the user's own terminal with an error
+ * about the herdr binary, and a line withheld from a box that has one leaves the loop exactly
+ * as manual as it was. The gate is the TOOL ID — never a pack id and never a pack name — for
+ * the reason `requiresRdp` and `webPort` above are read off metadata: no shipped pack carries
+ * herdr yet (#498 adds it), and a community pack that lists the same id must get the same line.
+ */
+describe('the herdr attach line (issue #500)', () => {
+  /** The pack fixture that carries herdr, as `/api/v1/surge-packs` expands its tool list. */
+  const HERDR_PACK = { ...PACK, tools: [{ toolId: 'herdr', name: 'Herdr' }] }
+
+  async function reachRunning() {
+    renderPage()
+    await waitFor(() => expect(streams.length).toBeGreaterThan(0))
+    await broadcastUntil(
+      { type: 'server-status', serverId: SERVER_ID, status: 'running', publicIp: '203.0.113.7' },
+      () => expect(screen.getByRole('heading', { name: 'Connect' })).toBeTruthy(),
+    )
+  }
+
+  const line = () => screen.queryByText(/^herdr machine add/)
+
+  it('renders the pasteable line and the key note when the pack installs herdr', async () => {
+    packRow = HERDR_PACK
+    await reachRunning()
+
+    const block = screen.getByText('herdr machine add rocky@203.0.113.7 --label dev-box').closest('div')!
+    // The one line beside it, because the failure it prevents is silent: herdr takes no `-i`,
+    // so a key that only works with one produces a refusal that reads like a bad address. Read
+    // off the block's text, not by element: the sentence is half prose and half <code>.
+    expect(block.textContent).toContain('no -i flag')
+    expect(block.textContent).toContain('Match user rocky')
+    expect(block.textContent).toContain('ssh-add')
+    // It LINKS to the pack's guide rather than repeating its Herdr block (#498).
+    const link = screen.getByRole('link', { name: /pack's guide/ })
+    expect(link.getAttribute('href')).toBe('#pack-guide')
+    expect(document.querySelector('#pack-guide')).toBeTruthy()
+  })
+
+  it('renders nothing for a pack that does not install herdr', async () => {
+    await reachRunning()
+    expect(line()).toBeNull()
+  })
+
+  /**
+   * The row's own tool record beats the pack's list, the same way the Installed card reads
+   * them: a create that named its tools explicitly got those and not the pack's.
+   */
+  it('hides the line when the box recorded tools of its own and herdr is not among them', async () => {
+    row = { ...SERVER, tools: ['beads'] }
+    packRow = HERDR_PACK
+    await reachRunning()
+    expect(line()).toBeNull()
+  })
+
+  it('shows it for a box that recorded herdr under a pack that does not list it', async () => {
+    row = { ...SERVER, tools: ['herdr'] }
+    await reachRunning()
+    expect(screen.getByText('herdr machine add rocky@203.0.113.7 --label dev-box')).toBeTruthy()
+  })
+
+  it('renders nothing at all until the box is running', async () => {
+    packRow = HERDR_PACK
+    renderPage()
+    // The fixture row is still provisioning: Connect is not on the page yet, and neither is
+    // this. A box with no address is nothing to attach, and a line with a placeholder in it
+    // would be a line that cannot be pasted.
+    await screen.findByRole('heading', { name: 'dev-box' })
+    expect(screen.queryByRole('heading', { name: 'Connect' })).toBeNull()
+    expect(line()).toBeNull()
+  })
+
+  /**
+   * Core serves the same line to the CLI and the MCP server (`herdrMachineAdd` in
+   * `servers/routes.ts`), and this page cannot import it — `web` does not depend on `core`, by
+   * the rule in CONTRIBUTING.md. It builds its own copy because it patches `publicIp` straight
+   * off the event stream without re-reading the row, so a field would be stale exactly when a
+   * box has just come up.
+   *
+   * What keeps the two copies identical is this: the shell-safety rule that decides between the
+   * name and the id is read out of core's source and compared with this page's. Same trick the
+   * status and step vocabularies use at the bottom of this file. A change to one that is not
+   * made to the other fails here rather than at somebody's terminal.
+   */
+  it('spells the command the same way core does', () => {
+    // Path through a variable, not a literal, for the reason the guards below give.
+    const read = (relative: string) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8')
+    const coreSource = read('../../../core/src/servers/routes.ts')
+    const pageSource = read('./ServerDetailPage.tsx')
+
+    // The shell-safety rule that decides between the name and the id: the regex literal itself,
+    // lifted out of each file. Neither has another `.test(` in it, and a second one appearing is
+    // a fine reason to make this pickier.
+    const labelRule = (source: string) => /(\/\^\[[^\n]+?\/)\.test\(/.exec(source)?.[1]
+    expect(labelRule(coreSource), 'could not find herdrLabel()’s rule in core').toBeTruthy()
+    expect(labelRule(pageSource)).toBe(labelRule(coreSource))
+
+    // And the line itself: core's template, spelled against its row where this one is spelled
+    // against the `Server` this page holds.
+    expect(/`herdr machine add [^`]*`/.exec(coreSource)?.[0]).toBe(
+      '`herdr machine add ${row.sshUser}@${row.publicIp} --label ${herdrLabel(row)}`',
+    )
+    expect(pageSource).toContain(
+      '`herdr machine add ${server.sshUser}@${server.publicIp} --label ${herdrLabel(server)}`',
+    )
+  })
+})
+
+/**
  * The Connect panel when a key was supplied at create time (issue #41).
  *
  * The report was the owner pasting their own public key and Connect still handing back a

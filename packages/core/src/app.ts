@@ -24,7 +24,7 @@ import { badRequest, serverError, success, unauthorized } from './http/responses
 import { validate } from './http/validate.js'
 import { createInternalRoutes } from './bootstrap/internal-routes.js'
 import { bootstrapModeHooks } from './bootstrap/push-runner.js'
-import { snapshotInstallPlan } from './bootstrap/install-plan.js'
+import { resolveServerToolIds, snapshotInstallPlan } from './bootstrap/install-plan.js'
 import { createSimulatedBootstrap } from './bootstrap/simulated-bootstrap.js'
 import { createPushBootstrapSupervisor } from './bootstrap/supervisor.js'
 import { createBackupRoutes } from './backup/routes.js'
@@ -534,6 +534,17 @@ export function createApp(deps: AppDeps): CreatedApp {
        * rows.
        */
       packInputs: (packId) => getPack(db, packId)?.inputs,
+      /*
+       * WHAT IS ACTUALLY ON THE BOX, so a row can say whether `herdr machine add` applies to it
+       * (issue #500).
+       *
+       * The SAME function the install plan is resolved from, deliberately: the three-way branch
+       * (explicit per-server tools, else the pack's list, else neither) plus the always-install
+       * union is the rule for what a box gets, and a route that re-derived "is herdr on this
+       * one" from `pack.tools` alone would be right about most boxes and wrong about exactly the
+       * ones an operator had configured by hand.
+       */
+      serverToolIds: (row) => resolveServerToolIds(db, row),
       /**
        * The same check the admin pack routes apply to a pack's tool list, applied to a create
        * request's explicit `tools` (issue #289) — one sentence for one mistake, wherever the

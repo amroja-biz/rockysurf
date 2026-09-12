@@ -206,6 +206,22 @@ async function savedSshKeys(client: CoreClient): Promise<SavedSshKeyRow[]> {
   return Array.isArray(rows) ? (rows as SavedSshKeyRow[]) : []
 }
 
+/**
+ * What `get_ssh_command` reads off a row of `GET /api/v1/servers/:id`.
+ *
+ * Declared as the shape this file READS, like `SavedSshKeyRow` above. `herdrMachineAdd` is
+ * core's own copy of the attach line (issue #500) — absent on a box without herdr, without an
+ * address, or not running, which is why it is optional here and spread conditionally below
+ * rather than defaulted to anything.
+ */
+interface SshTarget {
+  publicIp?: string
+  sshUser?: string
+  sshPort?: number
+  status: string
+  herdrMachineAdd?: string
+}
+
 /* --------------------------------------------------------------------------- fleet rows */
 
 /**
@@ -248,6 +264,11 @@ const FLEET_ROW_FIELDS = [
   // Why this row may be stale — the provider could not be asked, and the message names the
   // remedy. Dropping it would make a stale row look fresh.
   'syncError',
+  // The `herdr machine add` line for a box that carries herdr, absent on every box that does
+  // not (issue #500). Kept in the fleet view — a decision, per the note above, not growth: it
+  // is one short line on the rows that have it, and "attach the boxes I have" is a question
+  // asked of a LIST. The full note that goes with it is on `get_ssh_command`.
+  'herdrMachineAdd',
   'createdAt',
   'terminatedAt',
 ] as const
@@ -681,15 +702,18 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     title: 'Get the SSH command for a Server',
     description:
       'The ssh command to reach a running Server. Returns the COMMAND only — the private key ' +
-      'is never returned and must be downloaded by a human from the web UI.',
+      'is never returned and must be downloaded by a human from the web UI. A Server whose ' +
+      'pack installed herdr also carries herdrMachineAdd: the line the HUMAN runs on their own ' +
+      'machine to attach this box to their herdr window. Hand it to them verbatim; it is not ' +
+      'yours to run, and this installation holds no credential for their SSH agent.',
     scope: 'read',
     inputSchema: serverIdSchema,
     run: async (args, { client }) => {
       const id = String(args['server_id'])
       const { server } = await client.get<{
-        server: { publicIp?: string; sshUser?: string; sshPort?: number; status: string }
+        server: SshTarget
       }>(`/api/v1/servers/${id}`).then((body) => ({ server: (body as { server?: unknown }).server ?? body })) as {
-        server: { publicIp?: string; sshUser?: string; sshPort?: number; status: string }
+        server: SshTarget
       }
 
       if (!server.publicIp) {
@@ -710,6 +734,31 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         // The key path is where the CLI writes it; the agent is told where, not given it.
         command: `ssh ${port}-i ~/.rockysurf/keys/${id}.pem ${user}@${server.publicIp}`,
         keyNote: `Download the key from the web UI (Servers → ${id} → SSH key) if you do not have it yet.`,
+        /*
+         * THE ATTACH LINE, VERBATIM FROM CORE (issue #500).
+         *
+         * Passed through rather than assembled here, for the reason the `billing` block is
+         * computed in core: which Servers qualify (running, addressed, and carrying the `herdr`
+         * tool) and how the line is spelled is one rule, and an MCP server deriving its own
+         * answer would be a third opinion for a human to discover was wrong. Absent on every
+         * Server that does not qualify — including every box built before herdr shipped — so
+         * the field's presence IS the claim that the line works.
+         *
+         * The note travels with it because the failure it prevents is silent: herdr takes no
+         * `-i`, so a key that only works with one produces a connection refusal the human will
+         * read as "Rocky Surf gave me a bad address".
+         */
+        ...(server.herdrMachineAdd
+          ? {
+              herdrMachineAdd: server.herdrMachineAdd,
+              herdrNote:
+                `Run it on YOUR machine, not on the Server — it attaches this box to the herdr ` +
+                `window you already have. herdr has no -i flag, so the key must be reachable ` +
+                `by a plain \`ssh ${user}@${server.publicIp}\`: a \`Match user ${user}\` / ` +
+                `\`IdentityFile\` block in ~/.ssh/config, or ssh-add. The pack's guide on the ` +
+                `Server's page says the same thing in place.`,
+            }
+          : {}),
         ...(await costContext(client)),
       }
     },

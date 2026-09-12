@@ -82,7 +82,21 @@ export function unionAlwaysInstalled(base: string[], alwaysInstall: string[]): s
  * that function a pure function of its inputs; this is the seam that already knows about the
  * database, and the only place all three outcomes meet.
  */
-function resolvePack(db: Db, row: ServerRow): ResolvablePack {
+/**
+ * WHICH TOOLS THIS BOX IS BUILT WITH, as one answer (issue #500).
+ *
+ * Extracted from `resolvePack` below unchanged, because a second reader appeared: the servers
+ * route has to say whether a box carries a given tool — `herdr`, so the Server page and the MCP
+ * server can offer the `herdr machine add` line — and that question must not get a second,
+ * subtly different answer. The three-way branch and the always-install union are the rule, and
+ * they are here once.
+ *
+ * It is ids only and it does not filter on `enabled`: a disabled tool is dropped downstream by
+ * the resolver, which is where that decision already lives. A caller asking "is `herdr` on this
+ * box" is asking about a box that was built at some point in the past, not about what a create
+ * would install today.
+ */
+export function resolveServerToolIds(db: Db, row: ServerRow): string[] {
   const pack = row.packId ? getPack(db, row.packId) : undefined
   // An explicit per-server tool selection wins over the pack's list; the pack is the default,
   // not a floor.
@@ -92,7 +106,12 @@ function resolvePack(db: Db, row: ServerRow): ResolvablePack {
     .filter((t) => t.alwaysInstall)
     .map((t) => t.id)
   const base = pack ? (selected.length > 0 ? selected : pack.tools) : selected
-  const tools = unionAlwaysInstalled(base, always)
+  return unionAlwaysInstalled(base, always)
+}
+
+function resolvePack(db: Db, row: ServerRow): ResolvablePack {
+  const pack = row.packId ? getPack(db, row.packId) : undefined
+  const tools = resolveServerToolIds(db, row)
   if (!pack) return { id: row.packId ?? 'none', tools, requiresRdp: false }
   return {
     id: pack.id,
