@@ -57,7 +57,10 @@ jobs:
   # files defines, because ids resolve across files (gas-town lists claude-code, amp and codex
   # from three other packs, so a change to any of those files is a change to gas-town). A pull
   # request that changes anything else this workflow triggers on — the agent, core, the harness,
-  # the lockfile, this file — tests every pack, since every pack runs through it. A push to main
+  # the lockfile, this file — tests every pack, since every pack runs through it. A change to
+  # `packs/base.yaml` therefore selects every pack without needing a rule of its own: it defines
+  # the tools they all list, and the rule above is already about tool ids rather than filenames.
+  # A push to main
   # always tests every pack. A pull request whose pack changes select nothing (a deletion) falls
   # back to every pack rather than an empty matrix.
   discover:
@@ -76,8 +79,13 @@ jobs:
           # `find`, not a `ls packs/*.yaml packs/*.yml` glob: with no .yml files present bash
           # hands ls the unmatched pattern, ls exits 2, and `set -o pipefail` turns a correct
           # listing into a failed job.
+          #
+          # A file with no top-level `pack:` block is a TOOL FILE, not a pack — `packs/base.yaml`
+          # holds the shared base toolchain (issue #499). It gets no leg of its own, because
+          # there is no pack for `--pack` to name and the harness would exit 2 saying so. Its
+          # scripts are still smoke-tested on every leg: every pack installs them.
           all=$(find packs -maxdepth 1 -type f \( -name '*.yaml' -o -name '*.yml' \) -printf '%f\n' \
-            | sed 's/\.[^.]*$//' | sort)
+            | sort | while read -r f; do grep -qE '^pack:' "packs/$f" && printf '%s\n' "${f%.*}"; done)
           test -n "$all" || { echo '::error::no pack files in packs/'; exit 1; }
 
           pack_file() { if [ -f "packs/$1.yaml" ]; then echo "packs/$1.yaml"; else echo "packs/$1.yml"; fi; }
