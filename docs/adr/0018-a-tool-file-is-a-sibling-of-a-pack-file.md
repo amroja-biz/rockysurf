@@ -3,8 +3,17 @@
 ## Status
 
 Accepted — 2026-09-01. Issue #289. Extends the file formats [ADR-0004](0004-packs-as-pr-able-yaml.md)
-froze with a second one; ADR-0004's pack format is untouched, and it remains the only thing the
-boot reconcile reads. **The "no `{ url }` arm" clause is superseded by
+froze with a second one; ADR-0004's pack format is untouched, and it was, at the time, the only
+thing the boot reconcile read. **Amended 2026-09-11 (issue #499): the boot loader reads this
+format out of `packs/` too.** A file in that directory with no `pack:` block is a tool file, and
+`packs/base.yaml` — the shared base toolchain every pack references by id — is one. The format
+did not change: the same `toolFileSchema`, the same parser, the same refusals, now reachable
+from disk as well as from the import route, so the base toolchain can live in a file that says
+what it is instead of inside whichever pack was written first. The "tool files are import-only"
+asymmetry this ADR left behind was the only thing that ever made a hidden `enabled: false` pack
+look like the alternative. What a tool file does NOT gain is a way onto a box: a Tool still
+reaches one only by being listed in a pack (owner ruling, issue #295). **The "no `{ url }` arm"
+clause is superseded by
 [ADR-0022](0022-a-tool-can-be-imported-from-a-url-now-that-tools-carry-provenance.md)** (issue
 #299), which added the tool provenance columns whose absence was the whole of the objection; the
 rest of this ADR stands.

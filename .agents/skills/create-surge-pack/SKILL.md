@@ -88,8 +88,8 @@ proving it, and exporting it as a file you can send someone — is
 file owns it and reference it from each pack's `tools:` list. A Tool reaches a box only through a
 pack, so that second half is not optional.
 
-**Default to derive.** A derived pack cannot break anybody else's pack; an amend to a base file
-like `packs/claude-code.yaml` empties the entire pack picker at boot if it goes wrong (see
+**Default to derive.** A derived pack cannot break anybody else's pack; an amend to the shared
+Tool file `packs/base.yaml` empties the entire pack picker at boot if it goes wrong (see
 `references/shipping.md`). If the user is only adding Tools on top of something that already
 works — "add X on top of the Y pack" — that is a derive, and it is what Step 1E below covers. A
 pack with nothing existing to build on falls through to Step 1 unchanged.
@@ -142,9 +142,10 @@ pack is for the user's own instance rather than a pull request.
 
 ### What you get for free
 
-**`packs/claude-code.yaml` defines a shared base toolchain** that every other pack lists by
-id rather than redefining. Read that file before writing a single install script: half of what a
-new pack needs is usually already there.
+**`packs/base.yaml` defines a shared base toolchain** that every pack lists by id rather than
+redefining. It is a Tool file, not a pack — `version: 1` and a `tools:` list, no `pack:` block —
+so it never appears in the picker itself. Read that file before writing a single install script:
+half of what a new pack needs is usually already there.
 
 **Take the subset you need.** The shipped packs list the full set because they are
 general-purpose AI-coding boxes, not because the format requires it. A narrower pack should say so
@@ -225,10 +226,10 @@ and re-smoke that file specifically.
 
 **The amend path, when the base pack really is being changed:** add the Tool under `tools:` and
 its id to `pack.tools`, same four rules and bands as any other Tool, then re-run Step 3 and Step
-4 **on the amended pack**. If the file is `packs/claude-code.yaml`, that is the shared base
-toolchain for every pack in the repository — re-smoke everything (`node scripts/pack-smoke.mjs`
-with no `--pack`), because a pack file that fails validation is skipped at boot, taking every
-pack that references its Tools out of the picker with it. On a running instance, a file-backed
+4 **on the amended pack**. If the file is `packs/base.yaml`, that is the shared base toolchain
+for every pack in the repository — re-smoke everything (`node scripts/pack-smoke.mjs` with no
+`--pack`), because a file that fails validation is skipped at boot, taking every pack that
+references its Tools out of the picker with it. On a running instance, a file-backed
 pack needs a restart to pick up the edit — there is no watcher — and an imported pack is edited
 in the admin UI or re-imported.
 
@@ -270,8 +271,8 @@ these by what you are doing:
 | You are | Read |
 |---|---|
 | adding one CLI on top of the base toolchain | `packs/open-code.yaml` |
-| adding an apt repository (keyring + source list) | the `gh` Tool in `packs/claude-code.yaml` |
-| downloading a pinned release binary | the `dolt` Tool in `packs/gas-town.yaml`, and `beads` in `packs/claude-code.yaml` for a checksummed one |
+| adding an apt repository (keyring + source list) | the `gh` Tool in `packs/base.yaml` |
+| downloading a pinned release binary | the `dolt` Tool in `packs/gas-town.yaml`, and `beads` in `packs/base.yaml` for a checksummed one |
 | tempted to build from source with a compiler | look for a release asset first — `gas-town` in `packs/gas-town.yaml` is the worked example of installing one instead of compiling, and why |
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
@@ -492,9 +493,9 @@ Where the pack goes decides its final shape. This is usually the whole answer; r
   picks up the latest edit, and reinstalling is a click. `https` only (an `installScript` is root
   shell), admin-only to add, and it applies at the next restart.
 - **Drop the file into `packs/`** in their own deployment — loaded at **boot only**, there is no
-  watcher, so it needs a restart. Warn them about the cascade: a broken pack file is skipped, and
-  because Tool definitions are shared, breaking `claude-code.yaml` takes every pack that
-  references it out of the picker until it is fixed.
+  watcher, so it needs a restart. Warn them about the cascade: a broken file is skipped, and
+  because Tool definitions are shared, breaking `base.yaml` takes every pack that references
+  it out of the picker until it is fixed.
 
 Finally, tell the user what was actually proven — which architectures ran, what CI will still
 check, and anything the guide admits the box cannot do. That honesty is the whole product here.

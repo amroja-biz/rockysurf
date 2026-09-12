@@ -73,8 +73,8 @@ first contact:
   maintainer has to have heard of it. A pack introducing software this project knows nothing
   about is the *normal* case.
 - **The shared plumbing is referenced, never redefined.** `build-essential`, `curl`, `git`, `gh`,
-  `tmux`, `unzip`, `nodejs`, `jq`, the Python bits: those are defined in Rocky Surf's own
-  `packs/claude-code.yaml` and listed by id in `pack.tools`. Redefining one is refused —
+  `tmux`, `unzip`, `nodejs`, Playwright, `beads`, the Python bits: those are defined in Rocky
+  Surf's own `packs/base.yaml` and listed by id in `pack.tools`. Redefining one is refused —
   partly mechanical (a control plane loads its whole catalog together, so a pack that redefines
   `git` can break the catalog for anyone who has both installed) and mostly about review (a
   maintainer should never have to work out whether your `curl` is the real one).
@@ -84,7 +84,7 @@ first contact:
 `pack lint` refuses a duplicate id, and names the file that got there first:
 
 ```
-broken-demo.yaml: [duplicate-tool] toolId "git" is already defined by claude-code.yaml —
+broken-demo.yaml: [duplicate-tool] toolId "git" is already defined by base.yaml —
 reference it by id instead of redefining it, or the two definitions collide wherever both are loaded
 ```
 
