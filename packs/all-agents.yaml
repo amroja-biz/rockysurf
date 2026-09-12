@@ -1,0 +1,152 @@
+# All Agents — one box carrying every shipped coding agent, with herdr holding them in one
+# window.
+#
+# It DEFINES NO TOOL. Every id below is defined elsewhere and referenced here, the way
+# `packs/gas-town.yaml` composes three agents: the base toolchain and `herdr` in
+# `packs/base.yaml`, each agent in its own pack file, `bun` in `packs/omp.yaml`, and each
+# `herdr-<agent>-integration` in the pack file of the agent it belongs to. Adding an agent to
+# this box therefore means adding two ids, not copying two install scripts.
+#
+# WHY IT EXISTS. The single-agent packs answer "give me a box with X on it", which is the
+# common case and the right default. This one answers the other case: one server, several
+# agents, all of them visible at once. That was worth a card only once herdr made it
+# manageable — eight agents in eight bare SSH sessions is not a workspace, and herdr's pane
+# list showing each of them as working, blocked or idle is.
+#
+# Amp is here without an integration: herdr 0.9.0 has no Amp target, so herdr follows it by
+# its process. `open-claw` (a desktop over RDP) and `deepseek-harness` (a loopback web UI) are
+# deliberately NOT here — neither is a terminal agent herdr can hold a pane for, and both
+# carry box-level flags (`requiresRdp`, `desktop`, `webPort`) that would change what this box
+# is for everything else on it.
+version: 1
+
+pack:
+  packId: all-agents
+  name: All Agents
+  tools:
+    - build-essential
+    - curl
+    - gh
+    - git
+    - tmux
+    - tmux-mouse
+    - unzip
+    - python3-pip
+    - python3-venv
+    - pipx
+    - nodejs
+    - playwright-deps
+    - playwright
+    - beads
+    - herdr
+    - bun
+    - claude-code
+    - codex
+    - amp
+    - opencode
+    - grok-build
+    - cursor-cli
+    - omp
+    - pi
+    - herdr-claude-integration
+    - herdr-codex-integration
+    - herdr-opencode-integration
+    - herdr-grok-integration
+    - herdr-cursor-integration
+    - herdr-omp-integration
+    - herdr-pi-integration
+  displayOrder: 12
+  enabled: true
+  imageUrl: /images/surge-packs/all-agents.png
+  # Every agent on this box reads and edits a checkout, so a box with no repository is a box
+  # where none of them has anything to work on. Same answer as each single-agent pack gives.
+  requiresRepos: true
+  requiresRdp: false
+  guide: |
+    Everything below runs on the box, as `rocky`, after you have SSH'd in.
+
+    Eight coding agents are installed and each wants its own sign-in. Start them inside
+    herdr and it shows every one of them as working, blocked or idle in a single list.
+
+    Claude Code
+      claude                  first run walks you through signing in
+      claude setup-token      mints a long-lived token instead, for a subscription plan
+      API billing? echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+
+    Codex
+      codex login             signs in with a ChatGPT plan; prints a URL to open
+      API billing? echo 'export OPENAI_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+
+    Amp
+      amp                     first run prints a sign-in URL for ampcode.com
+      Prefer a key? echo 'export AMP_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+
+    opencode
+      opencode auth login     pick a provider, then paste its API key
+      opencode                starts the terminal UI in the current directory
+
+    Grok Build
+      grok login --device-auth   prints a code you enter from a machine with a browser
+      or: echo 'export XAI_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+      grok                    starts the terminal UI
+
+    Cursor CLI
+      echo 'export CURSOR_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+                              keys come from https://cursor.com/dashboard under API Keys;
+                              there is no device-code flow
+      agent                   starts the terminal UI; `agent models` proves the key works
+
+    OMP (oh-my-pi)
+      omp setup               configure a model provider before your first session
+      omp                     starts the terminal UI
+
+    Pi
+      pi                      then run /login inside it to pick a provider
+      or: echo 'export ANTHROPIC_API_KEY=...' >> ~/.bashrc && . ~/.bashrc
+      Pi starts on Google unless you say otherwise: pi --provider anthropic --model 'claude*'
+
+    Every agent above edits files and runs commands in the directory you start it in, and
+    asks first. Each has a flag that switches the asking off; on a box holding your
+    repositories, be sure which one you typed. The single-agent packs' guides carry the full
+    notes for each.
+
+    GitHub
+      gh auth login           then: gh auth setup-git
+
+      If the operator set `github.pat` in rockysurf.config.yaml, that token is in your
+      shell as $GITHUB_TOKEN — the same one that cloned your repositories — so `gh` works
+      as it is; run `gh auth setup-git` once and your own pushes do too. With no token
+      configured, `gh auth login` is the way in.
+
+    Also installed
+      bd            Beads task tracker — run `bd init` in a repository to start
+      tmux          still here alongside herdr
+      bun           the runtime OMP needs
+      Playwright with Chromium, for browser work
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      Integrations are pre-installed for claude, codex, opencode, grok, cursor, omp and pi —
+      `herdr integration status` reports each of those as `current` — so those seven report
+      their own state rather than being guessed at. herdr 0.9.0 has no Amp integration, so
+      it follows Amp by its process.
+
+tools: []

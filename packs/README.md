@@ -47,11 +47,15 @@ single run and fails the second one.
 
 `claude-code`, `amp-agents`, `codex-cli`, `gas-town`, `open-claw`, and
 `open-code` were ported from the pre-open-source installation scripts and rewritten against
-the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, and `pi` have shipped
-since.
+the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, `pi` and `all-agents` have
+shipped since.
+
+`all-agents` is the second file here that **defines no Tool at all**: like `gas-town` it is a
+list of ids other files own — every shipped terminal agent, plus each one's herdr integration —
+for the case of one box holding several agents at once.
 
 `base.yaml` **defines the shared base toolchain** — the compiler, Node, the Python bits, tmux,
-git, the GitHub CLI and so on — that every pack references by id. If you are adding a pack, list
+git, the GitHub CLI, herdr and so on — that every pack references by id. If you are adding a pack, list
 those ids in your `pack.tools` rather than redefining them; the loader rejects a `toolId` defined
 in two files. Those definitions lived in `claude-code.yaml` until issue #499 moved them out: a
 file that fails to parse is skipped at boot, so while they lived in a pack's file, one typo

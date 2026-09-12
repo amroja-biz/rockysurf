@@ -1,8 +1,9 @@
 # Claude Code — the flagship pack. It installs Claude Code; the other agents ship as their own
 # packs (`amp-agents`, `codex-cli`, `open-code`, `cursor-cli`, `grok-build` and the rest).
 #
-# It DEFINES ONE TOOL, `claude-code`, and borrows the rest. The base toolchain its `pack.tools`
-# lists — build-essential through beads — is defined in `packs/base.yaml` and referenced here by
+# It DEFINES TWO TOOLS — `claude-code` and `herdr-claude-integration`, the herdr hook that only
+# makes sense where Claude Code is — and borrows the rest. The base toolchain its `pack.tools`
+# lists — build-essential through herdr — is defined in `packs/base.yaml` and referenced here by
 # id, the same way every other pack does it (see docs/surge-pack-contract.md: a tool is defined
 # in exactly one file and referenced from anywhere). It used to be defined HERE, which meant one
 # typo in this file emptied the whole pack picker; issue #499 moved it out, and `base.yaml`'s
@@ -27,7 +28,9 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - claude-code
+    - herdr-claude-integration
   displayOrder: 1
   enabled: true
   imageUrl: /images/surge-packs/claude-code.png
@@ -56,6 +59,30 @@ pack:
       bd            Beads task tracker — run `bd init` in a repository to start
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      The Claude Code integration is already installed — `herdr integration status`
+      says `claude: current` — so Claude reports working, blocked or idle from its very
+      first run.
 
 tools:
   # ---------------------------------------------------------------- band 40: agents
@@ -93,3 +120,32 @@ tools:
       # docs/surge-pack-contract.md § Which version to install.
       npm install -g --no-fund --no-audit @anthropic-ai/claude-code@stable
       claude --version >/dev/null
+
+  # ---------------------------------------------------------------- band 50: needs an agent
+  # Herdr's Claude Code integration: a SessionStart hook in ~/.claude/settings.json plus the
+  # hook script it calls, so Claude reports its state to herdr instead of herdr guessing from
+  # the process. `herdr integration install claude` refuses to run until ~/.claude exists, and
+  # Claude Code only creates that directory on its first interactive run — which never happens
+  # during a bootstrap — so the directory is created here first. Verified 2026-09-11 that the
+  # install is idempotent (a second run leaves both files byte-identical) and that it MERGES
+  # into an existing settings.json rather than replacing it. Band 50: needs `herdr` (30) on
+  # disk and is meaningful only once `claude-code` (40) is installed.
+  #
+  # Defined here rather than in base.yaml because it is Claude Code's, not the base toolchain's:
+  # `packs/gas-town.yaml` carries Claude Code too and references this id.
+  - toolId: herdr-claude-integration
+    name: Herdr Claude Code integration
+    description: Installs herdr's SessionStart hook into ~/.claude so Claude Code reports its state to herdr
+    category: base
+    url: https://herdr.dev
+    installOrder: 50
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$HOME/.local/bin:$PATH"
+      mkdir -p "$HOME/.claude"
+      herdr integration install claude >/dev/null
+      test -x "$HOME/.claude/hooks/herdr-agent-state.sh"
+      herdr integration status | grep -qE '^claude: current'

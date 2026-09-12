@@ -219,10 +219,12 @@ describe('syncing packs at boot', () => {
     syncPacksAtBoot(args)
     expect(listPacks(opened.db)).toHaveLength(shippedPackCount())
 
-    // A leaf pack: it owns one tool and no other pack references it, so removing it is a
-    // one-pack change rather than a cascade. (Removing base.yaml is not — it owns the base
-    // tools every pack lists, which is the case the guard below covers.)
-    const gone = 'open-code.yaml'
+    // A leaf pack: nothing else references a tool it owns, so removing it is a one-pack change
+    // rather than a cascade. (Removing base.yaml is not — it owns the base tools every pack
+    // lists, which is the case the guard below covers.) This used to be `open-code.yaml`, which
+    // stopped being a leaf when `all-agents` started listing `opencode`; `deepseek-harness` is
+    // a web UI rather than a terminal agent, so `all-agents` does not carry it.
+    const gone = 'deepseek-harness.yaml'
     expect(shipped).toContain(gone)
     rmSync(join(packsDir, gone))
     const result = syncPacksAtBoot(args)
@@ -238,14 +240,14 @@ describe('syncing packs at boot', () => {
    *
    * A pack file that fails to parse is skipped at boot. While `claude-code.yaml` defined the
    * shared base toolchain, skipping it took every OTHER pack's tool references with it, not one
-   * of the eleven packs loaded, and the picker came up empty — one typo in one pack costing the
-   * whole catalog. Now the definitions are in `base.yaml`, and the blast radius is exactly the
-   * packs that genuinely install Claude Code.
+   * of the packs loaded, and the picker came up empty — one typo in one pack costing the whole
+   * catalog. Now the definitions are in `base.yaml`, and the blast radius is exactly the packs
+   * that genuinely install Claude Code.
    *
-   * That is two packs rather than one, and the second is the honest kind of dependency:
-   * `gas-town` lists the `claude-code` TOOL because a Gas Town box runs Claude Code, so a file
-   * that can no longer define it costs that pack too. What ended is the accidental kind, where
-   * `omp` needed the Claude Code pack's file to parse in order to find `curl`.
+   * That is three packs rather than one, and the other two are the honest kind of dependency:
+   * `gas-town` and `all-agents` list the `claude-code` TOOL because those boxes run Claude Code,
+   * so a file that can no longer define it costs them too. What ended is the accidental kind,
+   * where `omp` needed the Claude Code pack's file to parse in order to find `curl`.
    */
   it('breaking claude-code.yaml costs the packs that install it, not the picker (#499)', () => {
     const opened = openTestDatabase()
@@ -261,9 +263,10 @@ describe('syncing packs at boot', () => {
     const result = syncPacksAtBoot({ db: opened.db, dataDir: join(cwd, 'data'), cwd, log: (m) => messages.push(m) })
 
     expect(result.reconciled).toBe(true)
-    // gas-town for the reason above; nothing else references the tool the broken file owned.
-    expect(result.skippedFiles).toEqual(['claude-code.yaml', 'gas-town.yaml'])
-    expect(result.packsSynced).toBe(shippedPackCount() - 2)
+    // gas-town and all-agents for the reason above; nothing else references a tool the broken
+    // file owned (`claude-code` itself, and the herdr hook that only means anything beside it).
+    expect(result.skippedFiles).toEqual(['claude-code.yaml', 'all-agents.yaml', 'gas-town.yaml'])
+    expect(result.packsSynced).toBe(shippedPackCount() - 3)
 
     const ids = listPacks(opened.db).map((p) => p.id)
     expect(ids).not.toContain('claude-code')

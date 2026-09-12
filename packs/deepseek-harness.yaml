@@ -31,6 +31,7 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - deepseek-harness
   displayOrder: 9
   enabled: true
@@ -116,6 +117,30 @@ pack:
       bd            Beads task tracker — run `bd init` in a repository to start
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      herdr 0.9.0 ships no DeepSeek Harness integration, so herdr follows `dsh` by its
+      running process rather than a hook. It holds a long-running `dsh web` the way tmux
+      does, so the server survives a dropped connection.
 
 tools:
   - toolId: deepseek-harness

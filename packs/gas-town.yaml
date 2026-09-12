@@ -1,7 +1,8 @@
 # Gas Town — multi-agent workspace manager, with all three agent CLIs alongside it.
 #
 # The base tool ids below are DEFINED in packs/base.yaml; `amp` and `codex` come
-# from packs/amp-agents.yaml and packs/codex-cli.yaml.
+# from packs/amp-agents.yaml and packs/codex-cli.yaml, and the two herdr integrations come
+# from packs/claude-code.yaml and packs/codex-cli.yaml alongside the agents they hook.
 version: 1
 
 pack:
@@ -22,11 +23,14 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - dolt
     - claude-code
     - amp
     - codex
     - gas-town
+    - herdr-claude-integration
+    - herdr-codex-integration
   displayOrder: 4
   enabled: true
   imageUrl: /images/surge-packs/gas-town.png
@@ -60,6 +64,31 @@ pack:
       shell as $GITHUB_TOKEN — the same one that cloned your repositories — so `gh` works
       as it is; run `gh auth setup-git` once and your own pushes do too. With no token
       configured, `gh auth login` is the way in.
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      The Claude Code and Codex integrations are already installed — `herdr integration
+      status` says `claude: current` and `codex: current` — so both report working, blocked
+      or idle from their very first run. herdr 0.9.0 has no Amp integration, so it follows
+      Amp by its process instead.
 
 tools:
   # There is no `gas-town-toolchain` here any more. This pack used to install Ubuntu's Go

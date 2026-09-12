@@ -23,7 +23,7 @@ web server — so those flags carry over unchanged.
 shows `displayOrder` 1–9 taken by the nine shipped packs and no `omp` or `mcp-agent-mail` id
 anywhere. `packId: omp-agent-mail`, `displayOrder: 10`.
 
-**3. Copy `pack.tools` verbatim, then append the two new ids** — do not touch the fourteen above:
+**3. Copy `pack.tools` verbatim, then append the two new ids** — do not touch the fifteen above:
 
 ```yaml
 tools:
@@ -40,6 +40,7 @@ tools:
   - playwright-deps
   - playwright
   - beads
+  - herdr
   - claude-code
   - omp
   - mcp-agent-mail
@@ -134,7 +135,7 @@ already in the base toolchain — does the job:
 ```
 
 **5. `installOrder`: 30 and 40 are gaps, not the base's own values.** Nothing in
-`base.yaml`'s fourteen Tools, or `claude-code` itself, was renumbered.
+`base.yaml`'s fifteen Tools, or `claude-code` itself, was renumbered.
 
 **6. `guide`: append, don't replace.** Everything in the base pack's guide is still true, so it
 stays; two new blocks go after it:
@@ -202,7 +203,7 @@ in-tree loader does. Three things differ from working inside the repository:
   it, the import path does not.
 - **Do not use Export as a "fork this pack" button.** Export inlines every Tool the pack
   references, including the ones it only pointed at — so exporting `omp-agent-mail` would embed
-  full copies of all fifteen Tools it lists, the fourteen from `base.yaml` plus `claude-code`.
+  full copies of all sixteen Tools it lists, the fifteen from `base.yaml` plus `claude-code`.
   Importing that back in redefines every one of those ids, which the in-tree
   loader rejects outright and which, on another instance, silently overwrites its shipped Tool
   rows. Deriving by hand from the base pack's `pack.tools` list, the

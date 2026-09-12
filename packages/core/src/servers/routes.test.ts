@@ -1107,8 +1107,10 @@ describe('an explicit tools selection', () => {
  * Driven through the real `createApp` for the reason the pack-inputs block above is: the field
  * only exists if composition supplies `serverToolIds`, and a hook nothing wires is exactly the
  * failure `docs/memories/2026-08-21-whole-boot-wiring-tests.md` describes. The pack is written
- * straight into the database because no SHIPPED pack carries herdr yet (#498 adds it) — and
- * because the rule is about the tool ID, a pack fixture that lists it is the honest way to ask.
+ * straight into the database rather than taken from `packs/`: every shipped pack lists `herdr`
+ * since #498, so a shipped one can no longer express the negative case, and the rule under test
+ * is about the tool ID rather than about any particular pack. A pair of fixtures — one that
+ * lists it, one that does not — is the honest way to ask.
  */
 describe('the herdr attach line (issue #500)', () => {
   const PACK_ID = 'herd-me'

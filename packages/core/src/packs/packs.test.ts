@@ -210,16 +210,20 @@ describe('the shipped packs', () => {
   /**
    * The base toolchain is a file of its own (issue #499), and this is the pair of facts that
    * makes the split worth having: the definitions are in `base.yaml`, and the Claude Code pack
-   * is one tool like any other agent pack. Pinned by name because both halves are the point —
+   * owns only what is Claude Code's. Pinned by name because both halves are the point —
    * "some file defines git" would still pass with the base tools back where they were.
+   *
+   * `herdr` is a base tool like the rest of them; `herdr-claude-integration` is not, and that
+   * is the line the second half draws — a hook that means nothing without Claude Code installed
+   * belongs in Claude Code's file, which is where `gas-town` and `all-agents` reference it from.
    */
-  it('defines the shared base toolchain in base.yaml, and one tool in claude-code.yaml', () => {
+  it("defines the shared base toolchain in base.yaml, and Claude Code's own tools in claude-code.yaml", () => {
     expect(loaded.toolFiles).toContain('base.yaml')
-    for (const id of ['build-essential', 'curl', 'gh', 'git', 'nodejs', 'playwright', 'beads']) {
+    for (const id of ['build-essential', 'curl', 'gh', 'git', 'nodejs', 'playwright', 'beads', 'herdr']) {
       expect(loaded.tools.get(id)?.sourceFile, id).toBe('base.yaml')
     }
     const ownedByClaudeCode = [...loaded.tools.values()].filter((t) => t.sourceFile === 'claude-code.yaml')
-    expect(ownedByClaudeCode.map((t) => t.toolId)).toEqual(['claude-code'])
+    expect(ownedByClaudeCode.map((t) => t.toolId)).toEqual(['claude-code', 'herdr-claude-integration'])
   })
 
   it('every pack references only tools that exist', () => {

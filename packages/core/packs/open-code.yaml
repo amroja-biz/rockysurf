@@ -7,6 +7,7 @@
 # already use, so all three agents now install the same way.
 #
 # The base tool ids below are DEFINED in packs/base.yaml and referenced here.
+# Only `opencode` and `herdr-opencode-integration` are defined in this file.
 version: 1
 
 pack:
@@ -27,7 +28,9 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - opencode
+    - herdr-opencode-integration
   displayOrder: 6
   enabled: true
   imageUrl: /images/surge-packs/open-code.png
@@ -59,6 +62,30 @@ pack:
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
 
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      The opencode integration is already installed — `herdr integration status` says
+      `opencode: current` — so opencode reports working, blocked or idle from its very
+      first run.
+
 tools:
   - toolId: opencode
     name: opencode
@@ -82,3 +109,28 @@ tools:
       # one. The version check at the end is what proves it picked an executable build.
       npm install -g --no-fund --no-audit opencode-ai
       opencode --version >/dev/null
+
+  # opencode's Herdr integration: the plugin scripts herdr's TUI-session hook needs plus a
+  # tui.jsonc it can merge into, under ~/.config/opencode. `herdr integration install opencode`
+  # writes plugins/herdr-agent-state.js and plugins/herdr-tui-session.js into that directory and
+  # ensures tui.jsonc exists there, and it refuses to run until the directory itself exists —
+  # opencode only creates ~/.config/opencode on its first interactive run, which never happens
+  # during a bootstrap — so the directory is created here first. Verified 2026-09-11 that
+  # `herdr integration install` is idempotent (a second run leaves the plugin files and
+  # tui.jsonc byte-identical). Band 50: needs `herdr` (30) on disk and is meaningful only once
+  # `opencode` (40) is installed.
+  - toolId: herdr-opencode-integration
+    name: Herdr opencode integration
+    description: Installs herdr's state hook into ~/.config/opencode so opencode reports its state to herdr
+    category: base
+    url: https://herdr.dev
+    installOrder: 50
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$HOME/.local/bin:$PATH"
+      mkdir -p "$HOME/.config/opencode"
+      herdr integration install opencode >/dev/null
+      herdr integration status | grep -qE '^opencode: current'

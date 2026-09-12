@@ -25,6 +25,7 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - desktop-environment
     - open-claw
     - open-claw-onboard
@@ -67,6 +68,30 @@ pack:
 
     Also installed
       bd, tmux, Playwright with Chromium, and Firefox in the desktop.
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      herdr 0.9.0 ships no OpenClaw integration, so herdr follows a terminal agent by its
+      running process rather than a hook. Run it from a terminal inside the desktop session,
+      or over plain SSH.
 
 tools:
   - toolId: desktop-environment
