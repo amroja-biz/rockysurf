@@ -164,7 +164,9 @@ if you drop a Tool that another one depends on, the dependent breaks:
 | `playwright-deps` | 25 | `nodejs` (runs `npx`) |
 | `playwright` | 30 | `nodejs`, and `playwright-deps` for a browser that actually launches |
 | `beads` | 30 | `curl` |
+| `herdr` | 30 | `curl` |
 | `claude-code` | 40 | `curl` only — **not** `nodejs`; its installer ships its own runtime |
+| `herdr-<agent>-integration` | 50 | `herdr`, and the agent it names — each lives in that agent's pack file, not in `base.yaml` |
 
 Anything you add yourself follows the same rule, so state its needs in a comment. Say out loud
 which base Tools you dropped and why, so the user can push back.
@@ -277,6 +279,7 @@ these by what you are doing:
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
 | building on a pack that already exists | `packs/gas-town.yaml`, and Step 1E |
+| composing several existing packs and defining nothing yourself | `packs/all-agents.yaml` — every id referenced, `tools: []` |
 
 `references/idioms.md` has the copyable shell for each of these, with the failure each guard
 prevents. **Use those idioms rather than inventing your own** — every one of them is there
@@ -357,9 +360,11 @@ the case that adds a pack file builds a temporary `packs/` with an extra pack in
 whole public contract over it. A red test here is about **your pack**.
 
 One thing that is easy to get half-right: `imageUrl` is optional, but if you do set it to a
-bundled path (`/images/surge-packs/<something>.png`), the PNG has to be in *both*
-`packages/core/public/images/surge-packs/` and `packages/web/public/images/surge-packs/`. A test
-checks both directories, and a path that starts with `https://` is your own business.
+bundled path (`/images/surge-packs/<something>.png`), commit the PNG to
+`packages/web/public/images/surge-packs/` — 256×256, and check the directory's total stays well
+under the 512 KB the bundle test allows. `packages/core/public/` is the *built* copy and is
+gitignored, so it gets the file from `pnpm -r build`; the test reads both directories and fails
+on either, which is why it says to build first. A path starting `https://` is your own business.
 
 Note what the suite does **not** catch: whether your script actually works, and whether it is
 genuinely idempotent. `grep -q` present is not `grep -q` correct. That is what step 4 is for.

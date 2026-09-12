@@ -109,6 +109,7 @@ describe('the Surge Pack images', () => {
    * about this list.
    */
   const SHIPPED_WITH_IMAGES = [
+    'all-agents.yaml',
     'claude-code.yaml',
     'amp-agents.yaml',
     'codex-cli.yaml',

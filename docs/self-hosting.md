@@ -707,7 +707,9 @@ so: it goes through your own SSH agent, and this installation holds no credentia
 The line appears only for a Server whose pack actually installed herdr — the check is on the Tool
 id, not on a pack's name, so a pack of your own that lists `herdr` gets it too. A box created
 with an explicit Tool selection that left herdr out does not get it, because it does not have
-herdr.
+herdr. Every pack this repository ships lists it, since `herdr` is part of the shared base
+toolchain in `packs/base.yaml` (issue #498), so in practice the line is there unless you took it
+out or wrote a pack that never had it.
 
 **The one thing that catches people:** herdr has no `-i` flag. It connects with a plain
 `ssh rocky@<address>`, so the key has to be reachable without being named — either
@@ -1205,7 +1207,8 @@ anywhere is itself a validation issue — charged to the file doing the *referen
 a file that defines shared Tools invalidates every file that depends on it.
 
 That is not hypothetical with the shipped set. `base.yaml` defines the shared base toolchain —
-the compiler, curl, git, the GitHub CLI, tmux, the Python bits, Node, Playwright and beads — and
+the compiler, curl, git, the GitHub CLI, tmux, the Python bits, Node, Playwright, beads and
+herdr — and
 every shipped pack references most of its Tools from there rather than defining them. A syntax
 error in `base.yaml` alone therefore invalidates every shipped pack, and the boot log will name
 every file rather than the one you edited. **Read the log from the top: the first file listed is

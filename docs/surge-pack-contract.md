@@ -62,9 +62,9 @@ tools: [ … ]      # required; the Tool records this file introduces
 in any other file in `packs/` — that is how several packs share one `claude-code` definition.
 Defining the same `toolId` in two files is an error and CI will reject it.
 
-**One file in `packs/` is not a pack.** `packs/base.yaml` holds the shared base toolchain —
-`build-essential`, `curl`, `gh`, `git`, `tmux`, `unzip`, the Python bits, `nodejs`, Playwright,
-`beads` — that every pack in the directory lists by id. It is a **Tool file** (below, and
+**One file in `packs/` is not a pack.** `packs/base.yaml` holds the shared base toolchain — the
+fifteen Tools `build-essential`, `curl`, `gh`, `git`, `tmux`, `tmux-mouse`, `unzip`, the Python
+bits, `nodejs`, Playwright, `beads` and `herdr` — that every pack in the directory lists by id. It is a **Tool file** (below, and
 ADR-0018): `version: 1` plus a `tools:` list and no `pack:` key. Anything in `packs/` without a
 `pack:` block is read that way — it contributes definitions, appears in no picker, and needs no
 image. Those Tools were defined in `packs/claude-code.yaml` until issue #499, which is why a
@@ -78,7 +78,8 @@ Because `pack.tools` already resolves ids across files, "extend pack X" needs no
 a new pack file that copies X's `pack.tools` list and appends its own Tool ids **is** an
 extension of X. `packs/gas-town.yaml` is this pattern shipping today — it lists the shared base
 toolchain plus `claude-code`, `amp` and `codex` from three other pack files, plus three Tools of
-its own.
+its own. `packs/all-agents.yaml` is the same pattern taken to its end: every id in it is defined
+in some other file, and it declares `tools: []`.
 
 Two ways to build on a pack, and the question that decides between them is whether the pack
 being built on gets modified:
@@ -133,7 +134,7 @@ without renumbering every pack in the repository. The bands in use:
 | `20` | Language runtimes — Node, Python, Go, Rust |
 | `30` | Anything that needs a runtime from band 20 |
 | `40` | The agents themselves |
-| `50` | Anything that needs an agent to already be installed |
+| `50` | Anything that needs an agent to already be installed — the `herdr-<agent>-integration` Tools are the shipped example |
 
 A Tool that has to land between two bands takes the gap: the desktop environment sits at `35`,
 after the runtime-dependent Tools and before the agents. That is the convention working as

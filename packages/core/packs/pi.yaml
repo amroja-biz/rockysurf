@@ -6,7 +6,7 @@
 # it from a Gemini answer they did not ask for.
 #
 # The base tool ids below are DEFINED in packs/base.yaml and referenced here.
-# Only `pi` is defined in this file.
+# Only `pi` and `herdr-pi-integration` are defined in this file.
 version: 1
 
 pack:
@@ -26,7 +26,9 @@ pack:
     - playwright-deps
     - playwright
     - beads
+    - herdr
     - pi
+    - herdr-pi-integration
   displayOrder: 11
   enabled: true
   imageUrl: /images/surge-packs/pi.png
@@ -94,6 +96,29 @@ pack:
       bd            Beads task tracker — run `bd init` in a repository to start
       tmux          run agents in here; a dropped SSH connection then costs you nothing
       Playwright with Chromium, for browser work
+
+    Herdr
+      herdr                   opens the workspace; start agents inside it and a dropped SSH
+                              connection costs you nothing — `herdr` again reattaches
+      herdr --help            the rest of what it does
+
+      On your own machine, one line attaches this box to your local herdr, so its agents
+      show up beside the ones running there:
+
+        herdr machine add rocky@<ip>
+
+      herdr has no `-i` flag: it connects with whatever plain `ssh rocky@<ip>` would use.
+      If that bare command does not get you in on its own, herdr will not either — give ssh
+      the key first, either with a block in ~/.ssh/config
+
+        Match user rocky
+          IdentityFile ~/.ssh/<your-key>
+
+      or by loading it into your agent with `ssh-add ~/.ssh/<your-key>`.
+
+      Installed at ~/.local/bin/herdr, pinned to 0.9.0.
+      The Pi integration is already installed — `herdr integration status` says
+      `pi: current` — so Pi reports working, blocked or idle from its very first run.
 
 tools:
   - toolId: pi
@@ -163,3 +188,28 @@ tools:
       touch "$HOME/.bashrc"
       grep -qF '.local/bin' "$HOME/.bashrc" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
       pi --version >/dev/null
+
+  # Herdr's Pi integration: writes herdr-agent-state.ts into the extensions directory Pi loads
+  # its extensions from, so Pi reports its state to herdr instead of herdr guessing from the
+  # process. `herdr integration install pi` writes into $HOME/.pi/agent/extensions, and Pi only
+  # creates ~/.pi on its first interactive run — which never happens during a bootstrap — so the
+  # directory is created here first, even though the `pi` Tool at installOrder 40 may already
+  # have created ~/.pi itself; the extensions subdirectory under it is not guaranteed. Verified
+  # 2026-09-11 that `herdr integration install pi` is idempotent (a second run leaves
+  # herdr-agent-state.ts byte-identical). Band 50: needs `herdr` (30) on disk and is meaningful
+  # only once `pi` (40) is installed.
+  - toolId: herdr-pi-integration
+    name: Herdr Pi integration
+    description: Installs herdr's state hook into $HOME/.pi/agent/extensions so Pi reports its state to herdr
+    category: base
+    url: https://herdr.dev
+    installOrder: 50
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$HOME/.local/bin:$PATH"
+      mkdir -p "$HOME/.pi/agent/extensions"
+      herdr integration install pi >/dev/null
+      herdr integration status | grep -qE '^pi: current'

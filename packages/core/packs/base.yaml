@@ -1,5 +1,5 @@
 # The shared base toolchain — the compiler, curl, git, the GitHub CLI, tmux, the Python bits,
-# Node, Playwright and beads — that every pack in this directory references by id.
+# Node, Playwright, beads and herdr — that every pack in this directory references by id.
 #
 # THIS IS A TOOL FILE, NOT A PACK (ADR-0018): `version: 1` plus a `tools:` list and no `pack:`
 # block, the same format the admin Tools page exports and imports. It installs nothing on its
@@ -395,3 +395,58 @@ tools:
         grep -qF "$dir" "$HOME/.bashrc" || echo "export PATH=\"$dir:\$PATH\"" >> "$HOME/.bashrc"
       done
       command -v bd >/dev/null 2>&1
+
+  - toolId: herdr
+    name: Herdr
+    description: Terminal workspace runtime for coding agents; sessions survive a dropped SSH connection and show each agent as working, blocked or idle
+    category: base
+    url: https://herdr.dev
+    # Band 30, beside `beads`: it needs only `curl` (band 10), and nothing in band 40 needs it
+    # at install time — the per-agent `herdr-*-integration` Tools that do are band 50.
+    installOrder: 30
+    # Per-user, in $HOME, which is where the vendor's own installer puts it (~/.local/bin).
+    runAs: rocky
+    bootstrap: false
+    enabled: true
+    installScript: |
+      set -euo pipefail
+      export PATH="$HOME/.local/bin:$PATH"
+
+      # PINNED, and fetched from the release download CDN rather than through the vendor's
+      # `curl https://herdr.dev/install.sh | sh`. That installer reads a "latest" manifest with
+      # no way to pin, and herdr is 0.x with breaking changes between minor releases, so a box
+      # built next month would get a different herdr than the one this Tool was proven on.
+      #
+      # The digests are the vendor's own, from https://herdr.dev/latest.json, and were checked
+      # against a fresh download of each asset on 2026-09-11.
+      #
+      # To bump: change the version and both digests. The release page lists the assets:
+      # https://github.com/herdrdev/herdr/releases — the sha256 for each is in latest.json.
+      herdr_version=0.9.0
+      case "$ARCH" in
+        amd64) herdr_asset=herdr-linux-x86_64;  herdr_sha=4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f ;;
+        arm64) herdr_asset=herdr-linux-aarch64; herdr_sha=9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2 ;;
+        *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
+      esac
+
+      # Guarded on the INSTALLED VERSION: a re-run neither re-downloads nor rewrites the binary,
+      # while bumping herdr_version above still reinstalls. `herdr --version` prints
+      # "herdr 0.9.0" and creates nothing under $HOME.
+      if [ "$(herdr --version 2>/dev/null | awk 'NR==1{print $2}')" != "$herdr_version" ]; then
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        # Bounded retries: one reset mid-download should cost a second, not a box.
+        curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors \
+          "https://github.com/herdrdev/herdr/releases/download/v${herdr_version}/${herdr_asset}" \
+          -o "$tmp/herdr"
+        echo "$herdr_sha  $tmp/herdr" | sha256sum -c - >/dev/null
+        install -D -m 0755 "$tmp/herdr" "$HOME/.local/bin/herdr"
+      fi
+
+      # The human's interactive shell, later. Guarded so the harness's byte-identical .bashrc
+      # check holds on the second run — and `beads` above appends the same directory, so on a
+      # box that has both this line writes nothing.
+      touch "$HOME/.bashrc"
+      grep -qF "$HOME/.local/bin" "$HOME/.bashrc" || echo "export PATH=\"$HOME/.local/bin:\$PATH\"" >> "$HOME/.bashrc"
+
+      herdr --version >/dev/null
