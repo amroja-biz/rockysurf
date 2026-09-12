@@ -279,7 +279,7 @@ these by what you are doing:
 | shipping a desktop | `packs/open-claw.yaml` |
 | taming an installer that wants a TTY or a systemd user service | `open-claw-onboard` in `packs/open-claw.yaml` |
 | building on a pack that already exists | `packs/gas-town.yaml`, and Step 1E |
-| composing several existing packs and defining nothing yourself | `packs/all-agents.yaml` — every id referenced, `tools: []` |
+| composing several existing packs and defining nothing yourself | `packs/kitchen-sink.yaml` — every id referenced, `tools: []` |
 
 `references/idioms.md` has the copyable shell for each of these, with the failure each guard
 prevents. **Use those idioms rather than inventing your own** — every one of them is there

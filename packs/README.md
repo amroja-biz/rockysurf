@@ -47,10 +47,10 @@ single run and fails the second one.
 
 `claude-code`, `amp-agents`, `codex-cli`, `gas-town`, `open-claw`, and
 `open-code` were ported from the pre-open-source installation scripts and rewritten against
-the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, `pi` and `all-agents` have
+the contract. `grok-build`, `cursor-cli`, `deepseek-harness`, `omp`, `pi` and `kitchen-sink` have
 shipped since.
 
-`all-agents` is the second file here that **defines no Tool at all**: like `gas-town` it is a
+`kitchen-sink` is the second file here that **defines no Tool at all**: like `gas-town` it is a
 list of ids other files own — every shipped terminal agent, plus each one's herdr integration —
 for the case of one box holding several agents at once.
 

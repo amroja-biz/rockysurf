@@ -78,7 +78,7 @@ Because `pack.tools` already resolves ids across files, "extend pack X" needs no
 a new pack file that copies X's `pack.tools` list and appends its own Tool ids **is** an
 extension of X. `packs/gas-town.yaml` is this pattern shipping today — it lists the shared base
 toolchain plus `claude-code`, `amp` and `codex` from three other pack files, plus three Tools of
-its own. `packs/all-agents.yaml` is the same pattern taken to its end: every id in it is defined
+its own. `packs/kitchen-sink.yaml` is the same pattern taken to its end: every id in it is defined
 in some other file, and it declares `tools: []`.
 
 Two ways to build on a pack, and the question that decides between them is whether the pack
