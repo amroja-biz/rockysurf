@@ -1,4 +1,4 @@
-# All Agents — one box carrying every shipped coding agent, with herdr holding them in one
+# Kitchen Sink — one box carrying every shipped coding agent, with herdr holding them in one
 # window.
 #
 # It DEFINES NO TOOL. Every id below is defined elsewhere and referenced here, the way
@@ -21,8 +21,8 @@
 version: 1
 
 pack:
-  packId: all-agents
-  name: All Agents
+  packId: kitchen-sink
+  name: Kitchen Sink
   tools:
     - build-essential
     - curl
@@ -57,7 +57,7 @@ pack:
     - herdr-pi-integration
   displayOrder: 12
   enabled: true
-  imageUrl: /images/surge-packs/all-agents.png
+  imageUrl: /images/surge-packs/kitchen-sink.png
   # Every agent on this box reads and edits a checkout, so a box with no repository is a box
   # where none of them has anything to work on. Same answer as each single-agent pack gives.
   requiresRepos: true

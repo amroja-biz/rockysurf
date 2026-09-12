@@ -222,8 +222,8 @@ describe('syncing packs at boot', () => {
     // A leaf pack: nothing else references a tool it owns, so removing it is a one-pack change
     // rather than a cascade. (Removing base.yaml is not — it owns the base tools every pack
     // lists, which is the case the guard below covers.) This used to be `open-code.yaml`, which
-    // stopped being a leaf when `all-agents` started listing `opencode`; `deepseek-harness` is
-    // a web UI rather than a terminal agent, so `all-agents` does not carry it.
+    // stopped being a leaf when `kitchen-sink` started listing `opencode`; `deepseek-harness` is
+    // a web UI rather than a terminal agent, so `kitchen-sink` does not carry it.
     const gone = 'deepseek-harness.yaml'
     expect(shipped).toContain(gone)
     rmSync(join(packsDir, gone))
@@ -245,7 +245,7 @@ describe('syncing packs at boot', () => {
    * that genuinely install Claude Code.
    *
    * That is three packs rather than one, and the other two are the honest kind of dependency:
-   * `gas-town` and `all-agents` list the `claude-code` TOOL because those boxes run Claude Code,
+   * `gas-town` and `kitchen-sink` list the `claude-code` TOOL because those boxes run Claude Code,
    * so a file that can no longer define it costs them too. What ended is the accidental kind,
    * where `omp` needed the Claude Code pack's file to parse in order to find `curl`.
    */
@@ -263,9 +263,9 @@ describe('syncing packs at boot', () => {
     const result = syncPacksAtBoot({ db: opened.db, dataDir: join(cwd, 'data'), cwd, log: (m) => messages.push(m) })
 
     expect(result.reconciled).toBe(true)
-    // gas-town and all-agents for the reason above; nothing else references a tool the broken
+    // gas-town and kitchen-sink for the reason above; nothing else references a tool the broken
     // file owned (`claude-code` itself, and the herdr hook that only means anything beside it).
-    expect(result.skippedFiles).toEqual(['claude-code.yaml', 'all-agents.yaml', 'gas-town.yaml'])
+    expect(result.skippedFiles).toEqual(['claude-code.yaml', 'gas-town.yaml', 'kitchen-sink.yaml'])
     expect(result.packsSynced).toBe(shippedPackCount() - 3)
 
     const ids = listPacks(opened.db).map((p) => p.id)

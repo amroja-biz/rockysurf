@@ -215,7 +215,7 @@ describe('the shipped packs', () => {
    *
    * `herdr` is a base tool like the rest of them; `herdr-claude-integration` is not, and that
    * is the line the second half draws — a hook that means nothing without Claude Code installed
-   * belongs in Claude Code's file, which is where `gas-town` and `all-agents` reference it from.
+   * belongs in Claude Code's file, which is where `gas-town` and `kitchen-sink` reference it from.
    */
   it("defines the shared base toolchain in base.yaml, and Claude Code's own tools in claude-code.yaml", () => {
     expect(loaded.toolFiles).toContain('base.yaml')
