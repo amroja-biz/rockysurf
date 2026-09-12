@@ -1095,3 +1095,132 @@ describe('an explicit tools selection', () => {
     expect(ids.indexOf('tool:acme-extra')).toBeLessThan(ids.indexOf('tool:acme-linter'))
   })
 })
+
+/**
+ * THE `herdr machine add` LINE, ON THE ROW ITSELF (issue #500).
+ *
+ * With herdr on every box (#498) the daily loop is two commands: create a Server, then attach it
+ * to the herdr already running on your own machine. Rocky Surf knows the whole of the second
+ * one, so it says it — here, once, for the CLI and the MCP server alike, rather than each front
+ * end deciding for itself which boxes qualify and how the line is spelled.
+ *
+ * Driven through the real `createApp` for the reason the pack-inputs block above is: the field
+ * only exists if composition supplies `serverToolIds`, and a hook nothing wires is exactly the
+ * failure `docs/memories/2026-08-21-whole-boot-wiring-tests.md` describes. The pack is written
+ * straight into the database because no SHIPPED pack carries herdr yet (#498 adds it) — and
+ * because the rule is about the tool ID, a pack fixture that lists it is the honest way to ask.
+ */
+describe('the herdr attach line (issue #500)', () => {
+  const PACK_ID = 'herd-me'
+
+  /**
+   * A tool row for the fixtures below. This app has no `packs/*.yaml` synced into it, so every
+   * id a create names has to be written here first — `checkTools` refuses one that is not.
+   */
+  const declareTool = (id: string, alwaysInstall = false): void => {
+    upsertTool(opened.db, {
+      id,
+      name: `Tool ${id}`,
+      description: 'x',
+      category: 'base',
+      url: 'https://example.com',
+      installScript: 'set -euo pipefail\ntrue\n',
+      setupScript: null,
+      enabled: true,
+      installOrder: 40,
+      bootstrap: false,
+      runAs: 'rocky',
+      sourceFile: null,
+      alwaysInstall,
+    })
+  }
+
+  /** A pack fixture that lists herdr, or one that does not. */
+  const declarePack = (tools: string[]): void => {
+    upsertPack(opened.db, {
+      id: PACK_ID,
+      name: 'Herd Me',
+      tools,
+      displayOrder: 1,
+      enabled: true,
+      requiresRepos: false,
+      requiresRdp: false,
+    })
+  }
+
+  /** Create, sync the address off the provider, then let bootstrap promote it to `running`. */
+  async function running(body: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    const { serverId } = (await (await post('/api/v1/servers', { ...CREATE, packId: PACK_ID, ...body })).json()) as {
+      serverId: string
+    }
+    await get(`/api/v1/servers/${serverId}`)
+    await markBootstrapReady(opened.db, events, getServer(opened.db, serverId)!)
+    return (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+  }
+
+  it('is the pasteable line, labelled with the Server name, once the box is running', async () => {
+    declarePack(['herdr'])
+    const row = await running({ name: 'dev-box' })
+
+    expect(row['status']).toBe('running')
+    expect(row['herdrMachineAdd']).toBe(`herdr machine add rocky@${String(row['publicIp'])} --label dev-box`)
+  })
+
+  it('is absent while the box is still provisioning — there is nothing to attach yet', async () => {
+    declarePack(['herdr'])
+    const { serverId } = (await (await post('/api/v1/servers', { ...CREATE, packId: PACK_ID })).json()) as {
+      serverId: string
+    }
+    // A GET syncs the address, so the box has one; what it does not have is an installed herdr.
+    const row = (await (await get(`/api/v1/servers/${serverId}`)).json()) as Record<string, unknown>
+    expect(row['status']).toBe('provisioning')
+    expect(row['publicIp']).toBeTruthy()
+    expect('herdrMachineAdd' in row).toBe(false)
+  })
+
+  it('is absent for a pack that does not install herdr', async () => {
+    declareTool('acme-linter')
+    declarePack(['acme-linter'])
+    const row = await running()
+    expect(row['status']).toBe('running')
+    expect('herdrMachineAdd' in row).toBe(false)
+  })
+
+  /**
+   * The per-server override, which is why this reads the same resolution the install plan does
+   * rather than `pack.tools` on its own: an explicit `tools` selection replaces the pack's list,
+   * so a box created that way never had herdr on it and must not be handed a command that
+   * cannot work.
+   */
+  it('is absent when an explicit tool selection replaced the pack list', async () => {
+    declareTool('acme-linter')
+    declarePack(['herdr'])
+    const row = await running({ tools: ['acme-linter'] })
+    expect(row['tools']).toEqual(['acme-linter'])
+    expect('herdrMachineAdd' in row).toBe(false)
+  })
+
+  /**
+   * And the other half of that rule: "install this everywhere" puts herdr on a box whose pack
+   * never mentioned it, and the line follows the tool.
+   */
+  it('is present when herdr is an always-install tool and the pack does not list it', async () => {
+    declareTool('herdr', true)
+    declareTool('acme-linter')
+    declarePack(['acme-linter'])
+    const row = await running()
+    expect(row['herdrMachineAdd']).toContain('herdr machine add rocky@')
+  })
+
+  /**
+   * A name is free text up to 63 characters, so it is not always a shell word. The id always is,
+   * and a label the user cannot paste is worse than a label that is not the name they chose.
+   */
+  it('labels with the Server id when the name is not safe to paste into a shell', async () => {
+    declarePack(['herdr'])
+    const row = await running({ name: 'my box' })
+    expect(row['herdrMachineAdd']).toBe(
+      `herdr machine add rocky@${String(row['publicIp'])} --label ${String(row['serverId'])}`,
+    )
+  })
+})

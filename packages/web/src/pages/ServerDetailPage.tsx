@@ -43,6 +43,25 @@ import {
 import { destructiveAction } from '../lib/serverActions'
 
 /**
+ * The tool that puts a box in the user's own herdr window (issue #500, #498). An id, matched
+ * against the box's tool list — see `hasHerdr` below for why it is never a pack name.
+ */
+const HERDR_TOOL_ID = 'herdr'
+
+/**
+ * The `--label` this box gets in the user's herdr window: its name when that is safe to paste
+ * into a shell, otherwise its id.
+ *
+ * Names are free text — "my box" is a legal Server name — and an unquoted one would make
+ * `herdr machine add` read two arguments where one was meant. Core applies the same rule to the
+ * copy of this line it serves to agents (`herdrLabel` in `servers/routes.ts`); the two are kept
+ * in step by `ServerDetailPage.wiring.test.tsx`, which reads core's regex out of its source.
+ */
+function herdrLabel(server: Server): string {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(server.name) ? server.name : server.serverId
+}
+
+/**
  * One server: what it is, how to connect to it, and what it is doing right now.
  *
  * Ported from the legacy SPA's server detail page. Three things changed:
@@ -258,6 +277,16 @@ export function ServerDetailPage() {
     (id) => packToolById.get(id) ?? { toolId: id, name: id, url: undefined, description: undefined },
   )
   const installedTools = recordedTools.length > 0 ? recordedTools : (pack?.tools ?? [])
+  /**
+   * Does this box carry herdr (issue #500)?
+   *
+   * ON THE TOOL ID, off the list above — not on the pack's id and not on its name. herdr is
+   * defined once in the base toolchain and listed by `pack.tools`, so a pack that lists it gets
+   * the line and one that does not gets nothing, including a pack that arrived from a registry
+   * or a stranger's pull request. Same rule as `webPort` and `requiresRdp` above it: the page
+   * reads metadata, never a name.
+   */
+  const hasHerdr = installedTools.some((tool) => tool.toolId === HERDR_TOOL_ID)
 
   async function run(action: TransitionAction | 'terminate', call: () => Promise<Server>, done: string) {
     setConfirming(null)
@@ -644,6 +673,55 @@ export function ServerDetailPage() {
               </p>
             </div>
           )}
+
+          {/*
+            THE ONE LINE STILL TYPED BY HAND (issue #500), for a box that carries herdr.
+
+            Two steps make a working day: create a Server with a pack, then attach it to the
+            herdr running on your own machine. Rocky Surf knows the whole of the second command
+            — the address is on this page and the label is this box's name — so leaving the user
+            to assemble it from two places was the last piece of copying in the loop.
+
+            IT RUNS ON THEIR MACHINE, NOT ON THE BOX, and it is rendered under Connect for that
+            reason rather than in the pack's guide: everything else here is also a command you
+            run locally to reach this Server. Rocky Surf never runs it — it goes through the
+            user's own SSH agent, and this installation holds no credential for that.
+
+            Gated on `publicIp` as well as on `running`: every other command here falls back to
+            an `<address>` placeholder because it is the primary way in and must render
+            regardless, but the whole value of this one is that it can be pasted, so a version
+            of it that cannot be is worse than none.
+
+            The string is built here rather than read from core's `herdrMachineAdd` field, which
+            carries the same line for the CLI and the MCP server. This page patches `publicIp`
+            straight off the `server-status` and `ip-changed` frames without re-reading the row
+            (see `useServerUpdates` above) — so a box that has just come up, which is exactly
+            when somebody wants this line, would show a stale field or none at all. Every other
+            ssh command on this page is assembled from the row for the same reason.
+          */}
+          {hasHerdr && server.publicIp && (
+            <div className="herdr-instructions">
+              <h3>Attach it to your herdr</h3>
+              <p>Run this on your OWN machine to add this Server to your herdr window:</p>
+              <pre>
+                <code>{`herdr machine add ${server.sshUser}@${server.publicIp} --label ${herdrLabel(server)}`}</code>
+              </pre>
+              {/*
+                One line, and it links rather than repeats: the pack's own guide carries the
+                Herdr block (#498), and a second copy of it here is a second copy to keep true.
+              */}
+              <p className="hint">
+                herdr has no <code>-i</code> flag — it connects with a plain{' '}
+                <code>
+                  ssh {server.sshUser}@{server.publicIp}
+                </code>
+                , so your key (and the port, if this box is not on 22) has to come from a{' '}
+                <code>Match user {server.sshUser}</code> / <code>IdentityFile</code> block in your{' '}
+                <code>~/.ssh/config</code>, or from <code>ssh-add</code>.{' '}
+                {pack?.guide ? <a href="#pack-guide">The pack's guide below has the details.</a> : null}
+              </p>
+            </div>
+          )}
         </section>
       )}
 
@@ -657,9 +735,12 @@ export function ServerDetailPage() {
         from a stranger's pull request or an imported URL, so it goes through React's escaping
         like every other pack field on this page — no markdown parser, no dangerouslySetInnerHTML.
         A pack with no guide (every third-party one, until its author writes one) renders nothing.
+
+        It carries an `id` so the Connect section's herdr note can link down to it rather than
+        repeat what it says (issue #500).
       */}
       {server.status === 'running' && pack?.guide && (
-        <section className="pack-guide">
+        <section className="pack-guide" id="pack-guide">
           <h2>Getting started with {pack.name}</h2>
           {/*
             Not "run these on the box": that claim was false for any pack whose first step is

@@ -690,6 +690,42 @@ Rocky Surf never looks your address up itself, by design — you type the CIDR a
 you typed — so this is a check you run, not one the product can run for you. It cannot report the
 offending address either: the firewall dropped the packet before it reached the box.
 
+### Attaching a box to your herdr
+
+Packs that install [herdr](https://herdr.dev) add one more line to the Connect section, once the
+Server is running:
+
+```
+herdr machine add rocky@<address> --label <the Server's name>
+```
+
+**You run that on your own machine, not on the box.** It attaches the Server to the herdr window
+you already have, so several boxes across several clouds show up in one place with a combined
+agent list. Rocky Surf will not run it for you and there is nothing to configure to make it do
+so: it goes through your own SSH agent, and this installation holds no credential for that.
+
+The line appears only for a Server whose pack actually installed herdr — the check is on the Tool
+id, not on a pack's name, so a pack of your own that lists `herdr` gets it too. A box created
+with an explicit Tool selection that left herdr out does not get it, because it does not have
+herdr.
+
+**The one thing that catches people:** herdr has no `-i` flag. It connects with a plain
+`ssh rocky@<address>`, so the key has to be reachable without being named — either
+
+```
+Match user rocky
+    IdentityFile ~/.ssh/your-rocky-key
+```
+
+in your `~/.ssh/config`, or an `ssh-add` of the key into your agent. A box that is not on port 22
+needs its port in that same config block, for the same reason. The pack's own guide, further down
+the Server page, says this in place; the line on the page links to it.
+
+The same string is on the API and in MCP results, so an agent that just created a Server can hand
+it to you: `herdrMachineAdd` on `GET /api/v1/servers/:id`, and on the `get_server`,
+`list_servers` and `get_ssh_command` reads. It is absent — rather than a version with a
+placeholder in it — for any Server it would not work on.
+
 ## Repositories, and how private ones clone
 
 The Repositories field on the create-server form takes one git URL per line, and each one is
@@ -1524,9 +1560,16 @@ truncated by the client when it is not (issues #415, #416):
 
 - `list_servers` lists the Servers you **have**. Terminated ones are history and are left out
   unless the agent passes `include_terminated`. Each row is the fleet view — status, address,
-  size, hourly cost, and the bootstrap step while a box is building — not the whole record;
+  size, hourly cost, the herdr attach line where there is one, and the bootstrap step while a
+  box is building — not the whole record;
   `get_server` returns that, including the environment a box was built with, the repositories
   it cloned and the full bootstrap report of one that failed.
+- `get_ssh_command` returns the ssh command and a pointer to where the private key can be
+  downloaded — never the key. For a Server whose pack installed herdr it also returns
+  `herdrMachineAdd`, the line **you** run on your own machine to attach the box to your herdr,
+  with the note about the key and the missing `-i` flag; the field is absent for a Server the
+  line would not work on, so an agent either has a working command or says nothing. Rocky Surf
+  never runs it — see [Attaching a box to your herdr](#attaching-a-box-to-your-herdr).
 - `list_providers` reports each configured cloud's capabilities, any saved size preferences,
   and **how many** machine types it sells — not the types themselves. A cloud that could not be
   asked at all carries `offeringsError`, which is why its count can be zero.

@@ -298,6 +298,25 @@ export interface ServerRoutesDeps {
    */
   checkTools?: (ids: string[]) => string | undefined
   /**
+   * The tool ids a box was actually built with, for the one question a reader of a row can ask
+   * about them: is a given tool ON this box (issue #500).
+   *
+   * A FUNCTION, on the discipline every hook above shares — the answer needs the packs table and
+   * the tools table, and this route must not grow the ability to read either. It takes the row
+   * the route already has rather than a pack id, because "what is on this box" is not "what is
+   * in its pack": an explicit per-server `tools` selection overrides the pack's list, and an
+   * operator's "install this everywhere" tool is on a box whose pack never mentioned it. Both of
+   * those rules are already written down once, in `bootstrap/install-plan.ts`, and production
+   * wires this to exactly that function so the answer here cannot drift from the plan the box
+   * was built from.
+   *
+   * Optional so a test that does not care wires nothing — a row then answers "no tools I can
+   * vouch for", which suppresses `herdrMachineAdd` below rather than guessing. `routes.test.ts`
+   * drives the real `createApp` for it, per
+   * `docs/memories/2026-08-21-whole-boot-wiring-tests.md`.
+   */
+  serverToolIds?: (row: ServerRow) => readonly string[]
+  /**
    * The public keys the operator saved by name in `ssh.keys` (issue #302).
    *
    * A FUNCTION, on the same discipline as `offeringAllowlist` and `tierPreference` above: the
@@ -325,6 +344,54 @@ function describeSuppliedKey(line: string): { fingerprint: string; comment?: str
   } catch {
     return undefined
   }
+}
+
+/**
+ * The tool that puts a box in the user's own herdr window (issue #500, #498).
+ *
+ * An ID, compared against the tool ids the box was built with — never a pack name, and never a
+ * list of pack ids. `herdr` is defined once in the base toolchain and listed by `pack.tools`,
+ * so "does this box have herdr" is a question the data already answers; a pack from a stranger's
+ * pull request that lists the same id gets the same line, which is the point.
+ */
+const HERDR_TOOL_ID = 'herdr'
+
+/**
+ * The `--label` for the line below: the Server's name when it is safe to paste into a shell,
+ * otherwise its id.
+ *
+ * Names are free text up to 63 characters (`NAME` above), so "my box" and worse are legal and
+ * would silently make `herdr machine add` parse two arguments where one was meant. The id is
+ * always safe and always unique, which is why it is the fallback rather than a quoted name: a
+ * label is what the user reads in their own herdr window, and a mangled-but-quoted name reads
+ * worse there than the id it was minted from.
+ */
+function herdrLabel(row: ServerRow): string {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(row.name) ? row.name : row.id
+}
+
+/**
+ * The one command still typed by hand to attach a box to the user's own herdr (issue #500).
+ *
+ * COMPUTED HERE, not by each front end, for the reason `billing` above is: the SPA, the CLI and
+ * the MCP server would otherwise each decide which boxes qualify and how the line is spelled,
+ * and three answers to one question is three chances to hand somebody a command that does not
+ * work. Absent — rather than a line with a placeholder in it — whenever it would not be
+ * copyable: a box that is not running, one with no address yet, or one without `herdr` on it.
+ * The whole value of this field is that it can be pasted, so its presence is the claim that it
+ * can be.
+ *
+ * `sshUser` rather than a literal `rocky`: it is a column, a provider that adopted a machine it
+ * did not create reports whatever that machine has, and herdr is told a user@host like ssh is.
+ * There is no port in it because `herdr machine add` takes a destination, not ssh flags — a box
+ * on a non-default port needs a `~/.ssh/config` entry, which is the same place the key has to be
+ * reachable from, and the note beside the line on the Server page says so.
+ */
+function herdrMachineAdd(row: ServerRow, deps: ServerRoutesDeps): string | undefined {
+  if (row.status !== 'running' || !row.publicIp) return undefined
+  const tools = deps.serverToolIds?.(row) ?? []
+  if (!tools.includes(HERDR_TOOL_ID)) return undefined
+  return `herdr machine add ${row.sshUser}@${row.publicIp} --label ${herdrLabel(row)}`
 }
 
 /** The row as the SPA expects to see it. Legacy field names, no internal columns. */
@@ -429,6 +496,16 @@ function present(row: ServerRow, deps: ServerRoutesDeps, staleReason?: string) {
      * confirmed core's key is gone and its stored private half retired.
      */
     suppliedKeyOnly: row.userSuppliedPublicKey ? Boolean(row.managedSshKeyRetiredAt) : undefined,
+    /**
+     * The `herdr machine add` line for this box, ready to paste — see `herdrMachineAdd` above
+     * for when it is absent and why there is no placeholder version of it (issue #500).
+     *
+     * It is beside the SSH fields deliberately: it is the second half of "how do I reach this
+     * box", and an agent that has just created a Server hands it to the human in the same breath
+     * as the ssh command. Rocky Surf never RUNS it — it runs on the user's own machine against
+     * their own SSH agent, and this installation holds no credential for that.
+     */
+    herdrMachineAdd: herdrMachineAdd(row, deps),
     // Absent unless the provider reported one, which is the only way core ever gets a console
     // URL — it does not know what any provider's console looks like (ADR-0003, E16).
     consoleUrl: row.consoleUrl ?? undefined,

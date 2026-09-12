@@ -145,7 +145,7 @@ away from breaking. See [the bootstrap contract](bootstrap-contract.md#step-orde
 |---|---|---|---|
 | `packId` | string | yes | Unique across the repository. Matches the filename |
 | `name` | string | yes | Display name |
-| `tools` | string[] | yes | Tool ids, in any order — `installOrder` decides execution |
+| `tools` | string[] | yes | Tool ids, in any order — `installOrder` decides execution. Listing `herdr` also makes the Server page (and the API and MCP reads) offer the `herdr machine add` line for boxes built from this pack — see below |
 | `displayOrder` | number | yes | Position in the UI's pack list, ascending |
 | `enabled` | boolean | yes | `false` hides it from the UI. CI still smoke-tests it |
 | `imageUrl` | string | no | Card image. Relative path or absolute URL |
@@ -167,6 +167,30 @@ it, the one command that changes how the user connects exists only inside your g
 and a user who has already run the plain ssh command from Connect has no reason to reread it.
 The guide should still open with the forward, since it is also where you say how to start the
 UI; `packs/deepseek-harness.yaml` is the worked example.
+
+#### `herdr` in `tools` — the attach line
+
+Listing the `herdr` Tool changes one more thing on the Server page, and it is the same
+data-driven rule as `webPort`: once a Server built from your pack is running, its Connect
+section renders
+
+```
+herdr machine add rocky@<address> --label <the Server's name>
+```
+
+as a line the user runs **on their own machine** to attach the box to the herdr window they
+already have, with a one-line note that the key has to be reachable by a plain
+`ssh rocky@<address>` — herdr has no `-i` flag — and a link to your guide. The same string is on
+`GET /api/v1/servers/:id` as `herdrMachineAdd` and on the MCP server's `get_ssh_command`,
+`get_server` and `list_servers`, so an agent that created the Server can hand it over too. No
+`packId` is involved anywhere: the check is on the Tool id, so a pack of your own that installs
+herdr gets the line exactly as a shipped one does.
+
+The label is the Server's name when that is a shell word and its id when it is not — a name is
+free text, and a mangled `--label` would be worse than an id that pastes.
+
+Say the same thing in your `guide` for the case the user is reading it on the box, but do not
+repeat the whole of it on the page: the guide is the long form and the Connect line links to it.
 
 #### `inputs` — what your pack asks the user for
 

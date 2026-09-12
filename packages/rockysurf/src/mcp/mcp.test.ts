@@ -388,6 +388,9 @@ describe('the route each tool calls', () => {
       estimatedTotalCost: 0.4,
       totalUptimeSeconds: 72_000,
       createdAt: '2026-09-06T00:00:00.000Z',
+      // One short line, kept on purpose (issue #500): "attach the boxes I have" is a question
+      // asked of a list, and core only sends it for a box it actually applies to.
+      herdrMachineAdd: 'herdr machine add rocky@10.0.0.1 --label box',
       // Everything below is the card, and none of it should survive.
       environment: { EDITOR: 'vim' },
       packInputs: { region: 'here' },
@@ -409,6 +412,7 @@ describe('the route each tool calls', () => {
     expect(row!['publicIp']).toBe('10.0.0.1')
     expect(row!['hourlyCost']).toEqual(ROW.hourlyCost)
     expect(row!['size']).toBe('small')
+    expect(row!['herdrMachineAdd']).toBe(ROW.herdrMachineAdd)
     for (const gone of [
       'environment',
       'packInputs',
@@ -660,6 +664,55 @@ describe('get_ssh_command never hands over key material', () => {
     }
     expect(result.ready).toBe(false)
     expect(result.reason).toContain('provisioning')
+  })
+
+  /**
+   * THE ATTACH LINE, PASSED THROUGH (issue #500).
+   *
+   * Core decides which Servers qualify — running, addressed, and carrying the `herdr` tool — and
+   * spells the line once, so this tool relays it rather than assembling a second opinion. What
+   * these pin is that it relays it AND relays nothing when core sent nothing: a `herdr machine
+   * add` offered for a box without herdr on it fails at the human's own terminal.
+   */
+  it('relays the herdr attach line core sent, with the note that makes it work', async () => {
+    const c = client({
+      get: (async (path: string) =>
+        path === '/api/v1/costs'
+          ? COSTS
+          : {
+              server: {
+                publicIp: '49.13.94.234',
+                sshUser: 'rocky',
+                status: 'running',
+                herdrMachineAdd: 'herdr machine add rocky@49.13.94.234 --label dev-box',
+              },
+            }) as CoreClient['get'],
+    })
+    const result = (await runTool('get_ssh_command', { server_id: 'srv-abc' }, ctx(['read'], c))) as {
+      herdrMachineAdd: string
+      herdrNote: string
+    }
+
+    expect(result.herdrMachineAdd).toBe('herdr machine add rocky@49.13.94.234 --label dev-box')
+    // Whose machine it runs on, and why a key that only an `ssh -i` can reach will not do.
+    expect(result.herdrNote).toContain('YOUR machine')
+    expect(result.herdrNote).toContain('no -i flag')
+    expect(result.herdrNote).toContain('ssh-add')
+  })
+
+  it('says nothing about herdr for a Server core did not send the line for', async () => {
+    const c = client({
+      get: (async (path: string) =>
+        path === '/api/v1/costs'
+          ? COSTS
+          : { server: { publicIp: '49.13.94.234', sshUser: 'rocky', status: 'running' } }) as CoreClient['get'],
+    })
+    const result = (await runTool('get_ssh_command', { server_id: 'srv-abc' }, ctx(['read'], c))) as Record<
+      string,
+      unknown
+    >
+    expect('herdrMachineAdd' in result).toBe(false)
+    expect(JSON.stringify(result)).not.toContain('herdr')
   })
 })
 
