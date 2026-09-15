@@ -83,6 +83,26 @@ const serverSchema = section(
       .min(1)
       .default('~/.rockysurf')
       .transform((v) => toAbsolutePath(v)),
+    tls: section(
+      z.strictObject({
+        /**
+         * Generate and serve a self-signed certificate instead of plain HTTP.
+         *
+         * OFF BY DEFAULT, same reasoning as `host` above: loopback plus one password is the
+         * shipped posture, and this is for the operator who has already made the deliberate
+         * choice to widen `host` beyond it. Not a substitute for a real certificate behind a
+         * reverse proxy — a self-signed cert still shows a browser warning — but a better
+         * default than plaintext for whoever hits `host: 0.0.0.0` before they know to put a
+         * proxy in front, which the existing warning does not stop anyone from doing.
+         *
+         * The certificate is generated once, under `server.dataDir`, and reused across
+         * restarts — regenerating it every boot would re-invalidate a browser's "I trust this"
+         * exception each time, training the operator to click through the warning without
+         * reading it.
+         */
+        selfSigned: z.boolean().default(false),
+      }),
+    ),
   }),
 )
 
