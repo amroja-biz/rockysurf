@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -27,6 +28,8 @@ import {
 import { openTestDatabase, type OpenedDatabase } from '../db/client.js'
 import { ProviderRegistry } from '../providers/registry.js'
 import { upsertUserByGithubId } from '../db/repositories/users.js'
+import { KEY_BYTES } from '../secrets/crypto.js'
+import { createSecretsStore } from '../secrets/store.js'
 import { applyChanges } from './document.js'
 
 /**
@@ -1052,6 +1055,83 @@ describe('restart honesty', () => {
       'Ctrl-C',
       './start.sh',
     ])
+  })
+})
+
+/**
+ * THE CONNECT GITHUB ROUTES SEE A SAVED CLIENT ID (issue #510).
+ *
+ * Here rather than in `github/routes.test.ts` because the bug was in the seam between the two:
+ * those tests hand the routes a config directly, so they could not see that `createApp` handed
+ * them the booted one. This goes the operator's way round — a save through Settings, then the
+ * GitHub routes — against one app with both halves mounted.
+ */
+describe('the Connect GitHub routes after a save', () => {
+  let withGithub: CreatedApp
+
+  beforeEach(() => {
+    withGithub = createApp({
+      db: opened.db,
+      config,
+      configStore: store,
+      secrets,
+      secretsStore: createSecretsStore(opened.db, randomBytes(KEY_BYTES)),
+      configPath,
+      providers: shippedDeclared(),
+      // Answers the device-code request, the only GitHub call a start makes.
+      githubFetch: async () =>
+        new Response(
+          JSON.stringify({
+            device_code: 'dc-settings-test',
+            user_code: 'WDJB-MJHT',
+            verification_uri: 'https://github.com/login/device',
+            expires_in: 900,
+            interval: 5,
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    })
+  })
+
+  const connection = async () => {
+    const res = await withGithub.app.request('/api/v1/github/connection', { headers: auth() })
+    expect(res.status).toBe(200)
+    return (await res.json()) as { clientIdConfigured: boolean; configFallbackSet: boolean }
+  }
+
+  const startConnect = () => withGithub.app.request('/api/v1/github/connect', { method: 'POST', headers: auth() })
+
+  const saveThroughThisApp = async (changes: unknown[]) => {
+    const res = await withGithub.app.request('/api/v1/settings', {
+      method: 'PUT',
+      headers: auth(),
+      body: JSON.stringify({ mtimeMs: mtime(), changes }),
+    })
+    expect(res.status, await res.text()).toBe(200)
+  }
+
+  it('reports a saved client id at once, with no restart', async () => {
+    expect((await connection()).clientIdConfigured).toBe(false)
+    await saveThroughThisApp([{ path: ['github', 'oauth', 'clientId'], value: 'Iv1.settingstest0000' }])
+    expect((await connection()).clientIdConfigured).toBe(true)
+  })
+
+  it('starts a connection once the client id is saved, where it refused before', async () => {
+    const before = await startConnect()
+    expect(before.status).toBe(400)
+    expect(((await before.json()) as { error: string }).error).toContain('github.oauth.clientId')
+
+    await saveThroughThisApp([{ path: ['github', 'oauth', 'clientId'], value: 'Iv1.settingstest0000' }])
+
+    const after = await startConnect()
+    expect(after.status, await after.clone().text()).toBe(200)
+  })
+
+  it('names the config-file token as soon as a save puts one in force', async () => {
+    // Booted from the schema defaults, so nothing is in force until the first save adopts the file.
+    expect((await connection()).configFallbackSet).toBe(false)
+    await saveThroughThisApp([{ path: ['github', 'pat'], value: '${NEW_PAT}' }])
+    expect((await connection()).configFallbackSet).toBe(true)
   })
 })
 

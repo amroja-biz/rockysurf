@@ -711,10 +711,12 @@ export function createApp(deps: AppDeps): CreatedApp {
       createGithubRoutes({
         db,
         secrets: deps.secretsStore,
-        config: {
+        // A function, not an object: an object is the booted config, and a client id saved on
+        // Settings would leave the button disabled until a restart (issue #510).
+        config: () => ({
           ...(currentConfig().github.oauth.clientId ? { clientId: currentConfig().github.oauth.clientId! } : {}),
           configFallbackSet: Boolean(currentConfig().github.pat),
-        },
+        }),
         ...(deps.githubFetch ? { fetch: deps.githubFetch } : {}),
       }),
     )
