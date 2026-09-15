@@ -784,8 +784,10 @@ relationship with. So you register one, and it takes about a minute:
 3. Leave **Expire user access tokens** unticked. An expiring token would need something phoning
    home to refresh it, which is not what this product is.
 4. Copy the **Client ID** into the *OAuth App client ID* box on the Settings page's *GitHub
-   access tokens* tab, or write it into the config file yourself. No restart: the routes behind
-   the button read it per request, so the card is live as soon as the save lands.
+   access tokens* tab and save. It is the string labelled *Client ID* on the app's page, not the
+   number in that page's address. No restart: the routes behind the button read it per request,
+   so the card is live as soon as the save lands. If you write it into the config file by hand
+   instead, it applies at the next start, like any other hand edit.
 
 ```yaml
 github:

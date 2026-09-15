@@ -1204,6 +1204,28 @@ describe('the Connect GitHub card', () => {
     ])
   })
 
+  /**
+   * Issue #510: the save applies at once, so the card has to ask again. Without the re-read it
+   * kept the "not configured" answer from page load and the button stayed disabled until a
+   * refresh — which, next to a save that said "applied", reads as the save not working.
+   */
+  it('re-reads the connection after that save, so Connect GitHub enables without a reload', async () => {
+    githubConnection = { ...CONNECTION_DISCONNECTED, clientIdConfigured: false }
+    renderPage()
+    await loaded()
+
+    const connect = () => within(connectCard()).getByText('Connect GitHub', { selector: 'button' }) as HTMLButtonElement
+    await waitFor(() => expect(connect().disabled).toBe(true))
+
+    // What core answers once the saved value is in force.
+    githubConnection = { ...githubConnection, clientIdConfigured: true }
+    fireEvent.change(control('github.oauth.clientId'), { target: { value: 'Iv1.wiringtest000000' } })
+    save()
+    await onlySave()
+
+    await waitFor(() => expect(connect().disabled).toBe(false))
+  })
+
   it('says what covers everything no scoped entry matches', async () => {
     renderPage()
     await loaded()

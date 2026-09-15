@@ -216,8 +216,8 @@ export function ConnectGitHubCard({ connection, onChanged, onDisconnect }: Conne
             </li>
             <li>
               Paste its Client ID into the <strong>OAuth App client ID</strong> box below (it is{' '}
-              <code>github.oauth.clientId</code> in the configuration file), then restart Rocky
-              Surf. A client ID is public — it is safe in the file and safe to commit.
+              <code>github.oauth.clientId</code> in the configuration file) and save. A client ID is
+              public — it is safe in the file and safe to commit.
             </li>
           </ol>
         </div>

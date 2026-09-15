@@ -494,6 +494,14 @@ export function SettingsPage() {
       } else toast.success('Saved, and applied — no restart needed')
 
       /**
+       * AND RE-READ THE GITHUB CONNECTION (issue #510). Whether Connect GitHub is enabled, and
+       * what the card says covers everything else, come from `github.oauth.clientId` and
+       * `github.pat` — config paths, in force the moment the save answers. A card still holding
+       * what it read at page load would stay disabled until a refresh.
+       */
+      if (sent.some((change) => change.path[0] === 'github')) void loadConnection()
+
+      /**
        * AND THEN PUSH IT AT THE CLOUD (issue #304).
        *
        * A second call rather than part of the save, so a cloud that is slow or unreachable
