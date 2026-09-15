@@ -6,6 +6,19 @@ in [`docs/RELEASE_SOP.md`](docs/RELEASE_SOP.md). Every package under `packages/`
 number, so one entry covers the whole release. The GitHub release for each version carries the
 longer notes.
 
+## [0.1.6] - 2026-09-15
+
+### Fixed
+
+- **Connect GitHub enables as soon as the client ID is saved.** Saving `github.oauth.clientId` on
+  Settings reported it as applied, but the button stayed disabled until Rocky Surf restarted: the
+  routes behind it were handed the booted configuration rather than the one in force, and the
+  Settings page did not read the connection again after a save. Both now follow the save, with no
+  restart and no page refresh. (#510, #511)
+- **The Connect GitHub setup steps no longer say to restart**, and `docs/self-hosting.md` names the
+  value to paste — the one labelled *Client ID*, not the number in the OAuth App page's address.
+  (#510, #511)
+
 ## [0.1.5] - 2026-09-12
 
 ### Added
@@ -89,6 +102,7 @@ stop and start without losing your work; GitHub repository cloning; Personal Pro
 backup and restore. The [v0.1.0 release notes](https://github.com/amroja-biz/rockysurf/releases/tag/v0.1.0)
 carry the full feature list, the Provider capability matrix and the security posture.
 
+[0.1.6]: https://github.com/amroja-biz/rockysurf/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/amroja-biz/rockysurf/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/amroja-biz/rockysurf/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/amroja-biz/rockysurf/compare/v0.1.2...v0.1.3
