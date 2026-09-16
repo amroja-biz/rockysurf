@@ -273,6 +273,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
+      # THE CONTAINERD IMAGE STORE, WHICH IS WHAT OPERATORS ACTUALLY RUN. Docker Desktop uses it,
+      # and so do new Docker Engine installs, and it refuses the rename that broke #513. The
+      # runner's stock Docker uses the older overlay2 driver, which allows that rename, so on
+      # stock settings this job passed against the broken build (measured on PR #514). Without
+      # this step, the job cannot see the bug it exists to catch.
+      - name: Use the containerd image store
+        run: |
+          set -euo pipefail
+          conf=/etc/docker/daemon.json
+          current=$(sudo cat "$conf" 2>/dev/null || echo '{}')
+          echo "$current" | jq '.features["containerd-snapshotter"] = true' | sudo tee "$conf" > /dev/null
+          sudo systemctl restart docker
+          docker info --format '{{.Driver}} {{json .DriverStatus}}'
+          docker info --format '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter
       - run: node scripts/docker-smoke.mjs
 
   # THE BROWSER LAYER (issue #310). Two UI regressions shipped in one day — a settings section
