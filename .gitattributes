@@ -1,3 +1,16 @@
+# Line endings (issue #516).
+#
+# Git for Windows defaults to core.autocrlf=true, which checks text files out with CRLF unless a
+# rule here says otherwise. Most files don't care. Files that a Linux shell or Docker reads do:
+# a CRLF docker/entrypoint.sh stops the container from starting, and a CRLF
+# packages/core/bootstrap/agent.sh breaks setup on every Server. scripts/check-line-endings.mjs
+# fails the lint if a shell script is not covered by the eol=lf rules below.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
+
+# Terminal recordings stored byte-for-byte, CRLF included. Leave them alone.
+docs/history/spike/recordings/*.txt -text
 
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads
