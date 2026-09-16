@@ -303,7 +303,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      # A WINDOWS-SHAPED CHECKOUT (issue #516). Git for Windows defaults to core.autocrlf=true,
+      # which checks text files out with CRLF unless .gitattributes pins them to LF. A CRLF
+      # entrypoint.sh stops the container from starting, and a CRLF agent.sh breaks setup on
+      # every Server. CI is otherwise Linux-only, so this job checks out the way a Windows
+      # operator's clone does, and the next step proves the conversion actually happened.
+      - name: Check out as Git for Windows would
+        run: git config --global core.autocrlf true
       - uses: actions/checkout@v5
+      - name: Confirm the checkout has CRLF files
+        run: |
+          set -euo pipefail
+          git ls-files --eol packs/base.yaml docker/entrypoint.sh packages/core/bootstrap/agent.sh
+          # An unpinned text file must have been converted, or this job is not testing what it
+          # says it is.
+          git ls-files --eol packs/base.yaml | grep -q 'w/crlf'
       # The script needs only Node and the Docker CLI, both on the runner image. No pnpm, no
       # install and no build on the host: everything that matters happens inside the image, as
       # it does for an operator.
