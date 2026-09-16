@@ -248,6 +248,33 @@ jobs:
       - run: pnpm -r build
       - run: node scripts/e2e/bootstrap-host.mjs
 
+  # THE DOCUMENTED DOCKER INSTALL, RUN THE WAY AN OPERATOR RUNS IT (issue #513). From v0.1.0
+  # through v0.1.6, `docker compose up --build` from a fresh clone failed with EXDEV. The packs
+  # sync renames `packages/core/packs`, and that directory was committed, so `COPY . .` had
+  # already put it into a lower image layer, and overlayfs refuses to rename a directory from a
+  # lower layer. Nothing in CI built the image, so every release shipped with that install path
+  # broken. `scripts/docker-smoke.mjs` builds the image, reaches the first-run wizard and checks
+  # that the data survives a restart. It existed before this job, but only as a manual step.
+  #
+  # NOT PATH-FILTERED. The image runs every package's build, a web-only change included, so no
+  # path list here would be both short and correct. Pushes to main run it too. Like every job
+  # except the four in the ruleset, it is not a required check; see
+  # docs/memories/2026-08-31-branch-protection-and-pr-workflow.md before making it one.
+  docker:
+    name: Docker install (compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      # The script needs only Node and the Docker CLI, both on the runner image. No pnpm, no
+      # install and no build on the host: everything that matters happens inside the image, as
+      # it does for an operator.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - run: node scripts/docker-smoke.mjs
+
   # THE BROWSER LAYER (issue #310). Two UI regressions shipped in one day — a settings section
   # that rendered no controls at all, and a save-path interlock that disabled the button an
   # operator reaches for — while Typecheck, Test and the real-HTTP API checks were green both
