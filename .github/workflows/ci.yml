@@ -40,19 +40,50 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       beyond-ui: ${{ steps.scope.outputs.beyond-ui }}
+      beyond-docs: ${{ steps.scope.outputs.beyond-docs }}
     steps:
       - id: scope
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # DOCS-ONLY: every changed file is under one of these, or is Markdown. Nothing in the
+          # image build reads these files, so a change limited to them cannot break it (issue
+          # #513). If anything else changed, or the file list can't be trusted, the answer is
+          # "beyond docs", so every doubtful case runs the job.
+          docs_only='^(docs/|\.claude/|\.agents/skills/|LICENSE$)|\.md$'
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
-            echo "beyond-ui=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "beyond-ui=true" >> "$GITHUB_OUTPUT"
+            # A push to main is one squash-merged pull request, so the compare API lists its
+            # files. It lists at most 300. A larger push, a new branch (an all-zero BEFORE) or
+            # a failed call counts as beyond docs.
+            files=''
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+              files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" \
+                --jq 'if (.files | length) < 300 then .files[].filename else empty end' || true)
+            fi
+            if [ -n "$files" ] && ! grep -qvE "$docs_only" <<< "$files"; then
+              echo "beyond-docs=false" >> "$GITHUB_OUTPUT"
+              echo "docs only: the Docker install job is skipped"
+            else
+              echo "beyond-docs=true" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
           fi
           files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[].filename')
+          # Here-strings rather than `printf | grep -q`: grep -q exits at the first match, which
+          # can kill printf with SIGPIPE on a long list, and under pipefail that flips the answer.
+          if grep -qvE "$docs_only" <<< "$files"; then
+            echo "beyond-docs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "beyond-docs=false" >> "$GITHUB_OUTPUT"
+            echo "docs only: the Docker install job is skipped"
+          fi
           # UI-only: every changed file is under one of these, or is Markdown.
-          if printf '%s\n' "$files" | grep -qvE '^(packages/web/|docs/|\.claude/|\.agents/skills/|LICENSE$)|\.md$'; then
+          if grep -qvE '^(packages/web/|docs/|\.claude/|\.agents/skills/|LICENSE$)|\.md$' <<< "$files"; then
             echo "beyond-ui=true" >> "$GITHUB_OUTPUT"
             echo "runs everything: the pull request reaches beyond the UI and docs"
           else
@@ -256,12 +287,16 @@ jobs:
   # broken. `scripts/docker-smoke.mjs` builds the image, reaches the first-run wizard and checks
   # that the data survives a restart. It existed before this job, but only as a manual step.
   #
-  # NOT PATH-FILTERED. The image runs every package's build, a web-only change included, so no
-  # path list here would be both short and correct. Pushes to main run it too. Like every job
-  # except the four in the ruleset, it is not a required check; see
-  # docs/memories/2026-08-31-branch-protection-and-pr-workflow.md before making it one.
+  # SKIPPED ONLY FOR DOCS-ONLY CHANGES, on pull requests and on pushes to main alike: Markdown,
+  # docs/, .claude/, .agents/skills/ and LICENSE, which nothing in the build reads. A web-only
+  # change still runs it, because the image runs every package's build. The skip is a job-level
+  # `if:`, so a skipped run still reports "skipped" and the job can become a required check.
+  # A workflow-level path filter would stop it reporting at all and deadlock the merge; see
+  # docs/memories/2026-08-31-branch-protection-and-pr-workflow.md.
   docker:
     name: Docker install (compose)
+    needs: scope
+    if: needs.scope.outputs.beyond-docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
