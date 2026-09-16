@@ -1,7 +1,7 @@
 ---
 KEY: branch-protection-and-pr-workflow
 DATE: 2026-08-31
-UPDATED: 2026-09-07
+UPDATED: 2026-09-16
 STATUS: active
 SOURCE: session decision
 ---
@@ -13,8 +13,9 @@ empty on `rockysurf`. Direct-to-main commits with `[skip ci]` (the old pass-alon
 dead twice over: the push itself is refused, and a commit that skips CI could never satisfy the
 required checks anyway.
 
-On `rockysurf` the ruleset also requires four status checks: **Test, Typecheck, Secret scan,
-What changed**. These are exactly the CI jobs that run unconditionally on every pull request.
+On `rockysurf` the ruleset also requires five status checks: **Test, Typecheck, Secret scan,
+What changed, Docker install (compose)**. The first four run unconditionally on every pull
+request. The fifth was added on 2026-09-16; see the note below for why it is safe to require.
 The path-conditional jobs (Lint (structure), Release tarballs, Push bootstrap (real sshd)) must
 never be added as required: they satisfy the rule when they report "skipped", but a job that is
 workflow-level path-filtered — or a matrix job, whose reported names vary — never reports at
@@ -26,6 +27,15 @@ real-infrastructure gate. It replaced a job driven through the bring-your-own-se
 which was removed before v0.1.0. It is path-conditional on the same filter, so the ruleset is
 unchanged and must stay unchanged: neither name was ever a required check, and adding the new
 one would deadlock every UI- or docs-only pull request.
+
+**2026-09-16 (#513, #514).** `Docker install (compose)` is required. It skips docs-only
+changes, but the skip is a job-level `if:` on the output of `What changed`, which is itself
+required. A skipped run reports "skipped", which satisfies the rule, so a docs-only pull request
+still merges. Two consequences: the skip must never
+become a workflow-level path filter, and a pull request whose last CI run predates the job
+(anything opened before #514 merged) waits on it until CI runs again. A push to the branch, or
+closing and reopening the pull request, starts a new run. Re-running the old run does not,
+because it reuses the old workflow file.
 
 The shop ruleset has one bypass actor: **deploy keys**. The `index publisher` deploy key exists
 solely so `index.yml`'s regenerate job can push `index.json` to main after a pack merge; its
