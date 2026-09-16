@@ -290,8 +290,11 @@ jobs:
   # SKIPPED ONLY FOR DOCS-ONLY CHANGES, on pull requests and on pushes to main alike: Markdown,
   # docs/, .claude/, .agents/skills/ and LICENSE, which nothing in the build reads. A web-only
   # change still runs it, because the image runs every package's build. The skip is a job-level
-  # `if:`, so a skipped run still reports "skipped" and the job can become a required check.
-  # A workflow-level path filter would stop it reporting at all and deadlock the merge; see
+  # `if:`, so a skipped run still reports "skipped", and a skipped run satisfies a required check.
+  #
+  # REQUIRED BY THE protect-main RULESET since 2026-09-16. Keep the skip a job-level `if:`: a
+  # workflow-level path filter would stop the job reporting at all and deadlock every docs-only
+  # merge. Renaming the job orphans the requirement and blocks every pull request; see
   # docs/memories/2026-08-31-branch-protection-and-pr-workflow.md.
   docker:
     name: Docker install (compose)
