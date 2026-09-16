@@ -242,11 +242,17 @@ because a scan that silently stops running is worse than no scan.
 clean checkout reach the first-run wizard, and does data survive a container restart — the config
 file, the database and a byte-identical `secret.key`. It runs under a compose project name and
 host port belonging to the process that started it, and tears down with `down -v` on every exit
-path. It is run by hand and is not wired into a workflow.
+path. CI runs it on every pull request and every push to `main` as the `Docker install (compose)`
+job, with no path filter.
 
 **Why this approach.** Neither question is provable by reading YAML, and a restart that silently
 regenerated `secret.key` would still serve a login page while every stored secret became
-unreadable.
+unreadable. It became a CI job after issue #513: the image build failed with `EXDEV` from v0.1.0
+through v0.1.6, and nothing noticed because the script only ran when someone remembered to run it.
+The job has no path filter because the image runs every package's build, so a web-only change can
+break it too. It switches the runner's Docker to the containerd image store first. The runner's
+stock overlay2 storage allows the rename that broke the build, so without that switch the job
+passed against the broken build.
 
 ## Where each check runs
 
@@ -262,9 +268,9 @@ checks that can see it and let the pull request's CI be the full gate
 
 On a pull request, `ci.yml`'s `What changed` job reads the changed-file list from the pull request
 itself and sets one output. A pull request confined to `packages/web/`, `docs/`, `.claude/`,
-`.agents/skills/`, `LICENSE` or Markdown runs `Typecheck`, `Test`, `Secret scan`
-and `UI (browser)`. Anything beyond that also runs `Lint (structure)`, `Release tarballs` and
-`Push bootstrap (real sshd)`. Pushes to `main` are never filtered. `Pack smoke` is its own workflow
+`.agents/skills/`, `LICENSE` or Markdown runs `Typecheck`, `Test`, `Secret scan`,
+`UI (browser)` and `Docker install (compose)`. Anything beyond that also runs `Lint (structure)`,
+`Release tarballs` and `Push bootstrap (real sshd)`. Pushes to `main` are never filtered. `Pack smoke` is its own workflow
 and triggers only on paths that reach a box, testing just the changed packs when a pull request
 changes only pack files.
 

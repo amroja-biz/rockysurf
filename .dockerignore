@@ -10,6 +10,10 @@
 **/node_modules
 **/dist
 packages/core/public
+# Committed, but regenerated from `packs/` by core's build. It must not be in the context:
+# `sync-packs-bundle.mjs` swaps it by rename, and overlayfs refuses to rename a directory that
+# `COPY . .` put in a lower layer, which fails the build with EXDEV (issue #513).
+packages/core/packs
 .pnpm-store
 
 # Local secrets and state — never in an image
