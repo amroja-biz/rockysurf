@@ -85,6 +85,7 @@ locally when you have those.
 | pack lint | `rockysurf pack lint packs/` | a built workspace — and `pnpm run check` runs it anyway |
 | pack plans | `node scripts/pack-plans.mjs` | a built workspace — prints every pack's rendered install plan; diff it across a refactor to prove nothing moved |
 | push bootstrap | `node scripts/e2e/bootstrap-host.mjs` | Docker |
+| Docker install | `node scripts/docker-smoke.mjs` | Docker with Compose; CI runs it on every pull request that changes more than docs |
 | release tarballs | `node scripts/verify-tarballs.mjs` | ~30s, packs and npm-installs |
 | secret scan | `gitleaks git . --config .gitleaks.toml` | the `gitleaks` binary |
 | browser UI | `pnpm run test:ui` | a built workspace and Chromium — see below |
