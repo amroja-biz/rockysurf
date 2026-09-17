@@ -303,7 +303,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      # A WINDOWS-SHAPED CHECKOUT (issue #516). Git for Windows defaults to core.autocrlf=true,
+      # which checks text files out with CRLF unless .gitattributes pins them to LF. A CRLF
+      # entrypoint.sh stops the container from starting, and a CRLF agent.sh breaks setup on
+      # every Server. CI is otherwise Linux-only, so this job checks out the way a Windows
+      # operator's clone does, and the next step proves the conversion actually happened.
+      - name: Check out as Git for Windows would
+        run: git config --global core.autocrlf true
       - uses: actions/checkout@v5
+      - name: Confirm the checkout has CRLF files
+        run: |
+          set -euo pipefail
+          git ls-files --eol packs/base.yaml docker/entrypoint.sh packages/core/bootstrap/agent.sh
+          # An unpinned text file must have been converted, or this job is not testing what it
+          # says it is.
+          git ls-files --eol packs/base.yaml | grep -q 'w/crlf'
       # The script needs only Node and the Docker CLI, both on the runner image. No pnpm, no
       # install and no build on the host: everything that matters happens inside the image, as
       # it does for an operator.
@@ -326,6 +340,21 @@ jobs:
           docker info --format '{{.Driver}} {{json .DriverStatus}}'
           docker info --format '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter
       - run: node scripts/docker-smoke.mjs
+      # THE SCRIPTS INSIDE THE IMAGE, which the smoke test cannot reach (issue #516). The smoke
+      # test proves the container starts, so the entrypoint is covered. But agent.sh only runs on
+      # a Server, which this job never creates, so a CRLF agent.sh would pass everything above.
+      # This checks the built image directly: no shell script under /app may contain a carriage
+      # return, and bash must parse agent.sh. `down -v` in the smoke test keeps the image, and
+      # docker-compose.yaml tags it rockysurf:local.
+      - name: Shell scripts in the image are LF and parse
+        run: |
+          docker run --rm --entrypoint sh rockysurf:local -c '
+            set -e
+            bad=$(grep -rlI --include="*.sh" --exclude-dir=node_modules "$(printf "\r")" /app || true)
+            if [ -n "$bad" ]; then echo "CRLF line endings in: $bad"; exit 1; fi
+            bash -n /app/packages/core/bootstrap/agent.sh
+            echo "shell scripts in the image are LF, and agent.sh parses"
+          '
 
   # THE BROWSER LAYER (issue #310). Two UI regressions shipped in one day — a settings section
   # that rendered no controls at all, and a save-path interlock that disabled the button an

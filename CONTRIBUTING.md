@@ -28,13 +28,14 @@ reason.
 
 | step | what it is |
 |---|---|
-| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-gitignore-anchors.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
+| `pnpm run lint` | `check-core-deps.mjs`, `check-iam-policy.mjs`, `check-gitignore-anchors.mjs`, `check-line-endings.mjs`, `check-packs-bundle.mjs`, `check-npx-closure.mjs` |
 | `pnpm -r typecheck` | `tsc --noEmit` per package |
 | `pnpm -r test` | vitest per package |
 
 The lint scripts are structural checks a reviewer would have to remember otherwise: core's
-dependency direction, the published AWS IAM policy matching what the Provider actually calls, the
-AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, that the
+dependency direction, every shell script and `Dockerfile` pinned to LF so a Windows checkout
+cannot give them CRLF (issue #516), the published AWS IAM policy matching what the Provider
+actually calls, the AWS SDK staying out of the `npx` install closure, the bundled packs matching `packs/`, that the
 markdown capitalizes the four primitives (`check-primitive-nouns.mjs`, and
 [`docs/memories/2026-09-08-capitalized-product-nouns.md`](docs/memories/2026-09-08-capitalized-product-nouns.md)
 is the rule it enforces), and — the newest, and a scar — that nothing under a package's `src/` is
