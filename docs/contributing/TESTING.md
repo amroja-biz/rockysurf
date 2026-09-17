@@ -251,9 +251,18 @@ unreadable. It became a CI job after issue #513: the image build failed with `EX
 through v0.1.6, and nothing noticed because the script only ran when someone remembered to run it.
 The job skips only docs-only changes (Markdown, `docs/`, `.claude/`, `.agents/skills/` and
 `LICENSE`), because nothing in the image build reads those files. A web-only change still runs it,
-because the image runs every package's build. It switches the runner's Docker to the containerd image store first. The runner's
-stock overlay2 storage allows the rename that broke the build, so without that switch the job
-passed against the broken build.
+because the image runs every package's build. It switches the runner's Docker to the containerd
+image store first. The runner's stock overlay2 storage allows the rename that broke the build, so
+without that switch the job passed against the broken build.
+
+**Windows checkouts (issue #516).** The job checks the repository out with `core.autocrlf=true`,
+the way Git for Windows does, and first confirms that an unpinned text file really has CRLF line
+endings. GitHub's hosted Windows runners can't run Linux containers, so this is the closest CI gets
+to a Windows user running `docker compose up --build`. After the smoke test, the job also checks
+the built image: no shell script under `/app` may contain a carriage return, and `bash -n` must
+parse `agent.sh`. That script only runs on a Server, which the smoke test never creates. The
+`check-line-endings.mjs` lint keeps every shell script pinned to LF in `.gitattributes`. Docker
+Desktop on a real Windows machine is not tested in CI.
 
 ## Where each check runs
 

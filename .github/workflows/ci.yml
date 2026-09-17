@@ -340,6 +340,21 @@ jobs:
           docker info --format '{{.Driver}} {{json .DriverStatus}}'
           docker info --format '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter
       - run: node scripts/docker-smoke.mjs
+      # THE SCRIPTS INSIDE THE IMAGE, which the smoke test cannot reach (issue #516). The smoke
+      # test proves the container starts, so the entrypoint is covered. But agent.sh only runs on
+      # a Server, which this job never creates, so a CRLF agent.sh would pass everything above.
+      # This checks the built image directly: no shell script under /app may contain a carriage
+      # return, and bash must parse agent.sh. `down -v` in the smoke test keeps the image, and
+      # docker-compose.yaml tags it rockysurf:local.
+      - name: Shell scripts in the image are LF and parse
+        run: |
+          docker run --rm --entrypoint sh rockysurf:local -c '
+            set -e
+            bad=$(grep -rlI --include="*.sh" --exclude-dir=node_modules "$(printf "\r")" /app || true)
+            if [ -n "$bad" ]; then echo "CRLF line endings in: $bad"; exit 1; fi
+            bash -n /app/packages/core/bootstrap/agent.sh
+            echo "shell scripts in the image are LF, and agent.sh parses"
+          '
 
   # THE BROWSER LAYER (issue #310). Two UI regressions shipped in one day — a settings section
   # that rendered no controls at all, and a save-path interlock that disabled the button an
