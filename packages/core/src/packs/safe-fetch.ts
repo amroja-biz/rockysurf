@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { Agent } from 'undici'
 
 /**
  * A fetch for operator-supplied URLs that refuses to talk to anything internal.
@@ -12,11 +13,14 @@ import { isIP } from 'node:net'
  * hop by hop under the same rule, and the body is capped so a "pack file" cannot be a
  * multi-gigabyte tarpit.
  *
- * Residual risk, stated rather than hidden: the vetted lookup happens before the socket
- * connect, so a DNS server rebinding between the two resolutions could still steer the
- * connection inward. Closing that fully needs a connect-time lookup override (an undici
- * Agent), which is a dependency this endpoint — admin-only, behind a session — does not
- * currently justify. Revisit if the endpoint ever loosens.
+ * The vetted lookup happens before the socket connect, so a DNS server rebinding between the
+ * two resolutions could in principle steer the connection inward — the address that answers a
+ * second query need not be the one just checked. Closed by pinning the connect itself to the
+ * address that was actually vetted: `screenUrl` returns it, and the caller builds a one-shot
+ * undici `Agent` whose `connect.lookup` always answers with that exact address, so nothing a
+ * DNS server does after screening changes where the socket actually goes. Not needed for a
+ * literal-IP URL (nothing is resolved at connect time) or an `allowHosts` name (never screened
+ * to begin with — pinning it to an address nobody vetted would be its own bug).
  */
 
 const MAX_REDIRECTS = 5
@@ -161,8 +165,15 @@ export function isBlockedAddress(address: string): boolean {
 
 const defaultResolver: Resolver = (hostname) => lookup(hostname, { all: true, verbatim: true })
 
+/**
+ * The outcome of screening one hop's URL. `pinnedAddress` is set only when this hop's host was
+ * actually resolved here — a literal IP or an `allowHosts` name has nothing to pin, and connects
+ * exactly as it always has.
+ */
+export type ScreenResult = { ok: true; pinnedAddress?: string } | Refusal
+
 /** Rejects unless the URL is http(s) AND every address its host stands for is public. */
-async function screenUrl(url: URL, resolve: Resolver, allowHosts?: ReadonlySet<string>): Promise<Refusal | undefined> {
+async function screenUrl(url: URL, resolve: Resolver, allowHosts?: ReadonlySet<string>): Promise<ScreenResult> {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     return { ok: false, reason: 'Only http and https URLs can be imported' }
   }
@@ -171,10 +182,10 @@ async function screenUrl(url: URL, resolve: Resolver, allowHosts?: ReadonlySet<s
   // the literal-IP branch so that a configured host is exempt however it resolves — but a bare
   // IP can only be exempt if the operator wrote that IP into their config, which is a thing
   // they are entitled to do and a thing nobody can do on their behalf.
-  if (allowHosts?.has(host.toLowerCase())) return undefined
+  if (allowHosts?.has(host.toLowerCase())) return { ok: true }
   if (isIP(host.startsWith('[') ? host.slice(1, -1) : host)) {
     if (isBlockedAddress(host)) return { ok: false, reason: `Refusing to fetch ${url.href}: ${host} is not a public address` }
-    return undefined
+    return { ok: true }
   }
   let addresses: ResolvedAddress[]
   try {
@@ -182,13 +193,55 @@ async function screenUrl(url: URL, resolve: Resolver, allowHosts?: ReadonlySet<s
   } catch {
     return { ok: false, reason: `Could not resolve ${host}` }
   }
-  if (addresses.length === 0) return { ok: false, reason: `Could not resolve ${host}` }
+  const first = addresses[0]
+  if (!first) return { ok: false, reason: `Could not resolve ${host}` }
   // ANY blocked address fails the whole name — the attacker does not get to pick which
   // record the socket ends up using.
   if (addresses.some((a) => isBlockedAddress(a.address))) {
     return { ok: false, reason: `Refusing to fetch ${url.href}: ${host} resolves to a non-public address` }
   }
-  return undefined
+  return { ok: true, pinnedAddress: first.address }
+}
+
+/**
+ * Node's own `net.LookupFunction` shape (`node:net` declares it but does not export it, so it's
+ * reproduced structurally here rather than imported) — a single callback that Node's connect
+ * path invokes either `{ all: true }` (Happy Eyeballs, the common case for a dual-stack host) or
+ * with one address, depending on how it was asked to resolve.
+ */
+type NetLookupFunction = (
+  hostname: string,
+  options: { all?: boolean },
+  callback: (err: NodeJS.ErrnoException | null, address: string | { address: string; family: number }[], family?: number) => void,
+) => void
+
+/**
+ * A `lookup` override that ignores the hostname it's asked about and always answers with the one
+ * address that was already vetted by `screenUrl` — the actual fix for the resolve-vs-connect gap
+ * described above.
+ */
+function pinnedLookup(address: string): NetLookupFunction {
+  const family = isIP(address) === 6 ? 6 : 4
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [{ address, family }])
+    } else {
+      callback(null, address, family)
+    }
+  }
+}
+
+/**
+ * One-shot dispatcher that only ever connects to the vetted address, for exactly one hop's
+ * fetch. Cast at the return: `Agent` here and the global `dispatcher` field's `Dispatcher` type
+ * are the same runtime shape from undici, declared twice — once by the `undici` package itself,
+ * once inside `@types/node`'s bundled `undici-types` — so they are structurally close but not
+ * nominally identical. Constructing the dispatcher is fully type-checked against undici's own
+ * types above; only this hand-off to the ambient fetch types needs the assertion.
+ */
+function pinnedDispatcher(address: string): NonNullable<RequestInit['dispatcher']> {
+  const agent = new Agent({ connect: { lookup: pinnedLookup(address) } })
+  return agent as unknown as NonNullable<RequestInit['dispatcher']>
 }
 
 async function readCapped(response: Response, maxBytes: number): Promise<Buffer | undefined> {
@@ -229,13 +282,20 @@ export async function fetchPublicBytes(rawUrl: string, deps: SafeFetchDeps = {})
   }
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const refusal = await screenUrl(url, resolve, deps.allowHosts)
-    if (refusal) return refusal
+    const screened = await screenUrl(url, resolve, deps.allowHosts)
+    if (!screened.ok) return screened
 
-    const response = await fetchImpl(url, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    }).catch(() => undefined)
+    const dispatcher = screened.pinnedAddress ? pinnedDispatcher(screened.pinnedAddress) : undefined
+    let response: Response | undefined
+    try {
+      response = await fetchImpl(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        ...(dispatcher ? { dispatcher } : {}),
+      }).catch(() => undefined)
+    } finally {
+      await dispatcher?.close().catch(() => {})
+    }
     if (!response) return { ok: false, reason: `Could not fetch ${url.href}` }
 
     if (response.status >= 300 && response.status < 400) {
@@ -307,14 +367,21 @@ export async function probePublicUrl(rawUrl: string, options: SafeProbeOptions =
   const origin = url.origin
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    const refusal = await screenUrl(url, resolve, options.allowHosts)
-    if (refusal) return refusal
+    const screened = await screenUrl(url, resolve, options.allowHosts)
+    if (!screened.ok) return screened
 
-    const response = await fetchImpl(url, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      ...(options.headers && url.origin === origin ? { headers: options.headers } : {}),
-    }).catch(() => undefined)
+    const dispatcher = screened.pinnedAddress ? pinnedDispatcher(screened.pinnedAddress) : undefined
+    let response: Response | undefined
+    try {
+      response = await fetchImpl(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        ...(options.headers && url.origin === origin ? { headers: options.headers } : {}),
+        ...(dispatcher ? { dispatcher } : {}),
+      }).catch(() => undefined)
+    } finally {
+      await dispatcher?.close().catch(() => {})
+    }
     if (!response) return { ok: false, reason: `Could not reach ${url.href}` }
 
     await response.body?.cancel().catch(() => {})
