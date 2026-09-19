@@ -355,6 +355,11 @@ salt) in a self-describing `scrypt$N$r$p$salt$hash` format. Verification is cons
 the "no password is set" path burns equivalent scrypt work so it is not distinguishable by
 timing from a wrong password.
 
+`ROCKYSURF_ADMIN_PASSWORD`, checked before anything is generated
+(`packages/core/src/auth/admin.ts`), takes an operator-supplied value straight to `scrypt` with
+no strength check of its own — the generated path's own randomness is what usually provides
+that. An operator who sets this is choosing to own that property themselves.
+
 ### The box-facing callback routes
 
 Callback-mode bootstrap exposes routes under `/internal` that a machine reaches without a
@@ -463,6 +468,26 @@ what gets pushed is exactly what they typed.
 Instances are launched with **IMDSv2 required** (`HttpTokens: 'required'`) and a metadata hop
 limit of **1**. These boxes run agent-authored code: IMDSv1 lets anything that can forge a GET
 read instance metadata, and a hop limit above 1 lets a container on the box reach it.
+
+### Running the control plane itself on a host with an inherited identity
+
+Everything above is about the identity a Server gets when Rocky Surf provisions it. A different
+case: Rocky Surf's own control-plane process, running on a host that already carries a cloud
+identity Rocky Surf did not provision — an EC2 instance profile, a GCP service account, an
+Azure managed identity, put there by whatever placed Rocky Surf on that host.
+
+Rocky Surf does no scoping of that identity, and cannot: the same AWS SDK chain named above
+(`AWS_PROFILE`, environment variables, an instance role) resolves whatever the host hands it,
+with no code path here to narrow it. The IMDSv2 requirement above protects a Server Rocky Surf
+launched for someone else against exactly this: agent-authored code reading the instance role
+out of an unauthenticated GET. It does not, and cannot, apply to a host Rocky Surf itself
+happens to be a guest on — that host's own metadata configuration, and the scope of the
+identity attached to it, is the embedder's decision, not something this process can see or
+change.
+
+If you run Rocky Surf this way, apply the same reasoning yourself: a permissions boundary or
+scoped service account on the host, sized to what Rocky Surf actually needs there, not to
+whatever the host's identity happens to carry.
 
 ### Remote desktop is tunnel-only
 

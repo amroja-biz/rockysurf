@@ -14,6 +14,15 @@ Requires Node 24 or newer, and the command-line tool of any cloud you plan to us
 npx -y rockysurf
 ```
 
+### Automated setup
+
+First boot normally generates an admin password and prints it once. For a deployment with no
+one watching the console — provisioning tooling, a base image, a container entrypoint — set
+`ROCKYSURF_ADMIN_PASSWORD` before starting Rocky Surf; it takes priority over anything stored
+and works on every boot, so it also doubles as rotation. Pair it with `--config <path>` (or a
+config file already sitting at `~/.rockysurf/config.yaml`) to provide the rest of the
+configuration up front, and the process comes up fully configured with nothing to click through.
+
 ## Features
 
 - Works with AWS, GCP, Azure and Hetzner
