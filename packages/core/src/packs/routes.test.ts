@@ -221,10 +221,11 @@ describe('public shapes match the SPA client', () => {
       expect(typeof pack.guide, `${pack.packId} has no guide`).toBe('string')
       // Bundled with the SPA, never fetched from a host the operator does not run.
       expect(pack.imageUrl, pack.packId).toMatch(/^\/images\/surge-packs\/.+\.png$/)
-      // Honesty, mechanically: every shipped pack installs `gh`, and none of them leaves a
-      // usable $GITHUB_TOKEN in the user's shell, so every shipped guide has to say how to log
-      // in. It is a rule about what those six install, not a rule about packs — a pack that
-      // does not install `gh` has no business saying it.
+      // Honesty, mechanically: every shipped pack installs `gh`. Since issue #244 the box exports
+      // $GITHUB_TOKEN into the user's shell when the operator configured one, so `gh` works with no
+      // login there — but a box whose operator set no token has none, so every shipped guide still
+      // has to say how to log in. It is a rule about what those six install, not a rule about packs —
+      // a pack that does not install `gh` has no business saying it.
       expect(pack.guide, pack.packId).toContain('gh auth login')
     }
   })

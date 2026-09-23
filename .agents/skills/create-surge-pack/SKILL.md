@@ -456,9 +456,12 @@ Two rules, both about honesty, and this is where a pack most often lies to its u
 - **Say what the box actually has.** If a setup script could not finish something — a daemon it
   had no session to install, a wizard that only works from a desktop — the guide is where the
   user learns that, not a support thread. `open-claw`'s guide is the worked example.
-- **`$GITHUB_TOKEN` is not in the user's shell.** It is delivered to bootstrap steps only.
-  Repository clones during setup did use it; `gh` will not. Every shipped guide says
-  `gh auth login` for this reason, and a test asserts it.
+- **`$GITHUB_TOKEN` is in the user's shell only when the operator configured one.** Since issue
+  #244 the box exports it into every shell `rocky` gets, so `gh` works with no login on a box whose
+  operator set `github.pat` — and finds nothing on a box whose operator did not. Repository clones
+  during setup authenticated either way. A guide that says "you already have a token" is therefore
+  half right; say "when configured", and give `gh auth login` as the other half. Every shipped
+  guide carries that `gh auth login` for the no-token case, and a test asserts it.
 
 Rerun step 3 after editing the guide — it is a trimmed string in the frozen schema and a bad
 block scalar breaks the round-trip.
