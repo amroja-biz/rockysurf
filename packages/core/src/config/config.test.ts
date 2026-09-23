@@ -106,9 +106,17 @@ describe('defaults materialize', () => {
     // holding cloud credentials and SSH private keys on the network.
     expect(config.server.host).toBe('127.0.0.1')
     expect(config.server.publicUrl).toBeUndefined()
+    // Off by default, same reasoning as loopback-only above: a config nobody wrote must not
+    // start generating certificates either.
+    expect(config.server.tls.selfSigned).toBe(false)
     expect(config.auth.mode).toBe('local')
     expect(config.limits).toMatchObject({ maxServers: 5, createRatePerHour: 4 })
     expect(config.limits.spendCap).toBeUndefined()
+  })
+
+  it('server.tls.selfSigned can be turned on explicitly', () => {
+    const config = parseConfig('server:\n  tls:\n    selfSigned: true\n', 'test.yaml', {})
+    expect(config.server.tls.selfSigned).toBe(true)
   })
 
   it('every provider is present and disabled by default', () => {
