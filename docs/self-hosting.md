@@ -733,6 +733,13 @@ placeholder in it — for any Server it would not work on.
 The Repositories field on the create-server form takes one git URL per line, and each one is
 cloned into the home directory of the box during setup.
 
+A base-pack Playwright install lives in that same home directory: `node_modules/`, `package.json`
+and `package-lock.json` in `/home/rocky`. This is deliberate (issue #521) — a repo cloned there
+inherits `@playwright/test` through Node's directory-walk resolution, so an agent can run Playwright
+against the user's app without that app declaring the dependency itself. The browser binaries live
+in `~/.cache/ms-playwright` and the system libraries are installed system-wide, so those files are
+the whole of what the install leaves next to your repos.
+
 **Public URLs work with no credentials at all.** The clone runs anonymously; nothing needs
 configuring, and this is the case the shipped packs are built around.
 
