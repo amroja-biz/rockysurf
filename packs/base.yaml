@@ -296,7 +296,9 @@ tools:
   # called `sudo npx playwright install-deps`. The system libraries genuinely need root and
   # the browser download genuinely belongs to the user, so they are two steps with honest
   # runAs values rather than one step that lies and reaches for a sudo the CI container has
-  # never had.
+  # never had. The rocky-side step installs the npm project into a dedicated
+  # ~/.rockysurf/playwright directory so node_modules/package.json/lockfile do not clutter
+  # $HOME next to the user's cloned repos.
   - toolId: playwright-deps
     name: Playwright system libraries
     description: Shared libraries Chromium needs, installed system-wide
@@ -323,7 +325,12 @@ tools:
     enabled: true
     installScript: |
       set -euo pipefail
-      cd "$HOME"
+      # Install into a dedicated directory rather than bare $HOME: the npm project files
+      # (node_modules/, package.json, package-lock.json) otherwise land in the home root next
+      # to the user's cloned repos. Match the ~/.rockysurf convention used elsewhere.
+      install_dir="$HOME/.rockysurf/playwright"
+      mkdir -p "$install_dir"
+      cd "$install_dir"
       # UNPINNED (deliberate): a pinned Playwright drifts out of step with the browser build
       # its API expects. npm install is convergent, so a re-run is a no-op.
       npm install --no-fund --no-audit -D @playwright/test
