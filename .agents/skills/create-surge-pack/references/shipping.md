@@ -48,9 +48,12 @@ support thread. `packs/open-claw.yaml` tells the user which of two states their 
 gives the commands for each; `packs/gas-town.yaml` says outright that `gt` is pinned and why
 `@latest` would fail.
 
-**`$GITHUB_TOKEN` is not in the user's shell.** It reaches bootstrap steps only. Clones performed
-during setup did authenticate with it; `gh` will not. A guide that says "you already have a token"
-is wrong, and every shipped guide says `gh auth login` for this reason — a test asserts it.
+**`$GITHUB_TOKEN` is in the user's shell only when the operator configured one.** Since issue #244
+the box exports it into every shell `rocky` gets, so `gh` works with no login on a box whose operator
+set `github.pat` — and finds nothing on a box whose operator did not. Clones performed during setup
+authenticated either way. A guide that says "you already have a token" is therefore half right; say
+"when configured", and give `gh auth login` as the other half, which every shipped guide carries for
+the no-token case — a test asserts it.
 
 ## Choosing a destination
 
