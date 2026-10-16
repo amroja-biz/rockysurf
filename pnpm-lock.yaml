@@ -40,6 +40,9 @@ importers:
       ssh2:
         specifier: ^1.17.0
         version: 1.17.0
+      undici:
+        specifier: ^8.10.0
+        version: 8.10.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

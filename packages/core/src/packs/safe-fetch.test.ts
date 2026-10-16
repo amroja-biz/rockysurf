@@ -209,3 +209,88 @@ describe('fetchPublicText', () => {
     if (!result.ok) expect(result.reason).toContain('import limit')
   })
 })
+
+describe('connect-time address pinning', () => {
+  it('attaches a dispatcher pinned to the resolved address', async () => {
+    let capturedDispatcher: unknown
+    const fetchImpl = vi.fn(async (_url: string | Request | URL, init?: RequestInit) => {
+      capturedDispatcher = init?.dispatcher
+      return textResponse('pinned')
+    })
+    const result = await fetchPublicText('https://example.com/x', { resolve: publicAddr('93.184.216.34'), fetchImpl })
+    expect(result).toEqual({ ok: true, text: 'pinned' })
+    expect(capturedDispatcher).toBeDefined()
+  })
+
+  it('closes the dispatcher after the fetch completes', async () => {
+    let closeSpy: ReturnType<typeof vi.spyOn> | undefined
+    const fetchImpl = vi.fn(async (_url: string | Request | URL, init?: RequestInit) => {
+      closeSpy = vi.spyOn(init!.dispatcher as { close: () => Promise<void> }, 'close')
+      return textResponse('pinned')
+    })
+    await fetchPublicText('https://example.com/x', { resolve: publicAddr('93.184.216.34'), fetchImpl })
+    expect(closeSpy).toHaveBeenCalled()
+  })
+
+  it('does not attach a dispatcher for a literal public IP (nothing was resolved to pin)', async () => {
+    let capturedDispatcher: unknown = 'unset'
+    const fetchImpl = vi.fn(async (_url: string | Request | URL, init?: RequestInit) => {
+      capturedDispatcher = init?.dispatcher
+      return textResponse('literal')
+    })
+    const resolve: Resolver = async () => {
+      throw new Error('resolve should not be called for a literal IP')
+    }
+    const result = await fetchPublicText('http://93.184.216.34/x', { resolve, fetchImpl })
+    expect(result).toEqual({ ok: true, text: 'literal' })
+    expect(capturedDispatcher).toBeUndefined()
+  })
+
+  it('does not attach a dispatcher for an allowHosts-exempt name (never screened)', async () => {
+    let capturedDispatcher: unknown = 'unset'
+    const fetchImpl = vi.fn(async (_url: string | Request | URL, init?: RequestInit) => {
+      capturedDispatcher = init?.dispatcher
+      return textResponse('vouched')
+    })
+    const resolve: Resolver = async () => {
+      throw new Error('resolve should not be called for an allowHosts name')
+    }
+    const result = await fetchPublicText('http://git.internal.corp/x', {
+      resolve,
+      fetchImpl,
+      allowHosts: new Set(['git.internal.corp']),
+    })
+    expect(result).toEqual({ ok: true, text: 'vouched' })
+    expect(capturedDispatcher).toBeUndefined()
+  })
+
+  it('re-pins independently on each redirect hop', async () => {
+    const answers: Record<string, string> = { 'example.com': '93.184.216.34', 'cdn.example.net': '203.0.113.5' }
+    const resolve: Resolver = async (host) => [{ address: answers[host]! }]
+    const dispatchers: unknown[] = []
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(async (_url: string | Request | URL, init?: RequestInit) => {
+        dispatchers.push(init?.dispatcher)
+        return redirectTo('https://cdn.example.net/pack.yaml')
+      })
+      .mockImplementationOnce(async (_url: string | Request | URL, init?: RequestInit) => {
+        dispatchers.push(init?.dispatcher)
+        return textResponse('pack: moved')
+      })
+    const result = await fetchPublicText('https://example.com/pack.yaml', { resolve, fetchImpl })
+    expect(result).toEqual({ ok: true, text: 'pack: moved' })
+    expect(dispatchers).toHaveLength(2)
+    expect(dispatchers[0]).toBeDefined()
+    expect(dispatchers[1]).toBeDefined()
+    expect(dispatchers[0]).not.toBe(dispatchers[1])
+  })
+
+  it('never attaches a dispatcher when the address is refused before any fetch', async () => {
+    const fetchImpl = vi.fn()
+    const resolve: Resolver = publicAddr('169.254.169.254')
+    const result = await fetchPublicText('http://metadata.internal/x', { resolve, fetchImpl })
+    expect(result.ok).toBe(false)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+})
