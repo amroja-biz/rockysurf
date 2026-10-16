@@ -48,6 +48,7 @@
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.5",
+    "selfsigned": "^5.5.0",
     "ssh2": "^1.17.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"

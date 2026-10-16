@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import https from 'node:https'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,6 +11,7 @@ import { secretKeyPath } from './secrets/index.js'
 import { makeFakeProvider } from './providers/fake.js'
 import { ProviderRegistry } from './providers/registry.js'
 import { boot, type BootedApp, type BootOptions } from './server.js'
+import { selfSignedCertPaths } from './tls/self-signed.js'
 
 /**
  * The boot path against a real temporary config and a real on-disk database — the one place
@@ -255,6 +257,49 @@ describe('boot', () => {
       const address = await bootListening({ host: '127.0.0.1' })
 
       expect(address.address).toBe('127.0.0.1')
+    })
+  })
+
+  /**
+   * `server.tls.selfSigned` end to end, against a real socket and a real TLS handshake — the
+   * same reasoning as the plaintext listener tests above: a test that only checked the parsed
+   * config would still pass if the wiring into `serve()` were deleted.
+   */
+  describe('server.tls.selfSigned', () => {
+    it('serves real HTTPS once turned on, instead of plaintext HTTP', async () => {
+      writeConfig('  tls:\n    selfSigned: true\n')
+      booted = await boot({ argv: [], cwd: dir, env: {}, port: 0, announce: () => {} })
+      const server = booted.server!
+      const address =
+        server.address() ?? (await new Promise((resolve) => server.once('listening', () => resolve(server.address()))))
+      const { port } = address as AddressInfo
+
+      const body = await new Promise<string>((resolve, reject) => {
+        https.get({ hostname: '127.0.0.1', port, path: '/health', rejectUnauthorized: false }, (res) => {
+          let data = ''
+          res.on('data', (chunk) => (data += chunk))
+          res.on('end', () => resolve(data))
+          res.on('error', reject)
+        }).on('error', reject)
+      })
+      expect(body).toContain('ok')
+
+      // The certificate is under dataDir, not thrown away when the process exits — a restart
+      // must not re-invalidate a browser's existing trust exception for it.
+      const { keyPath, certPath } = selfSignedCertPaths(join(dir, 'data'))
+      expect(existsSync(keyPath)).toBe(true)
+      expect(existsSync(certPath)).toBe(true)
+    })
+
+    it('stays plaintext HTTP when left off, the default', async () => {
+      booted = await boot({ argv: [], cwd: dir, env: {}, port: 0, announce: () => {} })
+      const server = booted.server!
+      const address =
+        server.address() ?? (await new Promise((resolve) => server.once('listening', () => resolve(server.address()))))
+      const { port } = address as AddressInfo
+
+      const res = await fetch(`http://127.0.0.1:${port}/health`)
+      expect(res.status).toBe(200)
     })
   })
 

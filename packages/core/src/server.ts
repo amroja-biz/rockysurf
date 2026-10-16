@@ -1,5 +1,6 @@
 import { serve, type ServerType } from '@hono/node-server'
 import { existsSync } from 'node:fs'
+import { createServer as createHttpsServer } from 'node:https'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp, type AppEnv, type CreatedApp } from './app.js'
@@ -18,6 +19,7 @@ import {
 import { defaultDatabasePath, openDatabase, type OpenedDatabase } from './db/client.js'
 import { createSecretsStore, loadMasterKey, type SecretsStore } from './secrets/index.js'
 import { createServerSecretsLoader } from './bootstrap/server-secrets.js'
+import { ensureSelfSignedCert } from './tls/self-signed.js'
 import type { ProviderRegistry } from './providers/registry.js'
 import { createEventsService, type EventsService } from './services/events.js'
 import type { Jobs } from './jobs/index.js'
@@ -316,7 +318,12 @@ export async function boot(options: BootOptions = {}): Promise<BootedApp> {
   if (options.listen !== false) {
     // `hostname` is the whole point of rockysurf-pii7: without it node-server binds every
     // interface, which for a box holding cloud credentials is a decision nobody made.
-    server = serve({ fetch: created.app.fetch, port, hostname: host })
+    const tls = config.server.tls.selfSigned
+      ? await ensureSelfSignedCert(config.server.dataDir, host, config.server.publicUrl)
+      : undefined
+    server = tls
+      ? serve({ fetch: created.app.fetch, port, hostname: host, createServer: createHttpsServer, serverOptions: tls })
+      : serve({ fetch: created.app.fetch, port, hostname: host })
     // One pass of every job immediately, THEN the timers. The reconciler running once at
     // startup is an ADR-0001 requirement rather than an optimisation: it is what turns "core
     // was off for a week" into a list of disagreements an operator can act on, instead of a
@@ -374,8 +381,9 @@ function resolvePublicDir(): string | undefined {
 /** Entry point. Kept separate from `boot()` so importing this module starts nothing. */
 export async function main(): Promise<void> {
   const booted = await boot()
+  const scheme = booted.config.server.tls.selfSigned ? 'https' : 'http'
   console.error(
-    `rockysurf listening on http://127.0.0.1:${booted.port}` +
+    `rockysurf listening on ${scheme}://127.0.0.1:${booted.port}` +
       ` (auth: ${booted.config.auth.mode}, data: ${booted.config.server.dataDir})`,
   )
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
