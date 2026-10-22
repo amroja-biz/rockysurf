@@ -35,7 +35,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@rockysurf/core": "workspace:*",
     "@rockysurf/provider-aws": "workspace:*",
     "@rockysurf/provider-azure": "workspace:*",
