@@ -38,7 +38,7 @@
     "@aws-sdk/client-ec2": "^3.1108.0",
     "@aws-sdk/client-ssm": "^3.1108.0",
     "@rockysurf/provider-sdk": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@rockysurf/provider-conformance": "workspace:*",
